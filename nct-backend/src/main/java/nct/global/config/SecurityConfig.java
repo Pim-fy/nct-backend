@@ -1,0 +1,111 @@
+package nct.global.config;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletResponse;
+import nct.global.response.ApiResponse;
+import nct.global.security.filter.JwtAuthenticationFilter;
+import nct.global.security.handler.OAuth2SuccessHandler;
+import nct.global.security.provider.JwtTokenProvider;
+import nct.global.security.service.CustomOAuth2UserService;
+import nct.global.security.service.CustomUserDetailsService;
+import nct.global.utils.CookieUtil;
+import lombok.RequiredArgsConstructor;
+
+/**
+ * [설정 - Spring Security]
+ * - STATELESS : 세션을 만들지 않음 (JWT 기반 인증)
+ * - permit-all 경로는 SecurityProperties(프로퍼티)에서 주입
+ *   : 기본 정책 = "명시된 경로 외 전부 인증 필요" (화이트리스트 방식)
+ * - 401/403 응답을 ApiResponse JSON 포맷으로 통일
+ *   : 원본(sendError)의 HTML 에러 응답 문제를 개선
+ */
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+@EnableConfigurationProperties(SecurityProperties.class)
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final SecurityProperties securityProperties;
+    private final CorsConfigurationSource corsConfigurationSource;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2SuccessHandler oAuth2SuccessHandler;
+    private final ObjectMapper objectMapper;
+    private final CookieUtil cookieUtil;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final CustomUserDetailsService customUserDetailsService;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            // JWT 기반이므로 CSRF 비활성화 (쿠키 SameSite=Lax 로 보완)
+            .csrf(csrf -> csrf.disable())
+            // 세션 미사용 - 모든 인증은 JWT 로
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
+            .authorizeHttpRequests(auth -> auth
+                // 에러 페이지 포워딩 시 인증 블락(403) 방지
+                .dispatcherTypeMatchers(DispatcherType.ERROR)
+                    .permitAll()
+                // 관리자 API
+                .requestMatchers("/api/admin/**")
+                    .hasAuthority("ROLE_ADMIN")
+                // 화이트리스트 - application.properties 의 app.security.permit-all-paths
+                .requestMatchers(securityProperties.getPermitAllPaths().toArray(String[]::new))
+                    .permitAll()
+                // 그 외 전부 인증 필요
+                .anyRequest()
+                    .authenticated()
+            )
+            .oauth2Login(oauth2 -> oauth2
+                // 프론트 호출 예: location.href = "http://localhost:8080/api/oauth2/authorization/kakao"
+                .authorizationEndpoint(endpoint -> endpoint
+                    .baseUri("/api/oauth2/authorization"))
+                // 카카오 인증 완료 후 인가 코드가 돌아오는 백엔드 도착점
+                .redirectionEndpoint(endpoint -> endpoint
+                    .baseUri("/api/login/oauth2/code/*"))
+                .userInfoEndpoint(endpoint -> endpoint
+                    .userService(customOAuth2UserService))
+                .successHandler(oAuth2SuccessHandler)
+            )
+            // 401/403 을 ApiResponse JSON 으로 응답 (REST API 표준화)
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) ->
+                    writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                                       "인증이 필요합니다.", request.getRequestURI()))
+                .accessDeniedHandler((request, response, accessDeniedException) ->
+                    writeErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
+                                       "접근 권한이 없습니다.", request.getRequestURI()))
+            )
+            // JWT 필터를 폼 로그인 필터 앞에 배치
+            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil,jwtTokenProvider,customUserDetailsService),
+                             UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    // 보안 예외를 ApiResponse JSON 으로 직렬화해 응답
+    private void writeErrorResponse(HttpServletResponse response, int status,
+                                    String message, String path) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter()
+                .write(objectMapper.writeValueAsString(ApiResponse.error(status, message, path)));
+    }
+}

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 로깅 3종 구조 1) LoggingFilter : traceId/clientIp 를 MDC 에 주입 (최전선) 2) LogInterceptor 
+	: 요청 URI/메서드/사용자/본문 상세 로그 3) logback(이 파일) : 출력 패턴/파일 롤링 정책 패턴의 %X{traceId} 
+	: LoggingFilter 가 MDC 에 넣은 요청 추적 ID -->
+<configuration>
+	<property name="LOG_DIR" value="./logs" />
+	<property name="LOG_PATH_NAME" value="${LOG_DIR}/application.log" />
+	<property name="PATTERN" value="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+
+	<!-- 콘솔 -->
+	<appender name="STDOUT"
+		class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>${PATTERN}</pattern>
+		</encoder>
+	</appender>
+
+	<!-- SQL 로그 전용 콘솔 (줄바꿈 들여쓰기) -->
+	<appender name="QSTDOUT" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} %n\t%msg%n</pattern>
+		</encoder>
+	</appender>
+
+	<!-- 파일 롤링 : 일자별 + 10MB 단위 분할, 30일 보관 -->
+	<!-- <appender name="ROLLING_FILE"
+		class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_PATH_NAME}</file>
+		<encoder
+			class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+			<pattern>${PATTERN}</pattern>
+		</encoder>
+		<rollingPolicy
+			class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<fileNamePattern>${LOG_DIR}/application_%d{yyyy-MM-dd}_%i.log
+			</fileNamePattern>
+			<timeBasedFileNamingAndTriggeringPolicy
+				class="ch.qos.logback.core.rolling.SizeAndTimeBasedFileNamingAndTriggeringPolicy">
+				<maxFileSize>10MB</maxFileSize>
+			</timeBasedFileNamingAndTriggeringPolicy>
+			<maxHistory>30</maxHistory>
+		</rollingPolicy>
+	</appender> -->
+
+	<!-- 프로젝트 패키지 로그 -->
+	<logger name="nct" level="INFO" additivity="false">
+		<appender-ref ref="STDOUT" />
+		<appender-ref ref="ROLLING_FILE" />
+	</logger>
+
+	<!-- log4jdbc : SQL + 실행시간만 출력 -->
+	<logger name="jdbc" level="OFF" additivity="false">
+		<appender-ref ref="STDOUT" />
+	</logger>
+	<logger name="jdbc.sqltiming" level="INFO" additivity="false">
+		<appender-ref ref="QSTDOUT" />
+		<appender-ref ref="ROLLING_FILE" />
+	</logger>
+	<logger name="jdbc.connection" level="OFF" additivity="false">
+		<appender-ref ref="STDOUT" />
+	</logger>
+	<logger name="jdbc.sqlonly" level="OFF" additivity="false">
+		<appender-ref ref="STDOUT" />
+	</logger>
+	<logger name="jdbc.audit" level="OFF" additivity="false">
+		<appender-ref ref="STDOUT" />
+	</logger>
+	<logger name="jdbc.resultset" level="OFF" additivity="false">
+		<appender-ref ref="STDOUT" />
+	</logger>
+	<logger name="jdbc.resultsettable" level="OFF" additivity="false">
+		<appender-ref ref="STDOUT" />
+	</logger>
+
+	<root level="ERROR">
+		<appender-ref ref="STDOUT" />
+		<appender-ref ref="ROLLING_FILE" />
+	</root>
+</configuration>

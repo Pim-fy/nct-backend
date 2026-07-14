@@ -104,6 +104,24 @@ class PointFlowTest {
     }
 
     @Test
+    @DisplayName("홀딩: 금액이 0 이하이면 거부 (원장에 흔적을 남기지 않음)")
+    void holdNonPositiveAmount() {
+        assertThatThrownBy(() -> pointService.hold(buyerSn, 0, RefType.BID, 1L, "잘못된 금액"))
+                .isInstanceOf(PointException.class);
+        assertThatThrownBy(() -> pointService.hold(buyerSn, -10000, RefType.BID, 2L, "잘못된 금액"))
+                .isInstanceOf(PointException.class);
+
+        assertThat(pointService.getBalance(buyerSn).getAvailableAmt()).isEqualTo(100000);
+    }
+
+    @Test
+    @DisplayName("보관금 전환: 홀딩 없는 참조 건은 거부")
+    void convertHoldToEscrowWithoutHold() {
+        assertThatThrownBy(() -> pointService.convertHoldToEscrow(buyerSn, RefType.BID, 99L, "잘못된 전환"))
+                .isInstanceOf(PointException.class);
+    }
+
+    @Test
     @DisplayName("낙찰 전체 흐름: 홀딩 → 보관금 전환 → 정산 대기 → 정산 완료 (ML-PAY-004, F-PAY-042/043)")
     void fullSettlementFlow() {
         pointService.hold(buyerSn, 30000, RefType.BID, 1L, "입찰 홀딩");

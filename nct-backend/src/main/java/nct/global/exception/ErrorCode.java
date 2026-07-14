@@ -48,6 +48,19 @@ public enum ErrorCode {
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
 
+    /*==================== 포인트/정산 도메인 (담당자6) ====================*/
+
+    // 포인트 - 400: 요청 자체가 잘못됨 / 409: 잔액·상태와 충돌
+    POINT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "포인트 금액은 0보다 커야 합니다."),
+    POINT_INSUFFICIENT(HttpStatus.CONFLICT, "사용 가능 포인트가 부족합니다."),
+    POINT_DUPLICATE_HOLD(HttpStatus.CONFLICT, "이미 홀딩된 건입니다."),
+    POINT_HOLD_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 홀딩이 없습니다."),
+
+    // 정산
+    SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 정산 건입니다."),
+    SETTLEMENT_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 정산 처리입니다."),
+    SETTLEMENT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "정산 금액은 0보다 커야 합니다."),
+
     /*==================== 5XX SERVER ERROR ====================*/
 
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다. 관리자에게 문의하세요."),

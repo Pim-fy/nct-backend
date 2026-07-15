@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.category.mapper.CategoryMapper">
+
+    <resultMap id="CategoryMap" type="nct.category.domain.Category">
+        <id     property="catSn"          column="CAT_SN"           />
+        <result property="catParentSn"    column="CAT_PARENT_SN"    />
+        <result property="catDomainCd"    column="CAT_DOMAIN_CD"    />
+        <result property="catAprvMethodCd" column="CAT_APRV_METHOD_CD"/>
+        <result property="catNm"          column="CAT_NM"           />
+        <result property="catPrfYn"       column="CAT_PRF_YN"       />
+        <result property="catSortNo"      column="CAT_SORT_NO"      />
+        <result property="catUseYn"       column="CAT_USE_YN"       />
+        <result property="catRegDt"       column="CAT_REG_DT"       />
+        <result property="catUpdtDt"      column="CAT_UPDT_DT"      />
+    </resultMap>
+
+    <!-- 도메인 코드별 카테고리 목록 -->
+    <select id="findCategoriesByDomain" resultMap="CategoryMap">
+        /* CategoryMapper.findCategoriesByDomain */
+        SELECT CAT_SN, CAT_PARENT_SN, CAT_DOMAIN_CD, CAT_APRV_METHOD_CD,
+               CAT_NM, CAT_PRF_YN, CAT_SORT_NO, CAT_USE_YN,
+               CAT_REG_DT, CAT_UPDT_DT
+          FROM CATEGORY
+         WHERE CAT_DOMAIN_CD = #{domainCd}
+           AND CAT_USE_YN = 'Y'
+         ORDER BY CAT_SORT_NO ASC
+    </select>
+
+</mapper>

@@ -61,6 +61,11 @@ public enum ErrorCode {
     SETTLEMENT_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 정산 처리입니다."),
     SETTLEMENT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "정산 금액은 0보다 커야 합니다."),
 
+    // 포인트 충전 (F-PG-01)
+    CHARGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 충전 주문입니다."),
+    CHARGE_ORDER_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 충전 주문입니다."),
+    CHARGE_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "결제 승인 금액이 사전 기록과 일치하지 않습니다."),
+
     /*==================== 5XX SERVER ERROR ====================*/
 
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다. 관리자에게 문의하세요."),

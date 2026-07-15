@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Claude Code 작성 (BJN, 2026-07-15) -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.point.mapper.PointChargeOrderMapper">
+
+    <!-- 충전 주문 추가 (대기 상태로 생성). REG_DT 등 시스템 컬럼은 DB DEFAULT에 맡기고 생략 -->
+    <insert id="insert" parameterType="nct.point.domain.PointChargeOrder"
+            useGeneratedKeys="true" keyProperty="ptChgOrdSn">
+        /* 포인트 충전 주문: 행 추가 (대기 상태) */
+        INSERT INTO POINT_CHARGE_ORDER (USR_SN, PT_CHG_ORD_NO, PT_CHG_ORD_AMT, PT_CHG_ORD_STATUS_CD)
+        VALUES (#{usrSn}, #{ptChgOrdNo}, #{ptChgOrdAmt}, #{ptChgOrdStatusCd})
+    </insert>
+
+    <!-- 행 잠금 후 조회: 승인 처리 중 같은 주문번호가 동시에 두 번 확정되는 것을 막는다 -->
+    <select id="selectForUpdateByOrderNo" resultType="nct.point.domain.PointChargeOrder">
+        /* 포인트 충전 주문: 주문번호로 행 잠금 조회 */
+        SELECT PT_CHG_ORD_SN, USR_SN, PT_CHG_ORD_NO, PT_CHG_ORD_AMT, PT_CHG_ORD_STATUS_CD,
+               PT_CHG_ORD_PG_KEY, PT_LDG_SN, PT_CHG_ORD_FAIL_RSN_CN, PT_CHG_ORD_REG_DT, PT_CHG_ORD_UPDT_DT
+        FROM POINT_CHARGE_ORDER
+        WHERE PT_CHG_ORD_NO = #{ptChgOrdNo}
+        FOR UPDATE
+    </select>
+
+    <!-- 완료 처리: 상태 + PG결제키 + 연결된 원장SN 기록 -->
+    <update id="complete">
+        /* 포인트 충전 주문: 완료 처리 */
+        UPDATE POINT_CHARGE_ORDER
+        SET PT_CHG_ORD_STATUS_CD = #{statusCd},
+            PT_CHG_ORD_PG_KEY = #{pgKey},
+            PT_LDG_SN = #{ptLdgSn}
+        WHERE PT_CHG_ORD_SN = #{ptChgOrdSn}
+    </update>
+
+    <!-- 실패/취소 처리: 상태 + PG결제키 + 실패사유 기록 -->
+    <update id="fail">
+        /* 포인트 충전 주문: 실패/취소 처리 */
+        UPDATE POINT_CHARGE_ORDER
+        SET PT_CHG_ORD_STATUS_CD = #{statusCd},
+            PT_CHG_ORD_PG_KEY = #{pgKey},
+            PT_CHG_ORD_FAIL_RSN_CN = #{failRsnCn}
+        WHERE PT_CHG_ORD_SN = #{ptChgOrdSn}
+    </update>
+
+</mapper>

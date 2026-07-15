@@ -64,6 +64,14 @@ public class NotificationService {
                 title, content, RefType.TRADE, trdSn);
     }
 
+    /** 포인트 충전 완료 알림 — PointChargeService가 호출 */
+    public void notifyCharge(long usrSn, long amt) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "충전 완료",
+                String.format("%,dP가 충전되었습니다.", amt),
+                null, null);
+    }
+
     // ---------- 조회/읽음 ----------
 
     /** 내 알림 목록 (최신순 100건) */

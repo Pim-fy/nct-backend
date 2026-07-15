@@ -150,6 +150,22 @@ public class PointService {
                 bal.getSettleableAmt() + amt, refType, refSn, reason);
     }
 
+    /**
+     * 포인트 충전 적립 (F-PG-01). PG 결제 승인 완료 후 PointChargeService가 호출한다.
+     * 사용가능 버킷에 +금액 단식 1행 — 충전은 다른 도메인 이벤트를 참조하지 않으므로 REF가 없다.
+     *
+     * @return 생성된 포인트원장일련번호 (POINT_CHARGE_ORDER가 완료 처리 시 연결해 둔다)
+     */
+    @Transactional
+    public long creditCharge(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CHARGE, amt,
+                bal.getAvailableAmt() + amt, null, null, reason);
+    }
+
     // ---------- 내부 ----------
 
     /** 회원 행 잠금 — 존재하지 않는 회원이면 즉시 실패 */
@@ -166,13 +182,18 @@ public class PointService {
         }
     }
 
-    /** 원장 행 1건 기록 — 행위자·참조·처리후잔액 스냅샷까지 빠짐없이 남긴다 (로그 기록 원칙) */
-    private void insertLedger(long usrSn, PointCategory category, PointLedgerType type,
-                              long amt, long balAfter, RefType refType, long refSn, String reason) {
+    /**
+     * 원장 행 1건 기록 — 행위자·참조·처리후잔액 스냅샷까지 빠짐없이 남긴다 (로그 기록 원칙)
+     * refType은 nullable — 충전처럼 다른 도메인 이벤트를 참조하지 않는 원장 행에 쓴다.
+     *
+     * @return 생성된 포인트원장일련번호
+     */
+    private long insertLedger(long usrSn, PointCategory category, PointLedgerType type,
+                              long amt, long balAfter, RefType refType, Long refSn, String reason) {
         PointLedger row = new PointLedger();
         row.setUsrSn(usrSn);
         row.setActorUsrSn(usrSn);
-        row.setPtLdgRefTypeCd(refType.getCode());
+        row.setPtLdgRefTypeCd(refType != null ? refType.getCode() : null);
         row.setPtLdgRefSn(refSn);
         row.setPtLdgPtTypeCd(category.getCode());
         row.setPtLdgTypeCd(type.getCode());
@@ -180,5 +201,6 @@ public class PointService {
         row.setPtLdgBalAfterAmt(balAfter);
         row.setPtLdgRsnCn(reason);
         pointMapper.insertLedger(row);
+        return row.getPtLdgSn();
     }
 }

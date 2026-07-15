@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,11 +27,15 @@ import nct.auction.domain.Bid;
 import nct.auction.dto.BidExecutionResult;
 import nct.auction.dto.BidRequest;
 import nct.auction.dto.BidValidationResult;
+import nct.auction.dto.BuyNowRequest;
+import nct.auction.dto.BuyNowResult;
+import nct.auction.dto.MyBidHistoryItem;
 import nct.auction.dto.ProductBidInfo;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.mapper.BidMapper;
 import nct.auction.port.PointLedgerPort;
 import nct.auction.port.ProductQueryPort;
+import nct.auction.port.TradeCreationPort;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 
@@ -58,6 +63,7 @@ class BidServiceTest {
     @Mock private BidMapper bidMapper;
     @Mock private ProductQueryPort productQueryPort;
     @Mock private PointLedgerPort pointLedgerPort;
+    @Mock private TradeCreationPort tradeCreationPort;
 
     private BidService bidService;
 
@@ -77,7 +83,7 @@ class BidServiceTest {
         // @InjectMocks 를 쓰지 않고 직접 생성자로 조립했다.
         // 이유: 이 프로젝트는 @RequiredArgsConstructor(Lombok) 로 생성자를 만들기 때문에
         //       Mockito 의 필드 주입보다 "생성자 주입"이 실제 운영 코드와 더 가깝다.
-        bidService = new BidService(auctionMapper, bidMapper, productQueryPort, pointLedgerPort);
+        bidService = new BidService(auctionMapper, bidMapper, productQueryPort, pointLedgerPort, tradeCreationPort);
     }
 
     /** "정상" 경매 1건을 만드는 헬퍼 - 각 테스트는 여기서 필요한 필드 1개만 깨뜨려서 사용한다. */
@@ -319,5 +325,150 @@ class BidServiceTest {
         verify(pointLedgerPort, never()).holdForBid(any(), any(), any());
         verify(pointLedgerPort, never()).releaseHold(any(), any(), any());
         verify(auctionMapper, never()).updateCurrentAmount(any(), any());
+    }
+
+    /* ================================================================================
+     *  F-AUC-018 즉시구매 실행 테스트
+     *  - executeBuyNow() 도 executeBid() 와 마찬가지로 findAuctionForUpdate(잠금)를 쓴다.
+     *    "같은 잠금 지점을 공유한다"는 사실 자체가 F-AUC-019(충돌 제어)의 구현이므로
+     *    이 테스트 파일에서 그 동시성을 직접 재현하지는 않지만, 최소한 "잠긴 스냅샷을 쓴다"는
+     *    것은 findAuctionForUpdate 를 호출하는지 확인하는 것으로 간접 검증한다.
+     * ================================================================================ */
+
+    private BuyNowRequest buyNowRequest() {
+        BuyNowRequest request = new BuyNowRequest();
+        request.setAucSn(AUC_SN);
+        return request;
+    }
+
+    @Test
+    void 즉시구매가가_없는_상품은_즉시구매할_수_없다() {
+        // given: buyNowAmt 가 null 인 상품 - "즉시구매 미지원" 상품
+        when(auctionMapper.findAuctionForUpdate(AUC_SN)).thenReturn(Optional.of(healthyAuction()));
+        when(productQueryPort.getBidInfo(PRD_SN)).thenReturn(
+                ProductBidInfo.builder().sellerUsrSn(SELLER_USR_SN).buyNowAmt(null).build());
+
+        assertThatThrownBy(() -> bidService.executeBuyNow(BIDDER_USR_SN, buyNowRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting(ex -> ((CustomException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.BUY_NOW_NOT_AVAILABLE);
+
+        // 즉시구매가 자체가 없으므로 어떤 쓰기 작업도 일어나면 안 된다.
+        verify(bidMapper, never()).insertBid(any());
+        verify(tradeCreationPort, never()).createTradeForBuyNow(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 자기_상품은_즉시구매할_수_없다() {
+        // given: 013/014와 동일한 자기입찰 차단 규칙이 즉시구매에도 그대로 적용되는지 확인
+        when(auctionMapper.findAuctionForUpdate(AUC_SN)).thenReturn(Optional.of(healthyAuction()));
+        when(productQueryPort.getBidInfo(PRD_SN)).thenReturn(
+                ProductBidInfo.builder().sellerUsrSn(BIDDER_USR_SN).buyNowAmt(BUY_NOW_AMT).build());
+
+        assertThatThrownBy(() -> bidService.executeBuyNow(BIDDER_USR_SN, buyNowRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting(ex -> ((CustomException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.SELF_BID_NOT_ALLOWED);
+    }
+
+    @Test
+    void 이전_입찰이_없으면_즉시구매_성공시_거래가_생성되고_경매가_종료된다() {
+        // given: 첫 입찰조차 없던 경매에 바로 즉시구매가 들어오는 상황
+        when(auctionMapper.findAuctionForUpdate(AUC_SN)).thenReturn(Optional.of(healthyAuction()));
+        when(productQueryPort.getBidInfo(PRD_SN)).thenReturn(healthyProduct()); // buyNowAmt = 50,000
+        when(pointLedgerPort.hasAvailableBalance(BIDDER_USR_SN, BUY_NOW_AMT)).thenReturn(true);
+        when(bidMapper.findActiveBid(AUC_SN, BidStatusCode.ACTIVE)).thenReturn(Optional.empty());
+        when(tradeCreationPort.createTradeForBuyNow(AUC_SN, PRD_SN, SELLER_USR_SN, BIDDER_USR_SN, BUY_NOW_AMT))
+                .thenReturn(9001L);
+
+        Long generatedBidSn = 700L;
+        doAnswer(invocation -> {
+            Bid savedBid = invocation.getArgument(0);
+            ReflectionTestUtils.setField(savedBid, "bidSn", generatedBidSn);
+            return null;
+        }).when(bidMapper).insertBid(any(Bid.class));
+
+        // when
+        BuyNowResult result = bidService.executeBuyNow(BIDDER_USR_SN, buyNowRequest());
+
+        // then: 서버가 결정한 즉시구매가(BUY_NOW_AMT)로 구매자 포인트가 홀딩된다.
+        verify(pointLedgerPort).holdForBid(BIDDER_USR_SN, BUY_NOW_AMT, generatedBidSn);
+        // 이전 입찰이 없으므로 반환 로직은 호출되지 않는다.
+        verify(pointLedgerPort, never()).releaseHold(any(), any(), any());
+
+        // 경매는 종료 상태로 바뀌고, 현재금액은 즉시구매가로 갱신된다.
+        verify(auctionMapper).updateStatus(AUC_SN, AuctionStatusCode.ENDED);
+        verify(auctionMapper).updateCurrentAmount(AUC_SN, BUY_NOW_AMT);
+
+        // 담당자4 계약이 정확한 판매자/구매자/금액으로 호출되어야 한다.
+        verify(tradeCreationPort).createTradeForBuyNow(AUC_SN, PRD_SN, SELLER_USR_SN, BIDDER_USR_SN, BUY_NOW_AMT);
+
+        assertThat(result.getFinalAmt()).isEqualTo(BUY_NOW_AMT);
+        assertThat(result.getTradeSn()).isEqualTo(9001L);
+        assertThat(result.getRefundedBidderUsrSn()).isNull();
+    }
+
+    @Test
+    void 기존_최고_입찰이_있으면_즉시구매_성공시_그_입찰자에게_포인트를_반환한다() {
+        // given: 이미 다른 사람이 입찰 중이던 경매에 즉시구매가 들어와 그 사람이 패배하는 상황
+        Long previousBidderUsrSn = 2L;
+        Long previousBidSn = 300L;
+        Bid previousActiveBid = Bid.builder()
+                .bidSn(previousBidSn)
+                .aucSn(AUC_SN)
+                .usrSn(previousBidderUsrSn)
+                .bidAmt(CUR_AMT)
+                .bidStatusCd(BidStatusCode.ACTIVE)
+                .build();
+
+        when(auctionMapper.findAuctionForUpdate(AUC_SN)).thenReturn(Optional.of(healthyAuction()));
+        when(productQueryPort.getBidInfo(PRD_SN)).thenReturn(healthyProduct());
+        when(pointLedgerPort.hasAvailableBalance(BIDDER_USR_SN, BUY_NOW_AMT)).thenReturn(true);
+        when(bidMapper.findActiveBid(AUC_SN, BidStatusCode.ACTIVE)).thenReturn(Optional.of(previousActiveBid));
+        when(tradeCreationPort.createTradeForBuyNow(any(), any(), any(), any(), any())).thenReturn(9002L);
+
+        doAnswer(invocation -> {
+            Bid savedBid = invocation.getArgument(0);
+            ReflectionTestUtils.setField(savedBid, "bidSn", 701L);
+            return null;
+        }).when(bidMapper).insertBid(any(Bid.class));
+
+        // when
+        BuyNowResult result = bidService.executeBuyNow(BIDDER_USR_SN, buyNowRequest());
+
+        // then: 기존 최고 입찰자는 OUTBID 전환 + 정확한 금액 환불을 받는다 (F-AUC-016 과 동일한 처리).
+        verify(bidMapper).updateBidStatus(previousBidSn, BidStatusCode.OUTBID);
+        verify(pointLedgerPort).releaseHold(previousBidderUsrSn, CUR_AMT, previousBidSn);
+
+        assertThat(result.getRefundedBidderUsrSn()).isEqualTo(previousBidderUsrSn);
+    }
+
+    /* ================================================================================
+     *  F-AUC-022 내 입찰 내역 조회 테스트
+     *  - 순수 조회라 검증할 게 많지 않다. 핵심은 "BidMapper 가 돌려준 걸 그대로 전달하는가"
+     *    (서비스 계층이 괜히 가공하다가 데이터를 왜곡하지 않는지) 뿐이다.
+     * ================================================================================ */
+
+    @Test
+    void 내_입찰_내역_조회는_Mapper_결과를_그대로_반환한다() {
+        // given
+        List<MyBidHistoryItem> expected = List.of(
+                MyBidHistoryItem.builder()
+                        .bidSn(1L).aucSn(AUC_SN).bidAmt(VALID_BID_AMT)
+                        .bidStatusCd(BidStatusCode.ACTIVE)
+                        .auctionStatusCd(AuctionStatusCode.IN_PROGRESS)
+                        .build(),
+                MyBidHistoryItem.builder()
+                        .bidSn(2L).aucSn(AUC_SN).bidAmt(CUR_AMT)
+                        .bidStatusCd(BidStatusCode.OUTBID)
+                        .auctionStatusCd(AuctionStatusCode.IN_PROGRESS)
+                        .build());
+        when(bidMapper.findMyBidHistory(BIDDER_USR_SN)).thenReturn(expected);
+
+        // when
+        List<MyBidHistoryItem> result = bidService.getMyBidHistory(BIDDER_USR_SN);
+
+        // then
+        assertThat(result).isEqualTo(expected);
     }
 }

@@ -1,11 +1,13 @@
 package nct.auction.mapper;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.auction.domain.Bid;
+import nct.auction.dto.MyBidHistoryItem;
 
 /**
  * [BID 테이블 전용 Mapper]
@@ -32,4 +34,13 @@ public interface BidMapper {
 
     /** 이전 최고 입찰의 상태를 OUTBID 로 변경한다 (포인트 반환은 PointLedgerPort 가 별도로 처리). */
     void updateBidStatus(@Param("bidSn") Long bidSn, @Param("statusCd") String statusCd);
+
+    /**
+     * [F-AUC-022 내 입찰 내역 조회] 특정 회원의 입찰 내역을 최신순으로 조회한다.
+     * - BID 와 AUCTION 을 JOIN 해서 "지금 이 입찰이 최고입찰/낙찰/반환 중 무엇인지" 판단에
+     *   필요한 경매 상태까지 한 번에 가져온다 (N+1 쿼리 방지).
+     * - usrSn 은 반드시 컨트롤러에서 로그인한 본인의 회원번호만 전달해야 한다
+     *   ("본인 입찰 내역만 조회" 규칙은 다른 사람의 usrSn 을 애초에 받지 않는 방식으로 지킨다).
+     */
+    List<MyBidHistoryItem> findMyBidHistory(@Param("usrSn") Long usrSn);
 }

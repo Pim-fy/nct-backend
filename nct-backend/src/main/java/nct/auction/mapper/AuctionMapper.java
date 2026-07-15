@@ -37,4 +37,7 @@ public interface AuctionMapper {
 
     /** [F-AUC-014] 새 최고 입찰가로 AUCTION.AUC_CUR_AMT 를 갱신한다. */
     void updateCurrentAmount(@Param("aucSn") Long aucSn, @Param("newAmt") Long newAmt);
+
+    /** [F-AUC-018] 즉시구매 성공 시 경매 상태를 변경한다 (예: 진행중 -> 종료). */
+    void updateStatus(@Param("aucSn") Long aucSn, @Param("statusCd") String statusCd);
 }

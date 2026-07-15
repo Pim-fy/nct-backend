@@ -51,4 +51,25 @@
         WHERE  BID_SN = #{bidSn}
     </update>
 
+    <resultMap id="myBidHistoryMap" type="nct.auction.dto.MyBidHistoryItem">
+        <id     column="BID_SN"        property="bidSn"/>
+        <result column="AUC_SN"        property="aucSn"/>
+        <result column="BID_AMT"       property="bidAmt"/>
+        <result column="BID_STATUS_CD" property="bidStatusCd"/>
+        <result column="AUC_STATUS_CD" property="auctionStatusCd"/>
+        <result column="BID_REG_DT"    property="bidRegDt"/>
+    </resultMap>
+
+    <!-- [F-AUC-022] 내 입찰 내역 - 최신 입찰이 위로 오도록 정렬 -->
+    <select id="findMyBidHistory" parameterType="Long" resultMap="myBidHistoryMap">
+        /* 내 입찰 내역 조회 (BID + AUCTION 조인) */
+        SELECT
+            b.BID_SN, b.AUC_SN, b.BID_AMT, b.BID_STATUS_CD, b.BID_REG_DT,
+            a.AUC_STATUS_CD
+        FROM   BID b
+        JOIN   AUCTION a ON a.AUC_SN = b.AUC_SN
+        WHERE  b.USR_SN = #{usrSn}
+        ORDER  BY b.BID_REG_DT DESC
+    </select>
+
 </mapper>

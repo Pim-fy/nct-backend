@@ -53,6 +53,9 @@ public enum ErrorCode {
     SELF_BID_NOT_ALLOWED(HttpStatus.FORBIDDEN, "본인이 등록한 상품에는 입찰할 수 없습니다."),
     INSUFFICIENT_POINT_BALANCE(HttpStatus.BAD_REQUEST, "보유 포인트가 부족합니다."),
 
+    // ---- F-AUC-018 즉시구매 실행 ----
+    BUY_NOW_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "즉시구매를 지원하지 않는 상품입니다."),
+
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
 

@@ -57,4 +57,12 @@
         WHERE  AUC_SN = #{aucSn}
     </update>
 
+    <!-- [F-AUC-018] 즉시구매 성공 시 경매 상태 변경 (예: 진행중 -> 종료) -->
+    <update id="updateStatus">
+        /* 경매 상태 변경 */
+        UPDATE AUCTION
+        SET    AUC_STATUS_CD = #{statusCd}
+        WHERE  AUC_SN = #{aucSn}
+    </update>
+
 </mapper>

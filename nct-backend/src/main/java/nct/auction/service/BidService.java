@@ -1,22 +1,28 @@
 package nct.auction.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.auction.constant.AuctionStatusCode;
 import nct.auction.constant.BidStatusCode;
 import nct.auction.domain.Auction;
 import nct.auction.domain.Bid;
 import nct.auction.dto.BidExecutionResult;
 import nct.auction.dto.BidRequest;
 import nct.auction.dto.BidValidationResult;
+import nct.auction.dto.BuyNowRequest;
+import nct.auction.dto.BuyNowResult;
+import nct.auction.dto.MyBidHistoryItem;
 import nct.auction.dto.ProductBidInfo;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.mapper.BidMapper;
 import nct.auction.port.PointLedgerPort;
 import nct.auction.port.ProductQueryPort;
+import nct.auction.port.TradeCreationPort;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 
@@ -48,6 +54,7 @@ public class BidService {
     private final BidMapper bidMapper;
     private final ProductQueryPort productQueryPort;   // 담당자2 계약 (미구현 시 Fake Bean 으로 대체 가능)
     private final PointLedgerPort pointLedgerPort;     // 담당자6 계약 (미구현 시 Fake Bean 으로 대체 가능)
+    private final TradeCreationPort tradeCreationPort; // 담당자4 계약 (신규 제안, 미구현 시 Fake Bean 으로 대체 가능)
 
     /**
      * @param bidderUsrSn 로그인한 입찰자 회원번호 (컨트롤러에서 CustomUserDetails 로부터 꺼내 전달)
@@ -134,6 +141,91 @@ public class BidService {
                 .bidAmt(request.getBidAmt())
                 .previousHighestBidderUsrSn(previousBidderUsrSn)
                 .build();
+    }
+
+    /**
+     * [F-AUC-018 즉시구매 실행]
+     * 처리 순서:
+     *   1) 경매 행을 FOR UPDATE 로 잠근다 - executeBid(014)와 "같은 잠금 대상"이라는 점이 핵심이다.
+     *      두 트랜잭션(입찰 vs 즉시구매)이 같은 경매에 동시에 들어와도, 이 잠금이 하나만 먼저
+     *      통과시키고 나머지는 대기시킨다. 이것이 F-AUC-019(즉시구매 충돌 제어)의 실제 구현이다 -
+     *      별도의 특별한 잠금 로직이 있는 게 아니라, 014와 018이 같은 락 지점을 공유하는 것뿐이다.
+     *   2) 자기상품/상태/종료시각/포인트 검증 (013과 동일한 검증기를 재사용, 단 4·5번 규칙은 다르다).
+     *   3) 즉시구매가가 등록된 상품인지 확인하고, 그 가격을 최종 거래금액으로 확정한다.
+     *   4) 기존 최고 입찰(ACTIVE)이 있으면 - 즉시구매로 경매가 끝나버리니 그 사람은 패배자가 된다 -
+     *      OUTBID 로 전환하고 홀딩 포인트를 반환한다 (executeBid 의 F-AUC-016 처리와 동일한 로직).
+     *   5) 구매자의 포인트를 홀딩한다.
+     *   6) 경매를 종료 상태로 바꾸고 현재금액을 즉시구매가로 갱신한다.
+     *   7) 담당자4 계약을 호출해 TRADE 를 생성한다 (TRADE 테이블에 직접 접근하지 않는다).
+     */
+    @Transactional
+    public BuyNowResult executeBuyNow(Long buyerUsrSn, BuyNowRequest request) {
+
+        // 1. 쓰기 잠금 - executeBid(014)와 동일한 락 지점 (F-AUC-019 충돌 제어의 핵심).
+        Auction auction = auctionMapper.findAuctionForUpdate(request.getAucSn())
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+
+        ProductBidInfo product = productQueryPort.getBidInfo(auction.getPrdSn());
+
+        // 2. 013/014 와 공유하는 기본 규칙 (자기상품/상태/종료시각) - 최소 입찰 단위, 즉시구매가
+        //    "미만" 검증은 즉시구매 흐름과 무관하므로 assertBiddable() 을 통째로 재사용하지 않는다.
+        validateNotSelfBid(buyerUsrSn, product);
+        validateAuctionInProgress(auction);
+        validateBeforeEndTime(auction);
+
+        // 3. 즉시구매가 확정 - 클라이언트가 보낸 금액이 아니라 서버가 상품 정보에서 직접 가져온다.
+        Long finalAmt = product.getBuyNowAmt();
+        if (finalAmt == null) {
+            throw new CustomException(ErrorCode.BUY_NOW_NOT_AVAILABLE);
+        }
+        validateAvailablePoint(buyerUsrSn, finalAmt);
+
+        // 4. 기존 최고 입찰자가 있다면 즉시구매로 인해 패배 -> OUTBID 전환 + 홀딩 반환 (F-AUC-016과 동일 로직)
+        Optional<Bid> previousActiveBid = bidMapper.findActiveBid(auction.getAucSn(), BidStatusCode.ACTIVE);
+        Long refundedBidderUsrSn = null;
+        if (previousActiveBid.isPresent()) {
+            Bid previous = previousActiveBid.get();
+            bidMapper.updateBidStatus(previous.getBidSn(), BidStatusCode.OUTBID);
+            pointLedgerPort.releaseHold(previous.getUsrSn(), previous.getBidAmt(), previous.getBidSn());
+            refundedBidderUsrSn = previous.getUsrSn();
+        }
+
+        // 5. 구매자 포인트 홀딩 (F-AUC-015 와 동일한 계약 재사용 - 최종 보관금 전환은 F-AUC-021 범위)
+        Bid winningBid = Bid.builder()
+                .aucSn(auction.getAucSn())
+                .usrSn(buyerUsrSn)
+                .bidAmt(finalAmt)
+                .bidStatusCd(BidStatusCode.ACTIVE)
+                .build();
+        bidMapper.insertBid(winningBid);
+        pointLedgerPort.holdForBid(buyerUsrSn, finalAmt, winningBid.getBidSn());
+
+        // 6. 경매 종료 처리 - 상태와 현재금액 둘 다 갱신
+        auctionMapper.updateStatus(auction.getAucSn(), AuctionStatusCode.ENDED);
+        auctionMapper.updateCurrentAmount(auction.getAucSn(), finalAmt);
+
+        // 7. 담당자4 계약 호출 - TRADE 에 직접 접근하지 않는다 (7.1절 경계 규칙).
+        Long tradeSn = tradeCreationPort.createTradeForBuyNow(
+                auction.getAucSn(), auction.getPrdSn(), product.getSellerUsrSn(), buyerUsrSn, finalAmt);
+
+        return BuyNowResult.builder()
+                .aucSn(auction.getAucSn())
+                .buyerUsrSn(buyerUsrSn)
+                .finalAmt(finalAmt)
+                .tradeSn(tradeSn)
+                .refundedBidderUsrSn(refundedBidderUsrSn)
+                .build();
+    }
+
+    /**
+     * [F-AUC-022 내 입찰 내역 조회]
+     * - 단순 조회라 @Transactional, 잠금, 검증 규칙이 전혀 필요 없다.
+     * - "본인 입찰 내역만 조회" 규칙은 usrSn 을 클라이언트 입력이 아니라 컨트롤러가
+     *   @AuthenticationPrincipal 에서 꺼낸 로그인 사용자 번호로만 호출하는 것으로 지킨다
+     *   (다른 사람의 usrSn 을 파라미터로 받는 API 자체를 만들지 않는다).
+     */
+    public List<MyBidHistoryItem> getMyBidHistory(Long usrSn) {
+        return bidMapper.findMyBidHistory(usrSn);
     }
 
     /**

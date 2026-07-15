@@ -35,6 +35,7 @@ import nct.auction.mapper.BidMapper;
 import nct.auction.service.BidService;
 import nct.auction.support.FakePointLedgerPort;
 import nct.auction.support.FakeProductQueryPort;
+import nct.auction.support.FakeTradeCreationPort;
 import nct.global.exception.GlobalExceptionHandler;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
@@ -67,6 +68,7 @@ class BidControllerApiTest {
 
     private final FakeProductQueryPort fakeProductQueryPort = new FakeProductQueryPort();
     private final FakePointLedgerPort fakePointLedgerPort = new FakePointLedgerPort();
+    private final FakeTradeCreationPort fakeTradeCreationPort = new FakeTradeCreationPort();
 
     private MockMvc mockMvc;
 
@@ -77,7 +79,8 @@ class BidControllerApiTest {
 
     @BeforeEach
     void setUp() {
-        BidService bidService = new BidService(auctionMapper, bidMapper, fakeProductQueryPort, fakePointLedgerPort);
+        BidService bidService = new BidService(
+                auctionMapper, bidMapper, fakeProductQueryPort, fakePointLedgerPort, fakeTradeCreationPort);
         BidController bidController = new BidController(bidService);
 
         // standaloneSetup: Spring 컨테이너 전체를 띄우지 않고 이 컨트롤러 하나만 MockMvc 위에 올린다.
@@ -223,5 +226,60 @@ class BidControllerApiTest {
                 .isEqualTo(BIDDER_USR_SN);
         org.assertj.core.api.Assertions.assertThat(fakePointLedgerPort.holdCalls.get(0).amount())
                 .isEqualTo(11000L);
+    }
+
+    /* ================================================================================
+     *  F-AUC-018 "실제 API 호출" 검증 - POST /api/auctions/{aucSn}/buy-now
+     * ================================================================================ */
+
+    @Test
+    void 유효한_즉시구매_요청은_200과_거래생성결과를_응답한다() throws Exception {
+        // given
+        long buyNowAmt = 50_000L;
+        when(auctionMapper.findAuctionForUpdate(eq(AUC_SN))).thenReturn(Optional.of(healthyAuction()));
+        when(bidMapper.findActiveBid(eq(AUC_SN), eq(BidStatusCode.ACTIVE))).thenReturn(Optional.empty());
+        fakeProductQueryPort.register(PRD_SN,
+                ProductBidInfo.builder().sellerUsrSn(SELLER_USR_SN).buyNowAmt(buyNowAmt).build());
+        fakePointLedgerPort.setBalance(BIDDER_USR_SN, 100_000L);
+        loginAs(BIDDER_USR_SN);
+
+        doAnswer(invocation -> {
+            Bid savedBid = invocation.getArgument(0);
+            ReflectionTestUtils.setField(savedBid, "bidSn", 900L);
+            return null;
+        }).when(bidMapper).insertBid(any(Bid.class));
+
+        // when & then: 요청 본문에 금액이 없다 - 서버가 PRODUCT.PRD_IBY_AMT 를 신뢰 기준으로 사용한다.
+        mockMvc.perform(post("/api/auctions/{aucSn}/buy-now", AUC_SN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"aucSn\": " + AUC_SN + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.data.aucSn").value(AUC_SN))
+                .andExpect(jsonPath("$.data.buyerUsrSn").value(BIDDER_USR_SN))
+                .andExpect(jsonPath("$.data.finalAmt").value(buyNowAmt))
+                .andExpect(jsonPath("$.data.tradeSn").value(1)) // FakeTradeCreationPort 는 1부터 순번 발급
+                .andExpect(jsonPath("$.data.refundedBidderUsrSn").doesNotExist());
+
+        // 담당자4 계약(Fake)에 정확한 판매자/구매자/금액으로 거래 생성이 요청되었는지 확인
+        org.assertj.core.api.Assertions.assertThat(fakeTradeCreationPort.createdTrades).hasSize(1);
+        var createdTrade = fakeTradeCreationPort.createdTrades.get(0);
+        org.assertj.core.api.Assertions.assertThat(createdTrade.sellerUsrSn()).isEqualTo(SELLER_USR_SN);
+        org.assertj.core.api.Assertions.assertThat(createdTrade.buyerUsrSn()).isEqualTo(BIDDER_USR_SN);
+        org.assertj.core.api.Assertions.assertThat(createdTrade.finalAmt()).isEqualTo(buyNowAmt);
+    }
+
+    @Test
+    void 즉시구매가_없는_상품은_즉시구매_요청시_400을_응답한다() throws Exception {
+        when(auctionMapper.findAuctionForUpdate(eq(AUC_SN))).thenReturn(Optional.of(healthyAuction()));
+        fakeProductQueryPort.register(PRD_SN,
+                ProductBidInfo.builder().sellerUsrSn(SELLER_USR_SN).buyNowAmt(null).build());
+        loginAs(BIDDER_USR_SN);
+
+        mockMvc.perform(post("/api/auctions/{aucSn}/buy-now", AUC_SN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"aucSn\": " + AUC_SN + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("즉시구매를 지원하지 않는 상품입니다."));
     }
 }

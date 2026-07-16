@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.notice.mapper.NoticeMapper">
+
+    <resultMap id="publicNoticeMap" type="nct.ops.notice.domain.Notice">
+        <id column="NTC_SN" property="noticeSn"/>
+        <result column="NTC_TYPE_CD" property="typeCode"/>
+        <result column="NTC_TYPE_NM" property="typeName"/>
+        <result column="NTC_TTL" property="title"/>
+        <result column="NTC_CN" property="content"/>
+        <result column="NTC_PSTG_BGNG_DT" property="postingStartAt"/>
+        <result column="NTC_PSTG_END_DT" property="postingEndAt"/>
+        <result column="NTC_PIN_YN" property="pinnedYn"/>
+        <result column="NTC_VIEW_CNT" property="viewCount"/>
+        <result column="NTC_REG_DT" property="registeredAt"/>
+    </resultMap>
+
+    <!--
+        사용자 공개 조건을 한 곳에서 재사용한다.
+        화면 필터와 무관하게 게시 상태·사용 여부·노출 기간을 SQL에서 반드시 확인한다.
+    -->
+    <sql id="publicNoticeBaseWhere">
+        WHERE notice.NTC_STATUS_CD = 'NTCC0006'
+          AND notice.NTC_USE_YN = 'Y'
+          AND (notice.NTC_PSTG_BGNG_DT IS NULL OR notice.NTC_PSTG_BGNG_DT &lt;= CURRENT_TIMESTAMP)
+          AND (notice.NTC_PSTG_END_DT IS NULL OR notice.NTC_PSTG_END_DT &gt;= CURRENT_TIMESTAMP)
+    </sql>
+
+    <select id="countPublicNotices" resultType="long">
+        SELECT COUNT(*)
+          FROM NOTICE notice
+          JOIN CMM_CODE type_code
+            ON type_code.CMM_CD = notice.NTC_TYPE_CD
+           AND type_code.CMM_USE_YN = 'Y'
+          JOIN CMM_CODE type_group
+            ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+           AND type_group.CMM_CD = 'NTCG01'
+           AND type_group.CMM_USE_YN = 'Y'
+        <include refid="publicNoticeBaseWhere"/>
+        <if test="typeCode != null and typeCode != ''">
+          AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+    </select>
+
+    <select id="findPublicNotices" resultMap="publicNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_REG_DT
+          FROM NOTICE notice
+          JOIN CMM_CODE type_code
+            ON type_code.CMM_CD = notice.NTC_TYPE_CD
+           AND type_code.CMM_USE_YN = 'Y'
+          JOIN CMM_CODE type_group
+            ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+           AND type_group.CMM_CD = 'NTCG01'
+           AND type_group.CMM_USE_YN = 'Y'
+        <include refid="publicNoticeBaseWhere"/>
+        <if test="typeCode != null and typeCode != ''">
+          AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+         ORDER BY notice.NTC_PIN_YN DESC,
+                  COALESCE(notice.NTC_PSTG_BGNG_DT, notice.NTC_REG_DT) DESC,
+                  notice.NTC_SN DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="findPublicNoticeById" resultMap="publicNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_REG_DT
+          FROM NOTICE notice
+          JOIN CMM_CODE type_code
+            ON type_code.CMM_CD = notice.NTC_TYPE_CD
+           AND type_code.CMM_USE_YN = 'Y'
+          JOIN CMM_CODE type_group
+            ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+           AND type_group.CMM_CD = 'NTCG01'
+           AND type_group.CMM_USE_YN = 'Y'
+        <include refid="publicNoticeBaseWhere"/>
+          AND notice.NTC_SN = #{noticeId}
+         LIMIT 1
+    </select>
+</mapper>

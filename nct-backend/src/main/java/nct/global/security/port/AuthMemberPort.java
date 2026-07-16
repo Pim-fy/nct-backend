@@ -16,6 +16,15 @@ public interface AuthMemberPort {
     /** 이메일로 인증용 회원 조회 (로그인, JWT 검증, 재발급에 사용) */
     Optional<AuthMember> findByEmail(String email);
 
+    // @ai_generated: 로컬 로그인과 가입 중복 확인은 이메일이 아닌 로그인 ID 기준으로 수행한다.
+    Optional<AuthMember> findByLoginId(String loginId);
+
+    boolean existsByLoginId(String loginId);
+
+    boolean existsByNickname(String nickname);
+
+    boolean existsByEmail(String email);
+
     /** 일반 회원가입 (비밀번호는 인코딩 완료 상태로 전달됨) */
     AuthMember registerLocalMember(LocalSignUpProfile profile);
 

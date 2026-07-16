@@ -16,12 +16,13 @@ import lombok.Getter;
 @Builder
 public class LocalSignUpProfile {
 
+    // @ai_generated: 로컬 인증 식별자와 연락·인증 이메일을 분리한다.
+    private final String loginId;
+
     private final String email;
 
     /** BCrypt 인코딩 완료된 비밀번호 */
     private final String encodedPassword;
-
-    private final String name;
 
     private final String nickname;
 

@@ -13,8 +13,10 @@ import nct.point.client.TossConfirmResult;
 import nct.point.client.TossPaymentsClient;
 import nct.point.domain.PointChargeOrder;
 import nct.point.domain.PointChargeOrderStatus;
+import nct.point.domain.SystemSetting;
 import nct.point.exception.PointException;
 import nct.point.mapper.PointChargeOrderMapper;
+import nct.point.mapper.SystemSettingMapper;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-15)
@@ -30,15 +32,28 @@ import nct.point.mapper.PointChargeOrderMapper;
 public class PointChargeService {
 
     private final PointChargeOrderMapper orderMapper;
+    private final SystemSettingMapper systemSettingMapper;
     private final TossPaymentsClient tossPaymentsClient;
     private final PointService pointService;
     private final NotificationService notificationService;
 
-    /** 충전 주문 생성 (결제위젯 호출 전). @return 프론트에 넘길 주문번호 */
+    /**
+     * 충전 주문 생성 (결제위젯 호출 전). @return 프론트에 넘길 주문번호
+     *
+     * 최소·최대 충전금액은 SYSTEM_SETTING 값으로 앱 계층에서 검증한다(CHG-003 정본 확정 사항).
+     * DB CHECK 제약이 아니라 여기서 막는 이유: 한도가 운영 중 바뀔 수 있는 설정값이라
+     * 매번 배포 없이 SYSTEM_SETTING 값만 바꿔서 조정할 수 있어야 하기 때문.
+     */
     @Transactional
     public String createOrder(long usrSn, long amt) {
         if (amt <= 0) {
             throw new PointException(ErrorCode.POINT_INVALID_AMOUNT, "충전 금액은 0보다 커야 합니다: " + amt);
+        }
+        SystemSetting limit = systemSettingMapper.selectChargeLimits();
+        if (amt < limit.getMinChrgAmt() || amt > limit.getMaxChrgAmt()) {
+            throw new PointException(ErrorCode.CHARGE_AMOUNT_OUT_OF_RANGE,
+                    String.format("충전 금액은 %,dP ~ %,dP 사이여야 합니다. 현재 입력하신 금액은 %,dP입니다.",
+                            limit.getMinChrgAmt(), limit.getMaxChrgAmt(), amt));
         }
         String orderNo = "CHG-" + usrSn + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 

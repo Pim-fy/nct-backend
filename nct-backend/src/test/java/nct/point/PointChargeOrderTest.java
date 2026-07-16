@@ -76,6 +76,18 @@ class PointChargeOrderTest {
     }
 
     @Test
+    @DisplayName("주문 생성: SYSTEM_SETTING 충전 한도를 벗어나면 거부하고 이력에 흔적을 남기지 않는다")
+    void createOrderOutOfChargeLimit() {
+        // 기초데이터 기준 SYS_SET_MIN_CHRG_AMT=10,000 / SYS_SET_MAX_CHRG_AMT=1,000,000 (D-010 단일 row)
+        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, 9_000))
+                .isInstanceOf(PointException.class);
+        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, 1_000_001))
+                .isInstanceOf(PointException.class);
+
+        assertThat(pointChargeService.getOrderList(usrSn)).isEmpty();
+    }
+
+    @Test
     @DisplayName("이력 조회: 최신순 정렬, 응답 DTO 변환까지 프론트 계약대로 채워진다")
     void listOrderingAndDtoMapping() {
         pointChargeService.createOrder(usrSn, 10000);

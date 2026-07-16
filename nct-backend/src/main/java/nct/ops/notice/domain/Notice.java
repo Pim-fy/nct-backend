@@ -2,8 +2,11 @@ package nct.ops.notice.domain;
 
 import java.time.LocalDateTime;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 /**
  * NOTICE 테이블에서 사용자에게 공개 가능한 공지 한 건을 표현한다.
@@ -13,22 +16,24 @@ import lombok.Getter;
  */
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class Notice {
 
-    private final Long noticeSn;
-    private final Long writerUserSn;
-    private final String writerName;
-    private final String typeCode;
-    private final String typeName;
-    private final String statusCode;
-    private final String statusName;
-    private final String title;
-    private final String content;
-    private final LocalDateTime postingStartAt;
-    private final LocalDateTime postingEndAt;
-    private final String pinnedYn;
-    private final long viewCount;
-    private final String useYn;
-    private final LocalDateTime registeredAt;
-    private final LocalDateTime updatedAt;
+    private Long noticeSn;
+    private Long writerUserSn;
+    private String writerName;
+    private String typeCode;
+    private String typeName;
+    private String statusCode;
+    private String statusName;
+    private String title;
+    private String content;
+    private LocalDateTime postingStartAt;
+    private LocalDateTime postingEndAt;
+    private String pinnedYn;
+    private long viewCount;
+    private String useYn;
+    private LocalDateTime registeredAt;
+    private LocalDateTime updatedAt;
 }

@@ -22,6 +22,20 @@
         <result column="NTC_UPDT_DT" property="updatedAt"/>
     </resultMap>
 
+    <!-- 사용자 화면 쿼리는 공개에 필요한 컬럼만 조회하므로 관리자용 전체 매핑과 분리한다. -->
+    <resultMap id="publicReadNoticeMap" type="nct.ops.notice.domain.Notice">
+        <id column="NTC_SN" property="noticeSn"/>
+        <result column="NTC_TYPE_CD" property="typeCode"/>
+        <result column="NTC_TYPE_NM" property="typeName"/>
+        <result column="NTC_TTL" property="title"/>
+        <result column="NTC_CN" property="content"/>
+        <result column="NTC_PSTG_BGNG_DT" property="postingStartAt"/>
+        <result column="NTC_PSTG_END_DT" property="postingEndAt"/>
+        <result column="NTC_PIN_YN" property="pinnedYn"/>
+        <result column="NTC_VIEW_CNT" property="viewCount"/>
+        <result column="NTC_REG_DT" property="registeredAt"/>
+    </resultMap>
+
     <!--
         사용자 공개 조건을 한 곳에서 재사용한다.
         화면 필터와 무관하게 게시 상태·사용 여부·노출 기간을 SQL에서 반드시 확인한다.
@@ -49,7 +63,7 @@
         </if>
     </select>
 
-    <select id="findPublicNotices" resultMap="publicNoticeMap">
+    <select id="findPublicNotices" resultMap="publicReadNoticeMap">
         SELECT notice.NTC_SN,
                notice.NTC_TYPE_CD,
                type_code.CMM_NM AS NTC_TYPE_NM,
@@ -78,7 +92,7 @@
          LIMIT #{size} OFFSET #{offset}
     </select>
 
-    <select id="findPublicNoticeById" resultMap="publicNoticeMap">
+    <select id="findPublicNoticeById" resultMap="publicReadNoticeMap">
         SELECT notice.NTC_SN,
                notice.NTC_TYPE_CD,
                type_code.CMM_NM AS NTC_TYPE_NM,

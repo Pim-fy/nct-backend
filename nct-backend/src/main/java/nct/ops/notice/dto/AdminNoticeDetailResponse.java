@@ -1,22 +1,17 @@
-package nct.ops.notice.domain;
+package nct.ops.notice.dto;
 
 import java.time.LocalDateTime;
 
 import lombok.Builder;
 import lombok.Getter;
 
-/**
- * NOTICE 테이블에서 사용자에게 공개 가능한 공지 한 건을 표현한다.
- *
- * <p>DB 컬럼명은 팀 정본과 같지만, Controller가 이 객체를 그대로 응답하지는 않는다.
- * Service가 공개 응답 DTO로 필요한 필드만 옮겨 내부 관리 컬럼이 새어 나가지 않게 한다.</p>
- */
+/** 관리자만 조회하는 공지 상세다. 작성·수정 폼을 다시 채우는 데 사용한다. */
 @Getter
 @Builder
-public class Notice {
+public class AdminNoticeDetailResponse {
 
-    private final Long noticeSn;
-    private final Long writerUserSn;
+    private final Long noticeId;
+    private final Long writerUserId;
     private final String writerName;
     private final String typeCode;
     private final String typeName;
@@ -26,9 +21,11 @@ public class Notice {
     private final String content;
     private final LocalDateTime postingStartAt;
     private final LocalDateTime postingEndAt;
-    private final String pinnedYn;
+    private final boolean pinned;
     private final long viewCount;
-    private final String useYn;
     private final LocalDateTime registeredAt;
     private final LocalDateTime updatedAt;
+    /** 수정 화면이 읽은 행 상태를 식별하는 값으로, 같은 초의 동시 변경도 구분한다. */
+    private final String revisionToken;
+    private final boolean visibleNow;
 }

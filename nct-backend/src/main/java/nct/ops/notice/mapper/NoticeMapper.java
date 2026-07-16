@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.ops.notice.domain.Notice;
+import nct.ops.notice.domain.AdminNoticeWriteCommand;
 
 /**
  * NOTICE 테이블의 공개 조회 전용 MyBatis 연결부다.
@@ -22,4 +23,28 @@ public interface NoticeMapper {
                                    @Param("size") int size);
 
     Optional<Notice> findPublicNoticeById(@Param("noticeId") Long noticeId);
+
+    long countAdminNotices(@Param("typeCode") String typeCode,
+                           @Param("statusCode") String statusCode,
+                           @Param("keyword") String keyword);
+
+    List<Notice> findAdminNotices(@Param("typeCode") String typeCode,
+                                  @Param("statusCode") String statusCode,
+                                  @Param("keyword") String keyword,
+                                  @Param("offset") long offset,
+                                  @Param("size") int size);
+
+    Optional<Notice> findAdminNoticeById(@Param("noticeId") Long noticeId);
+
+    Optional<Notice> findAdminNoticeByIdForUpdate(@Param("noticeId") Long noticeId);
+
+    int insertAdminNotice(AdminNoticeWriteCommand command);
+
+    int updateAdminNotice(AdminNoticeWriteCommand command);
+
+    int hideAdminNotice(@Param("noticeId") Long noticeId,
+                        @Param("actorId") String actorId);
+
+    int softDeleteAdminNotice(@Param("noticeId") Long noticeId,
+                              @Param("actorId") String actorId);
 }

@@ -34,16 +34,16 @@ public class PublicNoticeController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<PublicNoticePageResponse>> getPublicNotices(
-            @RequestParam(required = false) String typeCode,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(name = "typeCode", required = false) String typeCode,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(
                 publicNoticeService.getPublicNotices(typeCode, page, size)));
     }
 
     @GetMapping("/{noticeId}")
     public ResponseEntity<ApiResponse<PublicNoticeDetailResponse>> getPublicNotice(
-            @PathVariable Long noticeId) {
+            @PathVariable(name = "noticeId") Long noticeId) {
         return ResponseEntity.ok(ApiResponse.success(
                 publicNoticeService.getPublicNotice(noticeId)));
     }

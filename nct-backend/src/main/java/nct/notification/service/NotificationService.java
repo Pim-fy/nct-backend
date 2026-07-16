@@ -10,7 +10,9 @@ import nct.common.domain.RefType;
 import nct.notification.domain.Notification;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
+import nct.notification.domain.UserNotificationSetting;
 import nct.notification.mapper.NotificationMapper;
+import nct.notification.mapper.UserNotificationSettingMapper;
 
 /**
  * [알림 - 서비스 계약] (담당자6 백종남, F-UX-064/065)
@@ -28,6 +30,7 @@ public class NotificationService {
     private static final String EMAIL_STATUS_NONE = "NTFC0006";
 
     private final NotificationMapper notificationMapper;
+    private final UserNotificationSettingMapper settingMapper;
 
     /**
      * 범용 알림 생성 (모든 알림의 단일 진입점).
@@ -94,5 +97,21 @@ public class NotificationService {
     @Transactional
     public void markAllRead(long usrSn) {
         notificationMapper.markAllRead(usrSn);
+    }
+
+    // ---------- 알림 수신 설정 (F-COM-012) ----------
+    // 저장·조회 계약만 제공한다. notify(...) 발송 시 설정을 반영해 인앱 저장을 건너뛸지는
+    // 알림함 소비 계약(전 담당자)에 영향을 주는 변경이라 별도 결정 후 반영 — 임의 적용 금지.
+
+    /** 내 알림 수신 설정 조회 — 저장한 적 없는 회원은 기본값(전 채널 수신)을 돌려준다 */
+    public UserNotificationSetting getSetting(long usrSn) {
+        UserNotificationSetting setting = settingMapper.selectByUser(usrSn);
+        return setting != null ? setting : UserNotificationSetting.defaultOf(usrSn);
+    }
+
+    /** 내 알림 수신 설정 저장 — 회원당 1행 업서트(없으면 생성, 있으면 갱신) */
+    @Transactional
+    public void saveSetting(UserNotificationSetting setting) {
+        settingMapper.upsert(setting);
     }
 }

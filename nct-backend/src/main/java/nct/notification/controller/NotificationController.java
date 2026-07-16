@@ -7,6 +7,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -14,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.notification.dto.NotificationResponse;
+import nct.notification.dto.NotificationSettingRequest;
+import nct.notification.dto.NotificationSettingResponse;
 import nct.notification.dto.UnreadCountResponse;
 import nct.notification.service.NotificationService;
 
@@ -25,6 +29,8 @@ import nct.notification.service.NotificationService;
  *   GET   /api/notification/unread-count  미읽음 개수 (헤더 배지용)
  *   PATCH /api/notification/{id}/read     개별 읽음 처리
  *   PATCH /api/notification/read-all      전체 읽음 처리
+ *   GET   /api/notification/settings      내 알림 수신 설정 조회 — F-COM-012
+ *   PUT   /api/notification/settings      내 알림 수신 설정 저장 (전체 덮어쓰기) — F-COM-012
  *
  * 설계 원칙:
  * - 사용자 식별은 항상 인증 토큰에서 — 남의 알림 조회/읽음 처리 차단
@@ -77,6 +83,28 @@ public class NotificationController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         notificationService.markAllRead(userDetails.getMember().getId());
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** 내 알림 수신 설정 조회 — 저장한 적 없으면 기본값(전 채널 수신)이 내려간다 */
+    @GetMapping("/settings")
+    public ResponseEntity<ApiResponse<NotificationSettingResponse>> getSettings(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long usrSn = userDetails.getMember().getId();
+        NotificationSettingResponse body =
+                NotificationSettingResponse.from(notificationService.getSetting(usrSn));
+        return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    /** 내 알림 수신 설정 저장 — 화면이 6개 값을 전부 보내는 전체 덮어쓰기 계약 */
+    @PutMapping("/settings")
+    public ResponseEntity<ApiResponse<Void>> saveSettings(
+            @RequestBody NotificationSettingRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long usrSn = userDetails.getMember().getId();
+        notificationService.saveSetting(request.toDomain(usrSn));
         return ResponseEntity.ok(ApiResponse.success());
     }
 }

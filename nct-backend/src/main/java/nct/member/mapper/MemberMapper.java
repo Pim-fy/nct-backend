@@ -12,7 +12,16 @@ public interface MemberMapper {
 
     Optional<Member> findMemberByEmail(String email);
 
-    void saveMember(Member member);
+    // @ai_generated: 로컬 로그인과 가입 중복 확인용 USERS 조회다.
+    Optional<Member> findMemberByLoginId(String loginId);
+
+    boolean existsByLoginId(String loginId);
+
+    boolean existsByNickname(String nickname);
+
+    boolean existsByEmail(String email);
+
+    void saveCertifiedMember(Member member);
 
     // #{refreshToken} 은 JwtProvider 발급 토큰 원문(로그아웃 시 null) - USR_REFRESH_TOKEN_HASH 컬럼에 저장
     void updateRefreshTokenById(@Param("usrSn") Long usrSn,

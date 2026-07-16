@@ -11,7 +11,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
-import nct.point.domain.PointChargeMethod;
 import nct.point.domain.PointChargeOrderStatus;
 import nct.point.dto.PointChargeOrderResponse;
 import nct.point.exception.PointException;
@@ -51,7 +50,7 @@ class PointChargeOrderTest {
     @Test
     @DisplayName("주문 생성: 대기 상태로 기록되고 이력 조회에 상태 한글명과 함께 나타난다")
     void createOrderAndList() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000, PointChargeMethod.WINDOW);
+        String orderNo = pointChargeService.createOrder(usrSn, 50000);
 
         assertThat(orderNo).startsWith("CHG-" + usrSn + "-");
         assertThat(pointChargeService.getOrderList(usrSn))
@@ -68,31 +67,19 @@ class PointChargeOrderTest {
     @Test
     @DisplayName("주문 생성: 금액이 0 이하이면 거부하고 이력에 흔적을 남기지 않는다")
     void createOrderNonPositiveAmount() {
-        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, 0, PointChargeMethod.WINDOW))
+        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, 0))
                 .isInstanceOf(PointException.class);
-        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, -10000, PointChargeMethod.WINDOW))
+        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, -10000))
                 .isInstanceOf(PointException.class);
 
         assertThat(pointChargeService.getOrderList(usrSn)).isEmpty();
     }
 
     @Test
-    @DisplayName("주문 생성: 위젯 방식은 CHGW- 접두사로 구분되고 접두사만으로 방식이 복원된다")
-    void widgetOrderNoPrefix() {
-        String widgetOrderNo = pointChargeService.createOrder(usrSn, 20000, PointChargeMethod.WIDGET);
-        String windowOrderNo = pointChargeService.createOrder(usrSn, 20000, PointChargeMethod.WINDOW);
-
-        assertThat(widgetOrderNo).startsWith("CHGW-" + usrSn + "-");
-        // 승인 시점에 주문번호만 보고 어느 시크릿 키를 쓸지 판별하는 핵심 계약
-        assertThat(PointChargeMethod.fromOrderNo(widgetOrderNo)).isEqualTo(PointChargeMethod.WIDGET);
-        assertThat(PointChargeMethod.fromOrderNo(windowOrderNo)).isEqualTo(PointChargeMethod.WINDOW);
-    }
-
-    @Test
     @DisplayName("이력 조회: 최신순 정렬, 응답 DTO 변환까지 프론트 계약대로 채워진다")
     void listOrderingAndDtoMapping() {
-        pointChargeService.createOrder(usrSn, 10000, PointChargeMethod.WINDOW);
-        String latest = pointChargeService.createOrder(usrSn, 30000, PointChargeMethod.WIDGET);
+        pointChargeService.createOrder(usrSn, 10000);
+        String latest = pointChargeService.createOrder(usrSn, 30000);
 
         var orders = pointChargeService.getOrderList(usrSn);
         assertThat(orders).hasSize(2);

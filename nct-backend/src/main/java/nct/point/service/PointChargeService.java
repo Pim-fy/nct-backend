@@ -1,5 +1,6 @@
 package nct.point.service;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -81,6 +82,12 @@ public class PointChargeService {
 
         // 같은 트랜잭션 안에서 알림까지 기록 — 충전은 됐는데 알림만 누락되는 일이 없도록
         notificationService.notifyCharge(order.getUsrSn(), order.getPtChgOrdAmt());
+    }
+
+    /** 내 충전 주문 목록 조회 (최신순 100건, 실패·취소·대기 포함) */
+    @Transactional(readOnly = true)
+    public List<PointChargeOrder> getOrderList(long usrSn) {
+        return orderMapper.selectListByUser(usrSn);
     }
 
     /** 상태 전이 사전 검증 — 행 잠금 후 대기 상태인지 확인 */

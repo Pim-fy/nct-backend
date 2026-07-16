@@ -36,4 +36,7 @@ public class PointChargeOrder {
 
     private LocalDateTime ptChgOrdRegDt;
     private LocalDateTime ptChgOrdUpdtDt;
+
+    /** 상태 한글명 (목록 조회 시 CMM_CODE 조인으로 채움 — 원장 조회의 typeNm과 같은 방식) */
+    private String statusNm;
 }

@@ -17,6 +17,7 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.point.dto.PointBalanceResponse;
 import nct.point.dto.PointChargeConfirmRequest;
+import nct.point.dto.PointChargeOrderResponse;
 import nct.point.dto.PointChargeRequest;
 import nct.point.dto.PointChargeRequestResponse;
 import nct.point.dto.PointLedgerResponse;
@@ -31,6 +32,7 @@ import nct.point.service.PointService;
  *   GET  /api/point/ledger          내 포인트 원장 목록 (최신순 100건)
  *   POST /api/point/charge/request  충전 주문 생성 (결제창 호출 전) — F-PG-01
  *   POST /api/point/charge/confirm  결제 승인 확정 — F-PG-01
+ *   GET  /api/point/charge/orders   내 충전 주문 이력 (실패·취소 포함, 최신순 100건)
  *
  * 설계 원칙:
  * - 사용자 식별은 항상 인증 토큰(@AuthenticationPrincipal)에서 꺼낸다.
@@ -91,5 +93,17 @@ public class PointController {
 
         pointChargeService.confirm(request.getOrderId(), request.getPaymentKey());
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** 내 충전 주문 이력 조회 — 확정 건(원장)과 달리 실패·취소·대기 시도까지 전부 보여준다 */
+    @GetMapping("/charge/orders")
+    public ResponseEntity<ApiResponse<List<PointChargeOrderResponse>>> getChargeOrders(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long usrSn = userDetails.getMember().getId();
+        List<PointChargeOrderResponse> body = pointChargeService.getOrderList(usrSn).stream()
+                .map(PointChargeOrderResponse::from)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(body));
     }
 }

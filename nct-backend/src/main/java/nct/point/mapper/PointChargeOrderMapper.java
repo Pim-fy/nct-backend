@@ -1,5 +1,7 @@
 package nct.point.mapper;
 
+import java.util.List;
+
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -31,4 +33,7 @@ public interface PointChargeOrderMapper {
              @Param("statusCd") String statusCd,
              @Param("pgKey") String pgKey,
              @Param("failRsnCn") String failRsnCn);
+
+    /** 내 충전 주문 목록 (최신순 100건) — 실패·취소·대기 건까지 전부 포함해 시도 이력을 보여준다 */
+    List<PointChargeOrder> selectListByUser(@Param("usrSn") long usrSn);
 }

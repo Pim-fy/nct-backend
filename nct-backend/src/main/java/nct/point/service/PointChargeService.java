@@ -11,6 +11,7 @@ import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
 import nct.point.client.TossConfirmResult;
 import nct.point.client.TossPaymentsClient;
+import nct.point.domain.PointChargeMethod;
 import nct.point.domain.PointChargeOrder;
 import nct.point.domain.PointChargeOrderStatus;
 import nct.point.exception.PointException;
@@ -34,13 +35,13 @@ public class PointChargeService {
     private final PointService pointService;
     private final NotificationService notificationService;
 
-    /** 충전 주문 생성 (결제창 호출 전). @return 프론트에 넘길 주문번호 */
+    /** 충전 주문 생성 (결제창/위젯 호출 전). 방식은 주문번호 접두사에 새겨 승인 시 키 선택에 쓴다. @return 프론트에 넘길 주문번호 */
     @Transactional
-    public String createOrder(long usrSn, long amt) {
+    public String createOrder(long usrSn, long amt, PointChargeMethod method) {
         if (amt <= 0) {
             throw new PointException(ErrorCode.POINT_INVALID_AMOUNT, "충전 금액은 0보다 커야 합니다: " + amt);
         }
-        String orderNo = "CHG-" + usrSn + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String orderNo = method.getOrderNoPrefix() + usrSn + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
         PointChargeOrder order = new PointChargeOrder();
         order.setUsrSn(usrSn);
@@ -60,7 +61,9 @@ public class PointChargeService {
     public void confirm(String orderNo, String paymentKey) {
         PointChargeOrder order = requirePending(orderNo);
 
-        TossConfirmResult result = tossPaymentsClient.confirm(paymentKey, orderNo, order.getPtChgOrdAmt());
+        // 주문번호 접두사로 결제 방식을 판별해 그 방식의 시크릿 키로 승인한다 (프론트 입력 불신)
+        TossConfirmResult result = tossPaymentsClient.confirm(
+                paymentKey, orderNo, order.getPtChgOrdAmt(), PointChargeMethod.fromOrderNo(orderNo));
 
         if (!result.success()) {
             orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(),

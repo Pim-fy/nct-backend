@@ -16,4 +16,7 @@ public class PointChargeRequest {
 
     @Positive(message = "충전 금액은 0보다 커야 합니다.")
     private long amount;
+
+    /** 충전 결제 방식 — "WINDOW"(결제창, 기본) 또는 "WIDGET"(결제위젯). 방식별 클라이언트 키가 다르다 */
+    private String method;
 }

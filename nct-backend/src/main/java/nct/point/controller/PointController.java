@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.point.domain.PointChargeMethod;
 import nct.point.dto.PointBalanceResponse;
 import nct.point.dto.PointChargeConfirmRequest;
 import nct.point.dto.PointChargeOrderResponse;
@@ -49,8 +50,13 @@ public class PointController {
     private final PointService pointService;
     private final PointChargeService pointChargeService;
 
-    @Value("${toss.payments.client-key}")
-    private String tossClientKey;
+    /** 결제창(개별 연동) 방식 클라이언트 키 */
+    @Value("${toss.payments.window.client-key}")
+    private String windowClientKey;
+
+    /** 결제위젯 방식 클라이언트 키 — 결제창 키와 별개 발급 */
+    @Value("${toss.payments.widget.client-key}")
+    private String widgetClientKey;
 
     /** 내 포인트 잔액 조회 */
     @GetMapping("/balance")
@@ -74,16 +80,19 @@ public class PointController {
         return ResponseEntity.ok(ApiResponse.success(body));
     }
 
-    /** 충전 주문 생성 — 결제창을 띄우기 전에 서버가 먼저 신뢰 기준 금액을 기록한다 */
+    /** 충전 주문 생성 — 결제창/위젯을 띄우기 전에 서버가 먼저 신뢰 기준 금액을 기록한다.
+     *  방식(WINDOW/WIDGET)에 따라 서로 다른 클라이언트 키를 내려준다 (토스가 방식별 키를 별도 발급) */
     @PostMapping("/charge/request")
     public ResponseEntity<ApiResponse<PointChargeRequestResponse>> requestCharge(
             @Valid @RequestBody PointChargeRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long usrSn = userDetails.getMember().getId();
-        String orderId = pointChargeService.createOrder(usrSn, request.getAmount());
+        PointChargeMethod method = PointChargeMethod.from(request.getMethod());
+        String orderId = pointChargeService.createOrder(usrSn, request.getAmount(), method);
+        String clientKey = method == PointChargeMethod.WIDGET ? widgetClientKey : windowClientKey;
         return ResponseEntity.ok(ApiResponse.success(
-                PointChargeRequestResponse.of(orderId, request.getAmount(), tossClientKey)));
+                PointChargeRequestResponse.of(orderId, request.getAmount(), clientKey)));
     }
 
     /** 결제 승인 확정 — Toss confirm API 응답 금액이 주문 생성 시 기록과 일치할 때만 포인트를 지급한다 */

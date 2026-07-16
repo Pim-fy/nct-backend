@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.auction.mapper.AuctionMapper">
+
+    <sql id="auctionListFrom">
+        FROM AUCTION a
+        JOIN PRODUCT p
+          ON p.PRD_SN = a.PRD_SN
+        JOIN CATEGORY c
+          ON c.CAT_SN = p.CAT_SN
+        JOIN USERS u
+          ON u.USR_SN = p.USR_SN
+        LEFT JOIN CMM_CODE aucStatus
+          ON aucStatus.CMM_CD = a.AUC_STATUS_CD
+        LEFT JOIN CMM_CODE tradeMethod
+          ON tradeMethod.CMM_CD = p.PRD_TRD_METHOD_CD
+        LEFT JOIN (
+            SELECT
+                pi.PRD_SN,
+                CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS THUMBNAIL_PATH
+            FROM PRODUCT_IMAGE pi
+            JOIN FILES f
+              ON f.FL_SN = pi.FL_SN
+             AND f.FL_USE_YN = 'Y'
+            JOIN (
+                SELECT
+                    PRD_SN,
+                    MIN(CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) AS SORT_KEY
+                FROM PRODUCT_IMAGE
+                GROUP BY PRD_SN
+            ) picked
+              ON picked.PRD_SN = pi.PRD_SN
+             AND picked.SORT_KEY = CASE WHEN pi.PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + pi.PRD_IMG_SORT_NO
+        ) thumb
+          ON thumb.PRD_SN = p.PRD_SN
+        LEFT JOIN (
+            SELECT AUC_SN, COUNT(*) AS BID_COUNT
+            FROM BID
+            GROUP BY AUC_SN
+        ) bid
+          ON bid.AUC_SN = a.AUC_SN
+        LEFT JOIN (
+            SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
+            FROM PRODUCT_FAVORITE
+            GROUP BY PRD_SN
+        ) favorite
+          ON favorite.PRD_SN = p.PRD_SN
+    </sql>
+
+    <sql id="auctionListWhere">
+        WHERE p.PRD_USE_YN = 'Y'
+          AND p.PRD_STATUS_CD = 'PRDC0002'
+          AND a.AUC_STATUS_CD != 'AUCC0005'
+        <if test="condition.keyword != null">
+          AND (
+              p.PRD_NM LIKE CONCAT('%', #{condition.keyword}, '%')
+              OR c.CAT_NM LIKE CONCAT('%', #{condition.keyword}, '%')
+              OR u.USR_NM LIKE CONCAT('%', #{condition.keyword}, '%')
+          )
+        </if>
+        <if test="condition.category != null and condition.category.size() > 0">
+          AND c.CAT_NM IN
+          <foreach collection="condition.category" item="category" open="(" separator="," close=")">
+              #{category}
+          </foreach>
+        </if>
+        <if test="condition.minPrice != null">
+          AND a.AUC_CUR_AMT &gt;= #{condition.minPrice}
+        </if>
+        <if test="condition.maxPrice != null">
+          AND a.AUC_CUR_AMT &lt;= #{condition.maxPrice}
+        </if>
+        <if test="condition.tradeMethodCode != null">
+          AND p.PRD_TRD_METHOD_CD = #{condition.tradeMethodCode}
+        </if>
+        <choose>
+            <when test="condition.hasStatusFilter">
+              AND (
+                1 = 0
+                <if test="condition.statusReady">
+                  OR a.AUC_STATUS_CD = 'AUCC0001'
+                </if>
+                <if test="condition.statusActive">
+                  OR a.AUC_STATUS_CD = 'AUCC0002'
+                </if>
+                <if test="condition.statusEndingSoon">
+                  OR (
+                      a.AUC_STATUS_CD = 'AUCC0002'
+                      AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+                  )
+                </if>
+              )
+            </when>
+            <otherwise>
+              AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+            </otherwise>
+        </choose>
+    </sql>
+
+    <select id="findAuctions" resultType="nct.auction.dto.AuctionListItem">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.PRD_SN AS productId,
+            p.PRD_NM AS title,
+            c.CAT_NM AS categoryName,
+            a.AUC_CUR_AMT AS currentPrice,
+            p.PRD_START_AMT AS startPrice,
+            p.PRD_IBY_AMT AS instantBuyPrice,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            aucStatus.CMM_NM AS auctionStatusName,
+            p.PRD_TRD_METHOD_CD AS tradeMethodCode,
+            tradeMethod.CMM_NM AS tradeMethodName,
+            a.AUC_START_DT AS startDateTime,
+            a.AUC_END_DT AS endDateTime,
+            COALESCE(bid.BID_COUNT, 0) AS bidCount,
+            COALESCE(favorite.FAVORITE_COUNT, 0) AS favoriteCount,
+            p.PRD_VIEW_CNT AS viewCount,
+            u.USR_NM AS sellerName,
+            thumb.THUMBNAIL_PATH AS thumbnailPath
+        <include refid="auctionListFrom"/>
+        <include refid="auctionListWhere"/>
+        <choose>
+            <when test="condition.sort == 'priceAsc'">
+                ORDER BY a.AUC_CUR_AMT ASC, a.AUC_END_DT ASC
+            </when>
+            <when test="condition.sort == 'bidsDesc'">
+                ORDER BY COALESCE(bid.BID_COUNT, 0) DESC, a.AUC_END_DT ASC
+            </when>
+            <when test="condition.sort == 'latest'">
+                ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC
+            </when>
+            <otherwise>
+                ORDER BY a.AUC_END_DT ASC, a.AUC_SN DESC
+            </otherwise>
+        </choose>
+        LIMIT #{condition.size}
+        OFFSET #{condition.offset}
+    </select>
+
+    <select id="countAuctions" resultType="long">
+        SELECT COUNT(*)
+        <include refid="auctionListFrom"/>
+        <include refid="auctionListWhere"/>
+    </select>
+
+    <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.PRD_SN AS productId,
+            p.PRD_NM AS title,
+            p.PRD_CN AS content,
+            c.CAT_NM AS categoryName,
+            a.AUC_CUR_AMT AS currentPrice,
+            p.PRD_START_AMT AS startPrice,
+            p.PRD_IBY_AMT AS instantBuyPrice,
+            a.AUC_BID_UNIT_AMT AS bidUnitPrice,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            aucStatus.CMM_NM AS auctionStatusName,
+            p.PRD_TRD_METHOD_CD AS tradeMethodCode,
+            tradeMethod.CMM_NM AS tradeMethodName,
+            a.AUC_START_DT AS startDateTime,
+            a.AUC_END_DT AS endDateTime,
+            COALESCE(bid.BID_COUNT, 0) AS bidCount,
+            COALESCE(favorite.FAVORITE_COUNT, 0) AS favoriteCount,
+            p.PRD_VIEW_CNT AS viewCount,
+            u.USR_SN AS sellerId,
+            u.USR_NM AS sellerName
+        FROM AUCTION a
+        JOIN PRODUCT p
+          ON p.PRD_SN = a.PRD_SN
+        JOIN CATEGORY c
+          ON c.CAT_SN = p.CAT_SN
+        JOIN USERS u
+          ON u.USR_SN = p.USR_SN
+        LEFT JOIN CMM_CODE aucStatus
+          ON aucStatus.CMM_CD = a.AUC_STATUS_CD
+        LEFT JOIN CMM_CODE tradeMethod
+          ON tradeMethod.CMM_CD = p.PRD_TRD_METHOD_CD
+        LEFT JOIN (
+            SELECT AUC_SN, COUNT(*) AS BID_COUNT
+            FROM BID
+            GROUP BY AUC_SN
+        ) bid
+          ON bid.AUC_SN = a.AUC_SN
+        LEFT JOIN (
+            SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
+            FROM PRODUCT_FAVORITE
+            GROUP BY PRD_SN
+        ) favorite
+          ON favorite.PRD_SN = p.PRD_SN
+        WHERE a.AUC_SN = #{auctionId}
+    </select>
+
+    <select id="findAuctionImages" resultType="nct.auction.dto.AuctionImageItem">
+        SELECT
+            pi.PRD_IMG_SN AS imageId,
+            f.FL_SN AS fileId,
+            f.FL_ORG_NM AS originalName,
+            CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS path,
+            pi.PRD_IMG_RPRS_YN AS representative,
+            pi.PRD_IMG_SORT_NO AS sortNo
+        FROM PRODUCT_IMAGE pi
+        JOIN FILES f
+          ON f.FL_SN = pi.FL_SN
+         AND f.FL_USE_YN = 'Y'
+        WHERE pi.PRD_SN = #{productId}
+        ORDER BY
+            CASE WHEN pi.PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END,
+            pi.PRD_IMG_SORT_NO,
+            pi.PRD_IMG_SN
+    </select>
+
+    <select id="findAuctionBids" resultType="nct.auction.dto.AuctionBidItem">
+        SELECT
+            b.BID_SN AS bidId,
+            b.BID_AMT AS bidPrice,
+            b.BID_STATUS_CD AS bidStatusCode,
+            bidStatus.CMM_NM AS bidStatusName,
+            u.USR_NM AS bidderName,
+            b.BID_REG_DT AS bidDateTime
+        FROM BID b
+        JOIN USERS u
+          ON u.USR_SN = b.USR_SN
+        LEFT JOIN CMM_CODE bidStatus
+          ON bidStatus.CMM_CD = b.BID_STATUS_CD
+        WHERE b.AUC_SN = #{auctionId}
+        ORDER BY b.BID_AMT DESC, b.BID_REG_DT DESC
+        LIMIT 10
+    </select>
+
+    <select id="findAuctionBidTargetForUpdate" resultType="nct.auction.dto.AuctionBidTarget">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.USR_SN AS sellerId,
+            currentBid.USR_SN AS currentHighestBidderId,
+            a.AUC_CUR_AMT AS currentPrice,
+            a.AUC_BID_UNIT_AMT AS bidUnitPrice,
+            p.PRD_IBY_AMT AS instantBuyPrice,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            a.AUC_END_DT AS endDateTime
+        FROM AUCTION a
+        JOIN PRODUCT p
+          ON p.PRD_SN = a.PRD_SN
+        LEFT JOIN (
+            SELECT AUC_SN, MAX(USR_SN) AS USR_SN
+            FROM BID
+            WHERE BID_STATUS_CD = 'BIDC0001'
+            GROUP BY AUC_SN
+        ) currentBid
+          ON currentBid.AUC_SN = a.AUC_SN
+        WHERE a.AUC_SN = #{auctionId}
+        FOR UPDATE
+    </select>
+
+    <update id="incrementProductViewCount">
+        UPDATE PRODUCT p
+        JOIN AUCTION a
+          ON a.PRD_SN = p.PRD_SN
+        SET p.PRD_VIEW_CNT = p.PRD_VIEW_CNT + 1
+        WHERE a.AUC_SN = #{auctionId}
+          AND p.PRD_USE_YN = 'Y'
+    </update>
+
+    <update id="updateCurrentHighestBids">
+        UPDATE BID
+        SET BID_STATUS_CD = 'BIDC0002',
+            BID_UPDT_ID = 'SYSTEM',
+            BID_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND BID_STATUS_CD = 'BIDC0001'
+    </update>
+
+    <insert id="insertBid">
+        INSERT INTO BID (
+            AUC_SN,
+            USR_SN,
+            BID_AMT,
+            BID_STATUS_CD,
+            BID_REG_ID,
+            BID_UPDT_ID
+        )
+        VALUES (
+            #{auctionId},
+            #{userId},
+            #{bidAmount},
+            #{statusCode},
+            #{actor},
+            #{actor}
+        )
+    </insert>
+
+    <update id="updateAuctionCurrentPrice">
+        UPDATE AUCTION
+        SET AUC_CUR_AMT = #{bidAmount},
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_CUR_AMT &lt; #{bidAmount}
+    </update>
+
+    <update id="closeAuctionByInstantBuy">
+        UPDATE AUCTION
+        SET AUC_CUR_AMT = #{bidAmount},
+            AUC_STATUS_CD = 'AUCC0003',
+            AUC_END_DT = NOW(),
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+    </update>
+
+</mapper>

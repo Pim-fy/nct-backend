@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.settlement.mapper.SettlementMapper">
+
+    <insert id="insert" parameterType="nct.settlement.domain.Settlement"
+            useGeneratedKeys="true" keyProperty="stlmSn">
+        INSERT INTO SETTLEMENT (
+            TRD_SN,
+            USR_SN,
+            STLM_AMT,
+            STLM_STATUS_CD
+        )
+        VALUES (
+            #{trdSn},
+            #{usrSn},
+            #{stlmAmt},
+            #{stlmStatusCd}
+        )
+    </insert>
+
+    <select id="selectForUpdate" resultType="nct.settlement.domain.Settlement">
+        SELECT
+            STLM_SN AS stlmSn,
+            TRD_SN AS trdSn,
+            USR_SN AS usrSn,
+            STLM_AMT AS stlmAmt,
+            STLM_STATUS_CD AS stlmStatusCd,
+            STLM_REG_DT AS stlmRegDt,
+            STLM_UPDT_DT AS stlmUpdtDt
+        FROM SETTLEMENT
+        WHERE STLM_SN = #{stlmSn}
+        FOR UPDATE
+    </select>
+
+    <update id="updateStatus">
+        UPDATE SETTLEMENT
+        SET STLM_STATUS_CD = #{statusCd},
+            STLM_UPDT_DT = NOW()
+        WHERE STLM_SN = #{stlmSn}
+    </update>
+
+    <select id="selectListByUser" resultType="nct.settlement.domain.Settlement">
+        SELECT
+            STLM_SN AS stlmSn,
+            TRD_SN AS trdSn,
+            USR_SN AS usrSn,
+            STLM_AMT AS stlmAmt,
+            STLM_STATUS_CD AS stlmStatusCd,
+            STLM_REG_DT AS stlmRegDt,
+            STLM_UPDT_DT AS stlmUpdtDt
+        FROM SETTLEMENT
+        WHERE USR_SN = #{usrSn}
+        ORDER BY STLM_SN DESC
+        LIMIT 100
+    </select>
+
+    <select id="selectListByTrade" resultType="nct.settlement.domain.Settlement">
+        SELECT
+            STLM_SN AS stlmSn,
+            TRD_SN AS trdSn,
+            USR_SN AS usrSn,
+            STLM_AMT AS stlmAmt,
+            STLM_STATUS_CD AS stlmStatusCd,
+            STLM_REG_DT AS stlmRegDt,
+            STLM_UPDT_DT AS stlmUpdtDt
+        FROM SETTLEMENT
+        WHERE TRD_SN = #{trdSn}
+        ORDER BY STLM_SN DESC
+    </select>
+
+</mapper>

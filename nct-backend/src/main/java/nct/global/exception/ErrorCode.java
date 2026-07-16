@@ -19,6 +19,7 @@ public enum ErrorCode {
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "이메일 형식이 올바르지 않습니다."),
     INVALID_PASSWORD_FORMAT(HttpStatus.BAD_REQUEST, "비밀번호 형식이 올바르지 않습니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
+    SETTLEMENT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "정산 금액은 0보다 커야 합니다."),
 
     // 401 Unauthorized
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -36,6 +37,7 @@ public enum ErrorCode {
     // 404 Not Found
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
+    SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 정산 건입니다."),
 
     // 405 / 409 / 410
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "허용되지 않은 HTTP 메서드입니다."),
@@ -43,6 +45,7 @@ public enum ErrorCode {
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     DUPLICATE_NICKNAME(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 요청입니다."),
+    SETTLEMENT_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 정산 처리입니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
 
     // 429

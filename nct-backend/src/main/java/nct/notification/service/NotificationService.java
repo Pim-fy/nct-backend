@@ -86,6 +86,22 @@ public class NotificationService {
                 null, null);
     }
 
+    /** 환전 지급 완료 알림 — 관리자가 실제 이체를 마치고 완료 처리하면 나간다 */
+    public void notifyExchangeComplete(long usrSn, long amt) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "환전 지급 완료",
+                String.format("%,dP 환전 지급이 완료되었습니다. 등록하신 계좌를 확인해 주세요.", amt),
+                null, null);
+    }
+
+    /** 환전 반려 알림 — 차감했던 포인트가 복원됐음을 사유와 함께 안내한다 */
+    public void notifyExchangeReject(long usrSn, long amt, String reason) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "환전 신청 반려",
+                String.format("%,dP 환전 신청이 반려되었습니다. (사유: %s) 차감됐던 포인트는 환전 가능 포인트로 복원되었습니다.", amt, reason),
+                null, null);
+    }
+
     // ---------- 조회/읽음 ----------
 
     /** 내 알림 목록 (최신순 100건) */

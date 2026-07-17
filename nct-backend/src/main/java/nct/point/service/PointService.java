@@ -188,6 +188,22 @@ public class PointService {
     }
 
     /**
+     * 환전 반려 복원 (F-PAY-012).
+     * 신청 즉시 차감했던 금액을 정산가능 버킷에 +원장으로 되돌린다 — 차감 원장과 짝(합계 0).
+     *
+     * @return 생성된 포인트원장일련번호 (환전 주문이 복원 원장으로 연결해 둔다)
+     */
+    @Transactional
+    public long restoreExchange(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        return insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.EXCHANGE_RESTORE, amt,
+                bal.getSettleableAmt() + amt, null, null, reason);
+    }
+
+    /**
      * 충전 회수 (D-027 보상 전용).
      * PG 승인은 성공했는데 내부 반영이 중간에 실패해 결제를 자동취소할 때,
      * 이미 지급된 충전 포인트를 되돌린다. 원장은 절대 수정·삭제하지 않으므로(기록 불변)

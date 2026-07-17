@@ -76,4 +76,51 @@ public class PointExchangeService {
     public List<PointExchangeOrder> getOrderList(long usrSn) {
         return exchangeMapper.selectListByUser(usrSn);
     }
+
+    // ---------- 관리자 처리 (지급·승인 자동화 금지 — 관리자 수동 처리 계약) ----------
+
+    /** 관리자 처리 대기 목록 — 신청 상태 건만, 오래된 순(먼저 신청한 사람 먼저 지급) */
+    @Transactional(readOnly = true)
+    public List<PointExchangeOrder> getRequestedListForAdmin() {
+        return exchangeMapper.selectRequestedListForAdmin();
+    }
+
+    /**
+     * 지급 완료 처리 — 관리자가 실제 계좌 이체를 마친 뒤 호출한다.
+     * 포인트는 신청 때 이미 차감돼 있으므로 여기서는 상태·처리자만 기록하고 알림을 보낸다.
+     */
+    @Transactional
+    public void complete(long ptExcOrdSn, long adminUsrSn) {
+        PointExchangeOrder order = requireRequested(ptExcOrdSn);
+        exchangeMapper.complete(ptExcOrdSn, PointExchangeOrderStatus.COMPLETED.getCode(), adminUsrSn);
+        notificationService.notifyExchangeComplete(order.getUsrSn(), order.getPtExcOrdAmt());
+    }
+
+    /**
+     * 반려 처리 — 차감했던 포인트를 복원(+) 원장으로 되돌리고 사유를 기록한다.
+     * 복원·상태 변경·알림이 한 트랜잭션 — 복원만 되고 상태가 안 바뀌는 어긋남이 생길 수 없다.
+     */
+    @Transactional
+    public void reject(long ptExcOrdSn, long adminUsrSn, String reason) {
+        PointExchangeOrder order = requireRequested(ptExcOrdSn);
+        long restoreLdgSn = pointService.restoreExchange(order.getUsrSn(), order.getPtExcOrdAmt(),
+                "환전 반려 복원 (신청번호 " + ptExcOrdSn + ")");
+        exchangeMapper.reject(ptExcOrdSn, PointExchangeOrderStatus.REJECTED.getCode(),
+                adminUsrSn, restoreLdgSn, reason);
+        notificationService.notifyExchangeReject(order.getUsrSn(), order.getPtExcOrdAmt(), reason);
+    }
+
+    /** 상태 전이 사전 검증 — 행 잠금 후 '신청' 상태인지 확인 (이중 처리·동시 처리 차단) */
+    private PointExchangeOrder requireRequested(long ptExcOrdSn) {
+        PointExchangeOrder order = exchangeMapper.selectForUpdateBySn(ptExcOrdSn);
+        if (order == null) {
+            throw new PointException(ErrorCode.EXCHANGE_ORDER_NOT_FOUND,
+                    "존재하지 않는 환전 신청입니다: " + ptExcOrdSn);
+        }
+        if (!PointExchangeOrderStatus.REQUESTED.getCode().equals(order.getPtExcOrdStatusCd())) {
+            throw new PointException(ErrorCode.EXCHANGE_ORDER_ALREADY_PROCESSED,
+                    "이미 처리된 환전 신청입니다: " + ptExcOrdSn);
+        }
+        return order;
+    }
 }

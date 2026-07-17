@@ -81,6 +81,8 @@ public enum ErrorCode {
 
     // 포인트 환전 (F-PAY-012)
     EXCHANGE_ACCOUNT_NOT_REGISTERED(HttpStatus.BAD_REQUEST, "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요."),
+    EXCHANGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 환전 신청입니다."),
+    EXCHANGE_ORDER_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 환전 신청입니다."),
 
     /*==================== 상품/경매 도메인 (담당자2) ====================*/
 

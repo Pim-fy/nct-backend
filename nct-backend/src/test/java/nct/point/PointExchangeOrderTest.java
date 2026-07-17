@@ -124,4 +124,61 @@ class PointExchangeOrderTest {
 
         assertThat(pointExchangeService.getOrderList(usrSn)).isEmpty();
     }
+
+    // ---------- 관리자 처리 (지급 완료 / 반려) ----------
+
+    @Test
+    @DisplayName("관리자 지급 완료: 상태·처리자 기록 + 지급 완료 알림 (포인트는 신청 때 이미 차감)")
+    void adminComplete() {
+        pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
+        long ordSn = pointExchangeService.apply(usrSn, 30_000);
+
+        pointExchangeService.complete(ordSn, usrSn); // 처리자는 아무 회원이나 가능(FK) — 테스트 편의상 본인
+
+        var order = pointExchangeService.getOrderList(usrSn).get(0);
+        assertThat(order.getPtExcOrdStatusCd()).isEqualTo(PointExchangeOrderStatus.COMPLETED.getCode());
+        assertThat(order.getPtExcOrdProcUsrSn()).isEqualTo(usrSn);
+        assertThat(order.getPtExcOrdProcDt()).isNotNull();
+        // 잔액은 신청 때 차감된 그대로 (완료 처리로 추가 변동 없음)
+        assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(20_000);
+        assertThat(notificationService.getList(usrSn))
+                .anySatisfy(n -> assertThat(n.getNtfTtl()).isEqualTo("환전 지급 완료"));
+    }
+
+    @Test
+    @DisplayName("관리자 반려: 복원 원장이 짝으로 기록되고 잔액이 원상복구된다")
+    void adminReject() {
+        pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
+        long ordSn = pointExchangeService.apply(usrSn, 30_000);
+        assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(20_000); // 차감 확인
+
+        pointExchangeService.reject(ordSn, usrSn, "계좌 정보 불일치");
+
+        var order = pointExchangeService.getOrderList(usrSn).get(0);
+        assertThat(order.getPtExcOrdStatusCd()).isEqualTo(PointExchangeOrderStatus.REJECTED.getCode());
+        assertThat(order.getPtExcOrdRestoreLdgSn()).isNotNull(); // 복원 원장 연결
+        assertThat(order.getPtExcOrdRjctRsnCn()).isEqualTo("계좌 정보 불일치");
+        // 잔액 원상복구 — 차감(-30,000)과 복원(+30,000)이 짝으로 남아 합계 0
+        assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(50_000);
+        assertThat(notificationService.getList(usrSn))
+                .anySatisfy(n -> assertThat(n.getNtfTtl()).isEqualTo("환전 신청 반려"));
+    }
+
+    @Test
+    @DisplayName("이중 처리 방지: 이미 처리된 신청은 완료/반려 모두 거부된다")
+    void adminDoubleProcessRejected() {
+        pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
+        long ordSn = pointExchangeService.apply(usrSn, 30_000);
+        pointExchangeService.complete(ordSn, usrSn);
+
+        assertThatThrownBy(() -> pointExchangeService.complete(ordSn, usrSn))
+                .isInstanceOf(PointException.class)
+                .hasMessageContaining("이미 처리된");
+        assertThatThrownBy(() -> pointExchangeService.reject(ordSn, usrSn, "사유"))
+                .isInstanceOf(PointException.class)
+                .hasMessageContaining("이미 처리된");
+
+        // 반려 시도가 거부됐으니 복원도 일어나지 않았어야 한다
+        assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(20_000);
+    }
 }

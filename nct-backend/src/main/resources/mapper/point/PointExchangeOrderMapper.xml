@@ -53,4 +53,62 @@
         WHERE USR_SN = #{usrSn}
     </select>
 
+    <!-- 관리자 처리용 행 잠금 조회: 두 관리자가 같은 신청을 동시에 완료/반려하는 것을
+         트랜잭션 직렬화로 차단한다 (충전 승인의 selectForUpdateByOrderNo와 같은 방식) -->
+    <select id="selectForUpdateBySn" resultType="nct.point.domain.PointExchangeOrder">
+        /* 포인트 환전 주문: 행 잠금 조회 (관리자 처리용) */
+        SELECT PT_EXC_ORD_SN AS ptExcOrdSn, USR_SN AS usrSn,
+               PT_EXC_ORD_AMT AS ptExcOrdAmt, PT_EXC_ORD_STATUS_CD AS ptExcOrdStatusCd,
+               PT_EXC_ORD_DEDUCT_LDG_SN AS ptExcOrdDeductLdgSn,
+               PT_EXC_ORD_BANK_NM AS ptExcOrdBankNm, PT_EXC_ORD_ACNT_NO AS ptExcOrdAcntNo,
+               PT_EXC_ORD_REG_DT AS ptExcOrdRegDt
+        FROM POINT_EXCHANGE_ORDER
+        WHERE PT_EXC_ORD_SN = #{ptExcOrdSn}
+        FOR UPDATE
+    </select>
+
+    <!-- 관리자 처리 대기 목록: 신청 상태만, 신청자 이름 조인.
+         정렬이 오래된 순인 이유: 먼저 신청한 사람에게 먼저 지급하는 것이 공정하므로 -->
+    <select id="selectRequestedListForAdmin" resultType="nct.point.domain.PointExchangeOrder">
+        /* 포인트 환전 주문: 관리자 처리 대기 목록 (오래된 순) */
+        SELECT
+            O.PT_EXC_ORD_SN      AS ptExcOrdSn,
+            O.USR_SN             AS usrSn,
+            U.USR_NM             AS usrNm,
+            O.PT_EXC_ORD_AMT     AS ptExcOrdAmt,
+            O.PT_EXC_ORD_STATUS_CD AS ptExcOrdStatusCd,
+            O.PT_EXC_ORD_BANK_NM AS ptExcOrdBankNm,
+            O.PT_EXC_ORD_ACNT_NO AS ptExcOrdAcntNo,
+            O.PT_EXC_ORD_REG_DT  AS ptExcOrdRegDt,
+            S.CMM_NM             AS statusNm
+        FROM POINT_EXCHANGE_ORDER O
+        JOIN USERS U    ON U.USR_SN = O.USR_SN
+        JOIN CMM_CODE S ON S.CMM_CD = O.PT_EXC_ORD_STATUS_CD
+        WHERE O.PT_EXC_ORD_STATUS_CD = 'PEOC0001'
+        ORDER BY O.PT_EXC_ORD_SN ASC
+        LIMIT 100
+    </select>
+
+    <!-- 지급 완료 처리: 관리자가 실제 이체를 마친 뒤 호출 -->
+    <update id="complete">
+        /* 포인트 환전 주문: 지급 완료 처리 */
+        UPDATE POINT_EXCHANGE_ORDER
+        SET PT_EXC_ORD_STATUS_CD = #{statusCd},
+            PT_EXC_ORD_PROC_USR_SN = #{procUsrSn},
+            PT_EXC_ORD_PROC_DT = NOW()
+        WHERE PT_EXC_ORD_SN = #{ptExcOrdSn}
+    </update>
+
+    <!-- 반려 처리: 복원 원장 연결 + 사유 기록 -->
+    <update id="reject">
+        /* 포인트 환전 주문: 반려 처리 */
+        UPDATE POINT_EXCHANGE_ORDER
+        SET PT_EXC_ORD_STATUS_CD = #{statusCd},
+            PT_EXC_ORD_PROC_USR_SN = #{procUsrSn},
+            PT_EXC_ORD_PROC_DT = NOW(),
+            PT_EXC_ORD_RESTORE_LDG_SN = #{restoreLdgSn},
+            PT_EXC_ORD_RJCT_RSN_CN = #{rejectReason}
+        WHERE PT_EXC_ORD_SN = #{ptExcOrdSn}
+    </update>
+
 </mapper>

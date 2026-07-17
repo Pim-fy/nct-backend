@@ -45,4 +45,7 @@ public class PointExchangeOrder {
 
     /** 상태 한글명 (목록 조회 시 CMM_CODE 조인으로 채움 — 충전 주문의 statusNm과 같은 방식) */
     private String statusNm;
+
+    /** 신청자 이름 (관리자 처리 대기 목록에서만 USERS 조인으로 채움) */
+    private String usrNm;
 }

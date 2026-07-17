@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.risk.mapper.RiskEventMapper">
+
+    <!--
+        같은 위험 종류·참조 대상·안전 요약을 가진 미처리 이벤트가 있는지 확인한다.
+        있으면 새 행을 만들지 않고 이 번호를 재사용한다.
+    -->
+    <select id="findUnprocessedDuplicateId" resultType="long">
+        SELECT RSK_EVT_SN
+          FROM RISK_EVENT
+         WHERE RSK_EVT_TYPE_CD = #{typeCode}
+           AND RSK_EVT_REF_TYPE_CD &lt;=&gt; #{referenceTypeCode}
+           AND RSK_EVT_REF_SN &lt;=&gt; #{referenceSn}
+           AND RSK_EVT_CN = #{content}
+           AND RSK_EVT_PROC_YN = 'N'
+         ORDER BY RSK_EVT_SN DESC
+         LIMIT 1
+    </select>
+
+    <!-- 신규 위험 이벤트를 미처리(N) 상태로 저장하고 생성된 PK를 RiskEvent에 돌려준다. -->
+    <insert id="insertRiskEvent" parameterType="nct.ops.risk.domain.RiskEvent"
+            useGeneratedKeys="true" keyProperty="riskEventSn" keyColumn="RSK_EVT_SN">
+        INSERT INTO RISK_EVENT (
+            RSK_EVT_TYPE_CD,
+            RSK_EVT_REF_TYPE_CD,
+            RSK_EVT_REF_SN,
+            RSK_EVT_CN,
+            RSK_EVT_PROC_YN,
+            RSK_EVT_REG_ID,
+            RSK_EVT_UPDT_ID
+        ) VALUES (
+            #{typeCode},
+            #{referenceTypeCode},
+            #{referenceSn},
+            #{content},
+            #{processedYn},
+            #{registeredBy},
+            #{updatedBy}
+        )
+    </insert>
+</mapper>

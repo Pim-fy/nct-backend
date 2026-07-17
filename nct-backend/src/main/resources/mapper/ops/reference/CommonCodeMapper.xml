@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.reference.mapper.CommonCodeMapper">
+
+    <!-- DB 컬럼명을 CommonCode 객체의 쉬운 필드명으로 연결한다. -->
+    <resultMap id="commonCodeMap" type="nct.ops.reference.domain.CommonCode">
+        <id column="CMM_SN" property="cmmSn"/>
+        <result column="CMM_PARENT_SN" property="parentSn"/>
+        <result column="CMM_CD" property="code"/>
+        <result column="CMM_NM" property="name"/>
+        <result column="CMM_EXPLN" property="description"/>
+        <result column="CMM_SORT_NO" property="sortNo"/>
+        <result column="CMM_USE_YN" property="useYn"/>
+    </resultMap>
+
+    <!--
+        저장 직전 코드 검증에 사용한다.
+        부모 행이 요청한 그룹이고 부모·자식이 모두 사용 중(Y)인 경우만 반환한다.
+    -->
+    <select id="findActiveByGroupAndCode" resultMap="commonCodeMap">
+        SELECT child.CMM_SN,
+               child.CMM_PARENT_SN,
+               child.CMM_CD,
+               child.CMM_NM,
+               child.CMM_EXPLN,
+               child.CMM_SORT_NO,
+               child.CMM_USE_YN
+          FROM CMM_CODE child
+          JOIN CMM_CODE parent ON parent.CMM_SN = child.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+           AND child.CMM_CD = #{code}
+           AND child.CMM_USE_YN = 'Y'
+         LIMIT 1
+    </select>
+
+    <!-- 화면의 상태·유형 선택지를 만들 때 그룹 아래 활성 코드들을 순서대로 조회한다. -->
+    <select id="findActiveChildrenByGroup" resultMap="commonCodeMap">
+        SELECT child.CMM_SN,
+               child.CMM_PARENT_SN,
+               child.CMM_CD,
+               child.CMM_NM,
+               child.CMM_EXPLN,
+               child.CMM_SORT_NO,
+               child.CMM_USE_YN
+          FROM CMM_CODE child
+          JOIN CMM_CODE parent ON parent.CMM_SN = child.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+           AND child.CMM_USE_YN = 'Y'
+         ORDER BY child.CMM_SORT_NO, child.CMM_SN
+    </select>
+</mapper>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Claude Code 작성 (BJN, 2026-07-16) -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.notification.mapper.UserNotificationSettingMapper">
+
+    <!-- 내 알림 설정 조회. 행이 없으면 null — 기본값(전부 Y) 대체는 서비스 계층 책임 -->
+    <select id="selectByUser" resultType="nct.notification.domain.UserNotificationSetting">
+        /* 알림 설정: 내 설정 조회 */
+        SELECT USR_NTF_STG_SN, USR_SN,
+               USR_NTF_STG_AUC_INAPP_YN, USR_NTF_STG_AUC_EMAIL_YN,
+               USR_NTF_STG_TRD_INAPP_YN, USR_NTF_STG_TRD_EMAIL_YN,
+               USR_NTF_STG_SVC_INAPP_YN, USR_NTF_STG_SVC_EMAIL_YN,
+               USR_NTF_STG_REG_DT, USR_NTF_STG_UPDT_DT
+        FROM USER_NOTIFICATION_SETTING
+        WHERE USR_SN = #{usrSn}
+    </select>
+
+    <!-- 저장(업서트): 회원당 1행 UNIQUE(USR_SN) 제약을 이용해
+         없으면 INSERT, 이미 있으면 6개 수신여부만 UPDATE 한다.
+         두 번 왕복(SELECT 후 INSERT/UPDATE 분기) 없이 원자적으로 처리되어 동시 저장에도 안전 -->
+    <insert id="upsert" parameterType="nct.notification.domain.UserNotificationSetting">
+        /* 알림 설정: 저장 (없으면 생성, 있으면 갱신) */
+        INSERT INTO USER_NOTIFICATION_SETTING
+            (USR_SN,
+             USR_NTF_STG_AUC_INAPP_YN, USR_NTF_STG_AUC_EMAIL_YN,
+             USR_NTF_STG_TRD_INAPP_YN, USR_NTF_STG_TRD_EMAIL_YN,
+             USR_NTF_STG_SVC_INAPP_YN, USR_NTF_STG_SVC_EMAIL_YN)
+        VALUES
+            (#{usrSn},
+             #{usrNtfStgAucInappYn}, #{usrNtfStgAucEmailYn},
+             #{usrNtfStgTrdInappYn}, #{usrNtfStgTrdEmailYn},
+             #{usrNtfStgSvcInappYn}, #{usrNtfStgSvcEmailYn})
+        ON DUPLICATE KEY UPDATE
+            USR_NTF_STG_AUC_INAPP_YN = #{usrNtfStgAucInappYn},
+            USR_NTF_STG_AUC_EMAIL_YN = #{usrNtfStgAucEmailYn},
+            USR_NTF_STG_TRD_INAPP_YN = #{usrNtfStgTrdInappYn},
+            USR_NTF_STG_TRD_EMAIL_YN = #{usrNtfStgTrdEmailYn},
+            USR_NTF_STG_SVC_INAPP_YN = #{usrNtfStgSvcInappYn},
+            USR_NTF_STG_SVC_EMAIL_YN = #{usrNtfStgSvcEmailYn}
+    </insert>
+
+</mapper>

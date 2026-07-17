@@ -22,30 +22,22 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.constant.BidStatusCode;
 import nct.auction.dto.MyBidHistoryItem;
-import nct.auction.mapper.AuctionMapper;
 import nct.auction.mapper.BidMapper;
 import nct.auction.service.BidService;
-import nct.auction.support.FakePointLedgerPort;
-import nct.auction.support.FakeProductQueryPort;
-import nct.auction.support.FakeTradeCreationPort;
 import nct.global.exception.GlobalExceptionHandler;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
 
 /**
  * [F-AUC-022 "실제 API 호출" 검증 - GET /api/bids/me]
- * - 이 API는 조회 전용이라 이전 테스트들보다 준비할 게 훨씬 적다 (Bid/Auction/Point 계약을
- *   조합할 필요 없이 BidMapper.findMyBidHistory() 결과 하나만 준비하면 된다).
+ * - F-AUC-013/014/018/019 기술 소유권이 담당자5로 이관되면서(CHG-018) BidService 의존성이
+ *   BidMapper 하나로 줄었다 - AuctionMapper/ProductQueryPort/PointLedgerPort/TradeCreationPort
+ *   준비가 더 이상 필요 없다.
  */
 @ExtendWith(MockitoExtension.class)
 class MyBidHistoryControllerApiTest {
 
-    @Mock private AuctionMapper auctionMapper;
     @Mock private BidMapper bidMapper;
-
-    private final FakeProductQueryPort fakeProductQueryPort = new FakeProductQueryPort();
-    private final FakePointLedgerPort fakePointLedgerPort = new FakePointLedgerPort();
-    private final FakeTradeCreationPort fakeTradeCreationPort = new FakeTradeCreationPort();
 
     private MockMvc mockMvc;
 
@@ -53,8 +45,7 @@ class MyBidHistoryControllerApiTest {
 
     @BeforeEach
     void setUp() {
-        BidService bidService = new BidService(
-                auctionMapper, bidMapper, fakeProductQueryPort, fakePointLedgerPort, fakeTradeCreationPort);
+        BidService bidService = new BidService(bidMapper);
         MyBidHistoryController controller = new MyBidHistoryController(bidService);
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

@@ -18,4 +18,10 @@ public class BaseException extends RuntimeException {
         super(errorCode.message());
         this.errorCode = errorCode;
     }
+
+    /** 동적 메시지 버전 - ErrorCode의 고정 메시지 대신 상황에 맞는 구체적 메시지를 담고 싶을 때 사용 */
+    public BaseException(ErrorCode errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
 }

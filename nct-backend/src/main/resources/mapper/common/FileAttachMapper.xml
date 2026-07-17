@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.common.file.mapper.FileAttachMapper">
+
+    <!-- 파일-업무레코드 연결 저장 -->
+    <insert id="insertAttach" parameterType="nct.common.file.domain.FileAttach"
+            useGeneratedKeys="true" keyProperty="flAttSn">
+        /* 공통: 파일 첨부 연결 저장 */
+        INSERT INTO FILE_ATTACH (
+            FL_SN, FL_ATT_REF_TYPE_CD, FL_ATT_REF_SN, FL_ATT_SORT_NO, FL_ATT_SUBM_USR_SN
+        ) VALUES (
+            #{flSn}, #{flAttRefTypeCd}, #{flAttRefSn}, #{flAttSortNo}, #{flAttSubmUsrSn}
+        )
+    </insert>
+
+    <!-- 참조 건에 붙은 파일 경로 목록 (정렬순서순) -->
+    <select id="selectFilePathsByRef" resultType="java.lang.String">
+        /* 공통: 참조 건 첨부파일 경로 목록 */
+        SELECT F.FL_PATH
+        FROM FILE_ATTACH A
+        JOIN FILES F ON F.FL_SN = A.FL_SN
+        WHERE A.FL_ATT_REF_TYPE_CD = #{refTypeCd}
+          AND A.FL_ATT_REF_SN = #{refSn}
+        ORDER BY A.FL_ATT_SORT_NO
+    </select>
+
+</mapper>

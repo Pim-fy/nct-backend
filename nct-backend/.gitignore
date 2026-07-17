@@ -37,3 +37,6 @@ out/
 .vscode/
 
 application.properties
+
+### 업로드 파일 (nct.common.file.FileStorageService 로컬 저장 경로) ###
+/uploads/

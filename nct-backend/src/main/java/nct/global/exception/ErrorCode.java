@@ -45,16 +45,9 @@ public enum ErrorCode {
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 요청입니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
 
-    // ---- F-AUC-013 입찰 가능 여부 검증 (담당자3 소유 - 경매/입찰 도메인) ----
-    AUCTION_NOT_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 경매가 아닙니다."),
-    AUCTION_ALREADY_ENDED(HttpStatus.CONFLICT, "이미 종료된 경매입니다."),
-    BID_AMOUNT_TOO_LOW(HttpStatus.BAD_REQUEST, "입찰 금액이 최소 입찰 단위보다 낮습니다."),
-    BID_AMOUNT_EXCEEDS_BUY_NOW(HttpStatus.BAD_REQUEST, "즉시구매가 이상으로는 입찰할 수 없습니다."),
-    SELF_BID_NOT_ALLOWED(HttpStatus.FORBIDDEN, "본인이 등록한 상품에는 입찰할 수 없습니다."),
-    INSUFFICIENT_POINT_BALANCE(HttpStatus.BAD_REQUEST, "보유 포인트가 부족합니다."),
-
-    // ---- F-AUC-018 즉시구매 실행 ----
-    BUY_NOW_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "즉시구매를 지원하지 않는 상품입니다."),
+    // ---- 리뷰 도메인 (F-COM-007, REVIEW 테이블 고정 기술 소유 - 09_기능단위_7인_업무분장 v10) ----
+    REVIEW_TRADE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "리뷰를 작성할 수 없는 거래입니다."),
+    REVIEW_INVALID_RATING(HttpStatus.BAD_REQUEST, "평점은 1~5점 사이여야 합니다."),
 
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),

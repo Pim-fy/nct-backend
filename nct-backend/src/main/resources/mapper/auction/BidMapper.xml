@@ -3,53 +3,13 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <!--
-    [BidMapper.xml - 입찰(BID) 기록/조회]
-    - BID_REG_DT/BID_UPDT_DT/BID_REG_ID/BID_UPDT_ID 는 DDL 상 DEFAULT 가 있으므로
-      insertBid 에서 값을 지정하지 않는다 (MemberMapper.saveMember 와 동일한 관례).
+    [BidMapper.xml - 입찰(BID) 조회 전용] (F-AUC-022 내 입찰 내역 조회)
+    - insertBid/findActiveBid/updateBidStatus(F-AUC-014/018 쓰기)는 AUCTION/BID 기술 소유권이
+      담당자5로 이관되면서 삭제했다 (09_기능단위_7인_업무분장 v10, CHG-018).
+    - 담당자5가 "내 입찰 조회" 계약을 제공하면 이 XML/매퍼 자체를 없애고 그 계약을 호출하도록
+      바꿔야 한다 (BidMapper.java 상단 주석 참고).
 -->
 <mapper namespace="nct.auction.mapper.BidMapper">
-
-    <resultMap id="bidMap" type="nct.auction.domain.Bid">
-        <id     column="BID_SN"        property="bidSn"/>
-        <result column="AUC_SN"        property="aucSn"/>
-        <result column="USR_SN"        property="usrSn"/>
-        <result column="BID_AMT"       property="bidAmt"/>
-        <result column="BID_STATUS_CD" property="bidStatusCd"/>
-        <result column="BID_REG_DT"    property="bidRegDt"/>
-        <result column="BID_UPDT_DT"   property="bidUpdtDt"/>
-        <result column="BID_REG_ID"    property="bidRegId"/>
-        <result column="BID_UPDT_ID"   property="bidUpdtId"/>
-    </resultMap>
-
-    <!-- 새 입찰 기록 - useGeneratedKeys 로 생성된 PK 를 bid.bidSn 에 주입 -->
-    <insert id="insertBid" parameterType="nct.auction.domain.Bid"
-            useGeneratedKeys="true" keyProperty="bidSn">
-        /* 입찰 기록 */
-        INSERT INTO BID (
-            AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD
-        ) VALUES (
-            #{aucSn}, #{usrSn}, #{bidAmt}, #{bidStatusCd}
-        )
-    </insert>
-
-    <!-- 경매의 현재 유효한 최고 입찰 1건 조회 (없으면 이 경매의 첫 입찰) -->
-    <select id="findActiveBid" resultMap="bidMap">
-        /* 경매의 현재 유효한(ACTIVE) 최고 입찰 조회 */
-        SELECT
-            BID_SN, AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD,
-            BID_REG_DT, BID_UPDT_DT, BID_REG_ID, BID_UPDT_ID
-        FROM   BID
-        WHERE  AUC_SN = #{aucSn}
-          AND  BID_STATUS_CD = #{activeStatusCd}
-    </select>
-
-    <!-- 이전 최고 입찰을 OUTBID 로 전환 -->
-    <update id="updateBidStatus">
-        /* 입찰 상태 변경 (예: ACTIVE -> OUTBID) */
-        UPDATE BID
-        SET    BID_STATUS_CD = #{statusCd}
-        WHERE  BID_SN = #{bidSn}
-    </update>
 
     <resultMap id="myBidHistoryMap" type="nct.auction.dto.MyBidHistoryItem">
         <id     column="BID_SN"        property="bidSn"/>

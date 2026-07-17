@@ -1,39 +1,23 @@
 package nct.auction.mapper;
 
 import java.util.List;
-import java.util.Optional;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import nct.auction.domain.Bid;
 import nct.auction.dto.MyBidHistoryItem;
 
 /**
- * [BID 테이블 전용 Mapper]
- * - 고정 기술 소유자: 담당자3
+ * [BID 테이블 조회 전용 Mapper] (F-AUC-022 내 입찰 내역 조회)
+ * - AUCTION/BID 의 고정 기술 소유권은 09_기능단위_7인_업무분장 v10(CHG-018)부터 담당자5로
+ *   이관됐다. 담당자3(본인)은 F-AUC-022 하나만 남았고, 이 매퍼도 그 조회 하나만 남겼다.
+ * - 07_기능단위_7인_업무분장 v10 섹션 7.1: "내 입찰 담당자3은 BID를 직접 조회·변경하지 않고
+ *   담당자5의 경매·입찰 조회 계약을 호출한다." → 원칙적으로는 이 매퍼도 담당자5가 제공할
+ *   조회 계약 호출로 교체되어야 한다. 그 계약이 아직 없어 당장은 기존 조회 쿼리를 유지한다
+ *   (TODO: 담당자5가 "내 입찰 조회" 계약을 제공하면 이 매퍼 대신 그 계약을 호출하도록 교체).
  */
 @Mapper
 public interface BidMapper {
-
-    /**
-     * 새 입찰을 기록한다.
-     * - useGeneratedKeys 로 INSERT 후 생성된 PK 를 bid.bidSn 에 채워준다 (MemberMapper.saveMember 패턴과 동일).
-     * - 로직정의서 F-AUC-014: "실행 후 사용자 직접 취소는 불가" -> 그래서 이 Mapper 에는
-     *   deleteBid() 나 cancelBid() 같은 메서드를 아예 만들지 않는다.
-     *   (할 수 없게 막는 가장 확실한 방법은 "그 기능 자체를 코드에 존재하지 않게" 하는 것이다.)
-     */
-    void insertBid(Bid bid);
-
-    /**
-     * 경매의 "현재 유효한 최고 입찰" 1건을 조회한다.
-     * - 불변식: 한 경매에 ACTIVE 상태의 BID 는 항상 최대 1건이다 (서비스 코드가 이 불변식을 유지).
-     * - 이 경매의 첫 입찰이라면 결과가 없다(Optional.empty) - "밀려날 이전 입찰이 없다"는 뜻이다.
-     */
-    Optional<Bid> findActiveBid(@Param("aucSn") Long aucSn, @Param("activeStatusCd") String activeStatusCd);
-
-    /** 이전 최고 입찰의 상태를 OUTBID 로 변경한다 (포인트 반환은 PointLedgerPort 가 별도로 처리). */
-    void updateBidStatus(@Param("bidSn") Long bidSn, @Param("statusCd") String statusCd);
 
     /**
      * [F-AUC-022 내 입찰 내역 조회] 특정 회원의 입찰 내역을 최신순으로 조회한다.

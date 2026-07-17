@@ -1,0 +1,16 @@
+# 이 파일을 프로젝트 루트의 application-mail-local.properties로 복사한 뒤,
+# 앱 비밀번호는 본인 로컬 파일에만 입력한다. 실제 파일은 .gitignore로 제외된다.
+nct.mail.enabled=true
+nct.mail.from=your-nct-sender@gmail.com
+nct.mail.from-name=NCT
+
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=your-nct-sender@gmail.com
+spring.mail.password=PASTE_YOUR_16_DIGIT_APP_PASSWORD_HERE
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
+spring.mail.properties.mail.smtp.connectiontimeout=5000
+spring.mail.properties.mail.smtp.timeout=5000
+spring.mail.properties.mail.smtp.writetimeout=5000

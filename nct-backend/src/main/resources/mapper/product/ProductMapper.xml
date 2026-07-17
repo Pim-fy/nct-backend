@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.product.mapper.ProductMapper">
+
+    <!-- ── resultMap ───────────────────────────────────── -->
+    <resultMap id="ProductResponseMap" type="nct.product.dto.ProductResponse">
+        <id     property="prdSn"          column="PRD_SN"           />
+        <result property="usrSn"          column="USR_SN"           />
+        <result property="catSn"          column="CAT_SN"           />
+        <result property="catNm"          column="CAT_NM"           />
+        <result property="prdNm"          column="PRD_NM"           />
+        <result property="prdCn"          column="PRD_CN"           />
+        <result property="prdStatusCd"    column="PRD_STATUS_CD"    />
+        <result property="prdStartAmt"    column="PRD_START_AMT"    />
+        <result property="prdIbyAmt"      column="PRD_IBY_AMT"      />
+        <result property="prdTrdMethodCd" column="PRD_TRD_METHOD_CD"/>
+        <result property="prdRegDt"       column="PRD_REG_DT"       />
+        <result property="prdUpdtDt"      column="PRD_UPDT_DT"      />
+    </resultMap>
+
+    <resultMap id="ProductEntityMap" type="nct.product.domain.Product">
+        <id     property="prdSn"          column="PRD_SN"           />
+        <result property="usrSn"          column="USR_SN"           />
+        <result property="catSn"          column="CAT_SN"           />
+        <result property="prdNm"          column="PRD_NM"           />
+        <result property="prdCn"          column="PRD_CN"           />
+        <result property="prdStatusCd"    column="PRD_STATUS_CD"    />
+        <result property="prdStartAmt"    column="PRD_START_AMT"    />
+        <result property="prdIbyAmt"      column="PRD_IBY_AMT"      />
+        <result property="prdTrdMethodCd" column="PRD_TRD_METHOD_CD"/>
+        <result property="prdUseYn"       column="PRD_USE_YN"       />
+        <result property="prdRegDt"       column="PRD_REG_DT"       />
+        <result property="prdUpdtDt"      column="PRD_UPDT_DT"      />
+        <result property="prdRegId"       column="PRD_REG_ID"       />
+        <result property="prdUpdtId"      column="PRD_UPDT_ID"      />
+    </resultMap>
+
+    <!-- ── 상품 등록 ─────────────────────────────────────── -->
+    <insert id="saveProduct" useGeneratedKeys="true" keyProperty="prdSn">
+        /* ProductMapper.saveProduct */
+        INSERT INTO PRODUCT
+            (USR_SN, CAT_SN, PRD_NM, PRD_CN, PRD_STATUS_CD,
+             PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD, PRD_USE_YN,
+             PRD_REG_ID, PRD_UPDT_ID)
+        VALUES
+            (#{usrSn}, #{catSn}, #{prdNm}, #{prdCn}, #{prdStatusCd},
+             #{prdStartAmt}, #{prdIbyAmt}, #{prdTrdMethodCd}, 'Y',
+             #{prdRegId}, #{prdUpdtId})
+    </insert>
+
+    <!-- ── 상품 단건 조회 (카테고리명 JOIN) ──────────────── -->
+    <select id="findProductById" resultMap="ProductResponseMap">
+        /* ProductMapper.findProductById */
+        SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
+               p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
+               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
+               p.PRD_REG_DT, p.PRD_UPDT_DT
+          FROM PRODUCT p
+          JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
+         WHERE p.PRD_SN = #{prdSn}
+           AND p.PRD_USE_YN = 'Y'
+           AND p.PRD_STATUS_CD != 'PRDC0004'
+    </select>
+
+    <!-- ── 내 판매 목록 (최신순) ─────────────────────────── -->
+    <select id="findMyProducts" resultMap="ProductResponseMap">
+        /* ProductMapper.findMyProducts */
+        SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
+               p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
+               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
+               p.PRD_REG_DT, p.PRD_UPDT_DT
+          FROM PRODUCT p
+          JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
+         WHERE p.USR_SN = #{usrSn}
+           AND p.PRD_USE_YN = 'Y'
+           AND p.PRD_STATUS_CD != 'PRDC0004'
+         ORDER BY p.PRD_REG_DT DESC
+    </select>
+
+    <!-- ── 소유자 확인용 엔티티 조회 ──────────────────────── -->
+    <select id="findProductEntityById" resultMap="ProductEntityMap">
+        /* ProductMapper.findProductEntityById */
+        SELECT PRD_SN, USR_SN, CAT_SN, PRD_NM, PRD_CN, PRD_STATUS_CD,
+               PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD, PRD_USE_YN,
+               PRD_REG_DT, PRD_UPDT_DT, PRD_REG_ID, PRD_UPDT_ID
+          FROM PRODUCT
+         WHERE PRD_SN = #{prdSn}
+    </select>
+
+    <!-- ── 논리 삭제 (PRD_STATUS_CD=PRDC0004, PRD_USE_YN=N) ─ -->
+    <update id="deleteProduct">
+        /* ProductMapper.deleteProduct */
+        UPDATE PRODUCT
+           SET PRD_USE_YN    = 'N',
+               PRD_STATUS_CD = 'PRDC0004',
+               PRD_UPDT_ID   = CAST(#{usrSn} AS CHAR)
+         WHERE PRD_SN = #{prdSn}
+           AND USR_SN = #{usrSn}
+    </update>
+
+</mapper>

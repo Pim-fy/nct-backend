@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.notice.mapper.NoticeMapper">
+
+    <resultMap id="publicNoticeMap" type="nct.ops.notice.domain.Notice">
+        <id column="NTC_SN" property="noticeSn"/>
+        <result column="NTC_WRTR_USR_SN" property="writerUserSn"/>
+        <result column="NTC_WRTR_NM" property="writerName"/>
+        <result column="NTC_TYPE_CD" property="typeCode"/>
+        <result column="NTC_TYPE_NM" property="typeName"/>
+        <result column="NTC_STATUS_CD" property="statusCode"/>
+        <result column="NTC_STATUS_NM" property="statusName"/>
+        <result column="NTC_TTL" property="title"/>
+        <result column="NTC_CN" property="content"/>
+        <result column="NTC_PSTG_BGNG_DT" property="postingStartAt"/>
+        <result column="NTC_PSTG_END_DT" property="postingEndAt"/>
+        <result column="NTC_PIN_YN" property="pinnedYn"/>
+        <result column="NTC_VIEW_CNT" property="viewCount"/>
+        <result column="NTC_USE_YN" property="useYn"/>
+        <result column="NTC_REG_DT" property="registeredAt"/>
+        <result column="NTC_UPDT_DT" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 사용자 화면 쿼리는 공개에 필요한 컬럼만 조회하므로 관리자용 전체 매핑과 분리한다. -->
+    <resultMap id="publicReadNoticeMap" type="nct.ops.notice.domain.Notice">
+        <id column="NTC_SN" property="noticeSn"/>
+        <result column="NTC_TYPE_CD" property="typeCode"/>
+        <result column="NTC_TYPE_NM" property="typeName"/>
+        <result column="NTC_TTL" property="title"/>
+        <result column="NTC_CN" property="content"/>
+        <result column="NTC_PSTG_BGNG_DT" property="postingStartAt"/>
+        <result column="NTC_PSTG_END_DT" property="postingEndAt"/>
+        <result column="NTC_PIN_YN" property="pinnedYn"/>
+        <result column="NTC_VIEW_CNT" property="viewCount"/>
+        <result column="NTC_REG_DT" property="registeredAt"/>
+    </resultMap>
+
+    <!--
+        사용자 공개 조건을 한 곳에서 재사용한다.
+        화면 필터와 무관하게 게시 상태·사용 여부·노출 기간을 SQL에서 반드시 확인한다.
+    -->
+    <sql id="publicNoticeBaseWhere">
+        WHERE notice.NTC_STATUS_CD = 'NTCC0006'
+          AND notice.NTC_USE_YN = 'Y'
+          AND (notice.NTC_PSTG_BGNG_DT IS NULL OR notice.NTC_PSTG_BGNG_DT &lt;= CURRENT_TIMESTAMP)
+          AND (notice.NTC_PSTG_END_DT IS NULL OR notice.NTC_PSTG_END_DT &gt;= CURRENT_TIMESTAMP)
+    </sql>
+
+    <select id="countPublicNotices" resultType="long">
+        SELECT COUNT(*)
+          FROM NOTICE notice
+          JOIN CMM_CODE type_code
+            ON type_code.CMM_CD = notice.NTC_TYPE_CD
+           AND type_code.CMM_USE_YN = 'Y'
+          JOIN CMM_CODE type_group
+            ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+           AND type_group.CMM_CD = 'NTCG01'
+           AND type_group.CMM_USE_YN = 'Y'
+        <include refid="publicNoticeBaseWhere"/>
+        <if test="typeCode != null and typeCode != ''">
+          AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+    </select>
+
+    <select id="findPublicNotices" resultMap="publicReadNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_REG_DT
+          FROM NOTICE notice
+          JOIN CMM_CODE type_code
+            ON type_code.CMM_CD = notice.NTC_TYPE_CD
+           AND type_code.CMM_USE_YN = 'Y'
+          JOIN CMM_CODE type_group
+            ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+           AND type_group.CMM_CD = 'NTCG01'
+           AND type_group.CMM_USE_YN = 'Y'
+        <include refid="publicNoticeBaseWhere"/>
+        <if test="typeCode != null and typeCode != ''">
+          AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+         ORDER BY notice.NTC_PIN_YN DESC,
+                  COALESCE(notice.NTC_PSTG_BGNG_DT, notice.NTC_REG_DT) DESC,
+                  notice.NTC_SN DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="findPublicNoticeById" resultMap="publicReadNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_REG_DT
+          FROM NOTICE notice
+          JOIN CMM_CODE type_code
+            ON type_code.CMM_CD = notice.NTC_TYPE_CD
+           AND type_code.CMM_USE_YN = 'Y'
+          JOIN CMM_CODE type_group
+            ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+           AND type_group.CMM_CD = 'NTCG01'
+           AND type_group.CMM_USE_YN = 'Y'
+        <include refid="publicNoticeBaseWhere"/>
+          AND notice.NTC_SN = #{noticeId}
+         LIMIT 1
+    </select>
+
+    <!-- 관리자 목록은 숨김·임시저장을 포함하되 사용 중인 NOTICE 행만 조회한다. -->
+    <sql id="adminNoticeJoins">
+        FROM NOTICE notice
+        JOIN CMM_CODE type_code
+          ON type_code.CMM_CD = notice.NTC_TYPE_CD
+        JOIN CMM_CODE type_group
+          ON type_group.CMM_SN = type_code.CMM_PARENT_SN
+         AND type_group.CMM_CD = 'NTCG01'
+        JOIN CMM_CODE status_code
+          ON status_code.CMM_CD = notice.NTC_STATUS_CD
+        JOIN CMM_CODE status_group
+          ON status_group.CMM_SN = status_code.CMM_PARENT_SN
+         AND status_group.CMM_CD = 'NTCG02'
+        JOIN USERS writer
+          ON writer.USR_SN = notice.NTC_WRTR_USR_SN
+    </sql>
+
+    <sql id="adminNoticeWhere">
+        WHERE notice.NTC_USE_YN = 'Y'
+        <if test="typeCode != null and typeCode != ''">
+          AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+        <if test="statusCode != null and statusCode != ''">
+          AND notice.NTC_STATUS_CD = #{statusCode}
+        </if>
+        <if test="keyword != null and keyword != ''">
+          AND (notice.NTC_TTL LIKE CONCAT('%', #{keyword}, '%')
+               OR notice.NTC_CN LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="countAdminNotices" resultType="long">
+        SELECT COUNT(*)
+        <include refid="adminNoticeJoins"/>
+        <include refid="adminNoticeWhere"/>
+    </select>
+
+    <select id="findAdminNotices" resultMap="publicNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_WRTR_USR_SN,
+               writer.USR_NM AS NTC_WRTR_NM,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_STATUS_CD,
+               status_code.CMM_NM AS NTC_STATUS_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_USE_YN,
+               notice.NTC_REG_DT,
+               notice.NTC_UPDT_DT
+        <include refid="adminNoticeJoins"/>
+        <include refid="adminNoticeWhere"/>
+        ORDER BY notice.NTC_PIN_YN DESC,
+                 notice.NTC_UPDT_DT DESC,
+                 notice.NTC_SN DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="findAdminNoticeById" resultMap="publicNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_WRTR_USR_SN,
+               writer.USR_NM AS NTC_WRTR_NM,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_STATUS_CD,
+               status_code.CMM_NM AS NTC_STATUS_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_USE_YN,
+               notice.NTC_REG_DT,
+               notice.NTC_UPDT_DT
+        <include refid="adminNoticeJoins"/>
+        WHERE notice.NTC_SN = #{noticeId}
+          AND notice.NTC_USE_YN = 'Y'
+        LIMIT 1
+    </select>
+
+    <!-- 숨김·삭제 상태전이는 현재 행을 잠가 동시에 처리돼도 한 결과만 남긴다. -->
+    <select id="findAdminNoticeByIdForUpdate" resultMap="publicNoticeMap">
+        SELECT notice.NTC_SN,
+               notice.NTC_WRTR_USR_SN,
+               writer.USR_NM AS NTC_WRTR_NM,
+               notice.NTC_TYPE_CD,
+               type_code.CMM_NM AS NTC_TYPE_NM,
+               notice.NTC_STATUS_CD,
+               status_code.CMM_NM AS NTC_STATUS_NM,
+               notice.NTC_TTL,
+               notice.NTC_CN,
+               notice.NTC_PSTG_BGNG_DT,
+               notice.NTC_PSTG_END_DT,
+               notice.NTC_PIN_YN,
+               notice.NTC_VIEW_CNT,
+               notice.NTC_USE_YN,
+               notice.NTC_REG_DT,
+               notice.NTC_UPDT_DT
+        <include refid="adminNoticeJoins"/>
+        WHERE notice.NTC_SN = #{noticeId}
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <insert id="insertAdminNotice" parameterType="nct.ops.notice.domain.AdminNoticeWriteCommand"
+            useGeneratedKeys="true" keyProperty="noticeSn" keyColumn="NTC_SN">
+        INSERT INTO NOTICE (
+            NTC_WRTR_USR_SN,
+            NTC_TYPE_CD,
+            NTC_STATUS_CD,
+            NTC_TTL,
+            NTC_CN,
+            NTC_PSTG_BGNG_DT,
+            NTC_PSTG_END_DT,
+            NTC_PIN_YN,
+            NTC_REG_ID,
+            NTC_UPDT_ID
+        ) VALUES (
+            #{writerUserSn},
+            #{typeCode},
+            #{statusCode},
+            #{title},
+            #{content},
+            #{postingStartAt},
+            #{postingEndAt},
+            #{pinnedYn},
+            #{actorId},
+            #{actorId}
+        )
+    </insert>
+
+    <update id="updateAdminNotice" parameterType="nct.ops.notice.domain.AdminNoticeWriteCommand">
+        UPDATE NOTICE
+           SET NTC_TYPE_CD = #{typeCode},
+               NTC_STATUS_CD = #{statusCode},
+               NTC_TTL = #{title},
+               NTC_CN = #{content},
+               NTC_PSTG_BGNG_DT = #{postingStartAt},
+               NTC_PSTG_END_DT = #{postingEndAt},
+               NTC_PIN_YN = #{pinnedYn},
+               NTC_UPDT_ID = #{actorId}
+         WHERE NTC_SN = #{noticeSn}
+           AND NTC_USE_YN = 'Y'
+           AND NTC_UPDT_DT = #{expectedUpdatedAt}
+    </update>
+
+    <!-- 물리 삭제 대신 숨김 상태로 바꾼다. 이미 숨김이면 갱신하지 않아 재요청도 단일 결과가 된다. -->
+    <update id="hideAdminNotice">
+        UPDATE NOTICE
+           SET NTC_STATUS_CD = 'NTCC0007',
+               NTC_UPDT_ID = #{actorId}
+         WHERE NTC_SN = #{noticeId}
+           AND NTC_USE_YN = 'Y'
+           AND NTC_STATUS_CD != 'NTCC0007'
+    </update>
+
+    <!-- 삭제 요청도 감사 근거를 보존하도록 행을 지우지 않고 사용 여부만 N으로 바꾼다. -->
+    <update id="softDeleteAdminNotice">
+        UPDATE NOTICE
+           SET NTC_USE_YN = 'N',
+               NTC_UPDT_ID = #{actorId}
+         WHERE NTC_SN = #{noticeId}
+           AND NTC_USE_YN = 'Y'
+    </update>
+</mapper>

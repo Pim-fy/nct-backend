@@ -88,6 +88,45 @@ class PointChargeOrderTest {
     }
 
     @Test
+    @DisplayName("만료(D-025): 3시간 지난 대기 주문은 승인이 거부된다")
+    void confirmExpiredPendingOrder() {
+        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        backdateOrder(orderNo, 4); // 4시간 전 생성으로 되돌림 → 유효시간(3시간) 초과
+
+        // 만료 검사는 토스 승인 호출보다 먼저 수행되므로 외부 API 없이 검증 가능
+        assertThatThrownBy(() -> pointChargeService.confirm(orderNo, "dummy-payment-key"))
+                .isInstanceOf(PointException.class)
+                .hasMessageContaining("만료");
+    }
+
+    @Test
+    @DisplayName("만료(D-025): 3시간 지난 대기 건은 이력에서 취소(시간 만료)로 표시된다")
+    void listMarksExpiredPendingAsCanceled() {
+        String freshNo = pointChargeService.createOrder(usrSn, 20000);
+        String expiredNo = pointChargeService.createOrder(usrSn, 50000);
+        backdateOrder(expiredNo, 4);
+
+        var orders = pointChargeService.getOrderList(usrSn);
+        assertThat(orders).hasSize(2);
+
+        var expired = orders.stream().filter(o -> o.getPtChgOrdNo().equals(expiredNo)).findFirst().orElseThrow();
+        assertThat(expired.getPtChgOrdStatusCd()).isEqualTo(PointChargeOrderStatus.CANCELED.getCode());
+        assertThat(expired.getStatusNm()).isEqualTo("취소");
+        assertThat(expired.getPtChgOrdFailRsnCn()).contains("시간 만료");
+
+        // 3시간이 안 지난 대기 건은 그대로 대기로 보인다
+        var fresh = orders.stream().filter(o -> o.getPtChgOrdNo().equals(freshNo)).findFirst().orElseThrow();
+        assertThat(fresh.getPtChgOrdStatusCd()).isEqualTo(PointChargeOrderStatus.PENDING.getCode());
+        assertThat(fresh.getStatusNm()).isEqualTo("대기");
+    }
+
+    /** 주문 생성 시각을 과거로 되돌린다 — 시간 경과를 기다릴 수 없으니 테스트에서만 쓰는 조작 (롤백됨) */
+    private void backdateOrder(String orderNo, int hoursAgo) {
+        jdbc.update("UPDATE POINT_CHARGE_ORDER SET PT_CHG_ORD_REG_DT = DATE_SUB(NOW(), INTERVAL ? HOUR) WHERE PT_CHG_ORD_NO = ?",
+                hoursAgo, orderNo);
+    }
+
+    @Test
     @DisplayName("이력 조회: 최신순 정렬, 응답 DTO 변환까지 프론트 계약대로 채워진다")
     void listOrderingAndDtoMapping() {
         pointChargeService.createOrder(usrSn, 10000);

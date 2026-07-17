@@ -75,6 +75,17 @@ public class NotificationService {
                 null, null);
     }
 
+    /**
+     * 환전 신청 접수 알림 — PointExchangeService가 호출 (F-PAY-012, D-026)
+     * 실제 입금은 관리자 수동 처리라 "며칠 내 지급 예정" 안내만 나간다 (자동화 금지 정본 규칙)
+     */
+    public void notifyExchangeRequest(long usrSn, long amt) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "환전 신청 접수",
+                String.format("%,dP 환전 신청이 접수되었습니다. 등록하신 계좌로 며칠 내 지급될 예정입니다.", amt),
+                null, null);
+    }
+
     // ---------- 조회/읽음 ----------
 
     /** 내 알림 목록 (최신순 100건) */

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Claude Code 작성 (BJN, 2026-07-17) -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.point.mapper.PointExchangeOrderMapper">
+
+    <!-- 환전 신청 행 추가. 상태는 항상 '신청'으로 시작하고, 차감 원장 SN과 계좌 스냅샷을 함께 기록.
+         REG_DT 등 시스템 컬럼은 DB DEFAULT에 맡기고 생략 (충전 주문과 동일한 방식) -->
+    <insert id="insert" parameterType="nct.point.domain.PointExchangeOrder"
+            useGeneratedKeys="true" keyProperty="ptExcOrdSn">
+        /* 포인트 환전 주문: 행 추가 (신청 상태) */
+        INSERT INTO POINT_EXCHANGE_ORDER
+            (USR_SN, PT_EXC_ORD_AMT, PT_EXC_ORD_STATUS_CD,
+             PT_EXC_ORD_DEDUCT_LDG_SN, PT_EXC_ORD_BANK_NM, PT_EXC_ORD_ACNT_NO)
+        VALUES
+            (#{usrSn}, #{ptExcOrdAmt}, #{ptExcOrdStatusCd},
+             #{ptExcOrdDeductLdgSn}, #{ptExcOrdBankNm}, #{ptExcOrdAcntNo})
+    </insert>
+
+    <!-- 내 환전 신청 목록: 상태 코드의 한글명을 CMM_CODE 조인으로 함께 가져온다.
+         컬럼 별칭(AS)을 전부 명시하는 이유: 전역 camelCase 설정(gitignore 파일 소속)에
+         의존하지 않기 위함 — 260717 알림·포인트 매퍼와 같은 방침 -->
+    <select id="selectListByUser" resultType="nct.point.domain.PointExchangeOrder">
+        /* 포인트 환전 주문: 내 신청 목록 (최신순 100건) */
+        SELECT
+            O.PT_EXC_ORD_SN            AS ptExcOrdSn,
+            O.USR_SN                   AS usrSn,
+            O.PT_EXC_ORD_AMT           AS ptExcOrdAmt,
+            O.PT_EXC_ORD_STATUS_CD     AS ptExcOrdStatusCd,
+            O.PT_EXC_ORD_DEDUCT_LDG_SN AS ptExcOrdDeductLdgSn,
+            O.PT_EXC_ORD_RESTORE_LDG_SN AS ptExcOrdRestoreLdgSn,
+            O.PT_EXC_ORD_PROC_USR_SN   AS ptExcOrdProcUsrSn,
+            O.PT_EXC_ORD_PROC_DT       AS ptExcOrdProcDt,
+            O.PT_EXC_ORD_RJCT_RSN_CN   AS ptExcOrdRjctRsnCn,
+            O.PT_EXC_ORD_BANK_NM       AS ptExcOrdBankNm,
+            O.PT_EXC_ORD_ACNT_NO       AS ptExcOrdAcntNo,
+            O.PT_EXC_ORD_REG_DT        AS ptExcOrdRegDt,
+            O.PT_EXC_ORD_UPDT_DT       AS ptExcOrdUpdtDt,
+            S.CMM_NM                   AS statusNm
+        FROM POINT_EXCHANGE_ORDER O
+        JOIN CMM_CODE S ON S.CMM_CD = O.PT_EXC_ORD_STATUS_CD
+        WHERE O.USR_SN = #{usrSn}
+        ORDER BY O.PT_EXC_ORD_SN DESC
+        LIMIT 100
+    </select>
+
+    <!-- 회원의 등록 계좌 조회 — 신청 시점 스냅샷의 원본.
+         USERS는 담당자1 소유 테이블이라 읽기만 한다 (쓰기·잠금 없음) -->
+    <select id="selectUserAccount" resultType="nct.point.dto.UserAccount">
+        /* 포인트 환전: 회원 등록 계좌 조회 */
+        SELECT USR_BANK_NM AS bankNm,
+               USR_ACNT_NO AS acntNo
+        FROM USERS
+        WHERE USR_SN = #{usrSn}
+    </select>
+
+</mapper>

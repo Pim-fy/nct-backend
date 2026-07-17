@@ -166,6 +166,43 @@ public class PointService {
                 bal.getAvailableAmt() + amt, null, null, reason);
     }
 
+    /**
+     * 환전 신청 차감 (F-PAY-012, D-026 — 신청 즉시 차감 정책).
+     * 정산가능(=환전 가능) 버킷에서 -금액 원장을 기록한다. 잔액 검증→차감이 회원 행 잠금
+     * 안에서 직렬화되므로, 동시에 두 번 신청해도 같은 돈이 두 번 빠져나갈 수 없다.
+     *
+     * @return 생성된 포인트원장일련번호 (환전 주문이 차감 원장으로 연결해 둔다)
+     */
+    @Transactional
+    public long debitExchange(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        if (bal.getSettleableAmt() < amt) {
+            throw new PointException(ErrorCode.POINT_INSUFFICIENT,
+                    "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + bal.getSettleableAmt() + "P");
+        }
+        return insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.EXCHANGE_OUT, -amt,
+                bal.getSettleableAmt() - amt, null, null, reason);
+    }
+
+    /**
+     * 충전 회수 (D-027 보상 전용).
+     * PG 승인은 성공했는데 내부 반영이 중간에 실패해 결제를 자동취소할 때,
+     * 이미 지급된 충전 포인트를 되돌린다. 원장은 절대 수정·삭제하지 않으므로(기록 불변)
+     * 반대 부호의 보정(-) 행을 짝으로 남기는 방식이다 — 합계가 0이 되어 잔액이 원상복구된다.
+     */
+    @Transactional
+    public void reverseCharge(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.ADJUST, -amt,
+                bal.getAvailableAmt() - amt, null, null, reason);
+    }
+
     // ---------- 내부 ----------
 
     /** 회원 행 잠금 — 존재하지 않는 회원이면 즉시 실패 */

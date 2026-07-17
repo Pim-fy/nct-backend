@@ -22,4 +22,7 @@ public class ProductResponse {
     private String prdTrdMethodCd;
     private LocalDateTime prdRegDt;
     private LocalDateTime prdUpdtDt;
+
+    // 대표이미지 URL (없으면 null — 화면에서 기본 placeholder 처리). 담당자6, F-AUC-002 이미지 연계
+    private String prdImgUrl;
 }

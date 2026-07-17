@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.product.mapper.ProductImageMapper">
+
+    <!-- 상품 이미지 목록 일괄 추가. SORT_NO·REG_DT 등은 DB DEFAULT/파라미터로 채움 -->
+    <insert id="insertAll">
+        /* ProductImageMapper.insertAll */
+        INSERT INTO PRODUCT_IMAGE (PRD_SN, FL_SN, PRD_IMG_RPRS_YN, PRD_IMG_SORT_NO)
+        VALUES
+        <foreach collection="images" item="img" separator=",">
+            (#{img.prdSn}, #{img.flSn}, #{img.prdImgRprsYn}, #{img.prdImgSortNo})
+        </foreach>
+    </insert>
+
+</mapper>

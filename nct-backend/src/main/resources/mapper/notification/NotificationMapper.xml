@@ -23,11 +23,13 @@
          (프론트가 코드값 하드코딩 없이 한글 배지를 그대로 쓸 수 있게) -->
     <select id="selectListByUser" resultType="nct.notification.domain.Notification">
         /* 알림: 목록 조회 (한글명 조인, 최신순 100건) */
-        SELECT N.NTF_SN, N.USR_SN,
-               N.NTF_TYPE_CD,   T.CMM_NM AS typeNm,
-               N.NTF_DOMAIN_CD, D.CMM_NM AS domainNm,
-               N.NTF_TTL, N.NTF_CN, N.NTF_REF_TYPE_CD, N.NTF_REF_SN,
-               N.NTF_READ_YN, N.NTF_READ_DT, N.NTF_EMAIL_STATUS_CD, N.NTF_REG_DT
+        SELECT N.NTF_SN AS ntfSn, N.USR_SN AS usrSn,
+               N.NTF_TYPE_CD AS ntfTypeCd,     T.CMM_NM AS typeNm,
+               N.NTF_DOMAIN_CD AS ntfDomainCd, D.CMM_NM AS domainNm,
+               N.NTF_TTL AS ntfTtl, N.NTF_CN AS ntfCn,
+               N.NTF_REF_TYPE_CD AS ntfRefTypeCd, N.NTF_REF_SN AS ntfRefSn,
+               N.NTF_READ_YN AS ntfReadYn, N.NTF_READ_DT AS ntfReadDt,
+               N.NTF_EMAIL_STATUS_CD AS ntfEmailStatusCd, N.NTF_REG_DT AS ntfRegDt
         FROM NOTIFICATION N
         LEFT JOIN CMM_CODE T ON T.CMM_CD = N.NTF_TYPE_CD
         LEFT JOIN CMM_CODE D ON D.CMM_CD = N.NTF_DOMAIN_CD

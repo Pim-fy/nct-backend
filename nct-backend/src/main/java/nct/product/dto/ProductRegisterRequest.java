@@ -1,6 +1,7 @@
 package nct.product.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -34,4 +35,9 @@ public class ProductRegisterRequest {
 
     // PRDC0001(임시저장) | PRDC0002(공개) — 미전송 시 공개로 처리
     private String prdStatusCd;
+
+    // 업로드된 이미지의 flSn 목록 (POST /api/files 로 미리 올린 뒤 받은 값) — 순서=정렬순서,
+    // 첫 번째가 대표이미지. 담당자6, F-AUC-002 이미지 연계
+    @Size(max = 5, message = "이미지는 최대 5장까지 등록할 수 있습니다.")
+    private List<Long> flSnList;
 }

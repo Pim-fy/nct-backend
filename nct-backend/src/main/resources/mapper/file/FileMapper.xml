@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.file.mapper.FileMapper">
+
+    <!-- FILES 행 추가. FL_USE_YN(기본 'Y')·REG_DT·UPDT_DT·UPDT_ID 등은 DB DEFAULT에 맡기고 생략 -->
+    <insert id="insert" parameterType="nct.file.domain.FileMeta"
+            useGeneratedKeys="true" keyProperty="flSn">
+        /* 파일: 행 추가 */
+        INSERT INTO FILES (
+            FL_ORG_NM, FL_SAVE_NM, FL_PATH, FL_EXT, FL_SIZE_AMT, FL_TYPE_CD, FL_REG_ID
+        ) VALUES (
+            #{flOrgNm}, #{flSaveNm}, #{flPath}, #{flExt}, #{flSizeAmt}, #{flTypeCd}, #{flRegId}
+        )
+    </insert>
+
+</mapper>

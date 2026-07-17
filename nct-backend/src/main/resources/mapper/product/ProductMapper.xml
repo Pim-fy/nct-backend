@@ -17,6 +17,7 @@
         <result property="prdTrdMethodCd" column="PRD_TRD_METHOD_CD"/>
         <result property="prdRegDt"       column="PRD_REG_DT"       />
         <result property="prdUpdtDt"      column="PRD_UPDT_DT"      />
+        <result property="prdImgUrl"      column="PRD_IMG_URL"      /><!-- 담당자6, F-AUC-002 -->
     </resultMap>
 
     <resultMap id="ProductEntityMap" type="nct.product.domain.Product">
@@ -49,15 +50,18 @@
              #{prdRegId}, #{prdUpdtId})
     </insert>
 
-    <!-- ── 상품 단건 조회 (카테고리명 JOIN) ──────────────── -->
+    <!-- ── 상품 단건 조회 (카테고리명·대표이미지 JOIN) ──── -->
     <select id="findProductById" resultMap="ProductResponseMap">
         /* ProductMapper.findProductById */
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
                p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
-               p.PRD_REG_DT, p.PRD_UPDT_DT
+               p.PRD_REG_DT, p.PRD_UPDT_DT,
+               f.FL_PATH AS PRD_IMG_URL
           FROM PRODUCT p
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
+          LEFT JOIN PRODUCT_IMAGE pi ON pi.PRD_SN = p.PRD_SN AND pi.PRD_IMG_RPRS_YN = 'Y'
+          LEFT JOIN FILES f ON f.FL_SN = pi.FL_SN
          WHERE p.PRD_SN = #{prdSn}
            AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'
@@ -69,9 +73,12 @@
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
                p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
-               p.PRD_REG_DT, p.PRD_UPDT_DT
+               p.PRD_REG_DT, p.PRD_UPDT_DT,
+               f.FL_PATH AS PRD_IMG_URL
           FROM PRODUCT p
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
+          LEFT JOIN PRODUCT_IMAGE pi ON pi.PRD_SN = p.PRD_SN AND pi.PRD_IMG_RPRS_YN = 'Y'
+          LEFT JOIN FILES f ON f.FL_SN = pi.FL_SN
          WHERE p.USR_SN = #{usrSn}
            AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'

@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import nct.global.response.ApiResponse;
 
@@ -88,6 +89,18 @@ public class GlobalExceptionHandler {
 
         logException(ex);
         ErrorCode errorCode = ErrorCode.FORBIDDEN;
+        return ResponseEntity.status(errorCode.status())
+                             .body(ApiResponse.error(errorCode.code(), errorCode.message(),
+                                                     safePath(request)));
+    }
+
+    /** 업로드 파일이 spring.servlet.multipart.max-file-size 를 초과 -> 400 (담당자6, 파일 도메인) */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(
+            MaxUploadSizeExceededException ex, HttpServletRequest request) {
+
+        logException(ex);
+        ErrorCode errorCode = ErrorCode.FILE_TOO_LARGE;
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
                                                      safePath(request)));

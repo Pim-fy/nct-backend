@@ -36,6 +36,7 @@ public enum ErrorCode {
     // 404 Not Found
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
+    PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 상품입니다."),
 
     // 405 / 409 / 410
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "허용되지 않은 HTTP 메서드입니다."),
@@ -56,6 +57,38 @@ public enum ErrorCode {
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     EMAIL_RESEND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "인증번호 재발송은 1분 후에 가능합니다."),
+
+    /*==================== 포인트/정산 도메인 (담당자6) ====================*/
+
+    // 포인트 - 400: 요청 자체가 잘못됨 / 409: 잔액·상태와 충돌
+    POINT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "포인트 금액은 0보다 커야 합니다."),
+    POINT_INSUFFICIENT(HttpStatus.CONFLICT, "사용 가능 포인트가 부족합니다."),
+    POINT_DUPLICATE_HOLD(HttpStatus.CONFLICT, "이미 홀딩된 건입니다."),
+    POINT_HOLD_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 홀딩이 없습니다."),
+
+    // 정산
+    SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 정산 건입니다."),
+    SETTLEMENT_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 정산 처리입니다."),
+    SETTLEMENT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "정산 금액은 0보다 커야 합니다."),
+
+    // 포인트 충전 (F-PG-01)
+    CHARGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 충전 주문입니다."),
+    CHARGE_ORDER_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 충전 주문입니다."),
+    CHARGE_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "결제 승인 금액이 사전 기록과 일치하지 않습니다."),
+    CHARGE_AMOUNT_OUT_OF_RANGE(HttpStatus.BAD_REQUEST, "충전 금액이 허용 범위를 벗어났습니다."),
+
+    /*==================== 상품/경매 도메인 (담당자2) ====================*/
+
+    PRODUCT_NOT_OWNER(HttpStatus.FORBIDDEN, "본인의 상품만 처리할 수 있습니다."),
+    PRODUCT_ALREADY_DELETED(HttpStatus.CONFLICT, "이미 삭제된 상품입니다."),
+    PRODUCT_CANCEL_INVALID_STATUS(HttpStatus.CONFLICT, "취소 요청이 불가능한 경매 상태입니다."),
+
+    /*==================== 파일 도메인 (담당자6, F-AUC-002 이미지 연계) ====================*/
+
+    FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드할 파일이 비어 있습니다."),
+    FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "이미지 파일(jpg, png, gif, webp)만 업로드할 수 있습니다."),
+    FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 크기는 10MB를 초과할 수 없습니다."),
+    FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장 중 오류가 발생했습니다."),
 
     /*==================== 5XX SERVER ERROR ====================*/
 

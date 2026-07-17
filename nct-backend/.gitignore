@@ -38,3 +38,9 @@ out/
 
 application.properties
 application-mail-local.properties
+
+# 키 모음 파일 - 저장소에 올리지 않고 팀 공유폴더로 전달 (BJN, 2026-07-17)
+.env
+
+# 업로드된 이미지 실 파일 - app.upload.dir (BJN, 2026-07-17, F-AUC-002)
+/uploads/

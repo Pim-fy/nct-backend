@@ -13,11 +13,14 @@ import java.util.Optional;
  */
 public interface AuthMemberPort {
 
-    /** 이메일로 인증용 회원 조회 (로그인, JWT 검증, 재발급에 사용) */
+    /** 이메일로 인증용 회원 조회 (가입 중복 확인 등에 사용) */
     Optional<AuthMember> findByEmail(String email);
 
     // @ai_generated: 로컬 로그인과 가입 중복 확인은 이메일이 아닌 로그인 ID 기준으로 수행한다.
     Optional<AuthMember> findByLoginId(String loginId);
+
+    // @ai_generated: JWT subject(usrSn) 기반 조회 - 필터 인가·토큰 재발급이 가변 필드(email) 대신 사용
+    Optional<AuthMember> findById(Long usrSn);
 
     boolean existsByLoginId(String loginId);
 

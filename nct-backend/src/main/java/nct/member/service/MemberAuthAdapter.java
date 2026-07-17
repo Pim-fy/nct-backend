@@ -9,6 +9,7 @@ import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
 import nct.global.security.port.OAuthProfile;
+import nct.global.utils.TokenHashUtil;
 import nct.member.domain.Member;
 import nct.member.mapper.MemberMapper;
 
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 public class MemberAuthAdapter implements AuthMemberPort {
 
     private final MemberMapper memberMapper;
+    private final TokenHashUtil tokenHashUtil;
 
     @Override
     @Transactional(readOnly = true)
@@ -42,6 +44,14 @@ public class MemberAuthAdapter implements AuthMemberPort {
     @Transactional(readOnly = true)
     public Optional<AuthMember> findByLoginId(String loginId) {
         return memberMapper.findMemberByLoginId(loginId)
+                           .map(this::toAuthMember);
+    }
+
+    // @ai_generated: JWT subject(usrSn) 기반 조회 - 필터 인가·토큰 재발급이 가변 필드(email) 대신 사용
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AuthMember> findById(Long usrSn) {
+        return memberMapper.findMemberById(usrSn)
                            .map(this::toAuthMember);
     }
 
@@ -93,12 +103,13 @@ public class MemberAuthAdapter implements AuthMemberPort {
             "OAuth 회원가입 미구현: USERS.USR_PSWD_HASH NOT NULL 제약 및 USER_OAUTH 연동 매퍼 필요");
     }
 
+    // @ai_generated: 저장 전 SHA-256 해시화(원문 저장 금지). null(로그아웃) 은 해시하지 않고 그대로 저장.
     @Override
     @Transactional
     public void updateRefreshToken(Long usrSn, String refreshToken) {
-        // JwtProvider 발급 토큰 원문을 그대로 저장(로그아웃 시 null 전달 -> null 저장).
-        // 검증(AuthService.verifyRefreshToken)에서 원문 대조 + JwtProvider 로 서명/만료 확인.
-        memberMapper.updateRefreshTokenById(usrSn, refreshToken);
+        String refreshTokenHash = (refreshToken == null) ? null : tokenHashUtil.hash(refreshToken);
+        // 검증(AuthService.verifyRefreshToken)에서 요청 토큰을 동일하게 해시화한 뒤 대조 + JwtProvider 로 서명/만료 확인.
+        memberMapper.updateRefreshTokenById(usrSn, refreshTokenHash);
     }
 
     /** Member(도메인) -> AuthMember(보안 모듈 전용 모델) 변환 */
@@ -111,7 +122,8 @@ public class MemberAuthAdapter implements AuthMemberPort {
                          .name(member.getUsrNm())
                          .nickname(member.getUsrNm())
                          .role(member.getUsrRoleCd())
-                         .refreshToken(member.getUsrRefreshTokenHash())  // DB 저장 원문(재발급 검증용)
+                         .status(member.getUsrStatusCd())  // @ai_generated: F-AUTH-009 계정 상태 차단용
+                         .refreshToken(member.getUsrRefreshTokenHash())  // DB 저장 해시(재발급 검증용)
                          .build();
     }
 }

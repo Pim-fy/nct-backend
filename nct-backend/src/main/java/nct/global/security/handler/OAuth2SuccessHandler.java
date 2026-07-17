@@ -44,8 +44,9 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         AuthMember member = userDetails.getMember();
 
         // JWT 발급
-        String accessToken  = jwtTokenProvider.createAccessToken(member.getEmail(), member.getRole());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getEmail());
+        // @ai_generated: subject를 email(가변)에서 usrSn(불변 PK)으로 전환 - JwtTokenProvider 시그니처 변경에 따른 연쇄 수정
+        String accessToken  = jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
 
         // Refresh Token DB 저장
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);

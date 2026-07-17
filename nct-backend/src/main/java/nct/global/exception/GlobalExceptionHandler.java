@@ -58,7 +58,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
-                                                     request.getRequestURI()));
+                                                     request.getRequestURI(), errorCode.name()));
     }
 
     /** 권한 없음 -> 403 */
@@ -70,7 +70,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.FORBIDDEN;
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
-                                                     request.getRequestURI()));
+                                                     request.getRequestURI(), errorCode.name()));
     }
 
     /** 비즈니스 예외 -> ErrorCode 의 상태코드/메시지 그대로 */
@@ -82,7 +82,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ex.getErrorCode();
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), ex.getMessage(),
-                                                     request.getRequestURI()));
+                                                     request.getRequestURI(), errorCode.name()));
     }
 
     /** 나머지 전부 -> 500 (내부 정보는 응답에 노출하지 않음) */
@@ -94,7 +94,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
         return ResponseEntity.internalServerError()
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
-                                                     request.getRequestURI()));
+                                                     request.getRequestURI(), errorCode.name()));
     }
 
     /** 예외 발생 지점(클래스/메서드/라인)을 포함한 에러 로그 */

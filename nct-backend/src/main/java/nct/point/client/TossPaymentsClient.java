@@ -32,11 +32,17 @@ public class TossPaymentsClient {
 
     private final ObjectMapper objectMapper;
 
-    /** 결제위젯 방식 시크릿 키 (gsk) */
-    @Value("${toss.payments.widget.secret-key}")
+    /**
+     * 결제위젯 방식 시크릿 키 (gsk).
+     * 콜론 뒤는 설정 파일에 키가 없을 때 쓰는 기본값 — application.properties가 gitignore 대상이라
+     * 팀원이 코드만 받아도 서버가 뜨도록 토스 공식 문서의 공용 샌드박스 키를 내장해 둔다.
+     * (문서 공개 테스트 키라 실결제 불가·노출 무해) 정식 키 발급 후에는 .env로 덮어쓰고 기본값은 제거할 것.
+     */
+    @Value("${toss.payments.widget.secret-key:test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6}")
     private String secretKey;
 
-    @Value("${toss.payments.confirm-url}")
+    /** 승인 API 주소 — 토스 공통 고정값이라 기본값으로 내장 */
+    @Value("${toss.payments.confirm-url:https://api.tosspayments.com/v1/payments/confirm}")
     private String confirmUrl;
 
     private final HttpClient httpClient = HttpClient.newBuilder()

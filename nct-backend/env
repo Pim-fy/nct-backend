@@ -1,0 +1,11 @@
+# Claude Code 작성 (BJN, 2026-07-17)
+# 백엔드 키 모음 - application.properties의 spring.config.import가 이 파일을 읽는다
+# 이 파일은 gitignore 대상이라 저장소에 올라가지 않는다. 이 파일이 없으면 서버가 뜨지 않으므로,
+# 필요한 팀원에게는 반드시 공유폴더나 채널로 직접 전달할 것.
+#
+# 토스페이먼츠 결제위젯 키 (gck/gsk) + 승인 API 주소
+# 현재 값은 토스 공식 문서의 공용 샌드박스 키(공개 키, 실결제 없음).
+# 사업자 등록 후 정식 키를 발급받으면 여기 값만 바꾸면 된다 - 코드/설정 수정 불필요.
+toss.payments.widget.client-key=test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm
+toss.payments.widget.secret-key=test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6
+toss.payments.confirm-url=https://api.tosspayments.com/v1/payments/confirm

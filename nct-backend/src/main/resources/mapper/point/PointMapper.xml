@@ -29,20 +29,20 @@
     <select id="selectLedgerList" resultType="nct.point.domain.PointLedger">
         /* 포인트: 원장 목록 (한글명 조인, 최신순 100건) */
         SELECT
-            L.PT_LDG_SN,
-            L.USR_SN,
-            L.ACTOR_USR_SN,
-            L.PT_LDG_REF_TYPE_CD,
+            L.PT_LDG_SN         AS ptLdgSn,
+            L.USR_SN            AS usrSn,
+            L.ACTOR_USR_SN      AS actorUsrSn,
+            L.PT_LDG_REF_TYPE_CD AS ptLdgRefTypeCd,
             R.CMM_NM            AS refTypeNm,
-            L.PT_LDG_REF_SN,
-            L.PT_LDG_PT_TYPE_CD,
+            L.PT_LDG_REF_SN     AS ptLdgRefSn,
+            L.PT_LDG_PT_TYPE_CD AS ptLdgPtTypeCd,
             P.CMM_NM            AS ptTypeNm,
-            L.PT_LDG_TYPE_CD,
+            L.PT_LDG_TYPE_CD    AS ptLdgTypeCd,
             T.CMM_NM            AS typeNm,
-            L.PT_LDG_AMT,
-            L.PT_LDG_BAL_AFTER_AMT,
-            L.PT_LDG_RSN_CN,
-            L.PT_LDG_REG_DT
+            L.PT_LDG_AMT        AS ptLdgAmt,
+            L.PT_LDG_BAL_AFTER_AMT AS ptLdgBalAfterAmt,
+            L.PT_LDG_RSN_CN     AS ptLdgRsnCn,
+            L.PT_LDG_REG_DT     AS ptLdgRegDt
         FROM POINT_LEDGER L
         JOIN CMM_CODE T ON T.CMM_CD = L.PT_LDG_TYPE_CD
         JOIN CMM_CODE P ON P.CMM_CD = L.PT_LDG_PT_TYPE_CD

@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -68,6 +69,9 @@ public class SecurityConfig {
                 // 관리자 API
                 .requestMatchers("/api/admin/**")
                     .hasAuthority("ROLE_ADMIN")
+                // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
+                .requestMatchers(HttpMethod.GET, "/api/categories")
+                    .permitAll()
                 // 화이트리스트 - application.properties 의 app.security.permit-all-paths
                 .requestMatchers(securityProperties.getPermitAllPaths().toArray(String[]::new))
                     .permitAll()

@@ -31,8 +31,8 @@ dependencies {
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-	// 메일 발송(임시 비밀번호 등)이 필요하면 주석 해제
-	// implementation 'org.springframework.boot:spring-boot-starter-mail'
+	// @ai_generated: 가입 이메일 인증번호를 실제 SMTP로 발송한다.
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	runtimeOnly 'com.mysql:mysql-connector-j'

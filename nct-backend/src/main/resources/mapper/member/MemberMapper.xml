@@ -50,19 +50,47 @@
           AND  USR_USE_YN = 'Y'
     </select>
 
-    <!-- 회원 가입 (SignUpRequest 기준) - useGeneratedKeys 로 생성된 PK 를 usrSn 에 주입 -->
-    <insert id="saveMember" parameterType="nct.member.domain.Member"
+    <!-- @ai_generated: 로컬 로그인은 USR_LOGIN_ID로 조회하고 이메일은 JWT/인증용으로 유지한다. -->
+    <select id="findMemberByLoginId" parameterType="String" resultMap="memberMap">
+        SELECT
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML,
+            USR_EML_CERT_YN, USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP,
+            USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
+            USR_REG_ID, USR_UPDT_ID
+        FROM USERS
+        WHERE USR_LOGIN_ID = #{loginId}
+          AND USR_USE_YN = 'Y'
+    </select>
+
+    <!-- @ai_generated: UNIQUE 제약 전 사전 확인은 UX용이며 최종 INSERT 제약도 별도로 처리한다. -->
+    <select id="existsByLoginId" parameterType="String" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM USERS WHERE USR_LOGIN_ID = #{loginId})
+    </select>
+
+    <select id="existsByNickname" parameterType="String" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM USERS WHERE USR_NM = #{nickname})
+    </select>
+
+    <select id="existsByEmail" parameterType="String" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM USERS WHERE USR_EML = #{email})
+    </select>
+
+    <!-- @ai_generated: 인증 완료 가입만 USERS를 생성하고 이메일 인증 완료값을 함께 저장한다. -->
+    <insert id="saveCertifiedMember" parameterType="nct.member.domain.Member"
             useGeneratedKeys="true" keyProperty="usrSn">
-        /* 회원 가입 */
+        /* 인증 완료 회원 가입 */
         INSERT INTO USERS (
-            USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_TELNO, USR_STATUS_CD
+            USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_EML_CERT_YN,
+            USR_TELNO, USR_STATUS_CD, USR_ROLE_CD
         ) VALUES (
-            #{usrLoginId}, #{usrPswdHash}, #{usrNm}, #{usrEml}, #{usrTelno}, #{usrStatusCd}
+            #{usrLoginId}, #{usrPswdHash}, #{usrNm}, #{usrEml}, #{usrEmlCertYn},
+            #{usrTelno}, #{usrStatusCd}, #{usrRoleCd}
         )
         <!-- 생략 컬럼 (USERS DDL 기준):
              · nullable(DEFAULT NULL): USR_REFRESH_TOKEN_HASH, USR_ADDR, USR_DADDR, USR_ZIP,
                USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_ADULT_CERT_DT (가입 미입력 -> 생략)
-             · DB DEFAULT 보유: USR_EML_CERT_YN('N'), USR_ROLE_CD('ROLE_USER'), USR_ADULT_CERT_YN('N'),
+             · DB DEFAULT 보유: USR_ADULT_CERT_YN('N'),
                USR_USE_YN('Y'), USR_REG_DT/USR_UPDT_DT(CURRENT_TIMESTAMP), USR_REG_ID/USR_UPDT_ID('SYSTEM')
              · USR_STATUS_CD 는 NOT NULL & DEFAULT 없음 -> 필수 지정 (어댑터에서 세팅) -->
     </insert>

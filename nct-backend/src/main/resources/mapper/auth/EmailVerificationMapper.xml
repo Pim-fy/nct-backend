@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- @ai_generated: 가입 이메일 인증 상태 전이 SQL -->
+<mapper namespace="nct.auth.mapper.EmailVerificationMapper">
+
+    <resultMap id="emailVerificationMap" type="nct.auth.domain.EmailVerification">
+        <id column="EML_VRF_SN" property="emlVrfSn"/>
+        <result column="EML_VRF_EMAIL" property="emlVrfEmail"/>
+        <result column="EML_VRF_PURPOSE_CD" property="emlVrfPurposeCd"/>
+        <result column="EML_VRF_CODE_HASH" property="emlVrfCodeHash"/>
+        <result column="EML_VRF_STATUS_CD" property="emlVrfStatusCd"/>
+        <result column="EML_VRF_EXPIRES_AT" property="emlVrfExpiresAt"/>
+        <result column="EML_VRF_LAST_SENT_AT" property="emlVrfLastSentAt"/>
+        <result column="EML_VRF_FAIL_CNT" property="emlVrfFailCnt"/>
+        <result column="EML_VRF_RESEND_CNT" property="emlVrfResendCnt"/>
+        <result column="EML_VRF_RETRY_AT" property="emlVrfRetryAt"/>
+        <result column="EML_VRF_VERIFIED_AT" property="emlVrfVerifiedAt"/>
+        <result column="EML_VRF_USED_AT" property="emlVrfUsedAt"/>
+    </resultMap>
+
+    <select id="findLatestSignupByEmailForUpdate" resultMap="emailVerificationMap">
+        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+               EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
+               EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
+               EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
+        FROM EMAIL_VERIFICATION
+        WHERE EML_VRF_EMAIL = #{email}
+          AND EML_VRF_PURPOSE_CD = 'EMVC0001'
+        ORDER BY EML_VRF_SN DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <select id="findSignupByIdForUpdate" resultMap="emailVerificationMap">
+        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+               EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
+               EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
+               EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
+        FROM EMAIL_VERIFICATION
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_PURPOSE_CD = 'EMVC0001'
+        FOR UPDATE
+    </select>
+
+    <insert id="insertSignup" parameterType="nct.auth.domain.EmailVerification"
+            useGeneratedKeys="true" keyProperty="emlVrfSn">
+        INSERT INTO EMAIL_VERIFICATION (
+            EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
+            EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT, EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT
+        ) VALUES (
+            #{emlVrfEmail}, 'EMVC0001', #{emlVrfCodeHash}, 'EMVC0003',
+            #{emlVrfExpiresAt}, #{emlVrfLastSentAt}, 0, 0
+        )
+    </insert>
+
+    <update id="resend">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_CODE_HASH = #{codeHash},
+            EML_VRF_STATUS_CD = 'EMVC0003',
+            EML_VRF_EXPIRES_AT = #{expiresAt},
+            EML_VRF_LAST_SENT_AT = #{sentAt},
+            EML_VRF_RESEND_CNT = EML_VRF_RESEND_CNT + 1,
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD = 'EMVC0003'
+    </update>
+
+    <update id="markExpired">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_STATUS_CD = 'EMVC0006',
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD IN ('EMVC0003', 'EMVC0004', 'EMVC0007')
+    </update>
+
+    <update id="markVerified">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_STATUS_CD = 'EMVC0004',
+            EML_VRF_VERIFIED_AT = #{verifiedAt},
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD = 'EMVC0003'
+    </update>
+
+    <update id="incrementFailure">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_FAIL_CNT = EML_VRF_FAIL_CNT + 1,
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD = 'EMVC0003'
+    </update>
+
+    <update id="lock">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_STATUS_CD = 'EMVC0007',
+            EML_VRF_RETRY_AT = #{retryAt},
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD = 'EMVC0003'
+          AND EML_VRF_FAIL_CNT >= 5
+    </update>
+
+    <update id="markUsed">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_STATUS_CD = 'EMVC0005',
+            EML_VRF_USED_AT = #{usedAt},
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD = 'EMVC0004'
+    </update>
+</mapper>

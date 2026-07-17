@@ -49,7 +49,7 @@ public class PointController {
     private final PointService pointService;
     private final PointChargeService pointChargeService;
 
-    /** 결제위젯 방식 클라이언트 키 (gck) — 충전은 결제위젯 단일 방식 */
+    /** 결제위젯 방식 클라이언트 키 (gck) — 프로젝트 루트 .env 파일에서 읽는다 */
     @Value("${toss.payments.widget.client-key}")
     private String widgetClientKey;
 

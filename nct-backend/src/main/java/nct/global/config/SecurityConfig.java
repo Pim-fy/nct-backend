@@ -23,6 +23,7 @@ import nct.global.security.provider.JwtTokenProvider;
 import nct.global.security.service.CustomOAuth2UserService;
 import nct.global.security.service.CustomUserDetailsService;
 import nct.global.utils.CookieUtil;
+import nct.ops.security.service.SensitiveDataMasker;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -48,6 +49,8 @@ public class SecurityConfig {
     private final CookieUtil cookieUtil;
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
+    // Controller까지 도달하지 못한 401·403 응답 경로도 F-OPS-012 규칙으로 마스킹한다.
+    private final SensitiveDataMasker sensitiveDataMasker;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -106,6 +109,7 @@ public class SecurityConfig {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         response.getWriter()
-                .write(objectMapper.writeValueAsString(ApiResponse.error(status, message, path)));
+                .write(objectMapper.writeValueAsString(
+                        ApiResponse.error(status, message, sensitiveDataMasker.maskUri(path))));
     }
 }

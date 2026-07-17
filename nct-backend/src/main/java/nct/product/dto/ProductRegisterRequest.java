@@ -31,4 +31,7 @@ public class ProductRegisterRequest {
 
     @NotBlank(message = "거래방식을 선택해주세요.")
     private String prdTrdMethodCd; // TRDC0009(배송) or TRDC0010(직거래)
+
+    // PRDC0001(임시저장) | PRDC0002(공개) — 미전송 시 공개로 처리
+    private String prdStatusCd;
 }

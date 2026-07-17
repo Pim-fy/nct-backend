@@ -25,12 +25,13 @@ public class ProductService {
 
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
+        String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         Product product = Product.builder()
                 .usrSn(usrSn)
                 .catSn(req.getCatSn())
                 .prdNm(req.getPrdNm())
                 .prdCn(req.getPrdCn())
-                .prdStatusCd("PRDC0002")   // 공개
+                .prdStatusCd(statusCd)
                 .prdStartAmt(req.getPrdStartAmt())
                 .prdIbyAmt(req.getPrdIbyAmt())
                 .prdTrdMethodCd(req.getPrdTrdMethodCd())

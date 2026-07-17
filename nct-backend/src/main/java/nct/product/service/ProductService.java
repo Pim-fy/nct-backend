@@ -11,6 +11,7 @@ import com.github.pagehelper.PageInfo;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.ops.reference.service.ReferenceDataService;
 import nct.product.domain.Product;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
@@ -22,9 +23,13 @@ import lombok.RequiredArgsConstructor;
 public class ProductService {
 
     private final ProductMapper productMapper;
+    private final ReferenceDataService referenceDataService;
 
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
+        if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         Product product = Product.builder()
                 .usrSn(usrSn)

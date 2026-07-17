@@ -49,13 +49,8 @@ public class PointController {
     private final PointService pointService;
     private final PointChargeService pointChargeService;
 
-    /**
-     * 결제위젯 방식 클라이언트 키 (gck) — 충전은 결제위젯 단일 방식.
-     * 콜론 뒤는 설정 파일에 키가 없을 때 쓰는 기본값 — application.properties가 gitignore 대상이라
-     * 팀원이 코드만 받아도 서버가 뜨도록 토스 공식 문서의 공용 샌드박스 키(공개 키)를 내장해 둔다.
-     * 정식 계정 키 발급 후에는 .env로 덮어쓰고 이 기본값은 제거할 것.
-     */
-    @Value("${toss.payments.widget.client-key:test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm}")
+    /** 결제위젯 방식 클라이언트 키 (gck) — 프로젝트 루트 .env 파일에서 읽는다 */
+    @Value("${toss.payments.widget.client-key}")
     private String widgetClientKey;
 
     /** 내 포인트 잔액 조회 */

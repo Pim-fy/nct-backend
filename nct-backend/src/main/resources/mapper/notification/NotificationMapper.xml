@@ -7,12 +7,12 @@
             useGeneratedKeys="true" keyProperty="ntfSn">
         /* 알림: 행 추가 */
         INSERT INTO NOTIFICATION (
-            USR_SN, NTF_TYPE_CD, NTF_DOMAIN_CD,
+            USR_SN, NTF_TYPE_CD, NTF_DOMAIN_CD, NTF_AUDIENCE_CD,
             NTF_TTL, NTF_CN,
             NTF_REF_TYPE_CD, NTF_REF_SN,
             NTF_EMAIL_STATUS_CD
         ) VALUES (
-            #{usrSn}, #{ntfTypeCd}, #{ntfDomainCd},
+            #{usrSn}, #{ntfTypeCd}, #{ntfDomainCd}, #{ntfAudienceCd},
             #{ntfTtl}, #{ntfCn},
             #{ntfRefTypeCd}, #{ntfRefSn},
             #{ntfEmailStatusCd}
@@ -26,6 +26,7 @@
         SELECT N.NTF_SN AS ntfSn, N.USR_SN AS usrSn,
                N.NTF_TYPE_CD AS ntfTypeCd,     T.CMM_NM AS typeNm,
                N.NTF_DOMAIN_CD AS ntfDomainCd, D.CMM_NM AS domainNm,
+               N.NTF_AUDIENCE_CD AS ntfAudienceCd,
                N.NTF_TTL AS ntfTtl, N.NTF_CN AS ntfCn,
                N.NTF_REF_TYPE_CD AS ntfRefTypeCd, N.NTF_REF_SN AS ntfRefSn,
                N.NTF_READ_YN AS ntfReadYn, N.NTF_READ_DT AS ntfReadDt,

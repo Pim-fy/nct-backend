@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
 import nct.notification.domain.Notification;
+import nct.notification.domain.NotificationAudience;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.domain.UserNotificationSetting;
@@ -34,6 +35,7 @@ public class NotificationService {
 
     /**
      * 범용 알림 생성 (모든 알림의 단일 진입점).
+     * 대상 구분을 지정하지 않는 기존 시그니처 — 일반 활동 알림으로 기록된다 (F-COM-011 분류표 기본값).
      *
      * @param refType 알림을 발생시킨 참조 유형 (없으면 null 허용)
      * @param refSn   참조 일련번호
@@ -41,10 +43,23 @@ public class NotificationService {
     @Transactional
     public void notify(long usrSn, NotificationType type, NotificationDomain domain,
                        String title, String content, RefType refType, Long refSn) {
+        notify(usrSn, type, domain, NotificationAudience.GENERAL, title, content, refType, refSn);
+    }
+
+    /**
+     * 범용 알림 생성 — 대상 구분(일반/제공자)까지 지정하는 버전 (F-COM-011).
+     * 제공자 업무 알림(정산·견적 요청 등)을 발행할 때는 이 시그니처로 PROVIDER를 지정한다.
+     * 어떤 알림이 어느 쪽인지는 분류표(팀전달_알림구분_260717.md)를 따른다.
+     */
+    @Transactional
+    public void notify(long usrSn, NotificationType type, NotificationDomain domain,
+                       NotificationAudience audience, String title, String content,
+                       RefType refType, Long refSn) {
         Notification n = new Notification();
         n.setUsrSn(usrSn);
         n.setNtfTypeCd(type.getCode());
         n.setNtfDomainCd(domain.getCode());
+        n.setNtfAudienceCd(audience.getCode());
         n.setNtfTtl(title);
         n.setNtfCn(content);
         n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
@@ -61,10 +76,10 @@ public class NotificationService {
                 refType, refSn);
     }
 
-    /** 정산 이벤트 알림 — SettlementService가 호출 */
+    /** 정산 이벤트 알림 — SettlementService가 호출. 판매대금을 받는 쪽(제공자 업무)이라 PROVIDER */
     public void notifySettlement(long usrSn, String title, String content, long trdSn) {
         notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
-                title, content, RefType.TRADE, trdSn);
+                NotificationAudience.PROVIDER, title, content, RefType.TRADE, trdSn);
     }
 
     /** 포인트 충전 완료 알림 — PointChargeService가 호출 */

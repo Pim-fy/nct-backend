@@ -10,10 +10,12 @@ import nct.common.domain.RefType;
 import nct.notification.domain.Notification;
 import nct.notification.domain.NotificationAudience;
 import nct.notification.domain.NotificationDomain;
+import nct.notification.domain.NotificationEmailStatus;
 import nct.notification.domain.NotificationType;
 import nct.notification.domain.UserNotificationSetting;
 import nct.notification.mapper.NotificationMapper;
 import nct.notification.mapper.UserNotificationSettingMapper;
+import nct.setting.mapper.SystemSettingAdminMapper;
 
 /**
  * [알림 - 서비스 계약] (담당자6 백종남, F-UX-064/065)
@@ -21,17 +23,22 @@ import nct.notification.mapper.UserNotificationSettingMapper;
  * 다른 도메인은 이벤트 발생 시 notify(...)만 호출한다 — NOTIFICATION 테이블 직접 INSERT 금지.
  * 호출하는 쪽 트랜잭션 안에서 부르면 같은 트랜잭션으로 묶인다 (본 이벤트 실패 시 알림도 함께 롤백).
  *
- * 이메일 발송 채널은 DEC-064 확정 전이므로 모든 알림을 미대상(NTFC0006)으로 기록한다.
+ * 이메일 보조 발송 (F-COM-006, 트리거 확정 2026-07-18):
+ * - 대상 이벤트: 거래 완료 확인 요청 / 거래 문제(분쟁) 접수·판정 / 환전 지급·반려 —
+ *   "거래 완료와 분쟁에 직접 영향을 주는 중요 이벤트"만. 입찰가 갱신 같은 고빈도 알림은 인앱만.
+ * - 발송 조건: 시스템 설정 이메일 스위치(Y) AND 회원의 도메인별 이메일 수신 토글(Y).
+ *   OPS 도메인(환전 등 돈 지급 결과)은 회원 토글이 없어 전역 스위치만 본다.
+ * - 베스트 에포트: 이메일이 실패해도 인앱 알림·본 처리는 그대로 성공하고, 결과만
+ *   NTF_EMAIL_STATUS_CD(성공/실패/미대상)에 기록한다.
  */
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
 
-    /** 이메일발송상태(NTFG02) 미대상 — 이메일 채널 확정 전 고정값 */
-    private static final String EMAIL_STATUS_NONE = "NTFC0006";
-
     private final NotificationMapper notificationMapper;
     private final UserNotificationSettingMapper settingMapper;
+    private final SystemSettingAdminMapper systemSettingMapper;
+    private final NotificationMailSender mailSender;
 
     /**
      * 범용 알림 생성 (모든 알림의 단일 진입점).
@@ -64,8 +71,98 @@ public class NotificationService {
         n.setNtfCn(content);
         n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
         n.setNtfRefSn(refSn);
-        n.setNtfEmailStatusCd(EMAIL_STATUS_NONE);
+        n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
         notificationMapper.insert(n);
+    }
+
+    /**
+     * 중요 이벤트 알림 — 인앱 알림 + 이메일 보조 발송 (F-COM-006).
+     * 트리거 3종(거래 완료 확인 요청·분쟁 접수/판정·환전 지급/반려)에서만 호출한다.
+     * 이메일 결과와 무관하게 인앱 알림은 항상 생성된다 (베스트 에포트).
+     */
+    @Transactional
+    public void notifyImportant(long usrSn, NotificationType type, NotificationDomain domain,
+                                NotificationAudience audience, String title, String content,
+                                RefType refType, Long refSn) {
+        Notification n = new Notification();
+        n.setUsrSn(usrSn);
+        n.setNtfTypeCd(type.getCode());
+        n.setNtfDomainCd(domain.getCode());
+        n.setNtfAudienceCd(audience.getCode());
+        n.setNtfTtl(title);
+        n.setNtfCn(content);
+        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
+        n.setNtfRefSn(refSn);
+
+        // 발송 대상이 아니면(스위치·토글·메일 미설정 환경) 미대상으로 기록하고 인앱만 남긴다
+        if (!emailEligible(usrSn, domain)) {
+            n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
+            notificationMapper.insert(n);
+            return;
+        }
+
+        // 대상이면: 대기 상태로 먼저 기록 → 발송 시도 → 결과(성공/실패)로 갱신.
+        // 발송기(mailSender)는 예외를 던지지 않는 계약이라 이 흐름이 본 트랜잭션을 깨뜨릴 수 없다
+        n.setNtfEmailStatusCd(NotificationEmailStatus.PENDING.getCode());
+        notificationMapper.insert(n);
+
+        String email = notificationMapper.selectUserEmail(usrSn);
+        boolean sent = email != null
+                && mailSender.send(email, "[에누리컷] " + title, content
+                        + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
+        notificationMapper.updateEmailStatus(n.getNtfSn(),
+                (sent ? NotificationEmailStatus.SENT : NotificationEmailStatus.FAILED).getCode());
+    }
+
+    /**
+     * 이메일 보조 발송 대상인지 판정 (F-COM-006 발송 조건).
+     * ① 메일 설정이 있는 환경이고 ② 관리자 전역 스위치(SYS_SET_EMAIL_YN)가 Y이고
+     * ③ 회원의 해당 도메인 이메일 토글이 Y여야 한다.
+     * OPS(환전 등 지갑·운영)·CHAT은 알림 설정 화면에 이메일 토글이 없는 도메인이라 ③을 건너뛴다.
+     */
+    private boolean emailEligible(long usrSn, NotificationDomain domain) {
+        if (!mailSender.isAvailable()) {
+            return false;
+        }
+        if (!"Y".equals(systemSettingMapper.selectOne().getEmailYn())) {
+            return false;
+        }
+        UserNotificationSetting setting = settingMapper.selectByUser(usrSn);
+        if (setting == null) {
+            setting = UserNotificationSetting.defaultOf(usrSn); // 저장한 적 없으면 전 채널 수신이 기본
+        }
+        return switch (domain) {
+            case AUCTION -> "Y".equals(setting.getUsrNtfStgAucEmailYn());
+            case TRADE -> "Y".equals(setting.getUsrNtfStgTrdEmailYn());
+            case SERVICE -> "Y".equals(setting.getUsrNtfStgSvcEmailYn());
+            case OPS, CHAT -> true; // 토글 없는 도메인 — 전역 스위치만 적용
+        };
+    }
+
+    // ---------- 중요 이벤트 트리거 계약 (F-COM-006) — 거래·분쟁 담당자(4·5)가 호출 ----------
+
+    /** 거래 완료 확인 요청 — 상대방 확인 대기 시작 시 거래 담당자(4)가 호출. 기한 내 미확인 시 자동완료 */
+    public void notifyTradeConfirmRequest(long usrSn, long trdSn, int confirmDays) {
+        notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
+                "거래 완료 확인 요청",
+                String.format("상대방이 거래 완료 확인을 기다리고 있습니다. %d일 안에 확인하지 않으면 자동으로 완료 처리됩니다.", confirmDays),
+                RefType.TRADE, trdSn);
+    }
+
+    /** 거래 문제(분쟁) 접수 알림 — 접수 시 상대 당사자에게, 분쟁 담당자(5)가 호출 */
+    public void notifyDisputeReceived(long usrSn, long trdDspSn) {
+        notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
+                "거래 문제 접수",
+                "회원님이 당사자인 거래에 거래 문제가 접수되었습니다. 처리 완료 전까지 관련 정산·포인트 전환이 보류될 수 있습니다.",
+                RefType.TRADE_DISPUTE, trdDspSn);
+    }
+
+    /** 거래 문제(분쟁) 판정 결과 알림 — 처리 완료/반려 시 양 당사자에게, 분쟁 담당자(5)가 호출 */
+    public void notifyDisputeResolved(long usrSn, long trdDspSn, String resultText) {
+        notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
+                "거래 문제 처리 결과",
+                "접수된 거래 문제가 처리되었습니다. 결과: " + resultText,
+                RefType.TRADE_DISPUTE, trdDspSn);
     }
 
     /** 포인트 홀딩 반환 알림 (업무분장: 입찰·낙찰·반환 알림) — PointService.releaseHold가 호출 */
@@ -101,17 +198,25 @@ public class NotificationService {
                 null, null);
     }
 
-    /** 환전 지급 완료 알림 — 관리자가 실제 이체를 마치고 완료 처리하면 나간다 */
+    /** 환전 지급 완료 알림 — 실제 돈이 오간 결과라 이메일 보조 발송 대상 (F-COM-006 트리거) */
     public void notifyExchangeComplete(long usrSn, long amt) {
-        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+        notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.OPS, NotificationAudience.GENERAL,
                 "환전 지급 완료",
                 String.format("%,dP 환전 지급이 완료되었습니다. 등록하신 계좌를 확인해 주세요.", amt),
                 null, null);
     }
 
-    /** 환전 반려 알림 — 차감했던 포인트가 복원됐음을 사유와 함께 안내한다 */
-    public void notifyExchangeReject(long usrSn, long amt, String reason) {
+    /** 포인트 전환 완료 알림 (F-PAY-010) — 본인 지갑 관리 이벤트라 '일반' 구분(기본값)으로 나간다 */
+    public void notifyPointConvert(long usrSn, long amt) {
         notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "포인트 전환 완료",
+                String.format("정산 가능 포인트 %,dP가 사용 가능 포인트로 전환되었습니다.", amt),
+                null, null);
+    }
+
+    /** 환전 반려 알림 — 실제 돈이 오간 결과라 이메일 보조 발송 대상 (F-COM-006 트리거) */
+    public void notifyExchangeReject(long usrSn, long amt, String reason) {
+        notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.OPS, NotificationAudience.GENERAL,
                 "환전 신청 반려",
                 String.format("%,dP 환전 신청이 반려되었습니다. (사유: %s) 차감됐던 포인트는 환전 가능 포인트로 복원되었습니다.", amt, reason),
                 null, null);

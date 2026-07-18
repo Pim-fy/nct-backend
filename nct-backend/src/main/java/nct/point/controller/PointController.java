@@ -20,6 +20,7 @@ import nct.point.dto.PointChargeConfirmRequest;
 import nct.point.dto.PointChargeOrderResponse;
 import nct.point.dto.PointChargeRequest;
 import nct.point.dto.PointChargeRequestResponse;
+import nct.point.dto.PointConvertRequest;
 import nct.point.dto.PointExchangeOrderResponse;
 import nct.point.dto.PointExchangeRequest;
 import nct.point.dto.PointLedgerResponse;
@@ -123,6 +124,20 @@ public class PointController {
 
         long usrSn = userDetails.getMember().getId();
         pointExchangeService.apply(usrSn, request.getAmount());
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /**
+     * 정산가능→사용가능 전환 (F-PAY-010) — 분쟁 없음 확인 후 즉시 전환.
+     * 진행 중 거래 문제가 있으면 409로 거절되고 아무것도 바뀌지 않는다.
+     */
+    @PostMapping("/convert")
+    public ResponseEntity<ApiResponse<Void>> convertPoint(
+            @Valid @RequestBody PointConvertRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long usrSn = userDetails.getMember().getId();
+        pointService.convertSettleableToAvailable(usrSn, request.getAmount());
         return ResponseEntity.ok(ApiResponse.success());
     }
 

@@ -31,6 +31,10 @@ public class AuthMember {
     /** 권한 (ROLE_USER / ROLE_ADMIN) */
     private final String role;
 
+    // @ai_generated: F-AUTH-009 계정 상태 차단(정지/탈퇴)에 사용 - USRG01 코드값(USRC0001 등)
+    /** 회원 상태 코드 (USRG01: USRC0001=활성, USRC0002=정지, USRC0003=탈퇴) */
+    private final String status;
+
     /** 가입 경로 (LOCAL / KAKAO) */
     private final String provider;
 

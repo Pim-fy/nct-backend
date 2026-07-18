@@ -23,6 +23,7 @@ import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
 import nct.global.security.provider.JwtTokenProvider;
+import nct.global.utils.TokenHashUtil;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import lombok.RequiredArgsConstructor;
@@ -36,12 +37,17 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthService {
 
+    // @ai_generated: USRG01(회원 상태) 코드값 - docs/260716_08_DB_기초데이터_v3.sql 기준
+    private static final String STATUS_SUSPENDED = "USRC0002";
+    private static final String STATUS_WITHDRAWN = "USRC0003";
+
     private final PasswordEncoder passwordEncoder;
     private final AuthMemberPort authMemberPort;
     private final JwtTokenProvider jwtTokenProvider;
     private final EmailVerificationService emailVerificationService;
     private final UserAgreementMapper userAgreementMapper;
     private final Validator validator;
+    private final TokenHashUtil tokenHashUtil;
 
     /**
      * 회원가입
@@ -115,8 +121,11 @@ public class AuthService {
             throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        String accessToken  = jwtTokenProvider.createAccessToken(member.getEmail(), member.getRole());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getEmail());
+        // @ai_generated: F-AUTH-009 - 정지/탈퇴 계정은 비밀번호가 맞아도 로그인을 차단한다.
+        requireActiveStatus(member.getStatus());
+
+        String accessToken  = jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
 
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
         return AuthSessionResult.builder()
@@ -133,7 +142,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public String refresh(String refreshToken) {
         AuthMember member = verifyRefreshToken(refreshToken);
-        return jwtTokenProvider.createAccessToken(member.getEmail(), member.getRole());
+        return jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
     }
 
     /**
@@ -144,7 +153,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthSessionResult verifyAndRefresh(String refreshToken) {
         AuthMember member = verifyRefreshToken(refreshToken);
-        String accessToken = jwtTokenProvider.createAccessToken(member.getEmail(), member.getRole());
+        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
         return AuthSessionResult.builder()
                                 .loginResponse(toLoginResponse(member))
                                 .accessToken(accessToken)
@@ -160,25 +169,39 @@ public class AuthService {
         authMemberPort.updateRefreshToken(memberId, null);
     }
 
-    /** Refresh 쿠키 추출 -> JWT 검증 -> DB 저장 토큰과 대조 */
+    /** Refresh 쿠키 추출 -> JWT 검증 -> DB 저장 해시와 대조 */
     private AuthMember verifyRefreshToken(String refreshToken) {
         if (refreshToken == null) {
             throw new CustomException(ErrorCode.TOKEN_NOT_FOUND);
         }
 
         // 만료/위조 시 CustomException(EXPIRED_TOKEN/INVALID_TOKEN) 발생
-        String email = jwtTokenProvider.getEmail(refreshToken);
+        Long usrSn = jwtTokenProvider.getUsrSn(refreshToken);
 
-        AuthMember member = authMemberPort.findByEmail(email)
+        AuthMember member = authMemberPort.findById(usrSn)
                                           .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // DB 저장 원문과 대조 (JWT 서명·만료는 위 getEmail 단계에서 이미 검증됨)
+        // @ai_generated: 요청 토큰을 동일하게 해시화한 뒤 DB 저장 해시와 대조 (JWT 서명·만료는 위 getUsrSn 단계에서 이미 검증됨)
         // 저장값이 null(로그아웃 상태)이거나 다르면 탈취/이전 토큰 -> 거부
         if (member.getRefreshToken() == null
-                || !refreshToken.equals(member.getRefreshToken())) {
+                || !tokenHashUtil.hash(refreshToken).equals(member.getRefreshToken())) {
             throw new CustomException(ErrorCode.INVALID_TOKEN);
         }
+
+        // @ai_generated: F-AUTH-009 - 재발급 시점에도 계정 상태를 재확인한다(로그인 이후 정지된 경우 대비).
+        requireActiveStatus(member.getStatus());
+
         return member;
+    }
+
+    /** F-AUTH-009: 계정 상태가 활성(USRC0001)이 아니면 정지/탈퇴 예외를 던진다. */
+    private void requireActiveStatus(String status) {
+        if (STATUS_SUSPENDED.equals(status)) {
+            throw new CustomException(ErrorCode.ACCOUNT_SUSPENDED);
+        }
+        if (STATUS_WITHDRAWN.equals(status)) {
+            throw new CustomException(ErrorCode.WITHDRAWN_USER);
+        }
     }
 
     private LoginResponse toLoginResponse(AuthMember member) {

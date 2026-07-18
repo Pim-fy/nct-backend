@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
 import nct.notification.domain.Notification;
+import nct.notification.domain.NotificationAudience;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.domain.UserNotificationSetting;
@@ -34,6 +35,7 @@ public class NotificationService {
 
     /**
      * 범용 알림 생성 (모든 알림의 단일 진입점).
+     * 대상 구분을 지정하지 않는 기존 시그니처 — 일반 활동 알림으로 기록된다 (F-COM-011 분류표 기본값).
      *
      * @param refType 알림을 발생시킨 참조 유형 (없으면 null 허용)
      * @param refSn   참조 일련번호
@@ -41,10 +43,23 @@ public class NotificationService {
     @Transactional
     public void notify(long usrSn, NotificationType type, NotificationDomain domain,
                        String title, String content, RefType refType, Long refSn) {
+        notify(usrSn, type, domain, NotificationAudience.GENERAL, title, content, refType, refSn);
+    }
+
+    /**
+     * 범용 알림 생성 — 대상 구분(일반/제공자)까지 지정하는 버전 (F-COM-011).
+     * 제공자 업무 알림(정산·견적 요청 등)을 발행할 때는 이 시그니처로 PROVIDER를 지정한다.
+     * 어떤 알림이 어느 쪽인지는 분류표(팀전달_알림구분_260717.md)를 따른다.
+     */
+    @Transactional
+    public void notify(long usrSn, NotificationType type, NotificationDomain domain,
+                       NotificationAudience audience, String title, String content,
+                       RefType refType, Long refSn) {
         Notification n = new Notification();
         n.setUsrSn(usrSn);
         n.setNtfTypeCd(type.getCode());
         n.setNtfDomainCd(domain.getCode());
+        n.setNtfAudienceCd(audience.getCode());
         n.setNtfTtl(title);
         n.setNtfCn(content);
         n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
@@ -61,10 +76,10 @@ public class NotificationService {
                 refType, refSn);
     }
 
-    /** 정산 이벤트 알림 — SettlementService가 호출 */
+    /** 정산 이벤트 알림 — SettlementService가 호출. 판매대금을 받는 쪽(제공자 업무)이라 PROVIDER */
     public void notifySettlement(long usrSn, String title, String content, long trdSn) {
         notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
-                title, content, RefType.TRADE, trdSn);
+                NotificationAudience.PROVIDER, title, content, RefType.TRADE, trdSn);
     }
 
     /** 포인트 충전 완료 알림 — PointChargeService가 호출 */
@@ -72,6 +87,33 @@ public class NotificationService {
         notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
                 "충전 완료",
                 String.format("%,dP가 충전되었습니다.", amt),
+                null, null);
+    }
+
+    /**
+     * 환전 신청 접수 알림 — PointExchangeService가 호출 (F-PAY-012, D-026)
+     * 실제 입금은 관리자 수동 처리라 "며칠 내 지급 예정" 안내만 나간다 (자동화 금지 정본 규칙)
+     */
+    public void notifyExchangeRequest(long usrSn, long amt) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "환전 신청 접수",
+                String.format("%,dP 환전 신청이 접수되었습니다. 등록하신 계좌로 며칠 내 지급될 예정입니다.", amt),
+                null, null);
+    }
+
+    /** 환전 지급 완료 알림 — 관리자가 실제 이체를 마치고 완료 처리하면 나간다 */
+    public void notifyExchangeComplete(long usrSn, long amt) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "환전 지급 완료",
+                String.format("%,dP 환전 지급이 완료되었습니다. 등록하신 계좌를 확인해 주세요.", amt),
+                null, null);
+    }
+
+    /** 환전 반려 알림 — 차감했던 포인트가 복원됐음을 사유와 함께 안내한다 */
+    public void notifyExchangeReject(long usrSn, long amt, String reason) {
+        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+                "환전 신청 반려",
+                String.format("%,dP 환전 신청이 반려되었습니다. (사유: %s) 차감됐던 포인트는 환전 가능 포인트로 복원되었습니다.", amt, reason),
                 null, null);
     }
 

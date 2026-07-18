@@ -76,6 +76,13 @@ public enum ErrorCode {
     CHARGE_ORDER_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 충전 주문입니다."),
     CHARGE_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "결제 승인 금액이 사전 기록과 일치하지 않습니다."),
     CHARGE_AMOUNT_OUT_OF_RANGE(HttpStatus.BAD_REQUEST, "충전 금액이 허용 범위를 벗어났습니다."),
+    CHARGE_ORDER_EXPIRED(HttpStatus.CONFLICT, "시간이 만료된 충전 주문입니다."),
+    CHARGE_INTERNAL_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "충전 처리 중 오류가 발생하여 결제를 취소 처리했습니다."),
+
+    // 포인트 환전 (F-PAY-012)
+    EXCHANGE_ACCOUNT_NOT_REGISTERED(HttpStatus.BAD_REQUEST, "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요."),
+    EXCHANGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 환전 신청입니다."),
+    EXCHANGE_ORDER_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 환전 신청입니다."),
 
     /*==================== 상품/경매 도메인 (담당자2) ====================*/
 

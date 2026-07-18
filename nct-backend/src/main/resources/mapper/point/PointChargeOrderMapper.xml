@@ -14,8 +14,11 @@
     <!-- 행 잠금 후 조회: 승인 처리 중 같은 주문번호가 동시에 두 번 확정되는 것을 막는다 -->
     <select id="selectForUpdateByOrderNo" resultType="nct.point.domain.PointChargeOrder">
         /* 포인트 충전 주문: 주문번호로 행 잠금 조회 */
-        SELECT PT_CHG_ORD_SN, USR_SN, PT_CHG_ORD_NO, PT_CHG_ORD_AMT, PT_CHG_ORD_STATUS_CD,
-               PT_CHG_ORD_PG_KEY, PT_LDG_SN, PT_CHG_ORD_FAIL_RSN_CN, PT_CHG_ORD_REG_DT, PT_CHG_ORD_UPDT_DT
+        SELECT PT_CHG_ORD_SN AS ptChgOrdSn, USR_SN AS usrSn, PT_CHG_ORD_NO AS ptChgOrdNo,
+               PT_CHG_ORD_AMT AS ptChgOrdAmt, PT_CHG_ORD_STATUS_CD AS ptChgOrdStatusCd,
+               PT_CHG_ORD_PG_KEY AS ptChgOrdPgKey, PT_LDG_SN AS ptLdgSn,
+               PT_CHG_ORD_FAIL_RSN_CN AS ptChgOrdFailRsnCn,
+               PT_CHG_ORD_REG_DT AS ptChgOrdRegDt, PT_CHG_ORD_UPDT_DT AS ptChgOrdUpdtDt
         FROM POINT_CHARGE_ORDER
         WHERE PT_CHG_ORD_NO = #{ptChgOrdNo}
         FOR UPDATE
@@ -36,8 +39,10 @@
     <select id="selectListByUser" resultType="nct.point.domain.PointChargeOrder">
         /* 포인트 충전 주문: 내 주문 목록 (최신순 100건) */
         SELECT
-            O.PT_CHG_ORD_SN, O.USR_SN, O.PT_CHG_ORD_NO, O.PT_CHG_ORD_AMT, O.PT_CHG_ORD_STATUS_CD,
-            O.PT_LDG_SN, O.PT_CHG_ORD_FAIL_RSN_CN, O.PT_CHG_ORD_REG_DT, O.PT_CHG_ORD_UPDT_DT,
+            O.PT_CHG_ORD_SN AS ptChgOrdSn, O.USR_SN AS usrSn, O.PT_CHG_ORD_NO AS ptChgOrdNo,
+            O.PT_CHG_ORD_AMT AS ptChgOrdAmt, O.PT_CHG_ORD_STATUS_CD AS ptChgOrdStatusCd,
+            O.PT_LDG_SN AS ptLdgSn, O.PT_CHG_ORD_FAIL_RSN_CN AS ptChgOrdFailRsnCn,
+            O.PT_CHG_ORD_REG_DT AS ptChgOrdRegDt, O.PT_CHG_ORD_UPDT_DT AS ptChgOrdUpdtDt,
             S.CMM_NM AS statusNm
         FROM POINT_CHARGE_ORDER O
         JOIN CMM_CODE S ON S.CMM_CD = O.PT_CHG_ORD_STATUS_CD

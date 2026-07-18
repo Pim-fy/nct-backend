@@ -81,4 +81,16 @@
         )
     </insert>
 
+    <!-- 진행 중인 거래 문제 건수 (F-PAY-010 "분쟁 없음 확인 후 전환" 차단 조건).
+         ⚠️ TRADE(담당자4)·TRADE_DISPUTE(담당자5)는 타 담당자 소유 테이블 — 읽기 전용 SELECT만, 변경 금지.
+         상태 코드: TRDC0016(접수)·TRDC0017(처리중)만 "진행 중"으로 본다 (완료·반려는 해소된 것) -->
+    <select id="countActiveDisputes" resultType="int">
+        /* 포인트: 진행 중 거래 문제 건수 (전환 차단 검사, 읽기 전용) */
+        SELECT COUNT(*)
+        FROM TRADE_DISPUTE D
+        JOIN TRADE T ON T.TRD_SN = D.TRD_SN
+        WHERE (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn})
+          AND D.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+    </select>
+
 </mapper>

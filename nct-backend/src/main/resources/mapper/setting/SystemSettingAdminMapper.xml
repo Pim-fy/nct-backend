@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- Claude Code 작성 (BJN, 2026-07-18) -->
+<mapper namespace="nct.setting.mapper.SystemSettingAdminMapper">
+
+    <!-- 공용 컬럼 목록. 별칭(AS)을 직접 명시하는 이유: 전역 map-underscore-to-camel-case 설정이
+         git에 안 올라가는 application.properties 소속이라 PC마다 있거나 없기 때문 (타 매퍼와 같은 방침) -->
+    <sql id="allColumns">
+        SELECT SYS_SET_SN              AS sysSetSn,
+               SYS_SET_AUC_EXT_MIN     AS aucExtMin,
+               SYS_SET_AUC_EXT_MAX_CNT AS aucExtMaxCnt,
+               SYS_SET_MIN_BID_UNIT    AS minBidUnit,
+               SYS_SET_TRD_CFMN_DAYS   AS trdCfmnDays,
+               SYS_SET_AUTO_CMPL_YN    AS autoCmplYn,
+               SYS_SET_MIN_CHRG_AMT    AS minChrgAmt,
+               SYS_SET_MAX_CHRG_AMT    AS maxChrgAmt,
+               SYS_SET_SVC_FEE_RATE    AS svcFeeRate,
+               SYS_SET_QUT_EXP_DAYS    AS qutExpDays,
+               SYS_SET_MNTNC_YN        AS mntncYn,
+               SYS_SET_MNTNC_BGNG_DT   AS mntncBgngDt,
+               SYS_SET_MNTNC_END_DT    AS mntncEndDt,
+               SYS_SET_EMAIL_YN        AS emailYn,
+               SYS_SET_UPDT_DT         AS sysSetUpdtDt
+        FROM SYSTEM_SETTING
+    </sql>
+
+    <!-- SYSTEM_SETTING은 고정 컬럼 단일 row라(D-010) WHERE 없이 LIMIT 1만 건다 -->
+    <select id="selectOne" resultType="nct.setting.domain.SystemSettingDetail">
+        /* 시스템 설정: 전체 조회 (관리자 화면) */
+        <include refid="allColumns"/>
+        LIMIT 1
+    </select>
+
+    <select id="selectOneForUpdate" resultType="nct.setting.domain.SystemSettingDetail">
+        /* 시스템 설정: 행 잠금 조회 (수정 경합 방지) */
+        <include refid="allColumns"/>
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <!-- 단일 행 앱 계층 UPDATE — 새 행 INSERT나 DELETE는 만들지 않는다 (F-OPS-024 규칙) -->
+    <update id="update" parameterType="nct.setting.domain.SystemSettingDetail">
+        /* 시스템 설정: 전체 갱신 */
+        UPDATE SYSTEM_SETTING
+        SET SYS_SET_AUC_EXT_MIN     = #{aucExtMin},
+            SYS_SET_AUC_EXT_MAX_CNT = #{aucExtMaxCnt},
+            SYS_SET_MIN_BID_UNIT    = #{minBidUnit},
+            SYS_SET_TRD_CFMN_DAYS   = #{trdCfmnDays},
+            SYS_SET_AUTO_CMPL_YN    = #{autoCmplYn},
+            SYS_SET_MIN_CHRG_AMT    = #{minChrgAmt},
+            SYS_SET_MAX_CHRG_AMT    = #{maxChrgAmt},
+            SYS_SET_SVC_FEE_RATE    = #{svcFeeRate},
+            SYS_SET_QUT_EXP_DAYS    = #{qutExpDays},
+            SYS_SET_MNTNC_YN        = #{mntncYn},
+            SYS_SET_MNTNC_BGNG_DT   = #{mntncBgngDt},
+            SYS_SET_MNTNC_END_DT    = #{mntncEndDt},
+            SYS_SET_EMAIL_YN        = #{emailYn}
+        WHERE SYS_SET_SN = #{sysSetSn}
+    </update>
+
+</mapper>

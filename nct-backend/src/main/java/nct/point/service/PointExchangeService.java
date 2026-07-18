@@ -6,6 +6,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.audit.domain.AuditLogType;
+import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
 import nct.point.domain.PointExchangeOrder;
@@ -32,6 +35,7 @@ public class PointExchangeService {
     private final PointExchangeOrderMapper exchangeMapper;
     private final PointService pointService;
     private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
 
     /**
      * 환전 신청. 검증 → 즉시 차감(원장) → 신청 행 기록(계좌 스냅샷 포함) → 접수 알림.
@@ -94,6 +98,9 @@ public class PointExchangeService {
         PointExchangeOrder order = requireRequested(ptExcOrdSn);
         exchangeMapper.complete(ptExcOrdSn, PointExchangeOrderStatus.COMPLETED.getCode(), adminUsrSn);
         notificationService.notifyExchangeComplete(order.getUsrSn(), order.getPtExcOrdAmt());
+        // 관리자 조치 감사로그 (F-OPS-015) — 신청자를 참조로 남겨 "누가 누구 건을 처리했나"를 추적
+        auditLogService.record(adminUsrSn, AuditLogType.ADMIN_APPROVE, RefType.MEMBER, order.getUsrSn(),
+                String.format("환전 신청 %d번 지급 완료 (%,dP)", ptExcOrdSn, order.getPtExcOrdAmt()), null);
     }
 
     /**
@@ -108,6 +115,9 @@ public class PointExchangeService {
         exchangeMapper.reject(ptExcOrdSn, PointExchangeOrderStatus.REJECTED.getCode(),
                 adminUsrSn, restoreLdgSn, reason);
         notificationService.notifyExchangeReject(order.getUsrSn(), order.getPtExcOrdAmt(), reason);
+        // 관리자 조치 감사로그 (F-OPS-015)
+        auditLogService.record(adminUsrSn, AuditLogType.ADMIN_REJECT, RefType.MEMBER, order.getUsrSn(),
+                String.format("환전 신청 %d번 반려 (%,dP) — 사유: %s", ptExcOrdSn, order.getPtExcOrdAmt(), reason), null);
     }
 
     /** 상태 전이 사전 검증 — 행 잠금 후 '신청' 상태인지 확인 (이중 처리·동시 처리 차단) */

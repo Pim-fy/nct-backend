@@ -21,7 +21,9 @@ public enum PointLedgerType {
     /** 환전 신청 즉시 차감 (F-PAY-012, D-026 — 2026-07-17 공통코드 추가) */
     EXCHANGE_OUT("PTLC0010"),
     /** 환전 반려 시 복원 */
-    EXCHANGE_RESTORE("PTLC0011");
+    EXCHANGE_RESTORE("PTLC0011"),
+    /** 정산가능→사용가능 전환 (F-PAY-010 — 2026-07-18 공통코드 추가). 전환 1건 = −/+ 두 행 모두 이 유형 */
+    CONVERT("PTLC0012");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

@@ -67,4 +67,20 @@
           AND NTF_READ_YN = 'N'
     </update>
 
+    <!-- 이메일 발송 상태 갱신 (F-COM-006) — 발송 시도 후 성공(NTFC0008)/실패(NTFC0009) 기록 -->
+    <update id="updateEmailStatus">
+        /* 알림: 이메일 발송 상태 갱신 */
+        UPDATE NOTIFICATION
+        SET NTF_EMAIL_STATUS_CD = #{statusCd}
+        WHERE NTF_SN = #{ntfSn}
+    </update>
+
+    <!-- 수신자 이메일 (F-COM-006). ⚠️ USERS는 담당자1 소유 — 읽기 전용 SELECT만, 변경 금지 -->
+    <select id="selectUserEmail" resultType="string">
+        /* 알림: 수신자 이메일 조회 (읽기 전용) */
+        SELECT USR_EML
+        FROM USERS
+        WHERE USR_SN = #{usrSn}
+    </select>
+
 </mapper>

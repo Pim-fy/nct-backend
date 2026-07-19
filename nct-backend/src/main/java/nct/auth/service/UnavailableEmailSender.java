@@ -11,4 +11,9 @@ public class UnavailableEmailSender implements EmailSender {
     public void sendVerificationCode(String email, String code) {
         throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
     }
+
+    @Override
+    public void sendPasswordResetLink(String email, String link) {
+        throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
+    }
 }

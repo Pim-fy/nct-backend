@@ -29,4 +29,8 @@ public interface MemberMapper {
     // @ai_generated: #{refreshTokenHash} 는 TokenHashUtil 로 해시화된 값(로그아웃 시 null) - USR_REFRESH_TOKEN_HASH 컬럼에 저장
     void updateRefreshTokenById(@Param("usrSn") Long usrSn,
                                 @Param("refreshTokenHash") String refreshTokenHash);
+
+    // @ai_generated: F-AUTH-007 - #{encodedPassword} 는 BCrypt 인코딩 완료 상태(PasswordResetService)
+    void updatePasswordById(@Param("usrSn") Long usrSn,
+                            @Param("encodedPassword") String encodedPassword);
 }

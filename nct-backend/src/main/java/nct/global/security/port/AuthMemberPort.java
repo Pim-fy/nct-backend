@@ -36,4 +36,8 @@ public interface AuthMemberPort {
 
     /** Refresh Token 저장/삭제 (로그아웃 시 null 전달) */
     void updateRefreshToken(Long memberId, String refreshToken);
+
+    // @ai_generated: F-AUTH-007 - 비밀번호 재설정 완료 시 인코딩된 새 비밀번호로 교체
+    /** 비밀번호 변경 (인코딩 완료 상태로 전달됨) */
+    void updatePassword(Long memberId, String encodedPassword);
 }

@@ -112,11 +112,19 @@ public class MemberAuthAdapter implements AuthMemberPort {
         memberMapper.updateRefreshTokenById(usrSn, refreshTokenHash);
     }
 
+    // @ai_generated: F-AUTH-007 - 비밀번호 재설정 완료 시 호출. 인코딩은 PasswordResetService(BCrypt)에서 이미 완료됨.
+    @Override
+    @Transactional
+    public void updatePassword(Long usrSn, String encodedPassword) {
+        memberMapper.updatePasswordById(usrSn, encodedPassword);
+    }
+
     /** Member(도메인) -> AuthMember(보안 모듈 전용 모델) 변환 */
     private AuthMember toAuthMember(Member member) {
         // @ai_generated: USERS.USR_NM은 정본의 닉네임이며 AuthMember의 name/nickname 응답에 같은 값을 준다.
         return AuthMember.builder()
                          .id(member.getUsrSn())
+                         .loginId(member.getUsrLoginId())
                          .email(member.getUsrEml())
                          .password(member.getUsrPswdHash())
                          .name(member.getUsrNm())

@@ -5,4 +5,7 @@ package nct.auth.service;
 public interface EmailSender {
 
     void sendVerificationCode(String email, String code);
+
+    // @ai_generated: F-AUTH-007 - 비밀번호 재설정은 코드가 아닌 링크(URL)를 발송한다.
+    void sendPasswordResetLink(String email, String link);
 }

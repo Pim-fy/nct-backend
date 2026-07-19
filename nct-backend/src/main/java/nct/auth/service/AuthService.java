@@ -15,6 +15,8 @@ import nct.auth.dto.LoginResponse;
 import nct.auth.dto.SignUpRequest;
 import nct.auth.dto.AgreementRequest;
 import nct.auth.dto.AvailabilityResponse;
+import nct.auth.dto.FindEmailRequest;
+import nct.auth.dto.FindEmailResponse;
 import nct.auth.domain.UserAgreement;
 import nct.auth.mapper.UserAgreementMapper;
 import nct.global.exception.CustomException;
@@ -38,8 +40,11 @@ import lombok.RequiredArgsConstructor;
 public class AuthService {
 
     // @ai_generated: USRG01(회원 상태) 코드값 - docs/260716_08_DB_기초데이터_v3.sql 기준
+    private static final String STATUS_ACTIVE = "USRC0001";
     private static final String STATUS_SUSPENDED = "USRC0002";
     private static final String STATUS_WITHDRAWN = "USRC0003";
+    // @ai_generated: F-AUTH-014 - 마스킹된 로그인ID 앞부분 노출 글자 수(목업 "hong****" 패턴 기준)
+    private static final int MASK_VISIBLE_CHARS = 4;
 
     private final PasswordEncoder passwordEncoder;
     private final AuthMemberPort authMemberPort;
@@ -102,6 +107,36 @@ public class AuthService {
         return AvailabilityResponse.builder()
                                    .available(!authMemberPort.existsByEmail(normalizeEmail(email)))
                                    .build();
+    }
+
+    /**
+     * F-AUTH-014: 아이디 찾기
+     * - 이메일+이름이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
+     * - 이메일 불일치·이름 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
+     *   (계정 존재 여부 노출 방지 - login()의 INVALID_CREDENTIALS 통일과 동일한 설계).
+     */
+    @Transactional(readOnly = true)
+    public FindEmailResponse findEmail(FindEmailRequest request) {
+        String email = normalizeEmail(request.getEmail());
+        String name = requireText(request.getName(), ErrorCode.INVALID_INPUT_VALUE);
+
+        AuthMember member = authMemberPort.findByEmail(email).orElse(null);
+        boolean matched = member != null
+                && name.equals(member.getName())
+                && STATUS_ACTIVE.equals(member.getStatus());
+        if (!matched) {
+            throw new CustomException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        return FindEmailResponse.builder()
+                                .maskedLoginId(maskLoginId(member.getLoginId()))
+                                .build();
+    }
+
+    // @ai_generated: 실제 길이를 노출하지 않도록 앞 N자 뒤에 항상 고정 4개의 '*'를 붙인다(목업 "hong****" 패턴).
+    private String maskLoginId(String loginId) {
+        int visible = Math.min(MASK_VISIBLE_CHARS, loginId.length());
+        return loginId.substring(0, visible) + "****";
     }
 
     /**

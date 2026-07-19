@@ -121,4 +121,12 @@
         WHERE  USR_SN = #{usrSn}
     </update>
 
+    <!-- @ai_generated: F-AUTH-007 - 비밀번호 재설정 완료 시 USR_PSWD_HASH 갱신 -->
+    <update id="updatePasswordById">
+        /* 비밀번호 해시 갱신 */
+        UPDATE USERS
+        SET    USR_PSWD_HASH = #{encodedPassword}
+        WHERE  USR_SN = #{usrSn}
+    </update>
+
 </mapper>

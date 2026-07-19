@@ -28,4 +28,10 @@ public interface NotificationMapper {
 
     /** 전체 읽음 처리 */
     int markAllRead(@Param("usrSn") long usrSn);
+
+    /** 이메일 발송 상태 갱신 (F-COM-006) — 발송 시도 결과(성공/실패)를 알림 행에 기록 */
+    int updateEmailStatus(@Param("ntfSn") long ntfSn, @Param("statusCd") String statusCd);
+
+    /** 수신자 이메일 주소 (F-COM-006) — USERS는 타 담당자 소유, 읽기 전용 조회만 */
+    String selectUserEmail(@Param("usrSn") long usrSn);
 }

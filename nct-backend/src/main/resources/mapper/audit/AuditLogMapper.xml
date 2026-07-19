@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- Claude Code 작성 (BJN, 2026-07-18) -->
+<mapper namespace="nct.audit.mapper.AuditLogMapper">
+
+    <!-- 감사로그 행 추가. REG_DT 등 시스템 컬럼은 DB DEFAULT에 맡기고 생략.
+         3년 보존 대상이므로 이 테이블에는 DELETE 쿼리를 만들지 않는다 (F-OPS-015 규칙) -->
+    <insert id="insert" parameterType="nct.audit.domain.AuditLog"
+            useGeneratedKeys="true" keyProperty="audLogSn">
+        /* 감사: 로그 기록 */
+        INSERT INTO AUDIT_LOG (USR_SN, AUD_LOG_TYPE_CD, AUD_LOG_REF_TYPE_CD, AUD_LOG_REF_SN,
+                               AUD_LOG_RSON_CN, AUD_LOG_IP_ADDR)
+        VALUES (#{usrSn}, #{audLogTypeCd}, #{audLogRefTypeCd}, #{audLogRefSn},
+                #{audLogRsonCn}, #{audLogIpAddr})
+    </insert>
+
+    <!-- 조건별 목록: 코드값을 화면에 그대로 보여줄 수 없으니 CMM_CODE·USERS를 조인해 한글명을 함께 가져온다.
+         컬럼 별칭(AS)을 직접 명시하는 이유: 전역 map-underscore-to-camel-case 설정은 git에 안 올라가는
+         application.properties 소속이라 PC마다 있거나 없어서, 별칭을 박아둬야 어떤 환경에서든 동일하게 동작한다
+         (알림·포인트·정산 매퍼와 같은 방침) -->
+    <select id="selectList" resultType="nct.audit.domain.AuditLog">
+        /* 감사: 조건별 목록 (관리자 조회, 최신순) */
+        SELECT
+            A.AUD_LOG_SN          AS audLogSn,
+            A.USR_SN              AS usrSn,
+            U.USR_NM              AS usrNm,
+            A.AUD_LOG_TYPE_CD     AS audLogTypeCd,
+            T.CMM_NM              AS audLogTypeNm,
+            A.AUD_LOG_REF_TYPE_CD AS audLogRefTypeCd,
+            R.CMM_NM              AS refTypeNm,
+            A.AUD_LOG_REF_SN      AS audLogRefSn,
+            A.AUD_LOG_RSON_CN     AS audLogRsonCn,
+            A.AUD_LOG_IP_ADDR     AS audLogIpAddr,
+            A.AUD_LOG_REG_DT      AS audLogRegDt
+        FROM AUDIT_LOG A
+        JOIN CMM_CODE T ON T.CMM_CD = A.AUD_LOG_TYPE_CD
+        LEFT JOIN CMM_CODE R ON R.CMM_CD = A.AUD_LOG_REF_TYPE_CD
+        LEFT JOIN USERS U ON U.USR_SN = A.USR_SN
+        <where>
+            <if test="usrSn != null">AND A.USR_SN = #{usrSn}</if>
+            <if test="audLogTypeCd != null and audLogTypeCd != ''">AND A.AUD_LOG_TYPE_CD = #{audLogTypeCd}</if>
+            <if test="fromDt != null">AND A.AUD_LOG_REG_DT &gt;= #{fromDt}</if>
+            <if test="toDt != null">AND A.AUD_LOG_REG_DT &lt;= #{toDt}</if>
+        </where>
+        ORDER BY A.AUD_LOG_SN DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 민감정보 제한 조회 (F-OPS-014).
+         ⚠️ CHAT_MESSAGE는 담당자4 소유 테이블 — 감사 목적의 읽기 전용 SELECT만 허용, 변경 금지.
+         반드시 AuditLogService.viewChatMessage()를 통해서만 호출된다 (사유+감사로그 없이 직접 호출 금지) -->
+    <select id="selectChatMessageView" resultType="nct.audit.mapper.ChatMessageView">
+        /* 감사: 채팅 메시지 원문 제한 조회 (읽기 전용) */
+        SELECT M.CH_MSG_SN     AS chMsgSn,
+               M.CH_RM_SN      AS chRmSn,
+               M.USR_SN        AS usrSn,
+               U.USR_NM        AS usrNm,
+               M.CH_MSG_CN     AS chMsgCn,
+               M.CH_MSG_REG_DT AS chMsgRegDt
+        FROM CHAT_MESSAGE M
+        LEFT JOIN USERS U ON U.USR_SN = M.USR_SN
+        WHERE M.CH_MSG_SN = #{chMsgSn}
+    </select>
+
+</mapper>

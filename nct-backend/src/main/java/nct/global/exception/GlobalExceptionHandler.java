@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import nct.global.response.ApiResponse;
 
@@ -78,7 +79,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
-                                                     safePath(request)));
+                                                     safePath(request), errorCode.name()));
     }
 
     /** 권한 없음 -> 403 */
@@ -88,6 +89,19 @@ public class GlobalExceptionHandler {
 
         logException(ex);
         ErrorCode errorCode = ErrorCode.FORBIDDEN;
+        return ResponseEntity.status(errorCode.status())
+                             .body(ApiResponse.error(errorCode.code(), errorCode.message(),
+                                                     safePath(request), errorCode.name()));
+
+    }
+
+    /** 업로드 파일이 spring.servlet.multipart.max-file-size 를 초과 -> 400 (담당자6, 파일 도메인) */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(
+            MaxUploadSizeExceededException ex, HttpServletRequest request) {
+
+        logException(ex);
+        ErrorCode errorCode = ErrorCode.FILE_TOO_LARGE;
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
                                                      safePath(request)));
@@ -102,7 +116,8 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ex.getErrorCode();
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), ex.getMessage(),
-                                                     safePath(request)));
+                                                    safePath(request), errorCode.name()));
+
     }
 
     /** 나머지 전부 -> 500 (내부 정보는 응답에 노출하지 않음) */
@@ -114,7 +129,8 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
         return ResponseEntity.internalServerError()
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
-                                                     safePath(request)));
+                                                     safePath(request), errorCode.name()));
+                                                     
     }
 
     /** 예외 발생 지점(클래스/메서드/라인)을 포함한 에러 로그 */

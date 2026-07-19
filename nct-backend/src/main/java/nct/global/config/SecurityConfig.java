@@ -104,7 +104,7 @@ public class SecurityConfig {
                                        "접근 권한이 없습니다.", request.getRequestURI()))
             )
             // JWT 필터를 폼 로그인 필터 앞에 배치
-            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil,jwtTokenProvider,customUserDetailsService),
+            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil, jwtTokenProvider, customUserDetailsService, objectMapper),
                              UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

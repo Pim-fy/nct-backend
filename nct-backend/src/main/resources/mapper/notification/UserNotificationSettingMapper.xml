@@ -6,11 +6,11 @@
     <!-- 내 알림 설정 조회. 행이 없으면 null — 기본값(전부 Y) 대체는 서비스 계층 책임 -->
     <select id="selectByUser" resultType="nct.notification.domain.UserNotificationSetting">
         /* 알림 설정: 내 설정 조회 */
-        SELECT USR_NTF_STG_SN, USR_SN,
-               USR_NTF_STG_AUC_INAPP_YN, USR_NTF_STG_AUC_EMAIL_YN,
-               USR_NTF_STG_TRD_INAPP_YN, USR_NTF_STG_TRD_EMAIL_YN,
-               USR_NTF_STG_SVC_INAPP_YN, USR_NTF_STG_SVC_EMAIL_YN,
-               USR_NTF_STG_REG_DT, USR_NTF_STG_UPDT_DT
+        SELECT USR_NTF_STG_SN AS usrNtfStgSn, USR_SN AS usrSn,
+               USR_NTF_STG_AUC_INAPP_YN AS usrNtfStgAucInappYn, USR_NTF_STG_AUC_EMAIL_YN AS usrNtfStgAucEmailYn,
+               USR_NTF_STG_TRD_INAPP_YN AS usrNtfStgTrdInappYn, USR_NTF_STG_TRD_EMAIL_YN AS usrNtfStgTrdEmailYn,
+               USR_NTF_STG_SVC_INAPP_YN AS usrNtfStgSvcInappYn, USR_NTF_STG_SVC_EMAIL_YN AS usrNtfStgSvcEmailYn,
+               USR_NTF_STG_REG_DT AS usrNtfStgRegDt, USR_NTF_STG_UPDT_DT AS usrNtfStgUpdtDt
         FROM USER_NOTIFICATION_SETTING
         WHERE USR_SN = #{usrSn}
     </select>

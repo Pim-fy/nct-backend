@@ -90,4 +90,35 @@ public class TossPaymentsClient {
                     "토스페이먼츠 통신 중 오류가 발생했습니다: " + e.getMessage());
         }
     }
+
+    /**
+     * 결제 취소 (D-027 보상 전용 — PG 승인은 성공했는데 내부 반영이 실패했을 때 돈을 돌려준다).
+     * 승인(confirm)과 달리 실패해도 예외를 던지지 않고 false를 돌려주는 이유:
+     * 취소 실패는 "관리자 수동 확인" 경로(ⓑ)로 넘어가는 정상 분기라서, 호출부가
+     * 성공/실패에 따라 실패 사유 문구만 다르게 기록하면 되기 때문.
+     */
+    public boolean cancel(String paymentKey, String cancelReason) {
+        String authHeader = "Basic " + Base64.getEncoder()
+                .encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
+
+        try {
+            String body = objectMapper.writeValueAsString(Map.of("cancelReason", cancelReason));
+
+            // 취소 주소는 승인 주소와 같은 API 뿌리를 쓴다: .../v1/payments/{paymentKey}/cancel
+            String cancelUrl = confirmUrl.replace("/confirm", "") + "/" + paymentKey + "/cancel";
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(cancelUrl))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Authorization", authHeader)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            return false; // 통신 오류도 "취소 실패"로 취급 — 관리자 확인 경로로
+        }
+    }
 }

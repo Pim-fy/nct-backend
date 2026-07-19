@@ -61,15 +61,12 @@ public class SmtpEmailSender implements EmailSender {
             helper.setTo(email);
             helper.setSubject("[NCT] 비밀번호 재설정 안내");
             helper.setText("""
-                    안녕하세요. NCT 비밀번호 재설정 링크입니다.
-
-                    아래 링크를 클릭해 새 비밀번호를 설정해 주세요.
-                    %s
-
-                    유효시간: 발송 후 1시간 (1회 사용)
-
-                    본인이 요청하지 않았다면 이 메일을 무시해 주세요.
-                    """.formatted(link), false);
+                    <p>안녕하세요. NCT 비밀번호 재설정 링크입니다.</p>
+                    <p>아래 링크를 클릭해 새 비밀번호를 설정해 주세요.</p>
+                    <p><a href="%1$s">%1$s</a></p>
+                    <p>유효시간: 발송 후 1시간 (1회 사용)</p>
+                    <p>본인이 요청하지 않았다면 이 메일을 무시해 주세요.</p>
+                    """.formatted(link), true);
             javaMailSender.send(message);
         } catch (MessagingException | UnsupportedEncodingException | MailException ex) {
             throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);

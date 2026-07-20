@@ -69,17 +69,17 @@ public class AuthController {
     // @ai_generated: 기존 프론트의 중복 확인 URL은 유지하고 로그인 ID 확인만 추가한다.
     @GetMapping("/check-login-id")
     public ResponseEntity<ApiResponse<AvailabilityResponse>> checkLoginId(
-            @RequestParam String loginId) {
+            @RequestParam(name = "loginId") String loginId) {
         return ResponseEntity.ok(ApiResponse.success(authService.checkLoginId(loginId)));
     }
 
     @GetMapping("/check-email")
-    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkEmail(@RequestParam String email) {
+    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkEmail(@RequestParam(name = "email") String email) {
         return ResponseEntity.ok(ApiResponse.success(authService.checkEmail(email)));
     }
 
     @GetMapping("/check-nickname")
-    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkNickname(@RequestParam String nickname) {
+    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkNickname(@RequestParam(name = "nickname") String nickname) {
         return ResponseEntity.ok(ApiResponse.success(authService.checkNickname(nickname)));
     }
 
@@ -93,7 +93,7 @@ public class AuthController {
 
     @PostMapping("/email-verifications/{verificationId}/verify")
     public ResponseEntity<ApiResponse<Void>> verifyEmailVerification(
-            @PathVariable Long verificationId,
+            @PathVariable(name = "verificationId") Long verificationId,
             @Valid @RequestBody EmailVerificationVerifyRequest request) {
         emailVerificationService.verifySignupCode(verificationId, request);
         return ResponseEntity.ok(ApiResponse.success());

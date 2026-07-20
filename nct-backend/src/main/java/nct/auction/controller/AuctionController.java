@@ -36,7 +36,7 @@ public class AuctionController {
 
     @PostMapping("/{aucSn}/cancel-request")
     public ApiResponse<Void> requestCancellation(
-            @PathVariable Long aucSn,
+            @PathVariable(name = "aucSn") Long aucSn,
             @Valid @RequestBody AuctionCancelRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         auctionCancellationService.requestCancellation(aucSn, currentUserId(userDetails), request.reason());

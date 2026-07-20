@@ -24,17 +24,17 @@ public class AdminRiskEventController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<AdminRiskEventPageResponse>> getRiskEvents(
-            @RequestParam(required = false) String typeCode,
-            @RequestParam(required = false) String processed,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(name = "typeCode", required = false) String typeCode,
+            @RequestParam(name = "processed", required = false) String processed,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success(
                 adminRiskEventService.getRiskEvents(typeCode, processed, page, size)));
     }
 
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<List<AdminRiskEventTypeSummaryResponse>>> getTypeSummary(
-            @RequestParam(required = false) String processed) {
+            @RequestParam(name = "processed", required = false) String processed) {
         return ResponseEntity.ok(ApiResponse.success(adminRiskEventService.getTypeSummary(processed)));
     }
 }

@@ -50,8 +50,8 @@ public class ProductController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PagedResponse<ProductResponse>>> getMyProducts(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam(defaultValue = "1")  int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
 
         Long usrSn = userDetails.getMember().getId();
         PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size);
@@ -61,7 +61,7 @@ public class ProductController {
     /** 상품 상세 조회 */
     @GetMapping("/{prdSn}")
     public ResponseEntity<ApiResponse<ProductResponse>> getProduct(
-            @PathVariable Long prdSn) {
+            @PathVariable(name = "prdSn") Long prdSn) {
 
         return ResponseEntity.ok(ApiResponse.success(productService.getProduct(prdSn)));
     }
@@ -70,7 +70,7 @@ public class ProductController {
     @DeleteMapping("/{prdSn}")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long prdSn) {
+            @PathVariable(name = "prdSn") Long prdSn) {
 
         Long usrSn = userDetails.getMember().getId();
         productService.deleteProduct(prdSn, usrSn);

@@ -26,6 +26,7 @@ import nct.auth.service.AuthService;
 import nct.auth.service.AuthSessionResult;
 import nct.auth.service.EmailVerificationService;
 import nct.auth.service.PasswordResetService;
+import nct.global.idempotency.SkipIdempotency;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
@@ -123,6 +124,7 @@ public class AuthController {
     }
 
     /** 로그인 - 토큰은 httpOnly 쿠키로, 본문에는 사용자 정보만 */
+    @SkipIdempotency // @ai_generated: Set-Cookie 응답이라 전역 중복요청 방지 재반환과 충돌 (F-COM-017)
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request,
                                                             HttpServletResponse response) {
@@ -132,6 +134,7 @@ public class AuthController {
     }
 
     /** Access Token 재발급 (Refresh 쿠키 필요) */
+    @SkipIdempotency // @ai_generated: Set-Cookie 응답이라 전역 중복요청 방지 재반환과 충돌 (F-COM-017)
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<Void>> refresh(HttpServletRequest request,
                                                       HttpServletResponse response) {
@@ -153,6 +156,7 @@ public class AuthController {
     }
 
     /** 로그아웃 - Refresh 무효화 + 쿠키 삭제 */
+    @SkipIdempotency // @ai_generated: Set-Cookie 응답이라 전역 중복요청 방지 재반환과 충돌 (F-COM-017, 레드팀 지적 반영)
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal CustomUserDetails userDetails,
                                                      HttpServletResponse response) {

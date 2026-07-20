@@ -72,4 +72,27 @@ public class SmtpEmailSender implements EmailSender {
             throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
         }
     }
+
+    // @ai_generated: F-AUTH-011 - 정지 계정용 탈퇴 확인 링크 발송(처음부터 HTML로 작성, plain text 재발 방지)
+    @Override
+    public void sendWithdrawalLink(String email, String link) {
+        try {
+            MimeMessage message = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+
+            helper.setFrom(new InternetAddress(from, fromName));
+            helper.setTo(email);
+            helper.setSubject("[NCT] 회원 탈퇴 확인 안내");
+            helper.setText("""
+                    <p>안녕하세요. NCT 회원 탈퇴 확인 링크입니다.</p>
+                    <p>본인이 요청하셨다면 아래 링크를 클릭해 탈퇴를 완료해 주세요.</p>
+                    <p><a href="%1$s">%1$s</a></p>
+                    <p>유효시간: 발송 후 1시간 (1회 사용)</p>
+                    <p>본인이 요청하지 않았다면 이 메일을 무시해 주세요. 탈퇴는 이 링크를 클릭해야만 진행됩니다.</p>
+                    """.formatted(link), true);
+            javaMailSender.send(message);
+        } catch (MessagingException | UnsupportedEncodingException | MailException ex) {
+            throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
+        }
+    }
 }

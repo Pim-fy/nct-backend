@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionStatusResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.auction.service.AuctionService;
@@ -26,8 +27,16 @@ public class AuctionDetailController {
     private final AuctionService auctionService;
 
     @GetMapping("/{auctionId}")
-    public ApiResponse<AuctionDetailResponse> findAuctionDetail(@PathVariable("auctionId") Long auctionId) {
-        return ApiResponse.success(auctionService.findAuctionDetail(auctionId));
+    public ApiResponse<AuctionDetailResponse> findAuctionDetail(
+            @PathVariable("auctionId") Long auctionId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ApiResponse.success(auctionService.findAuctionDetail(auctionId, optionalUserId(userDetails)));
+    }
+
+    @GetMapping("/product/{productId}")
+    public ApiResponse<AuctionStatusResponse> getAuctionStatusByProduct(
+            @PathVariable("productId") Long productId) {
+        return ApiResponse.success(auctionService.getAuctionStatusByProduct(productId));
     }
 
     @PostMapping("/{auctionId}/bids")
@@ -49,6 +58,13 @@ public class AuctionDetailController {
     private Long currentUserId(CustomUserDetails userDetails) {
         if (userDetails == null || userDetails.getMember() == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        return userDetails.getMember().getId();
+    }
+
+    private Long optionalUserId(CustomUserDetails userDetails) {
+        if (userDetails == null || userDetails.getMember() == null) {
+            return null;
         }
         return userDetails.getMember().getId();
     }

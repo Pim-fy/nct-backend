@@ -62,15 +62,7 @@ public class NotificationService {
     public void notify(long usrSn, NotificationType type, NotificationDomain domain,
                        NotificationAudience audience, String title, String content,
                        RefType refType, Long refSn) {
-        Notification n = new Notification();
-        n.setUsrSn(usrSn);
-        n.setNtfTypeCd(type.getCode());
-        n.setNtfDomainCd(domain.getCode());
-        n.setNtfAudienceCd(audience.getCode());
-        n.setNtfTtl(title);
-        n.setNtfCn(content);
-        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
-        n.setNtfRefSn(refSn);
+        Notification n = build(usrSn, type, domain, audience, title, content, refType, refSn);
         n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
         notificationMapper.insert(n);
     }
@@ -84,15 +76,7 @@ public class NotificationService {
     public void notifyImportant(long usrSn, NotificationType type, NotificationDomain domain,
                                 NotificationAudience audience, String title, String content,
                                 RefType refType, Long refSn) {
-        Notification n = new Notification();
-        n.setUsrSn(usrSn);
-        n.setNtfTypeCd(type.getCode());
-        n.setNtfDomainCd(domain.getCode());
-        n.setNtfAudienceCd(audience.getCode());
-        n.setNtfTtl(title);
-        n.setNtfCn(content);
-        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
-        n.setNtfRefSn(refSn);
+        Notification n = build(usrSn, type, domain, audience, title, content, refType, refSn);
 
         // 발송 대상이 아니면(스위치·토글·메일 미설정 환경) 미대상으로 기록하고 인앱만 남긴다
         if (!emailEligible(usrSn, domain)) {
@@ -112,6 +96,22 @@ public class NotificationService {
                         + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
         notificationMapper.updateEmailStatus(n.getNtfSn(),
                 (sent ? NotificationEmailStatus.SENT : NotificationEmailStatus.FAILED).getCode());
+    }
+
+    /** 알림 행 공통 조립 — notify/notifyImportant가 공유 (이메일 상태만 호출부가 결정) */
+    private Notification build(long usrSn, NotificationType type, NotificationDomain domain,
+                               NotificationAudience audience, String title, String content,
+                               RefType refType, Long refSn) {
+        Notification n = new Notification();
+        n.setUsrSn(usrSn);
+        n.setNtfTypeCd(type.getCode());
+        n.setNtfDomainCd(domain.getCode());
+        n.setNtfAudienceCd(audience.getCode());
+        n.setNtfTtl(title);
+        n.setNtfCn(content);
+        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
+        n.setNtfRefSn(refSn);
+        return n;
     }
 
     /**

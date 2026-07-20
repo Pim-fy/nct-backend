@@ -50,10 +50,10 @@ class PublicNoticeServiceTest {
                 .postingStartAt(publishedAt)
                 .build();
         when(referenceDataService.isActiveCode("NTCG01", "NTCC0003")).thenReturn(true);
-        when(noticeMapper.countPublicNotices("NTCC0003")).thenReturn(11L);
-        when(noticeMapper.findPublicNotices("NTCC0003", 10L, 10)).thenReturn(List.of(notice));
+        when(noticeMapper.countPublicNotices("NTCC0003", "점검")).thenReturn(11L);
+        when(noticeMapper.findPublicNotices("NTCC0003", "점검", 10L, 10)).thenReturn(List.of(notice));
 
-        PublicNoticePageResponse result = service.getPublicNotices(" NTCC0003 ", 2, 10);
+        PublicNoticePageResponse result = service.getPublicNotices(" NTCC0003 ", " 점검 ", 2, 10);
 
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getTotalItems()).isEqualTo(11);
@@ -83,16 +83,16 @@ class PublicNoticeServiceTest {
     void rejectsUnknownNoticeTypeBeforeQueryingNoticeTable() {
         when(referenceDataService.isActiveCode("NTCG01", "UNKNOWN")).thenReturn(false);
 
-        assertThatThrownBy(() -> service.getPublicNotices("UNKNOWN", 1, 10))
+        assertThatThrownBy(() -> service.getPublicNotices("UNKNOWN", null, 1, 10))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
-        verify(noticeMapper, never()).countPublicNotices("UNKNOWN");
+        verify(noticeMapper, never()).countPublicNotices("UNKNOWN", null);
     }
 
     @Test
     void rejectsUnboundedPageSize() {
-        assertThatThrownBy(() -> service.getPublicNotices(null, 1, 51))
+        assertThatThrownBy(() -> service.getPublicNotices(null, null, 1, 51))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
@@ -100,14 +100,23 @@ class PublicNoticeServiceTest {
 
     @Test
     void skipsOffsetQueryWhenRequestedPageIsPastLastItem() {
-        when(noticeMapper.countPublicNotices(null)).thenReturn(3L);
+        when(noticeMapper.countPublicNotices(null, null)).thenReturn(3L);
 
-        PublicNoticePageResponse result = service.getPublicNotices(null, 100, 10);
+        PublicNoticePageResponse result = service.getPublicNotices(null, null, 100, 10);
 
         assertThat(result.getItems()).isEmpty();
         assertThat(result.getTotalItems()).isEqualTo(3);
         assertThat(result.getTotalPages()).isEqualTo(1);
-        verify(noticeMapper, never()).findPublicNotices(null, 990L, 10);
+        verify(noticeMapper, never()).findPublicNotices(null, null, 990L, 10);
+    }
+
+    @Test
+    void rejectsKeywordLongerThanOneHundredCharactersBeforeQueryingNoticeTable() {
+        assertThatThrownBy(() -> service.getPublicNotices(null, "가".repeat(101), 1, 10))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(noticeMapper, never()).countPublicNotices(null, "가".repeat(101));
     }
 
     @Test
@@ -140,10 +149,14 @@ class PublicNoticeServiceTest {
                 .pinnedYn("N")
                 .viewCount(3)
                 .registeredAt(LocalDateTime.of(2026, 7, 16, 10, 0))
+                .postingEndAt(LocalDateTime.of(2026, 7, 17, 10, 0))
                 .build();
         when(noticeMapper.findPublicNoticeById(1L)).thenReturn(Optional.of(notice));
 
-        assertThat(service.getPublicNotice(1L).getViewCount()).isEqualTo(3);
+        var result = service.getPublicNotice(1L);
+        assertThat(result.getViewCount()).isEqualTo(3);
+        assertThat(result.getPostingEndAt())
+                .isEqualTo(LocalDateTime.of(2026, 7, 17, 10, 0));
         verify(noticeMapper).findPublicNoticeById(1L);
     }
 }

@@ -28,6 +28,7 @@ public class PublicNoticeService {
 
     private static final String NOTICE_TYPE_GROUP = "NTCG01";
     private static final int MAX_PAGE_SIZE = 50;
+    private static final int MAX_KEYWORD_LENGTH = 100;
     private static final int SUMMARY_LENGTH = 120;
 
     private final NoticeMapper noticeMapper;
@@ -46,20 +47,24 @@ public class PublicNoticeService {
 
     /** 게시 가능한 공지 목록을 상단 고정·게시일 역순으로 반환한다. */
     @Transactional(readOnly = true)
-    public PublicNoticePageResponse getPublicNotices(String typeCode, int page, int size) {
+    public PublicNoticePageResponse getPublicNotices(String typeCode, String keyword, int page, int size) {
         validatePage(page, size);
 
         String normalizedTypeCode = normalizeOptional(typeCode);
+        String normalizedKeyword = normalizeOptional(keyword);
+        if (normalizedKeyword != null && normalizedKeyword.length() > MAX_KEYWORD_LENGTH) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
         if (normalizedTypeCode != null
                 && !referenceDataService.isActiveCode(NOTICE_TYPE_GROUP, normalizedTypeCode)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
-        long totalItems = noticeMapper.countPublicNotices(normalizedTypeCode);
+        long totalItems = noticeMapper.countPublicNotices(normalizedTypeCode, normalizedKeyword);
         long offset = ((long) page - 1L) * size;
         List<PublicNoticeListItemResponse> items = offset >= totalItems
                 ? List.of()
-                : noticeMapper.findPublicNotices(normalizedTypeCode, offset, size)
+                : noticeMapper.findPublicNotices(normalizedTypeCode, normalizedKeyword, offset, size)
                         .stream()
                         .map(this::toListItem)
                         .toList();
@@ -97,6 +102,7 @@ public class PublicNoticeService {
                 .publishedAt(notice.getPostingStartAt() != null
                         ? notice.getPostingStartAt()
                         : notice.getRegisteredAt())
+                .postingEndAt(notice.getPostingEndAt())
                 .build();
     }
 

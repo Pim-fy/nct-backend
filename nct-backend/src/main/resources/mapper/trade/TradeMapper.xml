@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.trade.mapper.TradeMapper">
+
+    <!--
+        상품 행을 잠근 뒤 거래 존재 여부를 검사한다.
+        같은 상품에 대한 동시 낙찰 처리도 한 요청씩 순서대로 거래를 생성하게 한다.
+    -->
+    <select id="findOwnedProductIdForUpdate" resultType="long">
+        SELECT PRD_SN
+        FROM PRODUCT
+        WHERE PRD_SN = #{productId}
+          AND USR_SN = #{sellerUserId}
+        FOR UPDATE
+    </select>
+
+    <!-- 상품당 거래는 한 번만 생성한다. 경매 종료 처리와 같은 트랜잭션에서 호출한다. -->
+    <select id="findMaterialTradeIdByProductId" resultType="long">
+        SELECT TRD_SN
+        FROM TRADE
+        WHERE PRD_SN = #{productId}
+          AND TRD_TYPE_CD = 'TRDC0001'
+        ORDER BY TRD_SN DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertMaterialTrade" parameterType="nct.trade.domain.Trade"
+            useGeneratedKeys="true" keyProperty="trdSn">
+        INSERT INTO TRADE (
+            SLLR_USR_SN,
+            BYPR_USR_SN,
+            PRD_SN,
+            TRD_TYPE_CD,
+            TRD_STATUS_CD,
+            TRD_AMT
+        )
+        VALUES (
+            #{sellerUserId},
+            #{buyerUserId},
+            #{productId},
+            #{tradeTypeCode},
+            #{tradeStatusCode},
+            #{tradeAmount}
+        )
+    </insert>
+
+    <insert id="insertStatusHistory">
+        INSERT INTO TRADE_STATUS_HIST (
+            TRD_SN,
+            TRD_STS_HST_STATUS_CD,
+            TRD_STS_HST_RSN_CN
+        )
+        VALUES (
+            #{tradeId},
+            #{statusCode},
+            #{reason}
+        )
+    </insert>
+
+    <select id="findMyMaterialTrades" resultType="nct.trade.dto.TradeListItem">
+        SELECT
+            t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
+                ELSE 'SELLER'
+            END AS userRole,
+            p.PRD_NM AS productName,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                ELSE buyer.USR_NM
+            END AS counterpartNickname,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_REG_DT AS createdAt,
+            t.TRD_STATUS_CD AS tradeStatus,
+            CASE p.PRD_TRD_METHOD_CD
+                WHEN 'TRDC0009' THEN 'DELIVERY'
+                WHEN 'TRDC0010' THEN 'OFFLINE'
+            END AS tradeMethod
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        JOIN USERS seller
+          ON seller.USR_SN = t.SLLR_USR_SN
+        JOIN USERS buyer
+          ON buyer.USR_SN = t.BYPR_USR_SN
+        WHERE t.TRD_TYPE_CD = 'TRDC0001'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        <if test="role == 'BUYER'">
+          AND t.BYPR_USR_SN = #{userId}
+        </if>
+        <if test="role == 'SELLER'">
+          AND t.SLLR_USR_SN = #{userId}
+        </if>
+        <if test="statusCode != null">
+          AND t.TRD_STATUS_CD = #{statusCode}
+        </if>
+        <if test="keyword != null">
+          AND (
+              LOWER(p.PRD_NM) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+              OR LOWER(
+                  CASE
+                      WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                      ELSE buyer.USR_NM
+                  END
+              ) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+              OR CAST(t.TRD_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+          )
+        </if>
+        ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+    </select>
+
+    <select id="findMyMaterialTradeDetail" resultType="nct.trade.dto.TradeDetailResponse">
+        SELECT
+            t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
+                ELSE 'SELLER'
+            END AS userRole,
+            p.PRD_NM AS productName,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                ELSE buyer.USR_NM
+            END AS counterpartNickname,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_STATUS_CD AS tradeStatus,
+            CASE p.PRD_TRD_METHOD_CD
+                WHEN 'TRDC0009' THEN 'DELIVERY'
+                WHEN 'TRDC0010' THEN 'OFFLINE'
+            END AS tradeMethod,
+            t.TRD_REG_DT AS createdAt,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            CONCAT_WS(' ', d.TRD_DLVR_ADDR, d.TRD_DLVR_DADDR) AS deliveryAddress,
+            d.TRD_DLVR_MEMO_CN AS deliveryMessage,
+            o.TRD_OFL_DT AS meetingDateTime,
+            o.TRD_OFL_PLC_NM AS meetingPlace,
+            o.TRD_OFL_ADDR AS meetingAddress
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        JOIN USERS seller
+          ON seller.USR_SN = t.SLLR_USR_SN
+        JOIN USERS buyer
+          ON buyer.USR_SN = t.BYPR_USR_SN
+        LEFT JOIN TRADE_DELIVERY d
+          ON d.TRD_SN = t.TRD_SN
+        LEFT JOIN TRADE_OFFLINE o
+          ON o.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+    </select>
+
+    <!-- 판매자 본인의 직거래만 잠가, 일정 수정과 조회 결과가 같은 거래를 기준으로 처리되게 한다. -->
+    <select id="findMyOfflineTradeIdForUpdate" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.SLLR_USR_SN = #{sellerUserId}
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+        FOR UPDATE
+    </select>
+
+    <!-- 거래별 직거래 정보는 한 건이므로, 최초 제안과 이후 수정에 같은 저장 계약을 사용한다. -->
+    <insert id="upsertOfflineSchedule">
+        INSERT INTO TRADE_OFFLINE (
+            TRD_SN,
+            TRD_OFL_PLC_NM,
+            TRD_OFL_ADDR,
+            TRD_OFL_DT
+        )
+        VALUES (
+            #{tradeId},
+            #{meetingPlace},
+            #{meetingAddress},
+            #{meetingDateTime}
+        )
+        ON DUPLICATE KEY UPDATE
+            TRD_OFL_PLC_NM = VALUES(TRD_OFL_PLC_NM),
+            TRD_OFL_ADDR = VALUES(TRD_OFL_ADDR),
+            TRD_OFL_DT = VALUES(TRD_OFL_DT)
+    </insert>
+
+</mapper>

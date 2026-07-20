@@ -1,6 +1,7 @@
 package nct.auction.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class AuctionService {
     private static final int DEFAULT_PAGE = 1;
     private static final int DEFAULT_SIZE = 12;
     private static final int MAX_SIZE = 60;
+    private static final BigDecimal DEFAULT_BID_UNIT = BigDecimal.valueOf(1000);
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -70,6 +72,31 @@ public class AuctionService {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
         return status;
+    }
+
+    @Transactional
+    public void createAuctionForProduct(
+            Long productId,
+            BigDecimal startAmount,
+            BigDecimal bidUnitAmount,
+            LocalDateTime endDateTime,
+            boolean openImmediately,
+            Long actorUserId) {
+        validateAuctionCreation(productId, startAmount, bidUnitAmount, endDateTime, actorUserId);
+
+        String statusCode = openImmediately ? AuctionStatusCode.ACTIVE : AuctionStatusCode.READY;
+        BigDecimal actualBidUnit = bidUnitAmount == null ? DEFAULT_BID_UNIT : bidUnitAmount;
+
+        int inserted = auctionMapper.insertAuction(
+                productId,
+                statusCode,
+                startAmount,
+                actualBidUnit,
+                endDateTime,
+                actorUserId.toString());
+        if (inserted == 0) {
+            throw new CustomException(ErrorCode.CONFLICT);
+        }
     }
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId) {
@@ -157,6 +184,26 @@ public class AuctionService {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
         BigDecimal bidUnitPrice = target.getBidUnitPrice() == null ? BigDecimal.valueOf(1000) : target.getBidUnitPrice();
         return currentPrice.add(bidUnitPrice);
+    }
+
+    private void validateAuctionCreation(
+            Long productId,
+            BigDecimal startAmount,
+            BigDecimal bidUnitAmount,
+            LocalDateTime endDateTime,
+            Long actorUserId) {
+        if (productId == null || actorUserId == null || startAmount == null || endDateTime == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (startAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (bidUnitAmount != null && bidUnitAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (!endDateTime.isAfter(LocalDateTime.now())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
     }
 
     private void normalize(AuctionListRequest request) {

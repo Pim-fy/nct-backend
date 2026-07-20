@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -23,6 +24,7 @@ import nct.global.security.provider.JwtTokenProvider;
 import nct.global.security.service.CustomOAuth2UserService;
 import nct.global.security.service.CustomUserDetailsService;
 import nct.global.utils.CookieUtil;
+import nct.ops.security.service.SensitiveDataMasker;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -48,6 +50,8 @@ public class SecurityConfig {
     private final CookieUtil cookieUtil;
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
+    // Controller까지 도달하지 못한 401·403 응답 경로도 F-OPS-012 규칙으로 마스킹한다.
+    private final SensitiveDataMasker sensitiveDataMasker;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -65,6 +69,9 @@ public class SecurityConfig {
                 // 관리자 API
                 .requestMatchers("/api/admin/**")
                     .hasAuthority("ROLE_ADMIN")
+                // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
+                .requestMatchers(HttpMethod.GET, "/api/categories")
+                    .permitAll()
                 // 화이트리스트 - application.properties 의 app.security.permit-all-paths
                 .requestMatchers(securityProperties.getPermitAllPaths().toArray(String[]::new))
                     .permitAll()
@@ -93,7 +100,7 @@ public class SecurityConfig {
                                        "접근 권한이 없습니다.", request.getRequestURI()))
             )
             // JWT 필터를 폼 로그인 필터 앞에 배치
-            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil,jwtTokenProvider,customUserDetailsService),
+            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil, jwtTokenProvider, customUserDetailsService, objectMapper),
                              UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -106,6 +113,7 @@ public class SecurityConfig {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         response.getWriter()
-                .write(objectMapper.writeValueAsString(ApiResponse.error(status, message, path)));
+                .write(objectMapper.writeValueAsString(
+                        ApiResponse.error(status, message, sensitiveDataMasker.maskUri(path))));
     }
 }

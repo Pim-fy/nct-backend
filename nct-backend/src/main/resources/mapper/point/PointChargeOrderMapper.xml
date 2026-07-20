@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Claude Code 작성 (BJN, 2026-07-15) -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.point.mapper.PointChargeOrderMapper">
+
+    <!-- 충전 주문 추가 (대기 상태로 생성). REG_DT 등 시스템 컬럼은 DB DEFAULT에 맡기고 생략 -->
+    <insert id="insert" parameterType="nct.point.domain.PointChargeOrder"
+            useGeneratedKeys="true" keyProperty="ptChgOrdSn">
+        /* 포인트 충전 주문: 행 추가 (대기 상태) */
+        INSERT INTO POINT_CHARGE_ORDER (USR_SN, PT_CHG_ORD_NO, PT_CHG_ORD_AMT, PT_CHG_ORD_STATUS_CD)
+        VALUES (#{usrSn}, #{ptChgOrdNo}, #{ptChgOrdAmt}, #{ptChgOrdStatusCd})
+    </insert>
+
+    <!-- 행 잠금 후 조회: 승인 처리 중 같은 주문번호가 동시에 두 번 확정되는 것을 막는다 -->
+    <select id="selectForUpdateByOrderNo" resultType="nct.point.domain.PointChargeOrder">
+        /* 포인트 충전 주문: 주문번호로 행 잠금 조회 */
+        SELECT PT_CHG_ORD_SN AS ptChgOrdSn, USR_SN AS usrSn, PT_CHG_ORD_NO AS ptChgOrdNo,
+               PT_CHG_ORD_AMT AS ptChgOrdAmt, PT_CHG_ORD_STATUS_CD AS ptChgOrdStatusCd,
+               PT_CHG_ORD_PG_KEY AS ptChgOrdPgKey, PT_LDG_SN AS ptLdgSn,
+               PT_CHG_ORD_FAIL_RSN_CN AS ptChgOrdFailRsnCn,
+               PT_CHG_ORD_REG_DT AS ptChgOrdRegDt, PT_CHG_ORD_UPDT_DT AS ptChgOrdUpdtDt
+        FROM POINT_CHARGE_ORDER
+        WHERE PT_CHG_ORD_NO = #{ptChgOrdNo}
+        FOR UPDATE
+    </select>
+
+    <!-- 완료 처리: 상태 + PG결제키 + 연결된 원장SN 기록 -->
+    <update id="complete">
+        /* 포인트 충전 주문: 완료 처리 */
+        UPDATE POINT_CHARGE_ORDER
+        SET PT_CHG_ORD_STATUS_CD = #{statusCd},
+            PT_CHG_ORD_PG_KEY = #{pgKey},
+            PT_LDG_SN = #{ptLdgSn}
+        WHERE PT_CHG_ORD_SN = #{ptChgOrdSn}
+    </update>
+
+    <!-- 내 충전 주문 목록: 상태 코드값을 화면에 그대로 못 보여주니 CMM_CODE를 조인해 한글명을 함께 가져온다
+         (원장 목록 조회 PointMapper.selectLedgerList와 같은 방식) -->
+    <select id="selectListByUser" resultType="nct.point.domain.PointChargeOrder">
+        /* 포인트 충전 주문: 내 주문 목록 (최신순 100건) */
+        SELECT
+            O.PT_CHG_ORD_SN AS ptChgOrdSn, O.USR_SN AS usrSn, O.PT_CHG_ORD_NO AS ptChgOrdNo,
+            O.PT_CHG_ORD_AMT AS ptChgOrdAmt, O.PT_CHG_ORD_STATUS_CD AS ptChgOrdStatusCd,
+            O.PT_LDG_SN AS ptLdgSn, O.PT_CHG_ORD_FAIL_RSN_CN AS ptChgOrdFailRsnCn,
+            O.PT_CHG_ORD_REG_DT AS ptChgOrdRegDt, O.PT_CHG_ORD_UPDT_DT AS ptChgOrdUpdtDt,
+            S.CMM_NM AS statusNm
+        FROM POINT_CHARGE_ORDER O
+        JOIN CMM_CODE S ON S.CMM_CD = O.PT_CHG_ORD_STATUS_CD
+        WHERE O.USR_SN = #{usrSn}
+        ORDER BY O.PT_CHG_ORD_SN DESC
+        LIMIT 100
+    </select>
+
+    <!-- 실패/취소 처리: 상태 + PG결제키 + 실패사유 기록 -->
+    <update id="fail">
+        /* 포인트 충전 주문: 실패/취소 처리 */
+        UPDATE POINT_CHARGE_ORDER
+        SET PT_CHG_ORD_STATUS_CD = #{statusCd},
+            PT_CHG_ORD_PG_KEY = #{pgKey},
+            PT_CHG_ORD_FAIL_RSN_CN = #{failRsnCn}
+        WHERE PT_CHG_ORD_SN = #{ptChgOrdSn}
+    </update>
+
+</mapper>

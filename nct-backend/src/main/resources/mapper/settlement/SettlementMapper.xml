@@ -1,55 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
-        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="nct.settlement.mapper.SettlementMapper">
 
+    <!-- 정산 행 추가. REG_DT/UPDT_DT 등 시스템 컬럼은 DB DEFAULT에 맡기고 생략 -->
     <insert id="insert" parameterType="nct.settlement.domain.Settlement"
             useGeneratedKeys="true" keyProperty="stlmSn">
-        INSERT INTO SETTLEMENT (
-            TRD_SN,
-            USR_SN,
-            STLM_AMT,
-            STLM_STATUS_CD
-        )
-        VALUES (
-            #{trdSn},
-            #{usrSn},
-            #{stlmAmt},
-            #{stlmStatusCd}
-        )
+        /* 정산: 행 추가 (대기 상태) */
+        INSERT INTO SETTLEMENT (TRD_SN, USR_SN, STLM_AMT, STLM_STATUS_CD)
+        VALUES (#{trdSn}, #{usrSn}, #{stlmAmt}, #{stlmStatusCd})
     </insert>
 
+    <!-- 행 잠금 후 조회: 상태 검증~갱신 사이에 다른 트랜잭션이 끼어들지 못하게 한다.
+         컬럼 별칭(AS)을 직접 명시하는 이유: 전역 map-underscore-to-camel-case 설정은
+         git에 안 올라가는 application.properties 소속이라 PC마다 있거나 없어서,
+         설정이 없는 환경에서는 컬럼이 하나도 매핑되지 않아 조회 결과가 null로 떨어진다.
+         별칭을 박아두면 어떤 환경에서든 동일하게 동작한다 (알림·포인트 매퍼와 같은 방침) -->
     <select id="selectForUpdate" resultType="nct.settlement.domain.Settlement">
-        SELECT
-            STLM_SN AS stlmSn,
-            TRD_SN AS trdSn,
-            USR_SN AS usrSn,
-            STLM_AMT AS stlmAmt,
-            STLM_STATUS_CD AS stlmStatusCd,
-            STLM_REG_DT AS stlmRegDt,
-            STLM_UPDT_DT AS stlmUpdtDt
+        /* 정산: 행 잠금 조회 (상태 전이 검증용) */
+        SELECT STLM_SN        AS stlmSn,
+               TRD_SN         AS trdSn,
+               USR_SN         AS usrSn,
+               STLM_AMT       AS stlmAmt,
+               STLM_STATUS_CD AS stlmStatusCd,
+               STLM_REG_DT    AS stlmRegDt,
+               STLM_UPDT_DT   AS stlmUpdtDt
         FROM SETTLEMENT
         WHERE STLM_SN = #{stlmSn}
         FOR UPDATE
     </select>
 
     <update id="updateStatus">
+        /* 정산: 상태코드 갱신 */
         UPDATE SETTLEMENT
-        SET STLM_STATUS_CD = #{statusCd},
-            STLM_UPDT_DT = NOW()
+        SET STLM_STATUS_CD = #{statusCd}
         WHERE STLM_SN = #{stlmSn}
     </update>
 
     <select id="selectListByUser" resultType="nct.settlement.domain.Settlement">
-        SELECT
-            STLM_SN AS stlmSn,
-            TRD_SN AS trdSn,
-            USR_SN AS usrSn,
-            STLM_AMT AS stlmAmt,
-            STLM_STATUS_CD AS stlmStatusCd,
-            STLM_REG_DT AS stlmRegDt,
-            STLM_UPDT_DT AS stlmUpdtDt
+        /* 정산: 회원별 목록 (최신순 100건) */
+        SELECT STLM_SN        AS stlmSn,
+               TRD_SN         AS trdSn,
+               USR_SN         AS usrSn,
+               STLM_AMT       AS stlmAmt,
+               STLM_STATUS_CD AS stlmStatusCd,
+               STLM_REG_DT    AS stlmRegDt,
+               STLM_UPDT_DT   AS stlmUpdtDt
         FROM SETTLEMENT
         WHERE USR_SN = #{usrSn}
         ORDER BY STLM_SN DESC
@@ -57,14 +52,14 @@
     </select>
 
     <select id="selectListByTrade" resultType="nct.settlement.domain.Settlement">
-        SELECT
-            STLM_SN AS stlmSn,
-            TRD_SN AS trdSn,
-            USR_SN AS usrSn,
-            STLM_AMT AS stlmAmt,
-            STLM_STATUS_CD AS stlmStatusCd,
-            STLM_REG_DT AS stlmRegDt,
-            STLM_UPDT_DT AS stlmUpdtDt
+        /* 정산: 거래별 목록 */
+        SELECT STLM_SN        AS stlmSn,
+               TRD_SN         AS trdSn,
+               USR_SN         AS usrSn,
+               STLM_AMT       AS stlmAmt,
+               STLM_STATUS_CD AS stlmStatusCd,
+               STLM_REG_DT    AS stlmRegDt,
+               STLM_UPDT_DT   AS stlmUpdtDt
         FROM SETTLEMENT
         WHERE TRD_SN = #{trdSn}
         ORDER BY STLM_SN DESC

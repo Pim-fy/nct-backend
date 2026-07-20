@@ -9,6 +9,7 @@ import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
 import nct.global.security.port.OAuthProfile;
+import nct.global.utils.TokenHashUtil;
 import nct.member.domain.Member;
 import nct.member.mapper.MemberMapper;
 
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 public class MemberAuthAdapter implements AuthMemberPort {
 
     private final MemberMapper memberMapper;
+    private final TokenHashUtil tokenHashUtil;
 
     @Override
     @Transactional(readOnly = true)
@@ -37,20 +39,56 @@ public class MemberAuthAdapter implements AuthMemberPort {
                            .map(this::toAuthMember);
     }
 
+    // @ai_generated: 로컬 로그인 전용 조회. JWT 재발급/OAuth의 이메일 조회와 분리한다.
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AuthMember> findByLoginId(String loginId) {
+        return memberMapper.findMemberByLoginId(loginId)
+                           .map(this::toAuthMember);
+    }
+
+    // @ai_generated: JWT subject(usrSn) 기반 조회 - 필터 인가·토큰 재발급이 가변 필드(email) 대신 사용
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AuthMember> findById(Long usrSn) {
+        return memberMapper.findMemberById(usrSn)
+                           .map(this::toAuthMember);
+    }
+
+    // @ai_generated: 가입 최종 단계의 사전 중복 확인을 MemberMapper에 위임한다.
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByLoginId(String loginId) {
+        return memberMapper.existsByLoginId(loginId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByNickname(String nickname) {
+        return memberMapper.existsByNickname(nickname);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByEmail(String email) {
+        return memberMapper.existsByEmail(email);
+    }
+
     @Override
     @Transactional
     public AuthMember registerLocalMember(LocalSignUpProfile profile) {
         Member member = Member.builder()
-            .usrLoginId(profile.getEmail())   // AuthMember 설계상 로그인ID = 이메일
+            // @ai_generated: 로그인 ID와 이메일은 정본에 따라 서로 다른 컬럼으로 저장한다.
+            .usrLoginId(profile.getLoginId())
             .usrPswdHash(profile.getEncodedPassword())
-            .usrNm(profile.getName())
+            .usrNm(profile.getNickname())
             .usrEml(profile.getEmail())
+            .usrEmlCertYn('Y')
             .usrTelno(profile.getTelno())
             .usrStatusCd("USRC0001")          // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)
             .usrRoleCd("ROLE_USER")           // 신규가입 기본 역할 (DB DEFAULT 와 동일값 - 반환 객체에도 채워 응답 role 누락 방지)
             .build();
-        // profile.getNickname()은 USERS에 별도 컬럼이 없어 저장하지 않음 (USR_NM = "이름/닉네임" 단일 컬럼)
-        memberMapper.saveMember(member);   // useGeneratedKeys 로 usrSn 채워짐
+        memberMapper.saveCertifiedMember(member);   // useGeneratedKeys 로 usrSn 채워짐
         return toAuthMember(member);
     }
 
@@ -65,25 +103,35 @@ public class MemberAuthAdapter implements AuthMemberPort {
             "OAuth 회원가입 미구현: USERS.USR_PSWD_HASH NOT NULL 제약 및 USER_OAUTH 연동 매퍼 필요");
     }
 
+    // @ai_generated: 저장 전 SHA-256 해시화(원문 저장 금지). null(로그아웃) 은 해시하지 않고 그대로 저장.
     @Override
     @Transactional
     public void updateRefreshToken(Long usrSn, String refreshToken) {
-        // JwtProvider 발급 토큰 원문을 그대로 저장(로그아웃 시 null 전달 -> null 저장).
-        // 검증(AuthService.verifyRefreshToken)에서 원문 대조 + JwtProvider 로 서명/만료 확인.
-        memberMapper.updateRefreshTokenById(usrSn, refreshToken);
+        String refreshTokenHash = (refreshToken == null) ? null : tokenHashUtil.hash(refreshToken);
+        // 검증(AuthService.verifyRefreshToken)에서 요청 토큰을 동일하게 해시화한 뒤 대조 + JwtProvider 로 서명/만료 확인.
+        memberMapper.updateRefreshTokenById(usrSn, refreshTokenHash);
+    }
+
+    // @ai_generated: F-AUTH-007 - 비밀번호 재설정 완료 시 호출. 인코딩은 PasswordResetService(BCrypt)에서 이미 완료됨.
+    @Override
+    @Transactional
+    public void updatePassword(Long usrSn, String encodedPassword) {
+        memberMapper.updatePasswordById(usrSn, encodedPassword);
     }
 
     /** Member(도메인) -> AuthMember(보안 모듈 전용 모델) 변환 */
     private AuthMember toAuthMember(Member member) {
-        // AuthMember의 nickname/provider는 대응 컬럼 없음
-        // (닉네임은 usrNm에 통합, provider는 USER_OAUTH 미연동)
+        // @ai_generated: USERS.USR_NM은 정본의 닉네임이며 AuthMember의 name/nickname 응답에 같은 값을 준다.
         return AuthMember.builder()
                          .id(member.getUsrSn())
+                         .loginId(member.getUsrLoginId())
                          .email(member.getUsrEml())
                          .password(member.getUsrPswdHash())
                          .name(member.getUsrNm())
+                         .nickname(member.getUsrNm())
                          .role(member.getUsrRoleCd())
-                         .refreshToken(member.getUsrRefreshTokenHash())  // DB 저장 원문(재발급 검증용)
+                         .status(member.getUsrStatusCd())  // @ai_generated: F-AUTH-009 계정 상태 차단용
+                         .refreshToken(member.getUsrRefreshTokenHash())  // DB 저장 해시(재발급 검증용)
                          .build();
     }
 }

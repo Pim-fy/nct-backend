@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.point.mapper.PointMapper">
+
+    <!-- 회원 단위 뮤텍스: 트랜잭션 종료까지 해당 회원의 포인트 처리를 직렬화한다.
+         같은 회원의 동시 요청(더블클릭·다중 탭)이 이 잠금에서 줄을 서게 되어 이중 차감이 원천 차단된다 -->
+    <select id="lockUser" resultType="java.lang.Long">
+        /* 포인트: 회원 행 잠금 */
+        SELECT USR_SN
+        FROM USERS
+        WHERE USR_SN = #{usrSn}
+        FOR UPDATE
+    </select>
+
+    <!-- 포인트분류(PTLG01)별 합계로 잔액 계산: PTLC0001 사용가능 / PTLC0002 홀딩 / PTLC0003 정산가능.
+         잔액 컬럼이 따로 없고 원장 SUM이 곧 잔액 (원장 = 유일한 진실) -->
+    <select id="selectBalance" resultType="nct.point.domain.PointBalance">
+        /* 포인트: 잔액 조회 (버킷별 원장 합계) */
+        SELECT
+            COALESCE(SUM(CASE WHEN PT_LDG_PT_TYPE_CD = 'PTLC0001' THEN PT_LDG_AMT END), 0) AS availableAmt,
+            COALESCE(SUM(CASE WHEN PT_LDG_PT_TYPE_CD = 'PTLC0002' THEN PT_LDG_AMT END), 0) AS holdAmt,
+            COALESCE(SUM(CASE WHEN PT_LDG_PT_TYPE_CD = 'PTLC0003' THEN PT_LDG_AMT END), 0) AS settleableAmt
+        FROM POINT_LEDGER
+        WHERE USR_SN = #{usrSn}
+    </select>
+
+    <!-- 원장 목록: 코드값을 화면에 그대로 보여줄 수 없으니 CMM_CODE를 3회 조인해 한글명을 함께 가져온다
+         (T=원장유형명, P=포인트분류명, R=참조유형명 — 참조는 없을 수 있어 LEFT JOIN) -->
+    <select id="selectLedgerList" resultType="nct.point.domain.PointLedger">
+        /* 포인트: 원장 목록 (한글명 조인, 최신순 100건) */
+        SELECT
+            L.PT_LDG_SN         AS ptLdgSn,
+            L.USR_SN            AS usrSn,
+            L.ACTOR_USR_SN      AS actorUsrSn,
+            L.PT_LDG_REF_TYPE_CD AS ptLdgRefTypeCd,
+            R.CMM_NM            AS refTypeNm,
+            L.PT_LDG_REF_SN     AS ptLdgRefSn,
+            L.PT_LDG_PT_TYPE_CD AS ptLdgPtTypeCd,
+            P.CMM_NM            AS ptTypeNm,
+            L.PT_LDG_TYPE_CD    AS ptLdgTypeCd,
+            T.CMM_NM            AS typeNm,
+            L.PT_LDG_AMT        AS ptLdgAmt,
+            L.PT_LDG_BAL_AFTER_AMT AS ptLdgBalAfterAmt,
+            L.PT_LDG_RSN_CN     AS ptLdgRsnCn,
+            L.PT_LDG_REG_DT     AS ptLdgRegDt
+        FROM POINT_LEDGER L
+        JOIN CMM_CODE T ON T.CMM_CD = L.PT_LDG_TYPE_CD
+        JOIN CMM_CODE P ON P.CMM_CD = L.PT_LDG_PT_TYPE_CD
+        LEFT JOIN CMM_CODE R ON R.CMM_CD = L.PT_LDG_REF_TYPE_CD
+        WHERE L.USR_SN = #{usrSn}
+        ORDER BY L.PT_LDG_SN DESC
+        LIMIT 100
+    </select>
+
+    <!-- 홀딩분류 원장을 참조 건 기준으로 합산. 0보다 크면 유효한 홀딩이 남아 있다
+         (홀딩 +3만, 반환 -3만이 쌓이면 합계 0 = 홀딩 소멸로 판정되는 구조) -->
+    <select id="selectActiveHoldAmtByRef" resultType="long">
+        /* 포인트: 참조 건별 유효 홀딩 금액 */
+        SELECT COALESCE(SUM(PT_LDG_AMT), 0)
+        FROM POINT_LEDGER
+        WHERE USR_SN = #{usrSn}
+          AND PT_LDG_PT_TYPE_CD = 'PTLC0002'
+          AND PT_LDG_REF_TYPE_CD = #{refTypeCd}
+          AND PT_LDG_REF_SN = #{refSn}
+    </select>
+
+    <!-- 원장 행 추가. REG_DT 등 시스템 컬럼은 DB DEFAULT(CURRENT_TIMESTAMP)에 맡기고 SQL에서 생략 -->
+    <insert id="insertLedger" parameterType="nct.point.domain.PointLedger"
+            useGeneratedKeys="true" keyProperty="ptLdgSn">
+        /* 포인트: 원장 행 추가 */
+        INSERT INTO POINT_LEDGER (
+            USR_SN, ACTOR_USR_SN,
+            PT_LDG_REF_TYPE_CD, PT_LDG_REF_SN,
+            PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD,
+            PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN
+        ) VALUES (
+            #{usrSn}, #{actorUsrSn},
+            #{ptLdgRefTypeCd}, #{ptLdgRefSn},
+            #{ptLdgPtTypeCd}, #{ptLdgTypeCd},
+            #{ptLdgAmt}, #{ptLdgBalAfterAmt}, #{ptLdgRsnCn}
+        )
+    </insert>
+
+    <!-- 진행 중인 거래 문제 건수 (F-PAY-010 "분쟁 없음 확인 후 전환" 차단 조건).
+         ⚠️ TRADE(담당자4)·TRADE_DISPUTE(담당자5)는 타 담당자 소유 테이블 — 읽기 전용 SELECT만, 변경 금지.
+         상태 코드: TRDC0016(접수)·TRDC0017(처리중)만 "진행 중"으로 본다 (완료·반려는 해소된 것) -->
+    <select id="countActiveDisputes" resultType="int">
+        /* 포인트: 진행 중 거래 문제 건수 (전환 차단 검사, 읽기 전용) */
+        SELECT COUNT(*)
+        FROM TRADE_DISPUTE D
+        JOIN TRADE T ON T.TRD_SN = D.TRD_SN
+        WHERE (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn})
+          AND D.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+    </select>
+
+</mapper>

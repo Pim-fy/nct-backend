@@ -214,6 +214,23 @@ public class NotificationService {
                 null, null);
     }
 
+    /** 보관금 정산 적립 알림 (F-SVC-015) — PointService.creditEscrowToSettleable가 호출. 대금을 받는 쪽(제공자 업무)이라 PROVIDER */
+    public void notifyEscrowSettled(long usrSn, long amt, RefType refType, long refSn) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                NotificationAudience.PROVIDER,
+                "정산 가능 포인트 적립",
+                String.format("거래대금 %,dP가 정산 가능 포인트로 적립되었습니다.", amt),
+                refType, refSn);
+    }
+
+    /** 분쟁 판정 보관금 환불 알림 — PointService.refundEscrow가 호출. 판정 내용 이메일은 notifyDisputeResolved(분쟁 담당자 호출) 몫이라 여기서는 인앱만 */
+    public void notifyPointRefund(long usrSn, long amt, RefType refType, long refSn, String reason) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "포인트 환불",
+                String.format("%,dP가 사용 가능 포인트로 환불되었습니다. (%s)", amt, reason),
+                refType, refSn);
+    }
+
     /** 환전 반려 알림 — 실제 돈이 오간 결과라 이메일 보조 발송 대상 (F-COM-006 트리거) */
     public void notifyExchangeReject(long usrSn, long amt, String reason) {
         notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.OPS, NotificationAudience.GENERAL,

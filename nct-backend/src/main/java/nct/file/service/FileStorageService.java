@@ -42,6 +42,8 @@ import nct.global.exception.ErrorCode;
  * 확장자 정책은 서비스 구분별로 다르다 (2026-07-20, 담당자7 요청·사용자 확정):
  *   - product(상품 이미지): 이미지만 — 비로그인 탐색 화면에 공개 서빙되는 파일
  *   - provider(제공자 서류): pdf + 이미지 — 자격증·증빙 등 민감 파일, 공개 서빙 금지·관리자 전용 열람
+ *   - delivery(배송 발송 인증사진, F-AUC-009): 이미지만 — 공개 서빙 아님, **거래 당사자(구매자·판매자)만** 열람
+ *     (TRADE_DELIVERY_FILE 연결 테이블 — 생성 백종남/소유 담당자4, 실DB 적용 2026-07-20, D-034)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -62,7 +64,8 @@ public class FileStorageService {
      */
     private static final Map<String, Set<String>> SERVICE_EXTENSIONS = Map.of(
             "product", Set.of("jpg", "jpeg", "png", "gif", "webp"),
-            "provider", Set.of("pdf", "jpg", "jpeg", "png", "webp"));
+            "provider", Set.of("pdf", "jpg", "jpeg", "png", "webp"),
+            "delivery", Set.of("jpg", "jpeg", "png", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -126,8 +129,9 @@ public class FileStorageService {
         if (!String.valueOf(usrSn).equals(fileMeta.getFlRegId())) {
             throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
         }
-        // 등록 완료된 상품이 참조 중인 파일을 지우면 화면이 깨지므로 거부 (리뷰 등 새 참조처가 생기면 매퍼 쿼리에 합산)
-        if (fileMapper.countProductImageRefs(flSn) > 0) {
+        // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
+        // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20). 리뷰 등 새 참조처가 생기면 같은 방식으로 추가)
+        if (fileMapper.countProductImageRefs(flSn) > 0 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 
@@ -217,6 +221,28 @@ public class FileStorageService {
                 String.format("제공자 서류 심사 열람 — 신청 %d번, 파일 %d번(%s)", prvAplySn, flSn, fileMeta.getFlOrgNm()),
                 ipAddr);
         return fileMeta;
+    }
+
+    /**
+     * 배송 인증사진의 거래 당사자 열람 자격 검증 (F-AUC-009, 2026-07-20).
+     * 배송 사진은 공개도(product) 관리자 전용도(provider) 아닌 제3의 유형 —
+     * **해당 거래의 구매자·판매자만** 볼 수 있다 (사용자 결정).
+     *
+     * 검증 순서: 404(연결 확인) → 403(당사자 확인) → 404(파일 생존) —
+     * deleteImage·관리자 서류 열람과 같은 원칙(존재 여부보다 권한이 먼저 새지 않게).
+     * 감사로그는 남기지 않는다 — SENSITIVE_VIEW는 관리자 제한조회(F-OPS-014) 전용이고,
+     * 당사자가 자기 거래 사진을 보는 것은 일반 조회다 (product 열람과 동일 관례).
+     */
+    @Transactional(readOnly = true)
+    public FileMeta getTradeDeliveryFileForParty(long usrSn, long trdDlvrSn, long flSn) {
+        if (fileMapper.countTradeDeliveryFileLink(trdDlvrSn, flSn) == 0) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+        if (fileMapper.countTradePartyMatch(trdDlvrSn, usrSn) == 0) {
+            throw new CustomException(ErrorCode.FILE_TRADE_PARTY_ONLY);
+        }
+        return fileMapper.findById(flSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
     }
 
     /**

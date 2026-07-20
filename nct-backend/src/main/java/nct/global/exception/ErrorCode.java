@@ -109,6 +109,8 @@ public enum ErrorCode {
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
     FILE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "본인이 업로드한 파일만 삭제/변경할 수 있습니다."),
     FILE_IN_USE(HttpStatus.CONFLICT, "사용 중인 파일은 삭제할 수 없습니다."),
+    // 배송 인증사진(F-AUC-009) — 거래 당사자만 열람 (2026-07-20)
+    FILE_TRADE_PARTY_ONLY(HttpStatus.FORBIDDEN, "거래 당사자만 열람할 수 있습니다."),
 
     /*==================== 5XX SERVER ERROR ====================*/
 

@@ -55,6 +55,16 @@ public class PointChargeService {
      * DB CHECK 제약이 아니라 여기서 막는 이유: 한도가 운영 중 바뀔 수 있는 설정값이라
      * 매번 배포 없이 SYSTEM_SETTING 값만 바꿔서 조정할 수 있어야 하기 때문.
      */
+    /**
+     * 현재 충전 한도(최소·최대) 조회 — 지갑 충전 모달 안내문용 (2026-07-20).
+     * 안내문을 프론트에 하드코딩하면 관리자가 시스템 설정에서 한도를 바꿀 때 안내만 스테일이 되므로,
+     * 검증에 실제로 쓰는 값(SYSTEM_SETTING)을 그대로 노출한다 — 안내와 검증의 출처 단일화
+     */
+    @Transactional(readOnly = true)
+    public SystemSetting getChargeLimits() {
+        return systemSettingMapper.selectChargeLimits();
+    }
+
     @Transactional
     public String createOrder(long usrSn, long amt) {
         if (amt <= 0) {

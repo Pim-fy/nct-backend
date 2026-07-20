@@ -6,6 +6,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import nct.global.idempotency.IdempotencyInterceptor;
 import nct.global.logging.LogInterceptor;
 
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * [설정 - Spring MVC 확장]
  * - LogInterceptor 등록 (로깅 3종 중 2번째 계층)
+ * - IdempotencyInterceptor 등록 (전역 중복요청 방지, F-COM-017) // @ai_generated
  * - /api/attachment/** 정적 리소스 서빙 (담당자6, F-AUC-002 이미지 연계)
  *   app.upload.dir 디스크 경로({서비스}/{yyyyMMdd}/파일명 구조)를 URL로 노출.
  *   POST/DELETE/PUT /api/attachment 는 FileController(컨트롤러 매핑이 우선)가 담당하므로 충돌 없음.
@@ -22,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 public class WebConfig implements WebMvcConfigurer {
 
     private final LogInterceptor logInterceptor;
+    private final IdempotencyInterceptor idempotencyInterceptor; // @ai_generated
 
     @Value("${app.upload.dir}")
     private String uploadDir;
@@ -29,6 +32,13 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(logInterceptor)
+                .addPathPatterns("/**")
+                .excludePathPatterns(
+                    "/error",
+                    "/favicon.ico"
+                );
+        // @ai_generated: 전역 중복요청 방지 - LogInterceptor 뒤에 등록
+        registry.addInterceptor(idempotencyInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                     "/error",

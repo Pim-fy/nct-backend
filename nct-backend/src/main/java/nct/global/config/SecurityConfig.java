@@ -72,6 +72,9 @@ public class SecurityConfig {
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()
+                // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
+                .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
+                    .permitAll()
                 // 화이트리스트 - application.properties 의 app.security.permit-all-paths
                 .requestMatchers(securityProperties.getPermitAllPaths().toArray(String[]::new))
                     .permitAll()

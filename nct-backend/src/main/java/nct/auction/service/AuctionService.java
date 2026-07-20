@@ -18,6 +18,7 @@ import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.mapper.AuctionMapper;
+import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 
@@ -30,6 +31,7 @@ public class AuctionService {
     private static final int MAX_SIZE = 60;
 
     private final AuctionMapper auctionMapper;
+    private final ProductFavoriteMapper productFavoriteMapper;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -52,7 +54,13 @@ public class AuctionService {
     @Transactional
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
         auctionMapper.incrementProductViewCount(auctionId);
-        return loadAuctionDetail(auctionId);
+        return loadAuctionDetail(auctionId, null);
+    }
+
+    @Transactional
+    public AuctionDetailResponse findAuctionDetail(Long auctionId, Long userId) {
+        auctionMapper.incrementProductViewCount(auctionId);
+        return loadAuctionDetail(auctionId, userId);
     }
 
     @Transactional(readOnly = true)
@@ -65,10 +73,16 @@ public class AuctionService {
     }
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId) {
+        return loadAuctionDetail(auctionId, null);
+    }
+
+    private AuctionDetailResponse loadAuctionDetail(Long auctionId, Long userId) {
         AuctionDetailResponse detail = auctionMapper.findAuctionDetail(auctionId);
         if (detail == null) {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
+        detail.setFavorite(userId != null
+                && productFavoriteMapper.existsActive(detail.getProductId(), userId));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
         return detail;

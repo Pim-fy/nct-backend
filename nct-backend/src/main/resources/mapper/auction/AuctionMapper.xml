@@ -44,6 +44,7 @@
         LEFT JOIN (
             SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
             FROM PRODUCT_FAVORITE
+            WHERE PRD_FAV_USE_YN = 'Y'
             GROUP BY PRD_SN
         ) favorite
           ON favorite.PRD_SN = p.PRD_SN
@@ -71,6 +72,10 @@
         </if>
         <if test="condition.maxPrice != null">
           AND a.AUC_CUR_AMT &lt;= #{condition.maxPrice}
+        </if>
+        <if test="condition.instantBuyOnly != null and condition.instantBuyOnly">
+          AND p.PRD_IBY_AMT IS NOT NULL
+          AND p.PRD_IBY_AMT &gt; 0
         </if>
         <if test="condition.tradeMethodCode != null">
           AND p.PRD_TRD_METHOD_CD = #{condition.tradeMethodCode}
@@ -187,6 +192,7 @@
         LEFT JOIN (
             SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
             FROM PRODUCT_FAVORITE
+            WHERE PRD_FAV_USE_YN = 'Y'
             GROUP BY PRD_SN
         ) favorite
           ON favorite.PRD_SN = p.PRD_SN

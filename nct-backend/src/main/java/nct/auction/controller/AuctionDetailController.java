@@ -26,8 +26,10 @@ public class AuctionDetailController {
     private final AuctionService auctionService;
 
     @GetMapping("/{auctionId}")
-    public ApiResponse<AuctionDetailResponse> findAuctionDetail(@PathVariable("auctionId") Long auctionId) {
-        return ApiResponse.success(auctionService.findAuctionDetail(auctionId));
+    public ApiResponse<AuctionDetailResponse> findAuctionDetail(
+            @PathVariable("auctionId") Long auctionId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ApiResponse.success(auctionService.findAuctionDetail(auctionId, optionalUserId(userDetails)));
     }
 
     @PostMapping("/{auctionId}/bids")
@@ -49,6 +51,13 @@ public class AuctionDetailController {
     private Long currentUserId(CustomUserDetails userDetails) {
         if (userDetails == null || userDetails.getMember() == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        return userDetails.getMember().getId();
+    }
+
+    private Long optionalUserId(CustomUserDetails userDetails) {
+        if (userDetails == null || userDetails.getMember() == null) {
+            return null;
         }
         return userDetails.getMember().getId();
     }

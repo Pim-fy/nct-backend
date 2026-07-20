@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -63,5 +64,16 @@ public class TradeController {
         long sellerUserId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 tradeService.saveMyOfflineSchedule(tradeId, sellerUserId, request)));
+    }
+
+    /** 구매자가 거래 완료를 확인하고 상대방 확인·자동완료 기한을 시작한다. */
+    @PostMapping("/{tradeId}/completion-requests")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> requestCompletionConfirmation(
+            @PathVariable("tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long buyerUserId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.requestCompletionConfirmation(tradeId, buyerUserId)));
     }
 }

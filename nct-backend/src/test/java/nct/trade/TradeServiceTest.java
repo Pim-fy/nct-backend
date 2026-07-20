@@ -23,22 +23,34 @@ import org.mockito.ArgumentCaptor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.trade.domain.Trade;
+import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
+import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.mapper.TradeMapper;
 import nct.trade.service.TradeService;
+import nct.notification.service.NotificationService;
+import nct.setting.domain.SystemSettingDetail;
+import nct.setting.mapper.SystemSettingAdminMapper;
 
 class TradeServiceTest {
 
     private TradeMapper tradeMapper;
+    private NotificationService notificationService;
+    private SystemSettingAdminMapper systemSettingMapper;
     private TradeService tradeService;
 
     @BeforeEach
     void setUp() {
         tradeMapper = mock(TradeMapper.class);
-        tradeService = new TradeService(tradeMapper);
+        notificationService = mock(NotificationService.class);
+        systemSettingMapper = mock(SystemSettingAdminMapper.class);
+        tradeService = new TradeService(
+                tradeMapper,
+                notificationService,
+                systemSettingMapper);
     }
 
     @Test
@@ -186,5 +198,104 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
         verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void buyerStartsCompletionConfirmationAndNotifiesSeller() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setBuyerUserId(20L);
+        target.setSellerUserId(10L);
+        target.setTradeStatus("TRDC0004");
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setTradeId(91L);
+        SystemSettingDetail setting = new SystemSettingDetail();
+        setting.setTrdCfmnDays(5);
+
+        when(tradeMapper.findBuyerTradeForConfirmationForUpdate(91L, 20L))
+                .thenReturn(target);
+        when(systemSettingMapper.selectOne()).thenReturn(setting);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
+
+        TradeDetailResponse result = tradeService.requestCompletionConfirmation(91L, 20L);
+
+        ArgumentCaptor<LocalDateTime> deadlineCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(tradeMapper).startCompletionConfirmation(
+                org.mockito.ArgumentMatchers.eq(91L),
+                deadlineCaptor.capture(),
+                org.mockito.ArgumentMatchers.eq("20"));
+        assertThat(deadlineCaptor.getValue())
+                .isAfter(LocalDateTime.now().plusDays(5).minusMinutes(1));
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0005",
+                "구매자가 거래 완료 확인을 요청했습니다.");
+        verify(notificationService).notifyTradeConfirmRequest(10L, 91L, 5);
+        assertThat(result).isSameAs(detail);
+    }
+
+    @Test
+    void rejectsCompletionRequestWhenAlreadyWaitingForConfirmation() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeStatus("TRDC0005");
+        when(tradeMapper.findBuyerTradeForConfirmationForUpdate(91L, 20L))
+                .thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.requestCompletionConfirmation(91L, 20L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verifyNoInteractions(systemSettingMapper, notificationService);
+    }
+
+    @Test
+    void completesExpiredConfirmationAndNotifiesBothParties() {
+        LocalDateTime now = LocalDateTime.of(2026, 7, 20, 12, 0);
+        TradeAutoCompletionTarget target = new TradeAutoCompletionTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setTradeStatus("TRDC0005");
+        target.setAutoCompleteAt(now.minusSeconds(1));
+        when(tradeMapper.findAutoCompletionTargetForUpdate(91L)).thenReturn(target);
+        when(tradeMapper.completeExpiredConfirmation(91L, now, "SYSTEM")).thenReturn(1);
+
+        boolean completed = tradeService.completeExpiredConfirmation(91L, now);
+
+        assertThat(completed).isTrue();
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0006",
+                "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
+        verify(notificationService).notify(
+                20L,
+                nct.notification.domain.NotificationType.TRADE,
+                nct.notification.domain.NotificationDomain.TRADE,
+                "거래 자동 완료",
+                "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다.",
+                nct.common.domain.RefType.TRADE,
+                91L);
+        verify(notificationService).notify(
+                10L,
+                nct.notification.domain.NotificationType.TRADE,
+                nct.notification.domain.NotificationDomain.TRADE,
+                "거래 자동 완료",
+                "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다.",
+                nct.common.domain.RefType.TRADE,
+                91L);
+    }
+
+    @Test
+    void ignoresConfirmationThatIsNotExpiredAfterLocking() {
+        LocalDateTime now = LocalDateTime.of(2026, 7, 20, 12, 0);
+        TradeAutoCompletionTarget target = new TradeAutoCompletionTarget();
+        target.setTradeStatus("TRDC0005");
+        target.setAutoCompleteAt(now.plusSeconds(1));
+        when(tradeMapper.findAutoCompletionTargetForUpdate(91L)).thenReturn(target);
+
+        boolean completed = tradeService.completeExpiredConfirmation(91L, now);
+
+        assertThat(completed).isFalse();
+        verifyNoInteractions(notificationService);
     }
 }

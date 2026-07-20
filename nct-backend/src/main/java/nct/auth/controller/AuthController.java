@@ -18,9 +18,14 @@ import nct.auth.dto.AvailabilityResponse;
 import nct.auth.dto.EmailVerificationSendRequest;
 import nct.auth.dto.EmailVerificationSendResponse;
 import nct.auth.dto.EmailVerificationVerifyRequest;
+import nct.auth.dto.FindEmailRequest;
+import nct.auth.dto.FindEmailResponse;
+import nct.auth.dto.PasswordResetConfirmRequest;
+import nct.auth.dto.PasswordResetRequestDto;
 import nct.auth.service.AuthService;
 import nct.auth.service.AuthSessionResult;
 import nct.auth.service.EmailVerificationService;
+import nct.auth.service.PasswordResetService;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
@@ -40,6 +45,9 @@ import lombok.RequiredArgsConstructor;
  *  GET  /api/auth/verify   새로고침 자동 로그인          (permitAll - Refresh 쿠키로 검증)
  *  POST /api/auth/logout   로그아웃                     (authenticated)
  *  GET  /api/auth/me       내 정보                      (authenticated)
+ *  POST /api/auth/find-email                    F-AUTH-014 아이디 찾기          (permitAll)
+ *  POST /api/auth/password-reset-links          F-AUTH-007 재설정 링크 발송     (permitAll)
+ *  POST /api/auth/password-reset-links/confirm  F-AUTH-007 재설정 확정          (permitAll)
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -48,6 +56,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
     private final CookieUtil cookieUtil;
 
     /** 회원가입 */
@@ -87,6 +96,29 @@ public class AuthController {
             @PathVariable Long verificationId,
             @Valid @RequestBody EmailVerificationVerifyRequest request) {
         emailVerificationService.verifySignupCode(verificationId, request);
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** F-AUTH-014: 아이디 찾기 - 이메일+이름 불일치·탈퇴·정지·미가입 전부 동일한 실패 응답 */
+    @PostMapping("/find-email")
+    public ResponseEntity<ApiResponse<FindEmailResponse>> findEmail(
+            @Valid @RequestBody FindEmailRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(authService.findEmail(request)));
+    }
+
+    /** F-AUTH-007: 비밀번호 재설정 링크 발송 - 계정 상태와 무관하게 항상 동일한 성공 응답 */
+    @PostMapping("/password-reset-links")
+    public ResponseEntity<ApiResponse<Void>> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequestDto request) {
+        passwordResetService.requestReset(request);
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** F-AUTH-007: 비밀번호 재설정 확정 - 토큰+새 비밀번호를 함께 검증한다 */
+    @PostMapping("/password-reset-links/confirm")
+    public ResponseEntity<ApiResponse<Void>> confirmPasswordReset(
+            @Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordResetService.confirmReset(request);
         return ResponseEntity.ok(ApiResponse.success());
     }
 

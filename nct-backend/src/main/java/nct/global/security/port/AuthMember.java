@@ -16,7 +16,11 @@ public class AuthMember {
     /** 회원 PK */
     private final Long id;
 
-    /** 로그인 ID (이메일) */
+    // @ai_generated: F-AUTH-014/007 - 아이디 찾기·비밀번호 재설정 로그인ID 조회에 사용
+    /** 로그인 ID */
+    private final String loginId;
+
+    /** 이메일 (연락·인증·비밀번호 재설정용) */
     private final String email;
 
     /** BCrypt 암호화된 비밀번호 (소셜 가입은 null) */
@@ -30,6 +34,10 @@ public class AuthMember {
 
     /** 권한 (ROLE_USER / ROLE_ADMIN) */
     private final String role;
+
+    // @ai_generated: F-AUTH-009 계정 상태 차단(정지/탈퇴)에 사용 - USRG01 코드값(USRC0001 등)
+    /** 회원 상태 코드 (USRG01: USRC0001=활성, USRC0002=정지, USRC0003=탈퇴) */
+    private final String status;
 
     /** 가입 경로 (LOCAL / KAKAO) */
     private final String provider;

@@ -19,6 +19,14 @@ public interface EmailVerificationMapper {
 
     void insertSignup(EmailVerification verification);
 
+    // @ai_generated: F-AUTH-007 - PASSWORD_RESET(EMVC0002) 전용. SIGNUP 메서드와 분리해 재사용한다.
+    Optional<EmailVerification> findLatestPasswordResetByEmailForUpdate(@Param("email") String email);
+
+    void insertPasswordReset(EmailVerification verification);
+
+    // @ai_generated: 링크 방식은 PK 대신 토큰 해시로 조회한다(URL에 verificationId를 노출하지 않음).
+    Optional<EmailVerification> findPasswordResetByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
+
     int resend(@Param("verificationId") Long verificationId,
                @Param("codeHash") String codeHash,
                @Param("expiresAt") LocalDateTime expiresAt,

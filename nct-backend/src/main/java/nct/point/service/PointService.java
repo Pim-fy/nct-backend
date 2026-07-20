@@ -139,6 +139,13 @@ public class PointService {
     /**
      * 정산가능 포인트 적립 (F-PAY-043). 정산 완료 시 SettlementService가 호출한다.
      * 판매자의 정산가능 버킷에 +금액 단식 1행 — 보관금전환으로 빠졌던 금액이 판매자에게 도착하는 지점.
+     *
+     * 수수료 정책 (F-PAY-008/009):
+     * - MVP 거래 수수료는 0원 — 그래서 거래대금 "전액"이 그대로 적립되며, 이게 빠뜨린 게 아니라
+     *   의도된 동작임을 원장 사유에 "(수수료 0원)"으로 명시해 기록한다.
+     * - 향후 수수료를 도입할 때의 확장 지점: 원장유형 공통코드(PTLG02)에 '수수료' 유형을 추가하고
+     *   여기서 적립(+전액)과 수수료 차감(-수수료) 두 행을 짝으로 기록하면 된다. 요율은 이미
+     *   SYSTEM_SETTING.SYS_SET_SVC_FEE_RATE(관리자 시스템 설정 화면)에서 관리되고 있다.
      */
     @Transactional
     public void creditSettleable(long usrSn, long amt, RefType refType, long refSn, String reason) {
@@ -147,7 +154,7 @@ public class PointService {
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
         insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
-                bal.getSettleableAmt() + amt, refType, refSn, reason);
+                bal.getSettleableAmt() + amt, refType, refSn, reason + " (수수료 0원)");
     }
 
     /**
@@ -164,6 +171,97 @@ public class PointService {
         PointBalance bal = pointMapper.selectBalance(usrSn);
         return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CHARGE, amt,
                 bal.getAvailableAmt() + amt, null, null, reason);
+    }
+
+    /**
+     * 환전 신청 차감 (F-PAY-012, D-026 — 신청 즉시 차감 정책).
+     * 정산가능(=환전 가능) 버킷에서 -금액 원장을 기록한다. 잔액 검증→차감이 회원 행 잠금
+     * 안에서 직렬화되므로, 동시에 두 번 신청해도 같은 돈이 두 번 빠져나갈 수 없다.
+     *
+     * @return 생성된 포인트원장일련번호 (환전 주문이 차감 원장으로 연결해 둔다)
+     */
+    @Transactional
+    public long debitExchange(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        if (bal.getSettleableAmt() < amt) {
+            throw new PointException(ErrorCode.POINT_INSUFFICIENT,
+                    "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + bal.getSettleableAmt() + "P");
+        }
+        return insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.EXCHANGE_OUT, -amt,
+                bal.getSettleableAmt() - amt, null, null, reason);
+    }
+
+    /**
+     * 환전 반려 복원 (F-PAY-012).
+     * 신청 즉시 차감했던 금액을 정산가능 버킷에 +원장으로 되돌린다 — 차감 원장과 짝(합계 0).
+     *
+     * @return 생성된 포인트원장일련번호 (환전 주문이 복원 원장으로 연결해 둔다)
+     */
+    @Transactional
+    public long restoreExchange(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        return insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.EXCHANGE_RESTORE, amt,
+                bal.getSettleableAmt() + amt, null, null, reason);
+    }
+
+    /**
+     * 정산가능→사용가능 전환 (F-PAY-010).
+     * 판매·서비스로 번 정산가능 포인트를 현금 환전 대신 플랫폼 안에서 다시 쓸 수 있게
+     * 사용가능 버킷으로 옮긴다. 지갑 화면에서 사용자가 직접 신청한다.
+     *
+     * 자동 검증 조건 (사용자 결정 2026-07-18): "분쟁 없음 확인 후 전환" —
+     * 신청자가 당사자인 거래에 진행 중인 거래 문제(접수·처리중)가 있으면 거부한다.
+     * 정산가능 포인트가 환불·조정 재원이 될 수 있어서, 분쟁 판정 전에 빠져나가는 것을 막는다.
+     */
+    @Transactional
+    public void convertSettleableToAvailable(long usrSn, long amt) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        // 분쟁 없음 확인 — 진행 중(접수·처리중) 거래 문제가 하나라도 있으면 전환 자체를 차단
+        int activeDisputes = pointMapper.countActiveDisputes(usrSn);
+        if (activeDisputes > 0) {
+            throw new PointException(ErrorCode.POINT_CONVERT_BLOCKED_BY_DISPUTE,
+                    "진행 중인 거래 문제가 " + activeDisputes + "건 있어 전환할 수 없습니다.");
+        }
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        if (bal.getSettleableAmt() < amt) {
+            throw new PointException(ErrorCode.POINT_INSUFFICIENT,
+                    "전환 가능한 정산가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + bal.getSettleableAmt() + "P");
+        }
+
+        // 복식 기록: 정산가능에서 빠져나가(−) 사용가능으로 들어온다(+) — 합계 0, 총 보유 불변
+        String reason = "정산가능→사용가능 전환";
+        insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.CONVERT, -amt,
+                bal.getSettleableAmt() - amt, null, null, reason);
+        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CONVERT, amt,
+                bal.getAvailableAmt() + amt, null, null, reason);
+
+        // 같은 트랜잭션 안에서 알림까지 기록 (원장만 남고 알림이 누락되는 일이 없도록)
+        notificationService.notifyPointConvert(usrSn, amt);
+    }
+
+    /**
+     * 충전 회수 (D-027 보상 전용).
+     * PG 승인은 성공했는데 내부 반영이 중간에 실패해 결제를 자동취소할 때,
+     * 이미 지급된 충전 포인트를 되돌린다. 원장은 절대 수정·삭제하지 않으므로(기록 불변)
+     * 반대 부호의 보정(-) 행을 짝으로 남기는 방식이다 — 합계가 0이 되어 잔액이 원상복구된다.
+     */
+    @Transactional
+    public void reverseCharge(long usrSn, long amt, String reason) {
+        requirePositive(amt);
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.ADJUST, -amt,
+                bal.getAvailableAmt() - amt, null, null, reason);
     }
 
     // ---------- 내부 ----------

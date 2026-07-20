@@ -9,11 +9,14 @@ import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
 import nct.file.service.FileStorageService;
+import nct.global.response.PageResponse;
 import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewUpdateResult;
+import nct.review.dto.TrustScoreResponse;
+import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
@@ -84,7 +87,7 @@ public class ReviewService {
 
         int photoCount = photos == null ? 0 : (int) photos.stream().filter(f -> !f.isEmpty()).count();
         if (photoCount > 0) {
-            fileStorageService.attach(photos, RefType.REVIEW, review.getRvwSn(), usrSn);
+            fileStorageService.attach(photos, "review", RefType.REVIEW, review.getRvwSn(), usrSn);
         }
 
         return ReviewCreateResult.builder()
@@ -114,7 +117,7 @@ public class ReviewService {
 
         int addedPhotoCount = photos == null ? 0 : (int) photos.stream().filter(f -> !f.isEmpty()).count();
         if (addedPhotoCount > 0) {
-            fileStorageService.attach(photos, RefType.REVIEW, rvwSn, usrSn);
+            fileStorageService.attach(photos, "review", RefType.REVIEW, rvwSn, usrSn);
         }
 
         return ReviewUpdateResult.builder()
@@ -131,5 +134,51 @@ public class ReviewService {
         if (deleted == 0) {
             throw new ReviewNotFoundException(rvwSn);
         }
+    }
+
+    /**
+     * 특정 회원이 받은 리뷰 목록 (F-COM-008, 담당자4 정민재 소비).
+     * 작성자 이름은 마스킹 처리(홍*동)해서 반환한다.
+     *
+     * @param dealType "goods" | "service" | null(전체)
+     * @param page     0-indexed 페이지 번호
+     * @param size     페이지당 건수 (최대 50 강제)
+     */
+    public PageResponse<UserReviewItem> getReviewsAboutUser(long usrSn, String dealType, int page, int size) {
+        int safeSize = Math.min(size, 50);
+        int offset = page * safeSize;
+
+        List<UserReviewItem> raw = reviewMapper.selectReviewsByReceiver(usrSn, dealType, offset, safeSize);
+        List<UserReviewItem> masked = raw.stream()
+                .map(item -> item.toBuilder().reviewerName(maskName(item.getReviewerName())).build())
+                .toList();
+
+        long total = reviewMapper.countReviewsByReceiver(usrSn, dealType);
+        return PageResponse.<UserReviewItem>builder()
+                .content(masked)
+                .totalCount(total)
+                .page(page)
+                .size(safeSize)
+                .hasNext((long)(page + 1) * safeSize < total)
+                .build();
+    }
+
+    /**
+     * 특정 회원의 신뢰지표 (F-COM-009~010, 담당자4 정민재 소비).
+     * 리뷰가 없으면 totalCount=0, 점수는 null, hasReviews=false.
+     */
+    public TrustScoreResponse getTrustScore(long usrSn) {
+        TrustScoreResponse raw = reviewMapper.selectTrustScore(usrSn);
+        return raw.toBuilder()
+                .usrSn(usrSn)
+                .hasReviews(raw.getTotalCount() > 0)
+                .build();
+    }
+
+    /** 한국식 이름 마스킹: 홍길동→홍*동, 홍길→홍*, 홍→홍 */
+    private String maskName(String name) {
+        if (name == null || name.length() <= 1) return name;
+        if (name.length() == 2) return name.charAt(0) + "*";
+        return name.charAt(0) + "*" + name.charAt(name.length() - 1);
     }
 }

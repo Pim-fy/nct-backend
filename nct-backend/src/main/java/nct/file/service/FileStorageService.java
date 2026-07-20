@@ -7,6 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,6 +19,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import nct.common.domain.RefType;
+import nct.file.domain.FileAttach;
 import nct.file.domain.FileMeta;
 import nct.file.mapper.FileAttachMapper;
 import nct.file.mapper.FileMapper;
@@ -59,7 +63,7 @@ public class FileStorageService {
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp");
 
     /** 첨부를 쓰는 서비스 구분(저장 폴더 이름) — 새 도메인이 파일을 쓰게 되면 여기에만 추가 */
-    private static final Set<String> ALLOWED_SERVICES = Set.of("product");
+    private static final Set<String> ALLOWED_SERVICES = Set.of("product", "review");
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 /api/attachment/** 리소스 핸들러와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -108,6 +112,44 @@ public class FileStorageService {
             throw e;
         }
         return fileMeta;
+    }
+
+    /**
+     * 여러 파일을 저장하고 지정된 업무 레코드(refType, refSn)에 FILE_ATTACH로 연결한다.
+     * 소비자는 FILES/FILE_ATTACH를 직접 쓰지 않고 이 메서드만 호출한다.
+     *
+     * @param service        저장 폴더 구분 ("review" 등 ALLOWED_SERVICES에 등록된 값)
+     * @param submitterUsrSn 제출자 회원번호 (FILES.FL_REG_ID와 FILE_ATTACH.FL_ATT_SUBM_USR_SN에 함께 쓰임)
+     */
+    @Transactional
+    public List<FileMeta> attach(List<MultipartFile> files, String service,
+                                 RefType refType, long refSn, long submitterUsrSn) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        List<FileMeta> stored = new ArrayList<>();
+        int sortNo = 0;
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                continue;
+            }
+            FileMeta fileMeta = storeImage(file, service, submitterUsrSn);
+            fileAttachMapper.insertAttach(FileAttach.builder()
+                    .flSn(fileMeta.getFlSn())
+                    .flAttRefTypeCd(refType.getCode())
+                    .flAttRefSn(refSn)
+                    .flAttSortNo(sortNo++)
+                    .flAttSubmUsrSn(submitterUsrSn)
+                    .build());
+            stored.add(fileMeta);
+        }
+        return stored;
+    }
+
+    /** 참조 건에 붙은 파일 URL 목록 (정렬순서순, 프론트 &lt;img src&gt;에 그대로 사용 가능) */
+    public List<String> getUrls(RefType refType, long refSn) {
+        return fileAttachMapper.selectFilePathsByRef(refType.getCode(), refSn);
     }
 
     /**

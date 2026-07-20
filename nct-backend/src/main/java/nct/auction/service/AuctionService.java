@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.constant.BidStatusCode;
+import nct.auction.dto.AuctionBidCreateCommand;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
@@ -19,9 +20,12 @@ import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.mapper.AuctionMapper;
+import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.point.exception.PointException;
+import nct.point.service.PointService;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +38,7 @@ public class AuctionService {
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
+    private final PointService pointService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -131,8 +136,13 @@ public class AuctionService {
             throw new CustomException(ErrorCode.CONFLICT, "현재가가 갱신되었습니다. 다시 확인 후 입찰해주세요.");
         }
 
+        Long previousHighestBidId = target.getCurrentHighestBidId();
+        Long previousHighestBidderId = target.getCurrentHighestBidderId();
+
         auctionMapper.updateCurrentHighestBids(auctionId);
-        auctionMapper.insertBid(auctionId, userId, bidAmount, BidStatusCode.HIGHEST, userId.toString());
+        AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, bidAmount);
+        pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
+        releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
 
         return loadAuctionDetail(auctionId);
     }
@@ -147,8 +157,14 @@ public class AuctionService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
+        Long previousHighestBidId = target.getCurrentHighestBidId();
+        Long previousHighestBidderId = target.getCurrentHighestBidderId();
+
         auctionMapper.updateCurrentHighestBids(auctionId);
-        auctionMapper.insertBid(auctionId, userId, instantBuyPrice, BidStatusCode.HIGHEST, userId.toString());
+        AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, instantBuyPrice);
+        pointService.hold(userId, toPointAmount(instantBuyPrice), RefType.BID, bid.getBidId(), "즉시구매 포인트 홀딩");
+        pointService.convertHoldToEscrow(userId, RefType.BID, bid.getBidId(), "즉시구매 보관금 전환");
+        releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
         auctionMapper.closeAuctionByInstantBuy(auctionId, instantBuyPrice, userId.toString());
 
         return loadAuctionDetail(auctionId);
@@ -184,6 +200,43 @@ public class AuctionService {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
         BigDecimal bidUnitPrice = target.getBidUnitPrice() == null ? BigDecimal.valueOf(1000) : target.getBidUnitPrice();
         return currentPrice.add(bidUnitPrice);
+    }
+
+    private AuctionBidCreateCommand insertHighestBid(Long auctionId, Long userId, BigDecimal bidAmount) {
+        AuctionBidCreateCommand bid = new AuctionBidCreateCommand(
+                auctionId,
+                userId,
+                bidAmount,
+                BidStatusCode.HIGHEST,
+                userId.toString());
+        int inserted = auctionMapper.insertBid(bid);
+        if (inserted == 0 || bid.getBidId() == null) {
+            throw new CustomException(ErrorCode.CONFLICT, "입찰 등록에 실패했습니다.");
+        }
+        return bid;
+    }
+
+    private void releasePreviousHighestBidHold(Long previousHighestBidderId, Long previousHighestBidId) {
+        if (previousHighestBidderId == null || previousHighestBidId == null) {
+            return;
+        }
+        try {
+            pointService.releaseHold(
+                    previousHighestBidderId,
+                    RefType.BID,
+                    previousHighestBidId,
+                    "상위 입찰 발생에 따른 기존 입찰 홀딩 반환");
+        } catch (PointException ignored) {
+            // 기존 테스트/마이그레이션 데이터처럼 포인트 홀딩 없이 존재하는 과거 입찰은 상태 변경만 유지한다.
+        }
+    }
+
+    private long toPointAmount(BigDecimal amount) {
+        try {
+            return amount.longValueExact();
+        } catch (ArithmeticException e) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "포인트 금액은 정수여야 합니다.");
+        }
     }
 
     private void validateAuctionCreation(

@@ -8,4 +8,7 @@ public interface EmailSender {
 
     // @ai_generated: F-AUTH-007 - 비밀번호 재설정은 코드가 아닌 링크(URL)를 발송한다.
     void sendPasswordResetLink(String email, String link);
+
+    // @ai_generated: F-AUTH-011 - 정지 계정용 탈퇴 확인도 링크(URL) 방식이다.
+    void sendWithdrawalLink(String email, String link);
 }

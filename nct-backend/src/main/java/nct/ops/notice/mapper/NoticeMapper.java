@@ -16,9 +16,11 @@ import nct.ops.notice.domain.AdminNoticeWriteCommand;
 @Mapper
 public interface NoticeMapper {
 
-    long countPublicNotices(@Param("typeCode") String typeCode);
+    long countPublicNotices(@Param("typeCode") String typeCode,
+                            @Param("keyword") String keyword);
 
     List<Notice> findPublicNotices(@Param("typeCode") String typeCode,
+                                   @Param("keyword") String keyword,
                                    @Param("offset") long offset,
                                    @Param("size") int size);
 

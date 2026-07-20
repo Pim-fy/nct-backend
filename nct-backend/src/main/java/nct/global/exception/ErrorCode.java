@@ -68,6 +68,12 @@ public enum ErrorCode {
     POINT_DUPLICATE_HOLD(HttpStatus.CONFLICT, "이미 홀딩된 건입니다."),
     POINT_HOLD_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 홀딩이 없습니다."),
 
+    // 포인트 - 보관금(에스크로) 계약 (F-SVC-013/015, 분쟁 환불 — 2026-07-20)
+    POINT_DUPLICATE_ESCROW(HttpStatus.CONFLICT, "이미 보관금이 결제된 건입니다."),
+    POINT_ESCROW_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 보관금이 없습니다."),
+    POINT_ESCROW_ALREADY_SETTLED(HttpStatus.CONFLICT, "이미 정산 지급이 끝난 보관금입니다."),
+    POINT_SETTLE_BLOCKED_BY_DISPUTE(HttpStatus.CONFLICT, "해당 거래에 진행 중인 거래 문제가 있어 정산 전환을 할 수 없습니다. 거래 문제 처리 완료 후 다시 시도해 주세요."),
+
     // 정산
     SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 정산 건입니다."),
     SETTLEMENT_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 정산 처리입니다."),
@@ -100,13 +106,16 @@ public enum ErrorCode {
     /*==================== 파일 도메인 (담당자6, F-AUC-002 이미지 연계) ====================*/
 
     FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드할 파일이 비어 있습니다."),
-    FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "이미지 파일(jpg, png, gif, webp)만 업로드할 수 있습니다."),
+    // 허용 확장자는 서비스 구분별로 다름(FileStorageService.SERVICE_EXTENSIONS) — 특정 목록을 박지 않는 중립 문구 (2026-07-20)
+    FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일 형식입니다."),
     FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 크기는 10MB를 초과할 수 없습니다."),
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장 중 오류가 발생했습니다."),
     FILE_INVALID_SERVICE(HttpStatus.BAD_REQUEST, "허용되지 않은 첨부 서비스 구분입니다."),
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
     FILE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "본인이 업로드한 파일만 삭제/변경할 수 있습니다."),
     FILE_IN_USE(HttpStatus.CONFLICT, "사용 중인 파일은 삭제할 수 없습니다."),
+    // 배송 인증사진(F-AUC-009) — 거래 당사자만 열람 (2026-07-20)
+    FILE_TRADE_PARTY_ONLY(HttpStatus.FORBIDDEN, "거래 당사자만 열람할 수 있습니다."),
 
     /*==================== 5XX SERVER ERROR ====================*/
 

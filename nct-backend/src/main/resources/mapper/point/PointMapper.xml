@@ -93,4 +93,47 @@
           AND D.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
     </select>
 
+    <!-- 보관금(에스크로) 잔존 판정: 보관금전환(PTLC0007, −)과 환불(PTLC0013, +)을 참조 건 기준으로 합산한다.
+         홀딩 판정(selectActiveHoldAmtByRef)과 같은 "원장 합산 = 상태" 방식 —
+         합계가 음수면 보관금이 살아있고, 환불이 쌓여 0이 되면 보관금 소멸로 판정된다 -->
+    <select id="selectActiveEscrowAmtByMemberRef" resultType="long">
+        /* 포인트: 회원·참조 건별 유효 보관금 (음수 = 잔존) */
+        SELECT COALESCE(SUM(PT_LDG_AMT), 0)
+        FROM POINT_LEDGER
+        WHERE USR_SN = #{usrSn}
+          AND PT_LDG_TYPE_CD IN ('PTLC0007', 'PTLC0013')
+          AND PT_LDG_REF_TYPE_CD = #{refTypeCd}
+          AND PT_LDG_REF_SN = #{refSn}
+    </select>
+
+    <!-- 위와 같은 판정의 회원 무관 버전 — 정산 전환은 제공자 쪽 호출이라 지불자 회원번호를 모른다 -->
+    <select id="selectActiveEscrowAmtByRef" resultType="long">
+        /* 포인트: 참조 건별 유효 보관금 (회원 무관, 음수 = 잔존) */
+        SELECT COALESCE(SUM(PT_LDG_AMT), 0)
+        FROM POINT_LEDGER
+        WHERE PT_LDG_TYPE_CD IN ('PTLC0007', 'PTLC0013')
+          AND PT_LDG_REF_TYPE_CD = #{refTypeCd}
+          AND PT_LDG_REF_SN = #{refSn}
+    </select>
+
+    <!-- 같은 참조 건으로 이미 정산 지급(PTLC0008, +)된 금액 — 이중 정산·정산 후 환불 차단용 -->
+    <select id="selectSettledAmtByRef" resultType="long">
+        /* 포인트: 참조 건별 기지급 정산 금액 */
+        SELECT COALESCE(SUM(PT_LDG_AMT), 0)
+        FROM POINT_LEDGER
+        WHERE PT_LDG_TYPE_CD = 'PTLC0008'
+          AND PT_LDG_REF_TYPE_CD = #{refTypeCd}
+          AND PT_LDG_REF_SN = #{refSn}
+    </select>
+
+    <!-- 특정 거래의 진행 중 거래 문제 건수 (F-SVC-015 정산 전환 차단 — 거래 단위).
+         ⚠️ TRADE_DISPUTE(담당자5)는 타 담당자 소유 테이블 — 읽기 전용 SELECT만, 변경 금지 -->
+    <select id="countActiveDisputesByTrade" resultType="int">
+        /* 포인트: 거래 건별 진행 중 거래 문제 건수 (정산 전환 차단 검사, 읽기 전용) */
+        SELECT COUNT(*)
+        FROM TRADE_DISPUTE
+        WHERE TRD_SN = #{trdSn}
+          AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+    </select>
+
 </mapper>

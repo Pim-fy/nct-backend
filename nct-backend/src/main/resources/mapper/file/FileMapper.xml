@@ -43,6 +43,7 @@
                FL_PATH     = #{flPath},
                FL_EXT      = #{flExt},
                FL_SIZE_AMT = #{flSizeAmt},
+               FL_TYPE_CD  = #{flTypeCd},
                FL_UPDT_ID  = #{flUpdtId},
                FL_UPDT_DT  = NOW()
          WHERE FL_SN = #{flSn}
@@ -66,6 +67,47 @@
         /* 파일: 상품이미지 참조 수 */
         SELECT COUNT(*)
           FROM PRODUCT_IMAGE
+         WHERE FL_SN = #{flSn}
+    </select>
+
+    <!-- 관리자 서류 열람 가드: 해당 제공자 신청 건에 실제로 연결된 파일인지 확인.
+         flSn만 알아내서 다른 파일을 열람하는 시도를 차단한다 (담당자7 요청 근거).
+         ⚠️ PROVIDER_APPLY_FILE(담당자7 소유)은 읽기 전용 SELECT만 — 변경 금지 -->
+    <select id="countProviderApplyFileLink" resultType="int">
+        /* 파일: 제공자 신청-파일 연결 확인 (관리자 열람 가드, 읽기 전용) */
+        SELECT COUNT(*)
+          FROM PROVIDER_APPLY_FILE
+         WHERE PRV_APLY_SN = #{prvAplySn}
+           AND FL_SN = #{flSn}
+    </select>
+
+    <!-- 당사자 열람 가드 1: 해당 배송 건에 실제 연결된 파일인지 (F-AUC-009).
+         TRADE_DELIVERY_FILE은 담당자6 제안 신규 테이블 — 정본 CHG 승인 전까지 로컬 DB에만 존재 -->
+    <select id="countTradeDeliveryFileLink" resultType="int">
+        /* 파일: 배송-파일 연결 확인 (당사자 열람 가드) */
+        SELECT COUNT(*)
+          FROM TRADE_DELIVERY_FILE
+         WHERE TRD_DLVR_SN = #{trdDlvrSn}
+           AND FL_SN = #{flSn}
+    </select>
+
+    <!-- 당사자 열람 가드 2: 요청자가 이 배송 건이 속한 거래의 구매자/판매자인지.
+         ⚠️ TRADE_DELIVERY·TRADE(담당자4)는 타 담당자 소유 — 읽기 전용 SELECT만, 변경 금지
+         (PointMapper의 TRADE JOIN 당사자 비교 선례와 같은 방식) -->
+    <select id="countTradePartyMatch" resultType="int">
+        /* 파일: 배송 건 거래 당사자 확인 (읽기 전용) */
+        SELECT COUNT(*)
+          FROM TRADE_DELIVERY D
+          JOIN TRADE T ON T.TRD_SN = D.TRD_SN
+         WHERE D.TRD_DLVR_SN = #{trdDlvrSn}
+           AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn})
+    </select>
+
+    <!-- 삭제 가드: 배송 인증사진으로 연결된 파일인지 (상품 이미지 카운트와 OR 합산) -->
+    <select id="countTradeDeliveryFileRefs" resultType="int">
+        /* 파일: 배송인증사진 참조 수 */
+        SELECT COUNT(*)
+          FROM TRADE_DELIVERY_FILE
          WHERE FL_SN = #{flSn}
     </select>
 

@@ -62,7 +62,7 @@ public class FileController {
 
     @DeleteMapping("/{flSn}")
     public ResponseEntity<ApiResponse<Void>> delete(
-            @PathVariable Long flSn,
+            @PathVariable(name = "flSn") Long flSn,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         Long usrSn = userDetails.getMember().getId();
@@ -72,7 +72,7 @@ public class FileController {
 
     @PutMapping("/{flSn}")
     public ResponseEntity<ApiResponse<FileUploadResponse>> replace(
-            @PathVariable Long flSn,
+            @PathVariable(name = "flSn") Long flSn,
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 

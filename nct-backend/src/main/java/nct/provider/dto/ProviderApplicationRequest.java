@@ -2,6 +2,7 @@ package nct.provider.dto;
 
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -16,4 +17,6 @@ public class ProviderApplicationRequest {
     private List<@NotNull @Positive Long> categorySns;
     @Size(max = 4000)
     private String reason;
+    @Valid @Size(max = 15)
+    private List<ProviderApplicationFileRequest> files;
 }

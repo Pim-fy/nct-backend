@@ -1,6 +1,7 @@
 package nct.provider.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -19,4 +20,5 @@ public class ProviderApplicationResponse {
     private String applicationTypeCode;
     private LocalDateTime requestedAt;
     private LocalDateTime decidedAt;
+    private List<ProviderApplicationFileResponse> files = List.of();
 }

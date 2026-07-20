@@ -36,8 +36,8 @@ import nct.global.exception.ErrorCode;
  * 삭제 정책: FILES는 소프트 삭제(FL_USE_YN='N', 이력 보존) + 디스크 파일은 물리 삭제
  * 교체 정책: flSn을 유지한 채 메타만 갱신 — PRODUCT_IMAGE 등의 참조가 끊기지 않고 파일만 바뀐다
  *
- * 지금은 상품 이미지 업로드가 유일한 소비자라 이미지 확장자만 허용한다.
- * 다른 도메인(문서 등)이 FILES를 쓰게 되면 그때 FL_TYPE_CD 파라미터화 등으로 확장.
+ * 현재는 상품 이미지와 담당자7 제공자 신청 서류가 소비한다. 아직 공통 파일 정책이 이미지 전용이므로
+ * 제공자 서류도 1차 연결은 이미지 파일만 받으며, PDF/문서 허용은 담당자6 파일 정책 확장 뒤 반영한다.
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -53,7 +53,7 @@ public class FileStorageService {
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp");
 
     /** 첨부를 쓰는 서비스 구분(저장 폴더 이름) — 새 도메인이 파일을 쓰게 되면 여기에만 추가 */
-    private static final Set<String> ALLOWED_SERVICES = Set.of("product");
+    private static final Set<String> ALLOWED_SERVICES = Set.of("product", "provider");
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 /api/attachment/** 리소스 핸들러와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -175,6 +175,17 @@ public class FileStorageService {
         // 교체 완료 후 구 파일 정리 — 실패해도 교체 자체는 성공이므로 WARN만
         deleteQuietly(toDiskPath(oldMeta.getFlPath()));
         return newMeta;
+    }
+
+    /** 담당자 7 제공자 신청 서류 연결용: 업로드된 파일이 현재 사용자 소유의 활성 파일인지 확인합니다. */
+    @Transactional(readOnly = true)
+    public FileMeta requireOwnedActiveFile(Long flSn, Long usrSn) {
+        FileMeta fileMeta = fileMapper.findById(flSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+        if (!String.valueOf(usrSn).equals(fileMeta.getFlRegId())) {
+            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        return fileMeta;
     }
 
     /*===========================

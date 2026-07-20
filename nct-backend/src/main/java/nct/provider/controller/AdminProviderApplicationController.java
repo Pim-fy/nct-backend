@@ -26,8 +26,8 @@ import nct.provider.service.ProviderApplicationService;
 @RestController @RequestMapping("/api/admin/provider-applications") @RequiredArgsConstructor
 public class AdminProviderApplicationController {
     private final ProviderApplicationService service;
-    @GetMapping public ResponseEntity<ApiResponse<List<ProviderApplicationResponse>>> list(@RequestParam(required = false) String statusCode) { return ResponseEntity.ok(ApiResponse.success(service.getForAdmin(statusCode))); }
-    @PostMapping("/{applicationSn}/approve") public ResponseEntity<ApiResponse<ProviderApplicationResponse>> approve(@PathVariable Long applicationSn, @AuthenticationPrincipal CustomUserDetails user) { return ResponseEntity.ok(ApiResponse.success(service.approve(applicationSn, userId(user)))); }
-    @PostMapping("/{applicationSn}/reject") public ResponseEntity<ApiResponse<ProviderApplicationResponse>> reject(@PathVariable Long applicationSn, @Valid @RequestBody ProviderDecisionRequest request, @AuthenticationPrincipal CustomUserDetails user) { return ResponseEntity.ok(ApiResponse.success(service.reject(applicationSn, request.getReason(), userId(user)))); }
+    @GetMapping public ResponseEntity<ApiResponse<List<ProviderApplicationResponse>>> list(@RequestParam(name = "statusCode", required = false) String statusCode) { return ResponseEntity.ok(ApiResponse.success(service.getForAdmin(statusCode))); }
+    @PostMapping("/{applicationSn}/approve") public ResponseEntity<ApiResponse<ProviderApplicationResponse>> approve(@PathVariable(name = "applicationSn") Long applicationSn, @AuthenticationPrincipal CustomUserDetails user) { return ResponseEntity.ok(ApiResponse.success(service.approve(applicationSn, userId(user)))); }
+    @PostMapping("/{applicationSn}/reject") public ResponseEntity<ApiResponse<ProviderApplicationResponse>> reject(@PathVariable(name = "applicationSn") Long applicationSn, @Valid @RequestBody ProviderDecisionRequest request, @AuthenticationPrincipal CustomUserDetails user) { return ResponseEntity.ok(ApiResponse.success(service.reject(applicationSn, request.getReason(), userId(user)))); }
     private Long userId(CustomUserDetails user) { if (user == null || user.getMember() == null) throw new CustomException(ErrorCode.UNAUTHORIZED); return user.getMember().getId(); }
 }

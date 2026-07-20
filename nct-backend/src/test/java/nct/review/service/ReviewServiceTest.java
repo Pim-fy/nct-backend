@@ -25,8 +25,10 @@ import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
+import nct.review.dto.ReviewUpdateResult;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
+import nct.review.exception.ReviewNotFoundException;
 import nct.review.exception.TradeNotReviewableException;
 import nct.review.mapper.ReviewMapper;
 
@@ -166,5 +168,73 @@ class ReviewServiceTest {
         assertThat(result.get(0).getPhotos()).containsExactly("/uploads/2026/06/18/a.jpg");
         // 원본 필드는 그대로 유지되어야 한다 (toBuilder로 photos만 채워 넣었는지 확인)
         assertThat(result.get(0).getTitle()).isEqualTo("상품");
+    }
+
+    @Test
+    void 리뷰_수정시_평점이_범위를_벗어나면_매퍼_호출_없이_바로_실패한다() {
+        setUp();
+
+        assertThatThrownBy(() -> reviewService.updateReview(USR_SN, 900L, 0, "내용", null))
+                .isInstanceOf(InvalidRatingException.class);
+        assertThatThrownBy(() -> reviewService.updateReview(USR_SN, 900L, 6, "내용", null))
+                .isInstanceOf(InvalidRatingException.class);
+
+        verify(reviewMapper, never()).updateReview(any(Long.class), any(Long.class), any(Integer.class), any());
+    }
+
+    @Test
+    void 존재하지_않거나_본인_소유가_아닌_리뷰를_수정하면_예외가_발생한다() {
+        setUp();
+        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(0);
+
+        assertThatThrownBy(() -> reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null))
+                .isInstanceOf(ReviewNotFoundException.class);
+
+        // 대상이 없으므로 사진 첨부도 시도하지 않아야 한다.
+        verify(fileStorageService, never()).attach(any(), any(), any(Long.class), any(Long.class));
+    }
+
+    @Test
+    void 리뷰_수정이_성공하면_평점과_내용이_반영된다() {
+        setUp();
+        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+
+        ReviewUpdateResult result = reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null);
+
+        assertThat(result.getId()).isEqualTo(900L);
+        assertThat(result.getRating()).isEqualTo(4);
+        assertThat(result.getAddedPhotoCount()).isZero();
+        verify(fileStorageService, never()).attach(any(), any(), any(Long.class), any(Long.class));
+    }
+
+    @Test
+    void 리뷰_수정시_새_사진이_있으면_기존_첨부에_추가로_요청한다() {
+        setUp();
+        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        MultipartFile photo = new MockMultipartFile("photos", "c.jpg", "image/jpeg", "data".getBytes());
+
+        ReviewUpdateResult result = reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", List.of(photo));
+
+        assertThat(result.getAddedPhotoCount()).isEqualTo(1);
+        verify(fileStorageService).attach(List.of(photo), RefType.REVIEW, 900L, USR_SN);
+    }
+
+    @Test
+    void 리뷰_삭제가_성공하면_매퍼의_소프트_삭제가_호출된다() {
+        setUp();
+        when(reviewMapper.deleteReview(900L, USR_SN)).thenReturn(1);
+
+        reviewService.deleteReview(USR_SN, 900L);
+
+        verify(reviewMapper).deleteReview(900L, USR_SN);
+    }
+
+    @Test
+    void 존재하지_않거나_본인_소유가_아닌_리뷰를_삭제하면_예외가_발생한다() {
+        setUp();
+        when(reviewMapper.deleteReview(900L, USR_SN)).thenReturn(0);
+
+        assertThatThrownBy(() -> reviewService.deleteReview(USR_SN, 900L))
+                .isInstanceOf(ReviewNotFoundException.class);
     }
 }

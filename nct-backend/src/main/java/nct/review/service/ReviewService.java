@@ -13,8 +13,10 @@ import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
+import nct.review.dto.ReviewUpdateResult;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
+import nct.review.exception.ReviewNotFoundException;
 import nct.review.exception.TradeNotReviewableException;
 import nct.review.mapper.ReviewMapper;
 
@@ -91,5 +93,43 @@ public class ReviewService {
                 .rating(rating)
                 .photoCount(photoCount)
                 .build();
+    }
+
+    /**
+     * 리뷰 수정 (평점·내용). 본인이 작성한 리뷰만 수정할 수 있다.
+     * 새 사진은 기존 첨부에 추가된다 - 프론트(ReviewEditPage)가 기존 사진 목록을 다시 보여주지 않고
+     * 이번에 새로 고른 파일만 넘겨주는 구조라, 여기서도 기존 첨부를 건드리지 않고 더하기만 한다.
+     */
+    @Transactional
+    public ReviewUpdateResult updateReview(long usrSn, long rvwSn, int rating, String content,
+            List<MultipartFile> photos) {
+        if (rating < 1 || rating > 5) {
+            throw new InvalidRatingException(rating);
+        }
+
+        int updated = reviewMapper.updateReview(rvwSn, usrSn, rating, content);
+        if (updated == 0) {
+            throw new ReviewNotFoundException(rvwSn);
+        }
+
+        int addedPhotoCount = photos == null ? 0 : (int) photos.stream().filter(f -> !f.isEmpty()).count();
+        if (addedPhotoCount > 0) {
+            fileStorageService.attach(photos, RefType.REVIEW, rvwSn, usrSn);
+        }
+
+        return ReviewUpdateResult.builder()
+                .id(rvwSn)
+                .rating(rating)
+                .addedPhotoCount(addedPhotoCount)
+                .build();
+    }
+
+    /** 리뷰 삭제 (소프트 삭제). 본인이 작성한 리뷰만 삭제할 수 있다. */
+    @Transactional
+    public void deleteReview(long usrSn, long rvwSn) {
+        int deleted = reviewMapper.deleteReview(rvwSn, usrSn);
+        if (deleted == 0) {
+            throw new ReviewNotFoundException(rvwSn);
+        }
     }
 }

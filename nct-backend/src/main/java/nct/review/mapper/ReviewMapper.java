@@ -34,4 +34,11 @@ public interface ReviewMapper {
 
     /** 로그인 사용자가 작성한 리뷰 목록 (최신순) */
     List<MyReviewItem> selectMyReviews(@Param("usrSn") long usrSn);
+
+    /** 리뷰 평점·내용 수정 (본인 소유·미삭제 리뷰만, 영향 행 0건이면 대상 없음/타인 소유/이미 삭제) */
+    int updateReview(@Param("rvwSn") long rvwSn, @Param("usrSn") long usrSn,
+                      @Param("rating") int rating, @Param("content") String content);
+
+    /** 리뷰 소프트 삭제 (RVW_USE_YN='N', 본인 소유·미삭제 리뷰만) */
+    int deleteReview(@Param("rvwSn") long rvwSn, @Param("usrSn") long usrSn);
 }

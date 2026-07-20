@@ -132,8 +132,33 @@
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
         JOIN USERS U ON U.USR_SN = R.REVWD_USR_SN
         WHERE R.REVWR_USR_SN = #{usrSn}
+          AND R.RVW_USE_YN = 'Y'
         ORDER BY R.RVW_REG_DT DESC
         LIMIT 100
     </select>
+
+    <!-- 리뷰 수정 - 본인 소유 + 미삭제 리뷰만 대상. WHERE 조건에 안 걸리면 영향 행 0건 (서비스 계층에서 예외 처리) -->
+    <update id="updateReview">
+        /* 리뷰: 수정 */
+        UPDATE REVIEW
+           SET RVW_SCORE = #{rating},
+               RVW_CN    = #{content}
+         WHERE RVW_SN = #{rvwSn}
+           AND REVWR_USR_SN = #{usrSn}
+           AND RVW_USE_YN = 'Y'
+    </update>
+
+    <!-- 리뷰 소프트 삭제 - 물리 삭제하지 않는 이유: REVIEW를 FK로 참조하는 곳은 없지만(리뷰가 참조 대상이 되는
+         구조가 아님) 다른 테이블들과 동일하게 USE_YN 소프트 삭제 관례(예: PRODUCT.PRD_USE_YN)를 따른다.
+         UK_REVIEW_TRD_REVWR(TRD_SN, REVWR_USR_SN)는 RVW_USE_YN과 무관하게 유지되므로, 삭제 후에도
+         같은 거래에 새 리뷰를 다시 쓸 수는 없다 (재작성 허용은 DB 제약 변경이 필요한 별도 결정 사항). -->
+    <update id="deleteReview">
+        /* 리뷰: 소프트 삭제 */
+        UPDATE REVIEW
+           SET RVW_USE_YN = 'N'
+         WHERE RVW_SN = #{rvwSn}
+           AND REVWR_USR_SN = #{usrSn}
+           AND RVW_USE_YN = 'Y'
+    </update>
 
 </mapper>

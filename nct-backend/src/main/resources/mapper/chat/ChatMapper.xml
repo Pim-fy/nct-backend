@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.chat.mapper.ChatMapper">
+
+    <!-- 대면 거래의 판매자·구매자만 본인 채팅방 목록에 포함한다. -->
+    <select id="findMyChatRooms" resultType="nct.chat.dto.ChatRoomResponse">
+        SELECT
+            r.CH_RM_SN AS roomId,
+            t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                ELSE buyer.USR_NM
+            END AS counterpartNickname,
+            p.PRD_NM AS productName,
+            r.CH_RM_STATUS_CD AS roomStatus,
+            (
+                SELECT m.CH_MSG_CN
+                FROM CHAT_MESSAGE m
+                WHERE m.CH_RM_SN = r.CH_RM_SN
+                ORDER BY m.CH_MSG_REG_DT DESC, m.CH_MSG_SN DESC
+                LIMIT 1
+            ) AS lastMessage,
+            (
+                SELECT m.CH_MSG_REG_DT
+                FROM CHAT_MESSAGE m
+                WHERE m.CH_RM_SN = r.CH_RM_SN
+                ORDER BY m.CH_MSG_REG_DT DESC, m.CH_MSG_SN DESC
+                LIMIT 1
+            ) AS latestMessageAt,
+            (
+                SELECT COUNT(*)
+                FROM CHAT_MESSAGE m
+                WHERE m.CH_RM_SN = r.CH_RM_SN
+                  AND m.USR_SN != #{userId}
+                  AND m.CH_MSG_READ_YN = 'N'
+            ) AS unreadCount
+        FROM CHAT_ROOM r
+        JOIN TRADE t
+          ON t.TRD_SN = r.TRD_SN
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        JOIN USERS seller
+          ON seller.USR_SN = t.SLLR_USR_SN
+        JOIN USERS buyer
+          ON buyer.USR_SN = t.BYPR_USR_SN
+        WHERE t.TRD_TYPE_CD = 'TRDC0001'
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        <if test="tradeId != null">
+          AND t.TRD_SN = #{tradeId}
+        </if>
+        ORDER BY latestMessageAt DESC, r.CH_RM_SN DESC
+    </select>
+
+    <!-- URL의 채팅방 번호만으로는 접근하지 못하도록 거래 당사자와 거래방식을 함께 확인한다. -->
+    <select id="findMyChatRoom" resultType="nct.chat.dto.ChatRoomAccess">
+        SELECT
+            r.CH_RM_SN AS roomId,
+            t.TRD_SN AS tradeId,
+            r.CH_RM_STATUS_CD AS roomStatus
+        FROM CHAT_ROOM r
+        JOIN TRADE t
+          ON t.TRD_SN = r.TRD_SN
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        WHERE r.CH_RM_SN = #{roomId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+    </select>
+
+    <select id="findMyChatMessages" resultType="nct.chat.dto.ChatMessageResponse">
+        SELECT
+            m.CH_MSG_SN AS messageId,
+            CASE
+                WHEN m.USR_SN = #{userId} THEN 'ME'
+                ELSE 'COUNTERPART'
+            END AS senderType,
+            m.CH_MSG_CN AS content,
+            m.CH_MSG_REG_DT AS sentAt,
+            CASE WHEN m.CH_MSG_READ_YN = 'Y' THEN TRUE ELSE FALSE END AS `read`
+        FROM CHAT_MESSAGE m
+        WHERE m.CH_RM_SN = #{roomId}
+        ORDER BY m.CH_MSG_REG_DT ASC, m.CH_MSG_SN ASC
+    </select>
+
+    <!-- 내가 아닌 상대방 메시지만 읽음 처리해, 내가 보낸 메시지의 읽음 상태는 보존한다. -->
+    <update id="markCounterpartMessagesAsRead">
+        UPDATE CHAT_MESSAGE
+        SET CH_MSG_READ_YN = 'Y'
+        WHERE CH_RM_SN = #{roomId}
+          AND USR_SN != #{userId}
+          AND CH_MSG_READ_YN = 'N'
+    </update>
+
+    <insert id="insertChatMessage" parameterType="nct.chat.domain.ChatMessage"
+            useGeneratedKeys="true" keyProperty="messageId">
+        INSERT INTO CHAT_MESSAGE (
+            CH_RM_SN,
+            USR_SN,
+            CH_MSG_CN
+        )
+        VALUES (
+            #{roomId},
+            #{senderUserId},
+            #{content}
+        )
+    </insert>
+
+    <select id="findMyChatMessageById" resultType="nct.chat.dto.ChatMessageResponse">
+        SELECT
+            m.CH_MSG_SN AS messageId,
+            CASE
+                WHEN m.USR_SN = #{userId} THEN 'ME'
+                ELSE 'COUNTERPART'
+            END AS senderType,
+            m.CH_MSG_CN AS content,
+            m.CH_MSG_REG_DT AS sentAt,
+            CASE WHEN m.CH_MSG_READ_YN = 'Y' THEN TRUE ELSE FALSE END AS `read`
+        FROM CHAT_MESSAGE m
+        WHERE m.CH_MSG_SN = #{messageId}
+    </select>
+
+</mapper>

@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.auction.constant.AuctionStatusCode;
+import nct.auction.constant.BidStatusCode;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
@@ -26,8 +28,6 @@ public class AuctionService {
     private static final int DEFAULT_PAGE = 1;
     private static final int DEFAULT_SIZE = 12;
     private static final int MAX_SIZE = 60;
-    private static final String AUCTION_ACTIVE = "AUCC0002";
-    private static final String BID_HIGHEST = "BIDC0001";
 
     private final AuctionMapper auctionMapper;
 
@@ -91,7 +91,7 @@ public class AuctionService {
         }
 
         auctionMapper.updateCurrentHighestBids(auctionId);
-        auctionMapper.insertBid(auctionId, userId, bidAmount, BID_HIGHEST, userId.toString());
+        auctionMapper.insertBid(auctionId, userId, bidAmount, BidStatusCode.HIGHEST, userId.toString());
 
         return loadAuctionDetail(auctionId);
     }
@@ -107,7 +107,7 @@ public class AuctionService {
         }
 
         auctionMapper.updateCurrentHighestBids(auctionId);
-        auctionMapper.insertBid(auctionId, userId, instantBuyPrice, BID_HIGHEST, userId.toString());
+        auctionMapper.insertBid(auctionId, userId, instantBuyPrice, BidStatusCode.HIGHEST, userId.toString());
         auctionMapper.closeAuctionByInstantBuy(auctionId, instantBuyPrice, userId.toString());
 
         return loadAuctionDetail(auctionId);
@@ -122,7 +122,7 @@ public class AuctionService {
     }
 
     private void validateBidAvailable(AuctionBidTarget target, Long userId) {
-        if (!AUCTION_ACTIVE.equals(target.getAuctionStatusCode())) {
+        if (!AuctionStatusCode.ACTIVE.equals(target.getAuctionStatusCode())) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
         if (target.getEndDateTime() != null && target.getEndDateTime().isBefore(java.time.LocalDateTime.now())) {

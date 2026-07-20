@@ -11,6 +11,7 @@ import com.github.pagehelper.PageInfo;
 
 import nct.auction.service.AuctionService;
 import nct.global.dto.PagedResponse;
+import java.util.List;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.reference.service.ReferenceDataService;
@@ -18,6 +19,7 @@ import nct.product.domain.Product;
 import nct.product.domain.ProductImage;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
+import nct.product.mapper.BannedKeywordMapper;
 import nct.product.mapper.ProductImageMapper;
 import nct.product.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
@@ -30,12 +32,14 @@ public class ProductService {
     private final ReferenceDataService referenceDataService;
     private final ProductImageMapper productImageMapper;
     private final AuctionService auctionService;
+    private final BannedKeywordMapper bannedKeywordMapper;
 
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
         if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        validateNoBannedKeyword(req.getPrdNm());
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         Product product = Product.builder()
                 .usrSn(usrSn)
@@ -65,6 +69,23 @@ public class ProductService {
 
         return productMapper.findProductById(product.getPrdSn())
                 .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getBannedKeywords() {
+        return bannedKeywordMapper.findActiveBannedKeywords();
+    }
+
+    private void validateNoBannedKeyword(String prdNm) {
+        if (prdNm == null) return;
+        String lower = prdNm.toLowerCase();
+        bannedKeywordMapper.findActiveBannedKeywords().stream()
+                .filter(kwd -> lower.contains(kwd.toLowerCase()))
+                .findFirst()
+                .ifPresent(kwd -> {
+                    throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                            "'" + kwd + "'은(는) 등록할 수 없는 상품명입니다.");
+                });
     }
 
     // 업로드된 파일 id 목록을 PRODUCT_IMAGE로 연결 — 목록 순서상 첫 번째가 대표(F-AUC-002)

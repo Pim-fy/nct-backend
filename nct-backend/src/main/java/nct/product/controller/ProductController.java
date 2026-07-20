@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import nct.global.dto.PagedResponse;
 import nct.global.response.ApiResponse;
+import java.util.List;
 import nct.global.security.domain.CustomUserDetails;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
@@ -64,6 +65,12 @@ public class ProductController {
             @PathVariable Long prdSn) {
 
         return ResponseEntity.ok(ApiResponse.success(productService.getProduct(prdSn)));
+    }
+
+    /** 금지 키워드 목록 조회 (F-AUC-004) */
+    @GetMapping("/banned-keywords")
+    public ResponseEntity<ApiResponse<List<String>>> getBannedKeywords() {
+        return ResponseEntity.ok(ApiResponse.success(productService.getBannedKeywords()));
     }
 
     /** 상품 삭제 (논리 삭제) */

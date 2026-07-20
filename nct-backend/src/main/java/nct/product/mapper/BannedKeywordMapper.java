@@ -1,0 +1,10 @@
+package nct.product.mapper;
+
+import java.util.List;
+
+import org.apache.ibatis.annotations.Mapper;
+
+@Mapper
+public interface BannedKeywordMapper {
+    List<String> findActiveBannedKeywords();
+}

@@ -14,6 +14,7 @@ import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.mapper.AuctionMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -54,10 +55,19 @@ public class AuctionService {
         return loadAuctionDetail(auctionId);
     }
 
+    @Transactional(readOnly = true)
+    public AuctionStatusResponse getAuctionStatusByProduct(Long prdSn) {
+        AuctionStatusResponse status = auctionMapper.findAuctionStatusByProduct(prdSn);
+        if (status == null) {
+            throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
+        }
+        return status;
+    }
+
     private AuctionDetailResponse loadAuctionDetail(Long auctionId) {
         AuctionDetailResponse detail = auctionMapper.findAuctionDetail(auctionId);
         if (detail == null) {
-            throw new CustomException(ErrorCode.NOT_FOUND);
+            throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
@@ -106,7 +116,7 @@ public class AuctionService {
     private AuctionBidTarget findBidTarget(Long auctionId) {
         AuctionBidTarget target = auctionMapper.findAuctionBidTargetForUpdate(auctionId);
         if (target == null) {
-            throw new CustomException(ErrorCode.NOT_FOUND);
+            throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
         return target;
     }

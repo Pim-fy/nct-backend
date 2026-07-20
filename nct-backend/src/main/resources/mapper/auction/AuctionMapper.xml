@@ -193,6 +193,30 @@
         WHERE a.AUC_SN = #{auctionId}
     </select>
 
+    <select id="findAuctionStatusByProduct" resultType="nct.auction.dto.AuctionStatusResponse">
+        SELECT
+            a.AUC_SN AS aucSn,
+            a.PRD_SN AS prdSn,
+            a.AUC_STATUS_CD AS aucStatusCd,
+            a.AUC_CUR_AMT AS aucCurAmt,
+            COUNT(b.BID_SN) AS bidCount,
+            a.AUC_START_DT AS aucStartDt,
+            a.AUC_END_DT AS aucEndDt,
+            a.AUC_EXT_CNT AS aucExtCnt
+        FROM AUCTION a
+        LEFT JOIN BID b
+          ON b.AUC_SN = a.AUC_SN
+        WHERE a.PRD_SN = #{prdSn}
+        GROUP BY
+            a.AUC_SN,
+            a.PRD_SN,
+            a.AUC_STATUS_CD,
+            a.AUC_CUR_AMT,
+            a.AUC_START_DT,
+            a.AUC_END_DT,
+            a.AUC_EXT_CNT
+    </select>
+
     <select id="findAuctionImages" resultType="nct.auction.dto.AuctionImageItem">
         SELECT
             pi.PRD_IMG_SN AS imageId,

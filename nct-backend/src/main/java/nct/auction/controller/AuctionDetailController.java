@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionStatusResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.auction.service.AuctionService;
@@ -30,6 +31,12 @@ public class AuctionDetailController {
             @PathVariable("auctionId") Long auctionId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         return ApiResponse.success(auctionService.findAuctionDetail(auctionId, optionalUserId(userDetails)));
+    }
+
+    @GetMapping("/product/{productId}")
+    public ApiResponse<AuctionStatusResponse> getAuctionStatusByProduct(
+            @PathVariable("productId") Long productId) {
+        return ApiResponse.success(auctionService.getAuctionStatusByProduct(productId));
     }
 
     @PostMapping("/{auctionId}/bids")

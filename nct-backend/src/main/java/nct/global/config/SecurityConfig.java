@@ -72,6 +72,11 @@ public class SecurityConfig {
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()
+                // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지는 비로그인 탐색에서도 보여야 한다.
+                //   업로드/삭제/교체(POST·DELETE·PUT)는 인증 필요라 GET만 연다.
+                //   (properties의 permit-all-paths는 HTTP 메서드 구분이 없어 여기 Java에서 지정)
+                .requestMatchers(HttpMethod.GET, "/api/attachment/**")
+                    .permitAll()
                 // 화이트리스트 - application.properties 의 app.security.permit-all-paths
                 .requestMatchers(securityProperties.getPermitAllPaths().toArray(String[]::new))
                     .permitAll()

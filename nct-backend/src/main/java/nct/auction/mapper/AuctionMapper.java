@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
+import nct.auction.dto.AuctionBidCreateCommand;
 import nct.auction.dto.AuctionBidItem;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionDetailResponse;
@@ -44,12 +45,7 @@ public interface AuctionMapper {
 
     int updateCurrentHighestBids(@Param("auctionId") Long auctionId);
 
-    int insertBid(
-            @Param("auctionId") Long auctionId,
-            @Param("userId") Long userId,
-            @Param("bidAmount") java.math.BigDecimal bidAmount,
-            @Param("statusCode") String statusCode,
-            @Param("actor") String actor);
+    int insertBid(AuctionBidCreateCommand command);
 
     int updateAuctionCurrentPrice(
             @Param("auctionId") Long auctionId,

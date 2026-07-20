@@ -264,6 +264,7 @@
         SELECT
             a.AUC_SN AS auctionId,
             p.USR_SN AS sellerId,
+            currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
@@ -274,10 +275,20 @@
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
         LEFT JOIN (
-            SELECT AUC_SN, MAX(USR_SN) AS USR_SN
-            FROM BID
-            WHERE BID_STATUS_CD = 'BIDC0001'
-            GROUP BY AUC_SN
+            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN
+            FROM (
+                SELECT
+                    b.BID_SN,
+                    b.AUC_SN,
+                    b.USR_SN,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY b.AUC_SN
+                        ORDER BY b.BID_AMT DESC, b.BID_SN DESC
+                    ) AS RN
+                FROM BID b
+                WHERE b.BID_STATUS_CD = 'BIDC0001'
+            ) ranked
+            WHERE ranked.RN = 1
         ) currentBid
           ON currentBid.AUC_SN = a.AUC_SN
         WHERE a.AUC_SN = #{auctionId}
@@ -323,7 +334,7 @@
           AND BID_STATUS_CD = 'BIDC0001'
     </update>
 
-    <insert id="insertBid">
+    <insert id="insertBid" useGeneratedKeys="true" keyProperty="bidId" keyColumn="BID_SN">
         INSERT INTO BID (
             AUC_SN,
             USR_SN,

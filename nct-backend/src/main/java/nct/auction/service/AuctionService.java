@@ -143,6 +143,7 @@ public class AuctionService {
         AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, bidAmount);
         pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
+        auctionMapper.extendAuctionTime(auctionId, userId.toString());
 
         return loadAuctionDetail(auctionId);
     }

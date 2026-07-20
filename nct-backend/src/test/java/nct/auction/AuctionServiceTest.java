@@ -113,6 +113,50 @@ class AuctionServiceTest {
     }
 
     @Test
+    @DisplayName("마감 10분 이내 최초 유효 입찰은 남은 시간을 10분으로 연장한다")
+    void placeBidExtendsAuctionTimeNearDeadline() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                LocalDateTime.now().plusMinutes(5),
+                0);
+        creditAvailable(bidderSn, 50000);
+
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        auctionService.placeBid(aucSn, bidderSn, request);
+
+        assertThat(auctionRemainingSeconds(aucSn)).isBetween(8 * 60, 10 * 60 + 30);
+        assertThat(auctionExtensionCount(aucSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("이미 자동 연장된 경매는 마감 10분 이내 입찰이어도 다시 연장하지 않는다")
+    void placeBidDoesNotExtendAuctionTimeMoreThanOnce() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                LocalDateTime.now().plusMinutes(5),
+                1);
+        creditAvailable(bidderSn, 50000);
+
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        auctionService.placeBid(aucSn, bidderSn, request);
+
+        assertThat(auctionRemainingSeconds(aucSn)).isLessThan(7 * 60);
+        assertThat(auctionExtensionCount(aucSn)).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("즉시구매 성공 시 구매자 홀딩을 보관금으로 전환한다")
     void buyNowConvertsHoldToEscrow() {
         long sellerSn = insertUser("t_auc_seller");
@@ -155,6 +199,10 @@ class AuctionServiceTest {
     }
 
     private long insertAuction(long prdSn, BigDecimal currentAmount) {
+        return insertAuction(prdSn, currentAmount, LocalDateTime.now().plusHours(1), 0);
+    }
+
+    private long insertAuction(long prdSn, BigDecimal currentAmount, LocalDateTime endDateTime, int extensionCount) {
         jdbc.update("""
                 INSERT INTO AUCTION (
                     PRD_SN,
@@ -165,12 +213,13 @@ class AuctionServiceTest {
                     AUC_END_DT,
                     AUC_EXT_CNT
                 )
-                VALUES (?, 'AUCC0002', ?, 1000, ?, ?, 0)
+                VALUES (?, 'AUCC0002', ?, 1000, ?, ?, ?)
                 """,
                 prdSn,
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
-                LocalDateTime.now().plusHours(1));
+                endDateTime,
+                extensionCount);
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
@@ -220,5 +269,16 @@ class AuctionServiceTest {
                   AND PT_LDG_REF_SN = ?
                 """, Long.class, usrSn, RefType.BID.getCode(), bidSn);
         return amount == null ? 0 : amount;
+    }
+
+    private int auctionRemainingSeconds(long aucSn) {
+        return jdbc.queryForObject(
+                "SELECT TIMESTAMPDIFF(SECOND, NOW(), AUC_END_DT) FROM AUCTION WHERE AUC_SN = ?",
+                Integer.class,
+                aucSn);
+    }
+
+    private int auctionExtensionCount(long aucSn) {
+        return jdbc.queryForObject("SELECT AUC_EXT_CNT FROM AUCTION WHERE AUC_SN = ?", Integer.class, aucSn);
     }
 }

@@ -52,6 +52,10 @@ public interface AuctionMapper {
             @Param("bidAmount") java.math.BigDecimal bidAmount,
             @Param("actor") String actor);
 
+    int extendAuctionTime(
+            @Param("auctionId") Long auctionId,
+            @Param("actor") String actor);
+
     int closeAuctionByInstantBuy(
             @Param("auctionId") Long auctionId,
             @Param("bidAmount") java.math.BigDecimal bidAmount,

@@ -55,6 +55,20 @@
         WHERE  USR_EML = #{email}
     </select>
 
+    <!-- @ai_generated: F-AUTH-011 TOCTOU 하드닝 - 정지 계정 탈퇴 확정 직전 잠금 조회 전용.
+         일반 조회(findMemberByEmail)와 컬럼은 동일하고 FOR UPDATE만 추가한다. -->
+    <select id="findMemberByEmailForUpdate" parameterType="String" resultMap="memberMap">
+        SELECT
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML,
+            USR_EML_CERT_YN, USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP,
+            USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
+            USR_REG_ID, USR_UPDT_ID
+        FROM   USERS
+        WHERE  USR_EML = #{email}
+        FOR UPDATE
+    </select>
+
     <!-- @ai_generated: 로컬 로그인은 USR_LOGIN_ID로 조회하고 이메일은 JWT/인증용으로 유지한다. -->
     <select id="findMemberByLoginId" parameterType="String" resultMap="memberMap">
         SELECT
@@ -126,6 +140,38 @@
         /* 비밀번호 해시 갱신 */
         UPDATE USERS
         SET    USR_PSWD_HASH = #{encodedPassword}
+        WHERE  USR_SN = #{usrSn}
+    </update>
+
+    <!-- @ai_generated: F-AUTH-010 - POL-AUTH-014 대상 필드(닉네임·프로필사진·연락이메일·계좌번호)만 갱신.
+         닉네임·이메일은 DTO에서 @NotBlank라 항상 값이 온다. 프로필사진·계좌번호는 선택 필드라
+         COALESCE로 값이 안 온(null) 경우 기존 값을 유지한다(안 그러면 다른 필드만 고칠 때 같이 지워짐). -->
+    <update id="updateProfile">
+        /* 프로필 기본 정보 수정 */
+        UPDATE USERS
+        SET    USR_NM = #{nickname},
+               USR_PRFL_FL_SN = COALESCE(#{profileFileSn}, USR_PRFL_FL_SN),
+               USR_EML = #{email},
+               USR_BANK_NM = COALESCE(#{bankName}, USR_BANK_NM),
+               USR_ACNT_NO = COALESCE(#{accountNo}, USR_ACNT_NO)
+        WHERE  USR_SN = #{usrSn}
+    </update>
+
+    <!-- @ai_generated: F-AUTH-011/POL-AUTH-013 - 컬럼별 보존 범위: 연락처·주소·계좌는 즉시 null,
+         로그인ID는 원본 유지(여기서 갱신 안 함), 이메일·닉네임은 익명값 치환, 프로필사진은 참조 해제 -->
+    <update id="withdraw">
+        /* 회원 탈퇴 - 상태 전환 + 보존 데이터 컬럼별 처리 */
+        UPDATE USERS
+        SET    USR_STATUS_CD = 'USRC0003',
+               USR_TELNO = NULL,
+               USR_ADDR = NULL,
+               USR_DADDR = NULL,
+               USR_ZIP = NULL,
+               USR_BANK_NM = NULL,
+               USR_ACNT_NO = NULL,
+               USR_EML = #{anonymizedEmail},
+               USR_NM = #{anonymizedNickname},
+               USR_PRFL_FL_SN = NULL
         WHERE  USR_SN = #{usrSn}
     </update>
 

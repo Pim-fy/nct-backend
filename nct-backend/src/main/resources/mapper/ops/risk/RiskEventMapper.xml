@@ -40,4 +40,52 @@
             #{updatedBy}
         )
     </insert>
+
+    <!-- 담당자 7 · F-OPS-011: 다른 도메인 테이블 없이 RISK_EVENT만 조회한다. -->
+    <select id="findAdminRiskEvents" resultType="nct.ops.risk.dto.AdminRiskEventListItemResponse">
+        SELECT event.RSK_EVT_SN AS riskEventId,
+               event.RSK_EVT_TYPE_CD AS typeCode,
+               typeCode.CMM_NM AS typeName,
+               event.RSK_EVT_REF_TYPE_CD AS referenceTypeCode,
+               event.RSK_EVT_REF_SN AS referenceSn,
+               event.RSK_EVT_CN AS content,
+               event.RSK_EVT_PROC_YN AS processedYn,
+               event.RSK_EVT_REG_DT AS registeredAt
+          FROM RISK_EVENT event
+          JOIN CMM_CODE typeCode ON typeCode.CMM_CD = event.RSK_EVT_TYPE_CD
+         <where>
+             <if test="typeCode != null">event.RSK_EVT_TYPE_CD = #{typeCode}</if>
+             <if test="processedYn != null">
+                 <if test="typeCode != null">AND</if>
+                 event.RSK_EVT_PROC_YN = #{processedYn}
+             </if>
+         </where>
+         ORDER BY event.RSK_EVT_REG_DT DESC, event.RSK_EVT_SN DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminRiskEvents" resultType="long">
+        SELECT COUNT(*)
+          FROM RISK_EVENT event
+         <where>
+             <if test="typeCode != null">event.RSK_EVT_TYPE_CD = #{typeCode}</if>
+             <if test="processedYn != null">
+                 <if test="typeCode != null">AND</if>
+                 event.RSK_EVT_PROC_YN = #{processedYn}
+             </if>
+         </where>
+    </select>
+
+    <select id="countAdminRiskEventsByType" resultType="nct.ops.risk.dto.AdminRiskEventTypeSummaryResponse">
+        SELECT event.RSK_EVT_TYPE_CD AS typeCode,
+               typeCode.CMM_NM AS typeName,
+               COUNT(*) AS count
+          FROM RISK_EVENT event
+          JOIN CMM_CODE typeCode ON typeCode.CMM_CD = event.RSK_EVT_TYPE_CD
+         <where>
+             <if test="processedYn != null">event.RSK_EVT_PROC_YN = #{processedYn}</if>
+         </where>
+         GROUP BY event.RSK_EVT_TYPE_CD, typeCode.CMM_NM
+         ORDER BY count DESC, event.RSK_EVT_TYPE_CD ASC
+    </select>
 </mapper>

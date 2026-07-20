@@ -38,4 +38,32 @@ public interface PointMapper {
      * - TRADE·TRADE_DISPUTE는 타 담당자 소유 — 읽기 전용 조회만, 변경 금지
      */
     int countActiveDisputes(@Param("usrSn") long usrSn);
+
+    /**
+     * 특정 회원·참조 건의 현재 유효 보관금 (보관금전환 ESCROW − 와 환불 REFUND + 유형 합산)
+     * - 음수면 보관금이 살아있음(빠져나간 상태), 0이면 없음 또는 이미 환불됨
+     * - debitEscrow 중복 검사·refundEscrow 이중 환불 차단에 쓴다 (F-SVC-013, 분쟁 환불)
+     */
+    long selectActiveEscrowAmtByMemberRef(@Param("usrSn") long usrSn,
+                                          @Param("refTypeCd") String refTypeCd,
+                                          @Param("refSn") long refSn);
+
+    /**
+     * 특정 참조 건의 현재 유효 보관금 — 회원 무관 버전.
+     * 정산 전환(creditEscrowToSettleable)은 제공자 쪽에서 호출되어 지불자 회원번호를 모르므로
+     * 참조 건만으로 보관금을 찾는다 (한 거래의 보관금 지불자는 한 명뿐이라 합산이 곧 그 사람 것)
+     */
+    long selectActiveEscrowAmtByRef(@Param("refTypeCd") String refTypeCd,
+                                    @Param("refSn") long refSn);
+
+    /** 특정 참조 건으로 이미 정산 지급(SETTLE +)된 금액 — 0보다 크면 이중 정산·정산 후 환불을 거부한다 */
+    long selectSettledAmtByRef(@Param("refTypeCd") String refTypeCd,
+                               @Param("refSn") long refSn);
+
+    /**
+     * 특정 거래의 진행 중 거래 문제 건수 (F-SVC-015 정산 전환 차단 조건 — 거래 단위 버전)
+     * - countActiveDisputes(회원 단위)와 달리 해당 거래 건에 걸린 분쟁만 본다
+     * - TRADE_DISPUTE는 타 담당자 소유 — 읽기 전용 조회만, 변경 금지
+     */
+    int countActiveDisputesByTrade(@Param("trdSn") long trdSn);
 }

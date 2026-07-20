@@ -16,6 +16,7 @@ public class AuctionListRequest {
     private List<String> status = new ArrayList<>();
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
+    private Boolean instantBuyOnly;
     private String tradeMethod = "all";
     private String sort = "deadline";
     private int page = 1;

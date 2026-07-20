@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.favorite.mapper.ProductFavoriteMapper">
+
+    <sql id="favoriteAuctionFrom">
+        FROM PRODUCT_FAVORITE pf
+        JOIN PRODUCT p
+          ON p.PRD_SN = pf.PRD_SN
+        JOIN AUCTION a
+          ON a.PRD_SN = p.PRD_SN
+        JOIN CATEGORY c
+          ON c.CAT_SN = p.CAT_SN
+        JOIN USERS u
+          ON u.USR_SN = p.USR_SN
+        LEFT JOIN CMM_CODE aucStatus
+          ON aucStatus.CMM_CD = a.AUC_STATUS_CD
+        LEFT JOIN CMM_CODE tradeMethod
+          ON tradeMethod.CMM_CD = p.PRD_TRD_METHOD_CD
+        LEFT JOIN (
+            SELECT
+                pi.PRD_SN,
+                CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS THUMBNAIL_PATH
+            FROM PRODUCT_IMAGE pi
+            JOIN FILES f
+              ON f.FL_SN = pi.FL_SN
+             AND f.FL_USE_YN = 'Y'
+            JOIN (
+                SELECT
+                    PRD_SN,
+                    MIN(CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) AS SORT_KEY
+                FROM PRODUCT_IMAGE
+                GROUP BY PRD_SN
+            ) picked
+              ON picked.PRD_SN = pi.PRD_SN
+             AND picked.SORT_KEY = CASE WHEN pi.PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + pi.PRD_IMG_SORT_NO
+        ) thumb
+          ON thumb.PRD_SN = p.PRD_SN
+        LEFT JOIN (
+            SELECT AUC_SN, COUNT(*) AS BID_COUNT
+            FROM BID
+            GROUP BY AUC_SN
+        ) bid
+          ON bid.AUC_SN = a.AUC_SN
+        LEFT JOIN (
+            SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
+            FROM PRODUCT_FAVORITE
+            WHERE PRD_FAV_USE_YN = 'Y'
+            GROUP BY PRD_SN
+        ) favorite
+          ON favorite.PRD_SN = p.PRD_SN
+    </sql>
+
+    <sql id="myFavoriteWhere">
+        WHERE pf.USR_SN = #{userId}
+          AND pf.PRD_FAV_USE_YN = 'Y'
+          AND p.PRD_USE_YN = 'Y'
+          AND p.PRD_STATUS_CD != 'PRDC0004'
+    </sql>
+
+    <insert id="activate">
+        INSERT INTO PRODUCT_FAVORITE
+        (
+            PRD_SN,
+            USR_SN,
+            PRD_FAV_USE_YN,
+            PRD_FAV_REG_ID,
+            PRD_FAV_UPDT_ID
+        )
+        VALUES
+        (
+            #{productId},
+            #{userId},
+            'Y',
+            #{actor},
+            #{actor}
+        )
+        ON DUPLICATE KEY UPDATE
+            PRD_FAV_USE_YN = 'Y',
+            PRD_FAV_UPDT_ID = #{actor},
+            PRD_FAV_UPDT_DT = NOW()
+    </insert>
+
+    <update id="deactivate">
+        UPDATE PRODUCT_FAVORITE
+        SET PRD_FAV_USE_YN = 'N',
+            PRD_FAV_UPDT_ID = #{actor},
+            PRD_FAV_UPDT_DT = NOW()
+        WHERE PRD_SN = #{productId}
+          AND USR_SN = #{userId}
+          AND PRD_FAV_USE_YN = 'Y'
+    </update>
+
+    <select id="existsActive" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM PRODUCT_FAVORITE
+        WHERE PRD_SN = #{productId}
+          AND USR_SN = #{userId}
+          AND PRD_FAV_USE_YN = 'Y'
+    </select>
+
+    <select id="countByProduct" resultType="long">
+        SELECT COUNT(*)
+        FROM PRODUCT_FAVORITE
+        WHERE PRD_SN = #{productId}
+          AND PRD_FAV_USE_YN = 'Y'
+    </select>
+
+    <select id="findMyFavorites" resultType="nct.favorite.dto.FavoriteAuctionItem">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.PRD_SN AS productId,
+            p.PRD_NM AS title,
+            c.CAT_NM AS categoryName,
+            a.AUC_CUR_AMT AS currentPrice,
+            p.PRD_START_AMT AS startPrice,
+            p.PRD_IBY_AMT AS instantBuyPrice,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            aucStatus.CMM_NM AS auctionStatusName,
+            p.PRD_TRD_METHOD_CD AS tradeMethodCode,
+            tradeMethod.CMM_NM AS tradeMethodName,
+            a.AUC_START_DT AS startDateTime,
+            a.AUC_END_DT AS endDateTime,
+            COALESCE(bid.BID_COUNT, 0) AS bidCount,
+            COALESCE(favorite.FAVORITE_COUNT, 0) AS favoriteCount,
+            p.PRD_VIEW_CNT AS viewCount,
+            u.USR_NM AS sellerName,
+            thumb.THUMBNAIL_PATH AS thumbnailPath,
+            pf.PRD_FAV_REG_DT AS favoritedAt
+        <include refid="favoriteAuctionFrom"/>
+        <include refid="myFavoriteWhere"/>
+        ORDER BY pf.PRD_FAV_REG_DT DESC, pf.PRD_FAV_SN DESC
+        LIMIT #{size}
+        OFFSET #{offset}
+    </select>
+
+    <select id="countMyFavorites" resultType="long">
+        SELECT COUNT(*)
+        <include refid="favoriteAuctionFrom"/>
+        <include refid="myFavoriteWhere"/>
+    </select>
+
+    <select id="findFavoriteTarget" resultType="nct.favorite.dto.FavoriteAuctionTarget">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.PRD_SN AS productId,
+            p.USR_SN AS sellerId,
+            p.PRD_USE_YN AS productUseYn,
+            p.PRD_STATUS_CD AS productStatusCode
+        FROM AUCTION a
+        JOIN PRODUCT p
+          ON p.PRD_SN = a.PRD_SN
+        WHERE a.AUC_SN = #{auctionId}
+    </select>
+
+</mapper>

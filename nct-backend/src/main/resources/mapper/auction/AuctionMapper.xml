@@ -44,6 +44,7 @@
         LEFT JOIN (
             SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
             FROM PRODUCT_FAVORITE
+            WHERE PRD_FAV_USE_YN = 'Y'
             GROUP BY PRD_SN
         ) favorite
           ON favorite.PRD_SN = p.PRD_SN
@@ -71,6 +72,10 @@
         </if>
         <if test="condition.maxPrice != null">
           AND a.AUC_CUR_AMT &lt;= #{condition.maxPrice}
+        </if>
+        <if test="condition.instantBuyOnly != null and condition.instantBuyOnly">
+          AND p.PRD_IBY_AMT IS NOT NULL
+          AND p.PRD_IBY_AMT &gt; 0
         </if>
         <if test="condition.tradeMethodCode != null">
           AND p.PRD_TRD_METHOD_CD = #{condition.tradeMethodCode}
@@ -187,6 +192,7 @@
         LEFT JOIN (
             SELECT PRD_SN, COUNT(*) AS FAVORITE_COUNT
             FROM PRODUCT_FAVORITE
+            WHERE PRD_FAV_USE_YN = 'Y'
             GROUP BY PRD_SN
         ) favorite
           ON favorite.PRD_SN = p.PRD_SN
@@ -258,6 +264,7 @@
         SELECT
             a.AUC_SN AS auctionId,
             p.USR_SN AS sellerId,
+            currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
@@ -268,10 +275,20 @@
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
         LEFT JOIN (
-            SELECT AUC_SN, MAX(USR_SN) AS USR_SN
-            FROM BID
-            WHERE BID_STATUS_CD = 'BIDC0001'
-            GROUP BY AUC_SN
+            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN
+            FROM (
+                SELECT
+                    b.BID_SN,
+                    b.AUC_SN,
+                    b.USR_SN,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY b.AUC_SN
+                        ORDER BY b.BID_AMT DESC, b.BID_SN DESC
+                    ) AS RN
+                FROM BID b
+                WHERE b.BID_STATUS_CD = 'BIDC0001'
+            ) ranked
+            WHERE ranked.RN = 1
         ) currentBid
           ON currentBid.AUC_SN = a.AUC_SN
         WHERE a.AUC_SN = #{auctionId}
@@ -287,6 +304,27 @@
           AND p.PRD_USE_YN = 'Y'
     </update>
 
+    <insert id="insertAuction">
+        INSERT INTO AUCTION (
+            PRD_SN,
+            AUC_STATUS_CD,
+            AUC_CUR_AMT,
+            AUC_BID_UNIT_AMT,
+            AUC_END_DT,
+            AUC_REG_ID,
+            AUC_UPDT_ID
+        )
+        VALUES (
+            #{productId},
+            #{statusCode},
+            #{currentAmount},
+            #{bidUnitAmount},
+            #{endDateTime},
+            #{actor},
+            #{actor}
+        )
+    </insert>
+
     <update id="updateCurrentHighestBids">
         UPDATE BID
         SET BID_STATUS_CD = 'BIDC0002',
@@ -296,7 +334,7 @@
           AND BID_STATUS_CD = 'BIDC0001'
     </update>
 
-    <insert id="insertBid">
+    <insert id="insertBid" useGeneratedKeys="true" keyProperty="bidId" keyColumn="BID_SN">
         INSERT INTO BID (
             AUC_SN,
             USR_SN,

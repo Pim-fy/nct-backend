@@ -98,6 +98,10 @@ public enum ErrorCode {
     FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "이미지 파일(jpg, png, gif, webp)만 업로드할 수 있습니다."),
     FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 크기는 10MB를 초과할 수 없습니다."),
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장 중 오류가 발생했습니다."),
+    FILE_INVALID_SERVICE(HttpStatus.BAD_REQUEST, "허용되지 않은 첨부 서비스 구분입니다."),
+    FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
+    FILE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "본인이 업로드한 파일만 삭제/변경할 수 있습니다."),
+    FILE_IN_USE(HttpStatus.CONFLICT, "사용 중인 파일은 삭제할 수 없습니다."),
 
     /*==================== 5XX SERVER ERROR ====================*/
 

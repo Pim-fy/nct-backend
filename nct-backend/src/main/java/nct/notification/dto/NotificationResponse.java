@@ -26,6 +26,9 @@ public class NotificationResponse {
     private final String domainCd;
     private final String domain;
 
+    /** 알림대상구분 코드(NTFG04) — 일반(NTFC0015)/제공자(NTFC0016) 필터 기준 (F-COM-011) */
+    private final String audienceCd;
+
     private final String title;
     private final String content;
 
@@ -45,6 +48,7 @@ public class NotificationResponse {
                 .type(n.getTypeNm())
                 .domainCd(n.getNtfDomainCd())
                 .domain(n.getDomainNm())
+                .audienceCd(n.getNtfAudienceCd())
                 .title(n.getNtfTtl())
                 .content(n.getNtfCn())
                 .refTypeCd(n.getNtfRefTypeCd())

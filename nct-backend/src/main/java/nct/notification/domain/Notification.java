@@ -24,6 +24,9 @@ public class Notification {
     /** 알림도메인 한글명 — CMM_CODE 조인 결과 */
     private String domainNm;
 
+    /** 알림대상구분공통코드(NTFG04) — 일반/제공자 필터 기준 (F-COM-011) */
+    private String ntfAudienceCd;
+
     private String ntfTtl;
     private String ntfCn;
 

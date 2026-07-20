@@ -7,12 +7,12 @@
             useGeneratedKeys="true" keyProperty="ntfSn">
         /* 알림: 행 추가 */
         INSERT INTO NOTIFICATION (
-            USR_SN, NTF_TYPE_CD, NTF_DOMAIN_CD,
+            USR_SN, NTF_TYPE_CD, NTF_DOMAIN_CD, NTF_AUDIENCE_CD,
             NTF_TTL, NTF_CN,
             NTF_REF_TYPE_CD, NTF_REF_SN,
             NTF_EMAIL_STATUS_CD
         ) VALUES (
-            #{usrSn}, #{ntfTypeCd}, #{ntfDomainCd},
+            #{usrSn}, #{ntfTypeCd}, #{ntfDomainCd}, #{ntfAudienceCd},
             #{ntfTtl}, #{ntfCn},
             #{ntfRefTypeCd}, #{ntfRefSn},
             #{ntfEmailStatusCd}
@@ -26,6 +26,7 @@
         SELECT N.NTF_SN AS ntfSn, N.USR_SN AS usrSn,
                N.NTF_TYPE_CD AS ntfTypeCd,     T.CMM_NM AS typeNm,
                N.NTF_DOMAIN_CD AS ntfDomainCd, D.CMM_NM AS domainNm,
+               N.NTF_AUDIENCE_CD AS ntfAudienceCd,
                N.NTF_TTL AS ntfTtl, N.NTF_CN AS ntfCn,
                N.NTF_REF_TYPE_CD AS ntfRefTypeCd, N.NTF_REF_SN AS ntfRefSn,
                N.NTF_READ_YN AS ntfReadYn, N.NTF_READ_DT AS ntfReadDt,
@@ -65,5 +66,21 @@
         WHERE USR_SN = #{usrSn}
           AND NTF_READ_YN = 'N'
     </update>
+
+    <!-- 이메일 발송 상태 갱신 (F-COM-006) — 발송 시도 후 성공(NTFC0008)/실패(NTFC0009) 기록 -->
+    <update id="updateEmailStatus">
+        /* 알림: 이메일 발송 상태 갱신 */
+        UPDATE NOTIFICATION
+        SET NTF_EMAIL_STATUS_CD = #{statusCd}
+        WHERE NTF_SN = #{ntfSn}
+    </update>
+
+    <!-- 수신자 이메일 (F-COM-006). ⚠️ USERS는 담당자1 소유 — 읽기 전용 SELECT만, 변경 금지 -->
+    <select id="selectUserEmail" resultType="string">
+        /* 알림: 수신자 이메일 조회 (읽기 전용) */
+        SELECT USR_EML
+        FROM USERS
+        WHERE USR_SN = #{usrSn}
+    </select>
 
 </mapper>

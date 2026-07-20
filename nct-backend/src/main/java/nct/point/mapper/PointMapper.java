@@ -31,4 +31,11 @@ public interface PointMapper {
 
     /** 원장 행 추가 (원장은 INSERT만 — UPDATE/DELETE 금지) */
     int insertLedger(PointLedger ledger);
+
+    /**
+     * 진행 중인 거래 문제 건수 (F-PAY-010 전환 차단 조건 — "분쟁 없음 확인 후 전환")
+     * - 회원이 당사자(판매자/구매자)인 거래에 걸린 '접수'·'처리중' 상태의 거래 문제를 센다
+     * - TRADE·TRADE_DISPUTE는 타 담당자 소유 — 읽기 전용 조회만, 변경 금지
+     */
+    int countActiveDisputes(@Param("usrSn") long usrSn);
 }

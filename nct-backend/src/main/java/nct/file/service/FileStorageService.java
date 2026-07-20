@@ -259,6 +259,17 @@ public class FileStorageService {
         return resolved;
     }
 
+    /** 담당자 7 제공자 신청 서류 연결용: 업로드된 파일이 현재 사용자 소유의 활성 파일인지 확인합니다. */
+    @Transactional(readOnly = true)
+    public FileMeta requireOwnedActiveFile(Long flSn, Long usrSn) {
+        FileMeta fileMeta = fileMapper.findById(flSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+        if (!String.valueOf(usrSn).equals(fileMeta.getFlRegId())) {
+            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        return fileMeta;
+    }
+
     /*===========================
      * 내부 검증/경로 헬퍼
      *===========================*/

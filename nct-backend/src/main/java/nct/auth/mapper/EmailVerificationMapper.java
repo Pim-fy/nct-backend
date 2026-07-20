@@ -27,6 +27,13 @@ public interface EmailVerificationMapper {
     // @ai_generated: 링크 방식은 PK 대신 토큰 해시로 조회한다(URL에 verificationId를 노출하지 않음).
     Optional<EmailVerification> findPasswordResetByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
+    // @ai_generated: F-AUTH-011 - WITHDRAWAL(EMVC0008) 전용. PASSWORD_RESET과 동일 구조, 목적코드만 다르다.
+    Optional<EmailVerification> findLatestWithdrawalByEmailForUpdate(@Param("email") String email);
+
+    void insertWithdrawal(EmailVerification verification);
+
+    Optional<EmailVerification> findWithdrawalByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
+
     int resend(@Param("verificationId") Long verificationId,
                @Param("codeHash") String codeHash,
                @Param("expiresAt") LocalDateTime expiresAt,

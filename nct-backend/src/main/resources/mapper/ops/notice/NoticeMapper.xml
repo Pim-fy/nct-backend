@@ -61,6 +61,10 @@
         <if test="typeCode != null and typeCode != ''">
           AND notice.NTC_TYPE_CD = #{typeCode}
         </if>
+        <if test="keyword != null and keyword != ''">
+          AND (notice.NTC_TTL LIKE CONCAT('%', #{keyword}, '%')
+               OR notice.NTC_CN LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
     </select>
 
     <select id="findPublicNotices" resultMap="publicReadNoticeMap">
@@ -85,6 +89,10 @@
         <include refid="publicNoticeBaseWhere"/>
         <if test="typeCode != null and typeCode != ''">
           AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+        <if test="keyword != null and keyword != ''">
+          AND (notice.NTC_TTL LIKE CONCAT('%', #{keyword}, '%')
+               OR notice.NTC_CN LIKE CONCAT('%', #{keyword}, '%'))
         </if>
          ORDER BY notice.NTC_PIN_YN DESC,
                   COALESCE(notice.NTC_PSTG_BGNG_DT, notice.NTC_REG_DT) DESC,
@@ -172,9 +180,8 @@
                notice.NTC_UPDT_DT
         <include refid="adminNoticeJoins"/>
         <include refid="adminNoticeWhere"/>
-        ORDER BY notice.NTC_PIN_YN DESC,
-                 notice.NTC_UPDT_DT DESC,
-                 notice.NTC_SN DESC
+        <!-- 담당자 7 | F-OPS-023: 관리자 목록의 기본 기준은 최신 공지 번호순입니다. -->
+        ORDER BY notice.NTC_SN DESC
         LIMIT #{size} OFFSET #{offset}
     </select>
 

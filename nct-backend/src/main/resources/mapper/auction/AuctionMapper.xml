@@ -293,6 +293,27 @@
           AND p.PRD_USE_YN = 'Y'
     </update>
 
+    <insert id="insertAuction">
+        INSERT INTO AUCTION (
+            PRD_SN,
+            AUC_STATUS_CD,
+            AUC_CUR_AMT,
+            AUC_BID_UNIT_AMT,
+            AUC_END_DT,
+            AUC_REG_ID,
+            AUC_UPDT_ID
+        )
+        VALUES (
+            #{productId},
+            #{statusCode},
+            #{currentAmount},
+            #{bidUnitAmount},
+            #{endDateTime},
+            #{actor},
+            #{actor}
+        )
+    </insert>
+
     <update id="updateCurrentHighestBids">
         UPDATE BID
         SET BID_STATUS_CD = 'BIDC0002',

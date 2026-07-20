@@ -1,5 +1,7 @@
 package nct.auction.mapper;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -31,6 +33,14 @@ public interface AuctionMapper {
     AuctionBidTarget findAuctionBidTargetForUpdate(@Param("auctionId") Long auctionId);
 
     int incrementProductViewCount(@Param("auctionId") Long auctionId);
+
+    int insertAuction(
+            @Param("productId") Long productId,
+            @Param("statusCode") String statusCode,
+            @Param("currentAmount") BigDecimal currentAmount,
+            @Param("bidUnitAmount") BigDecimal bidUnitAmount,
+            @Param("endDateTime") LocalDateTime endDateTime,
+            @Param("actor") String actor);
 
     int updateCurrentHighestBids(@Param("auctionId") Long auctionId);
 

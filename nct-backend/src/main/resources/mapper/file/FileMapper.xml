@@ -13,4 +13,60 @@
         )
     </insert>
 
+    <!-- 단건 조회. 소프트 삭제된(FL_USE_YN='N') 행은 없는 것으로 취급 -->
+    <select id="findById" resultType="nct.file.domain.FileMeta">
+        /* 파일: 단건 조회 */
+        SELECT FL_SN       AS flSn,
+               FL_ORG_NM   AS flOrgNm,
+               FL_SAVE_NM  AS flSaveNm,
+               FL_PATH     AS flPath,
+               FL_EXT      AS flExt,
+               FL_SIZE_AMT AS flSizeAmt,
+               FL_TYPE_CD  AS flTypeCd,
+               FL_USE_YN   AS flUseYn,
+               FL_REG_ID   AS flRegId,
+               FL_REG_DT   AS flRegDt,
+               FL_UPDT_ID  AS flUpdtId,
+               FL_UPDT_DT  AS flUpdtDt
+          FROM FILES
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+    </select>
+
+    <!-- 파일 교체: 같은 행(FL_SN 유지)의 파일 메타만 새 파일 것으로 갱신.
+         FL_SN이 안 바뀌므로 PRODUCT_IMAGE 등의 참조는 그대로 유효하다 -->
+    <update id="updateMeta" parameterType="nct.file.domain.FileMeta">
+        /* 파일: 교체 메타 갱신 */
+        UPDATE FILES
+           SET FL_ORG_NM   = #{flOrgNm},
+               FL_SAVE_NM  = #{flSaveNm},
+               FL_PATH     = #{flPath},
+               FL_EXT      = #{flExt},
+               FL_SIZE_AMT = #{flSizeAmt},
+               FL_UPDT_ID  = #{flUpdtId},
+               FL_UPDT_DT  = NOW()
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+    </update>
+
+    <!-- 소프트 삭제: 행은 이력 추적용으로 남기고 사용여부만 'N'. 누가 지웠는지 FL_UPDT_ID에 기록 -->
+    <update id="softDelete">
+        /* 파일: 소프트 삭제 */
+        UPDATE FILES
+           SET FL_USE_YN  = 'N',
+               FL_UPDT_ID = #{updtId},
+               FL_UPDT_DT = NOW()
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+    </update>
+
+    <!-- 삭제 가드: 상품 이미지로 연결된 파일인지 확인 (연결돼 있으면 삭제 거부 409)
+         리뷰 등 새 도메인이 FILES를 참조하게 되면 여기에 카운트를 합산할 것 -->
+    <select id="countProductImageRefs" resultType="int">
+        /* 파일: 상품이미지 참조 수 */
+        SELECT COUNT(*)
+          FROM PRODUCT_IMAGE
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

@@ -23,10 +23,13 @@ public class FileMeta {
     private Long flSn;            // 파일일련번호 (PK)
     private String flOrgNm;       // 원본파일명
     private String flSaveNm;      // 저장파일명 (UUID 기반, 디스크 실제 파일명)
-    private String flPath;        // 파일경로 — 프론트가 그대로 <img src>에 붙여 쓸 수 있는 URL 경로(/uploads/...)
+    private String flPath;        // 파일경로 — 프론트가 그대로 <img src>에 붙여 쓸 수 있는 URL 경로(/api/attachment/{서비스}/{yyyyMMdd}/{저장파일명})
     private String flExt;         // 파일확장자
     private BigDecimal flSizeAmt; // 파일크기(byte)
     private String flTypeCd;      // 파일유형공통코드(FILG01) — 현재는 FILC0001(이미지) 고정
+    private String flUseYn;       // 사용여부 — 'N'이면 소프트 삭제된 파일 (조회는 'Y'만)
     private String flRegId;       // 등록자ID — 업로드한 회원의 usrSn 문자열 (PRODUCT.prdRegId와 동일한 관례)
     private LocalDateTime flRegDt;
+    private String flUpdtId;      // 갱신자ID — 삭제/교체를 수행한 회원의 usrSn 문자열
+    private LocalDateTime flUpdtDt;
 }

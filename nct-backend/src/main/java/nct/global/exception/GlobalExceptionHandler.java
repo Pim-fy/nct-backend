@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import nct.global.response.ApiResponse;
 
@@ -105,6 +106,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
                                                      safePath(request)));
+    }
+
+    /** 매핑되는 핸들러/정적 리소스(첨부파일 등)가 없음 -> 404 (담당자6, 파일 도메인)
+     *  이 처리가 없으면 맨 아래 Exception 핸들러가 잡아 500으로 응답돼 버린다. */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
+
+        logException(ex);
+        ErrorCode errorCode = ErrorCode.NOT_FOUND;
+        return ResponseEntity.status(errorCode.status())
+                             .body(ApiResponse.error(errorCode.code(), errorCode.message(),
+                                                     safePath(request), errorCode.name()));
     }
 
     /** 비즈니스 예외 -> ErrorCode 의 상태코드/메시지 그대로 */

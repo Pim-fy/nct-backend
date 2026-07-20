@@ -11,7 +11,6 @@ import com.github.pagehelper.PageInfo;
 
 import nct.auction.service.AuctionService;
 import nct.global.dto.PagedResponse;
-import java.util.List;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.reference.service.ReferenceDataService;

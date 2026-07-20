@@ -18,7 +18,11 @@ import nct.product.domain.Product;
 import nct.product.domain.ProductImage;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
+import nct.product.domain.ProductComment;
+import nct.product.dto.ProductCommentRequest;
+import nct.product.dto.ProductCommentResponse;
 import nct.product.mapper.BannedKeywordMapper;
+import nct.product.mapper.ProductCommentMapper;
 import nct.product.mapper.ProductImageMapper;
 import nct.product.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +36,7 @@ public class ProductService {
     private final ProductImageMapper productImageMapper;
     private final AuctionService auctionService;
     private final BannedKeywordMapper bannedKeywordMapper;
+    private final ProductCommentMapper productCommentMapper;
 
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
@@ -114,6 +119,36 @@ public class ProductService {
         PageHelper.startPage(page, size);
         List<ProductResponse> list = productMapper.findMyProducts(usrSn);
         return PagedResponse.of(new PageInfo<>(list));
+    }
+
+    @Transactional
+    public ProductCommentResponse addComment(Long prdSn, Long usrSn, ProductCommentRequest req) {
+        Product product = productMapper.findProductEntityById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!product.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        ProductComment comment = ProductComment.builder()
+                .prdSn(prdSn)
+                .usrSn(usrSn)
+                .prdCmtTtl(req.getTtl())
+                .prdCmtCn(req.getCn())
+                .prdCmtRegId(String.valueOf(usrSn))
+                .prdCmtUpdtId(String.valueOf(usrSn))
+                .build();
+
+        productCommentMapper.insertComment(comment);
+
+        return productCommentMapper.findLatestComments(prdSn, 1).get(0);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductCommentResponse> getComments(Long prdSn) {
+        productMapper.findProductById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        return productCommentMapper.findLatestComments(prdSn, 4);
     }
 
     @Transactional

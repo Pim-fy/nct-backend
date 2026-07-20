@@ -19,9 +19,9 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import nct.common.file.FileStorageService;
+import nct.common.domain.RefType;
+import nct.file.service.FileStorageService;
 import nct.review.constant.ReviewDomainCode;
-import nct.review.constant.ReviewFileRefCode;
 import nct.review.domain.Review;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
@@ -145,7 +145,7 @@ class ReviewServiceTest {
                 USR_SN, TRADE_ID, 5, "사진 첨부 테스트", List.of(photo1, photo2));
 
         assertThat(result.getPhotoCount()).isEqualTo(2);
-        verify(fileStorageService).attach(List.of(photo1, photo2), ReviewFileRefCode.REVIEW, 901L, USR_SN);
+        verify(fileStorageService).attach(List.of(photo1, photo2), RefType.REVIEW, 901L, USR_SN);
     }
 
     @Test
@@ -157,7 +157,7 @@ class ReviewServiceTest {
                 .completedDate("2026-06-18")
                 .build();
         when(reviewMapper.selectMyReviews(USR_SN)).thenReturn(List.of(item));
-        when(fileStorageService.getUrls(ReviewFileRefCode.REVIEW, 1L))
+        when(fileStorageService.getUrls(RefType.REVIEW, 1L))
                 .thenReturn(List.of("/uploads/2026/06/18/a.jpg"));
 
         List<MyReviewItem> result = reviewService.getMyReviews(USR_SN);

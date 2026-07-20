@@ -1,4 +1,5 @@
-package nct.common.file.domain;
+// Claude Code 작성 (HSK → BJN 소유 계약으로 이관, 2026-07-20)
+package nct.file.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -6,7 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * [공통 - 파일 첨부 모델] (FILE_ATTACH 1행)
+ * [파일 - FILE_ATTACH 1행 모델] (담당자6)
  * - "FL_SN 파일이 어떤 업무 레코드(flAttRefTypeCd + flAttRefSn)에 붙어있는지"를 나타내는
  *   다형성 연결 행. 서로 다른 도메인이 같은 파일 저장소를 공유할 수 있는 이유가 이 구조다.
  */

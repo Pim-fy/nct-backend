@@ -22,4 +22,20 @@ public interface CategoryMapper {
 
     /** 물건 또는 서비스 도메인에 속한 활성 카테고리 목록을 표시 순서대로 찾는다. */
     List<Category> findActiveByDomain(@Param("domainCode") String domainCode);
+
+    /** 관리자 화면용: 사용 중지 항목까지 포함하되 선택 가능한 하위 카테고리만 조회한다. */
+    List<Category> findAllChildrenByDomain(@Param("domainCode") String domainCode);
+
+    Optional<Category> findRootByDomainForUpdate(@Param("domainCode") String domainCode);
+
+    Optional<Category> findChildByIdAndDomainForUpdate(@Param("categorySn") Long categorySn,
+                                                       @Param("domainCode") String domainCode);
+
+    int countByName(@Param("domainCode") String domainCode,
+                    @Param("name") String name,
+                    @Param("excludeCategorySn") Long excludeCategorySn);
+
+    int insert(@Param("category") Category category, @Param("actorId") String actorId);
+
+    int update(@Param("category") Category category, @Param("actorId") String actorId);
 }

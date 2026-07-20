@@ -7,9 +7,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
-import nct.common.file.FileStorageService;
+import nct.common.domain.RefType;
+import nct.file.service.FileStorageService;
 import nct.review.constant.ReviewDomainCode;
-import nct.review.constant.ReviewFileRefCode;
 import nct.review.domain.Review;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
@@ -22,7 +22,7 @@ import nct.review.mapper.ReviewMapper;
  * [리뷰 - 서비스]
  * - "작성 가능한 리뷰" 조회, "내가 쓴 리뷰" 조회, 리뷰 등록(+사진 첨부)을 담당한다.
  * - TRADE 관련 검증은 ReviewMapper의 임시 조회에 의존한다 (자세한 사유는
- *   nct.review.constant.TempTradeCode, ReviewMapper.xml 상단 주석 참고).
+ * nct.review.constant.TempTradeCode, ReviewMapper.xml 상단 주석 참고).
  */
 @Service
 @RequiredArgsConstructor
@@ -42,13 +42,14 @@ public class ReviewService {
         // 리뷰마다 사진을 별도 조회한다 (목록이 최대 100건이라 N+1이어도 지금 단계에서는 허용 범위).
         return items.stream()
                 .map(item -> item.toBuilder()
-                        .photos(fileStorageService.getUrls(ReviewFileRefCode.REVIEW, item.getId()))
+                        .photos(fileStorageService.getUrls(RefType.REVIEW, item.getId()))
                         .build())
                 .toList();
     }
 
     /**
      * 리뷰 등록.
+     * 
      * @param tradeId 리뷰 대상 거래 (클라이언트가 보낸 값 - 서버가 아래에서 다시 검증한다)
      * @param rating  평점 1~5
      * @param content 리뷰 내용
@@ -56,7 +57,7 @@ public class ReviewService {
      */
     @Transactional
     public ReviewCreateResult createReview(long usrSn, long tradeId, int rating, String content,
-                                           List<MultipartFile> photos) {
+            List<MultipartFile> photos) {
         if (rating < 1 || rating > 5) {
             throw new InvalidRatingException(rating);
         }
@@ -81,7 +82,7 @@ public class ReviewService {
 
         int photoCount = photos == null ? 0 : (int) photos.stream().filter(f -> !f.isEmpty()).count();
         if (photoCount > 0) {
-            fileStorageService.attach(photos, ReviewFileRefCode.REVIEW, review.getRvwSn(), usrSn);
+            fileStorageService.attach(photos, RefType.REVIEW, review.getRvwSn(), usrSn);
         }
 
         return ReviewCreateResult.builder()

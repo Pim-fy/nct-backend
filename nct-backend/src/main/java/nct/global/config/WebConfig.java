@@ -13,8 +13,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * [설정 - Spring MVC 확장]
  * - LogInterceptor 등록 (로깅 3종 중 2번째 계층)
- * - /uploads/** 정적 리소스 매핑 (nct.common.file.FileStorageService 가 저장한 파일 서빙용,
- *   프론트 vite.config.js 의 /uploads 프록시와 짝을 이룬다)
+ * - /uploads/** 정적 리소스 서빙 (담당자6, F-AUC-002 이미지 연계 — app.upload.dir 디스크 경로를 URL로 노출)
  */
 @Configuration
 @RequiredArgsConstructor
@@ -22,7 +21,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final LogInterceptor logInterceptor;
 
-    @Value("${file.upload-dir:./uploads}")
+    @Value("${app.upload.dir}")
     private String uploadDir;
 
     @Override
@@ -37,8 +36,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String location = uploadDir.endsWith("/") ? uploadDir : uploadDir + "/";
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + location);
+                .addResourceLocations("file:" + uploadDir + "/");
     }
 }

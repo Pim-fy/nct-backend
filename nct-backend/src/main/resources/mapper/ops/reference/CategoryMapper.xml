@@ -15,19 +15,17 @@
         <result column="CAT_USE_YN" property="useYn"/>
     </resultMap>
 
+    <sql id="categoryColumns">
+        c.CAT_SN, c.CAT_PARENT_SN, c.CAT_DOMAIN_CD, c.CAT_APRV_METHOD_CD,
+        c.CAT_NM, c.CAT_PRF_YN, c.CAT_SORT_NO, c.CAT_USE_YN
+    </sql>
+
     <!--
         상품·서비스 저장 전에 선택한 카테고리를 검증한다.
         카테고리 자체뿐 아니라 도메인 코드(CATG01)와 승인방식(CATG02)도 활성 상태여야 한다.
     -->
     <select id="findActiveByIdAndDomain" resultMap="categoryMap">
-        SELECT c.CAT_SN,
-               c.CAT_PARENT_SN,
-               c.CAT_DOMAIN_CD,
-               c.CAT_APRV_METHOD_CD,
-               c.CAT_NM,
-               c.CAT_PRF_YN,
-               c.CAT_SORT_NO,
-               c.CAT_USE_YN
+        SELECT <include refid="categoryColumns"/>
           FROM CATEGORY c
           JOIN CMM_CODE domain_code
             ON domain_code.CMM_CD = c.CAT_DOMAIN_CD
@@ -46,19 +44,13 @@
          WHERE c.CAT_SN = #{categorySn}
            AND c.CAT_DOMAIN_CD = #{domainCode}
            AND c.CAT_USE_YN = 'Y'
+           AND c.CAT_PARENT_SN IS NOT NULL
          LIMIT 1
     </select>
 
     <!-- 물건 또는 서비스 등록 화면에 표시할 활성 카테고리 목록을 조회한다. -->
     <select id="findActiveByDomain" resultMap="categoryMap">
-        SELECT c.CAT_SN,
-               c.CAT_PARENT_SN,
-               c.CAT_DOMAIN_CD,
-               c.CAT_APRV_METHOD_CD,
-               c.CAT_NM,
-               c.CAT_PRF_YN,
-               c.CAT_SORT_NO,
-               c.CAT_USE_YN
+        SELECT <include refid="categoryColumns"/>
           FROM CATEGORY c
           JOIN CMM_CODE domain_code
             ON domain_code.CMM_CD = c.CAT_DOMAIN_CD
@@ -76,6 +68,68 @@
            AND approval_group.CMM_USE_YN = 'Y'
          WHERE c.CAT_DOMAIN_CD = #{domainCode}
            AND c.CAT_USE_YN = 'Y'
+           AND c.CAT_PARENT_SN IS NOT NULL
          ORDER BY c.CAT_SORT_NO, c.CAT_SN
     </select>
+
+    <select id="findAllChildrenByDomain" resultMap="categoryMap">
+        SELECT <include refid="categoryColumns"/>
+          FROM CATEGORY c
+         WHERE c.CAT_DOMAIN_CD = #{domainCode}
+           AND c.CAT_PARENT_SN IS NOT NULL
+         ORDER BY c.CAT_SORT_NO, c.CAT_SN
+    </select>
+
+    <select id="findRootByDomainForUpdate" resultMap="categoryMap">
+        SELECT <include refid="categoryColumns"/>
+          FROM CATEGORY c
+         WHERE c.CAT_DOMAIN_CD = #{domainCode}
+           AND c.CAT_PARENT_SN IS NULL
+           AND c.CAT_USE_YN = 'Y'
+         LIMIT 1
+         FOR UPDATE
+    </select>
+
+    <select id="findChildByIdAndDomainForUpdate" resultMap="categoryMap">
+        SELECT <include refid="categoryColumns"/>
+          FROM CATEGORY c
+         WHERE c.CAT_SN = #{categorySn}
+           AND c.CAT_DOMAIN_CD = #{domainCode}
+           AND c.CAT_PARENT_SN IS NOT NULL
+         FOR UPDATE
+    </select>
+
+    <select id="countByName" resultType="int">
+        SELECT COUNT(*)
+          FROM CATEGORY
+         WHERE CAT_DOMAIN_CD = #{domainCode}
+           AND CAT_PARENT_SN IS NOT NULL
+           AND CAT_NM = #{name}
+        <if test="excludeCategorySn != null">
+           AND CAT_SN != #{excludeCategorySn}
+        </if>
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="category.categorySn" keyColumn="CAT_SN">
+        INSERT INTO CATEGORY (
+            CAT_PARENT_SN, CAT_DOMAIN_CD, CAT_APRV_METHOD_CD, CAT_NM,
+            CAT_PRF_YN, CAT_SORT_NO, CAT_USE_YN, CAT_REG_ID, CAT_UPDT_ID
+        ) VALUES (
+            #{category.parentSn}, #{category.domainCode}, #{category.approvalMethodCode}, #{category.name},
+            #{category.professionalYn}, #{category.sortNo}, #{category.useYn}, #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE CATEGORY
+           SET CAT_NM = #{category.name},
+               CAT_PRF_YN = #{category.professionalYn},
+               CAT_SORT_NO = #{category.sortNo},
+               CAT_USE_YN = #{category.useYn},
+               CAT_UPDT_DT = CURRENT_TIMESTAMP,
+               CAT_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{category.categorySn}
+           AND CAT_DOMAIN_CD = #{category.domainCode}
+           AND CAT_PARENT_SN IS NOT NULL
+    </update>
 </mapper>

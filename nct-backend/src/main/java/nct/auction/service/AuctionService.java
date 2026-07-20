@@ -130,6 +130,7 @@ public class AuctionService {
         if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target)) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        validateBidBelowInstantBuyPrice(target, bidAmount);
 
         int updatedCount = auctionMapper.updateAuctionCurrentPrice(auctionId, bidAmount, userId.toString());
         if (updatedCount == 0) {
@@ -201,6 +202,15 @@ public class AuctionService {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
         BigDecimal bidUnitPrice = target.getBidUnitPrice() == null ? BigDecimal.valueOf(1000) : target.getBidUnitPrice();
         return currentPrice.add(bidUnitPrice);
+    }
+
+    private void validateBidBelowInstantBuyPrice(AuctionBidTarget target, BigDecimal bidAmount) {
+        BigDecimal instantBuyPrice = target.getInstantBuyPrice();
+        if (instantBuyPrice != null
+                && instantBuyPrice.compareTo(BigDecimal.ZERO) > 0
+                && bidAmount.compareTo(instantBuyPrice) >= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 금액은 즉시구매가보다 낮아야 합니다.");
+        }
     }
 
     private AuctionBidCreateCommand insertHighestBid(Long auctionId, Long userId, BigDecimal bidAmount) {

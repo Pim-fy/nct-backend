@@ -35,10 +35,11 @@ public class PublicNoticeController {
     @GetMapping
     public ResponseEntity<ApiResponse<PublicNoticePageResponse>> getPublicNotices(
             @RequestParam(name = "typeCode", required = false) String typeCode,
+            @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                publicNoticeService.getPublicNotices(typeCode, page, size)));
+                publicNoticeService.getPublicNotices(typeCode, keyword, page, size)));
     }
 
     @GetMapping("/{noticeId}")

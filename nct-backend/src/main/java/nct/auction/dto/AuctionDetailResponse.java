@@ -28,6 +28,7 @@ public class AuctionDetailResponse {
     private LocalDateTime endDateTime;
     private Integer bidCount;
     private Integer favoriteCount;
+    private boolean favorite;
     private Integer viewCount;
     private Long sellerId;
     private String sellerName;

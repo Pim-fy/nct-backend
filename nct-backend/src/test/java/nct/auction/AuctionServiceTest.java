@@ -113,6 +113,26 @@ class AuctionServiceTest {
     }
 
     @Test
+    @DisplayName("즉시구매가 이상 금액은 일반 입찰로 등록할 수 없다")
+    void placeBidRejectsBidAmountAtOrAboveInstantBuyPrice() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(15000));
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(bidderSn, 50000);
+
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(15000));
+
+        assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        assertThat(bidCount(aucSn)).isZero();
+        assertThat(pointService.getBalance(bidderSn).getHoldAmt()).isZero();
+    }
+
+    @Test
     @DisplayName("마감 10분 이내 최초 유효 입찰은 남은 시간을 10분으로 연장한다")
     void placeBidExtendsAuctionTimeNearDeadline() {
         long sellerSn = insertUser("t_auc_seller");
@@ -280,5 +300,9 @@ class AuctionServiceTest {
 
     private int auctionExtensionCount(long aucSn) {
         return jdbc.queryForObject("SELECT AUC_EXT_CNT FROM AUCTION WHERE AUC_SN = ?", Integer.class, aucSn);
+    }
+
+    private int bidCount(long aucSn) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM BID WHERE AUC_SN = ?", Integer.class, aucSn);
     }
 }

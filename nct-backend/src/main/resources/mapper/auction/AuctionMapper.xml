@@ -263,6 +263,7 @@
     <select id="findAuctionBidTargetForUpdate" resultType="nct.auction.dto.AuctionBidTarget">
         SELECT
             a.AUC_SN AS auctionId,
+            p.PRD_SN AS productId,
             p.USR_SN AS sellerId,
             currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,

@@ -96,6 +96,7 @@ public enum ErrorCode {
     PRODUCT_NOT_OWNER(HttpStatus.FORBIDDEN, "본인의 상품만 처리할 수 있습니다."),
     PRODUCT_ALREADY_DELETED(HttpStatus.CONFLICT, "이미 삭제된 상품입니다."),
     PRODUCT_CANCEL_INVALID_STATUS(HttpStatus.CONFLICT, "취소 요청이 불가능한 경매 상태입니다."),
+    AUCTION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경매입니다."),
 
     /*==================== 파일 도메인 (담당자6, F-AUC-002 이미지 연계) ====================*/
 

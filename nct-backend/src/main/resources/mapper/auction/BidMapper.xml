@@ -2,34 +2,51 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<!--
-    [BidMapper.xml - 입찰(BID) 조회 전용] (F-AUC-022 내 입찰 내역 조회)
-    - insertBid/findActiveBid/updateBidStatus(F-AUC-014/018 쓰기)는 AUCTION/BID 기술 소유권이
-      담당자5로 이관되면서 삭제했다 (09_기능단위_7인_업무분장 v10, CHG-018).
-    - 담당자5가 "내 입찰 조회" 계약을 제공하면 이 XML/매퍼 자체를 없애고 그 계약을 호출하도록
-      바꿔야 한다 (BidMapper.java 상단 주석 참고).
--->
 <mapper namespace="nct.auction.mapper.BidMapper">
 
-    <resultMap id="myBidHistoryMap" type="nct.auction.dto.MyBidHistoryItem">
-        <id     column="BID_SN"        property="bidSn"/>
-        <result column="AUC_SN"        property="aucSn"/>
-        <result column="BID_AMT"       property="bidAmt"/>
-        <result column="BID_STATUS_CD" property="bidStatusCd"/>
-        <result column="AUC_STATUS_CD" property="auctionStatusCd"/>
-        <result column="BID_REG_DT"    property="bidRegDt"/>
-    </resultMap>
-
-    <!-- [F-AUC-022] 내 입찰 내역 - 최신 입찰이 위로 오도록 정렬 -->
-    <select id="findMyBidHistory" parameterType="Long" resultMap="myBidHistoryMap">
-        /* 내 입찰 내역 조회 (BID + AUCTION 조인) */
+    <select id="findMyBidHistory" resultType="nct.auction.dto.MyBidHistoryItem">
         SELECT
-            b.BID_SN, b.AUC_SN, b.BID_AMT, b.BID_STATUS_CD, b.BID_REG_DT,
-            a.AUC_STATUS_CD
-        FROM   BID b
-        JOIN   AUCTION a ON a.AUC_SN = b.AUC_SN
-        WHERE  b.USR_SN = #{usrSn}
-        ORDER  BY b.BID_REG_DT DESC
+            b.BID_SN AS bidSn,
+            b.AUC_SN AS aucSn,
+            p.PRD_SN AS prdSn,
+            p.PRD_NM AS auctionTitle,
+            thumb.THUMBNAIL_PATH AS thumbnailPath,
+            b.BID_AMT AS bidAmount,
+            a.AUC_CUR_AMT AS currentPrice,
+            b.BID_STATUS_CD AS bidStatusCode,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            b.BID_REG_DT AS bidDateTime,
+            a.AUC_END_DT AS auctionEndDateTime,
+            u.USR_SN AS sellerSn,
+            u.USR_NM AS sellerName
+        FROM BID b
+        JOIN AUCTION a
+          ON a.AUC_SN = b.AUC_SN
+        JOIN PRODUCT p
+          ON p.PRD_SN = a.PRD_SN
+        JOIN USERS u
+          ON u.USR_SN = p.USR_SN
+        LEFT JOIN (
+            SELECT
+                pi.PRD_SN,
+                CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS THUMBNAIL_PATH
+            FROM PRODUCT_IMAGE pi
+            JOIN FILES f
+              ON f.FL_SN = pi.FL_SN
+             AND f.FL_USE_YN = 'Y'
+            JOIN (
+                SELECT
+                    PRD_SN,
+                    MIN(CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) AS SORT_KEY
+                FROM PRODUCT_IMAGE
+                GROUP BY PRD_SN
+            ) picked
+              ON picked.PRD_SN = pi.PRD_SN
+             AND picked.SORT_KEY = CASE WHEN pi.PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + pi.PRD_IMG_SORT_NO
+        ) thumb
+          ON thumb.PRD_SN = p.PRD_SN
+        WHERE b.USR_SN = #{usrSn}
+        ORDER BY b.BID_REG_DT DESC, b.BID_SN DESC
     </select>
 
 </mapper>

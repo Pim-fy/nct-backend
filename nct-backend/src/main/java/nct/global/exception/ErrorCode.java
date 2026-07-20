@@ -68,6 +68,12 @@ public enum ErrorCode {
     POINT_DUPLICATE_HOLD(HttpStatus.CONFLICT, "이미 홀딩된 건입니다."),
     POINT_HOLD_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 홀딩이 없습니다."),
 
+    // 포인트 - 보관금(에스크로) 계약 (F-SVC-013/015, 분쟁 환불 — 2026-07-20)
+    POINT_DUPLICATE_ESCROW(HttpStatus.CONFLICT, "이미 보관금이 결제된 건입니다."),
+    POINT_ESCROW_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 보관금이 없습니다."),
+    POINT_ESCROW_ALREADY_SETTLED(HttpStatus.CONFLICT, "이미 정산 지급이 끝난 보관금입니다."),
+    POINT_SETTLE_BLOCKED_BY_DISPUTE(HttpStatus.CONFLICT, "해당 거래에 진행 중인 거래 문제가 있어 정산 전환을 할 수 없습니다. 거래 문제 처리 완료 후 다시 시도해 주세요."),
+
     // 정산
     SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 정산 건입니다."),
     SETTLEMENT_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 정산 처리입니다."),

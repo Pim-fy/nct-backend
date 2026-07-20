@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 
+import nct.auction.service.AuctionService;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -28,6 +29,7 @@ public class ProductService {
     private final ProductMapper productMapper;
     private final ReferenceDataService referenceDataService;
     private final ProductImageMapper productImageMapper;
+    private final AuctionService auctionService;
 
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
@@ -50,6 +52,16 @@ public class ProductService {
 
         productMapper.saveProduct(product);
         saveImages(product.getPrdSn(), req.getFlSnList());
+
+        if ("PRDC0002".equals(statusCd) && req.getAucEndDt() != null) {
+            auctionService.createAuctionForProduct(
+                    product.getPrdSn(),
+                    req.getPrdStartAmt(),
+                    req.getBidUnit(),
+                    req.getAucEndDt(),
+                    true,
+                    usrSn);
+        }
 
         return productMapper.findProductById(product.getPrdSn())
                 .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));

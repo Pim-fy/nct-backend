@@ -19,7 +19,7 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 
 @RestController
-@RequestMapping("/api/auction")
+@RequestMapping("/api/auctions")
 @RequiredArgsConstructor
 public class AuctionDetailController {
 

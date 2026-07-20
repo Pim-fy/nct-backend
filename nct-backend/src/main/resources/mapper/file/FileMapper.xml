@@ -43,6 +43,7 @@
                FL_PATH     = #{flPath},
                FL_EXT      = #{flExt},
                FL_SIZE_AMT = #{flSizeAmt},
+               FL_TYPE_CD  = #{flTypeCd},
                FL_UPDT_ID  = #{flUpdtId},
                FL_UPDT_DT  = NOW()
          WHERE FL_SN = #{flSn}
@@ -67,6 +68,17 @@
         SELECT COUNT(*)
           FROM PRODUCT_IMAGE
          WHERE FL_SN = #{flSn}
+    </select>
+
+    <!-- 관리자 서류 열람 가드: 해당 제공자 신청 건에 실제로 연결된 파일인지 확인.
+         flSn만 알아내서 다른 파일을 열람하는 시도를 차단한다 (담당자7 요청 근거).
+         ⚠️ PROVIDER_APPLY_FILE(담당자7 소유)은 읽기 전용 SELECT만 — 변경 금지 -->
+    <select id="countProviderApplyFileLink" resultType="int">
+        /* 파일: 제공자 신청-파일 연결 확인 (관리자 열람 가드, 읽기 전용) */
+        SELECT COUNT(*)
+          FROM PROVIDER_APPLY_FILE
+         WHERE PRV_APLY_SN = #{prvAplySn}
+           AND FL_SN = #{flSn}
     </select>
 
 </mapper>

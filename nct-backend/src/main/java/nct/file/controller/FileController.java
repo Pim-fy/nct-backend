@@ -23,8 +23,9 @@ import nct.global.security.domain.CustomUserDetails;
  * [파일 - REST 컨트롤러] (담당자6, F-AUC-002 이미지 연계)
  *
  * /api/attachment 축은 두 갈래로 처리된다:
- *   - GET  /api/attachment/**        파일 서빙 — 이 컨트롤러가 아니라 WebConfig의
- *                                    정적 리소스 핸들러가 담당 (비로그인 허용, SecurityConfig 참조)
+ *   - GET  /api/attachment/product/** 파일 서빙 — 이 컨트롤러가 아니라 WebConfig의
+ *                                    정적 리소스 핸들러가 담당 (비로그인 허용은 product만,
+ *                                    provider 서류는 AdminProviderFileController 전용 — SecurityConfig 참조)
  *   - POST/DELETE/PUT (아래)         파일 관리 — 로그인 필요
  *
  * 엔드포인트:

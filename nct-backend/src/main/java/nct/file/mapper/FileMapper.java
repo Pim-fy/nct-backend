@@ -32,4 +32,11 @@ public interface FileMapper {
      * 화면이 깨지므로 삭제 전 가드로 사용 (0이 아니면 삭제 거부)
      */
     int countProductImageRefs(@Param("flSn") Long flSn);
+
+    /**
+     * 해당 제공자 신청 건에 이 파일이 실제 연결돼 있는지 (관리자 서류 열람 가드)
+     * - 0이면 열람 거부 — flSn만 추측해 다른 파일을 여는 시도를 차단
+     * - PROVIDER_APPLY_FILE은 타 담당자(7) 소유 — 읽기 전용 조회만, 변경 금지
+     */
+    int countProviderApplyFileLink(@Param("prvAplySn") Long prvAplySn, @Param("flSn") Long flSn);
 }

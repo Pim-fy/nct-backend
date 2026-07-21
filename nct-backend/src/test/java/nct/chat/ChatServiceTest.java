@@ -17,9 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import nct.chat.domain.ChatMessage;
+import nct.chat.domain.ChatRoom;
 import nct.chat.dto.ChatMessageResponse;
 import nct.chat.dto.ChatMessageSendRequest;
 import nct.chat.dto.ChatRoomAccess;
+import nct.chat.dto.OfflineTradeChatRoomCreateResult;
 import nct.chat.mapper.ChatMapper;
 import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
@@ -52,6 +54,48 @@ class ChatServiceTest {
 
         assertThat(result).containsExactly(message);
         verify(chatMapper).markCounterpartMessagesAsRead(11L, 10L);
+    }
+
+    @Test
+    void createsActiveChatRoomForOfflineTrade() {
+        when(chatMapper.findOfflineMaterialTradeIdForUpdate(91L)).thenReturn(91L);
+        when(chatMapper.findChatRoomIdByTradeId(91L)).thenReturn(null);
+        doAnswer(invocation -> {
+            ChatRoom chatRoom = invocation.getArgument(0);
+            chatRoom.setRoomId(11L);
+            return 1;
+        }).when(chatMapper).insertChatRoom(any(ChatRoom.class));
+
+        OfflineTradeChatRoomCreateResult result = chatService.createOrGetOfflineTradeChatRoom(91L);
+
+        assertThat(result.getRoomId()).isEqualTo(11L);
+        assertThat(result.isCreated()).isTrue();
+        ArgumentCaptor<ChatRoom> roomCaptor = ArgumentCaptor.forClass(ChatRoom.class);
+        verify(chatMapper).insertChatRoom(roomCaptor.capture());
+        assertThat(roomCaptor.getValue().getRoomStatus()).isEqualTo("CHRC0001");
+    }
+
+    @Test
+    void returnsExistingChatRoomForRepeatedOfflineTradeCreation() {
+        when(chatMapper.findOfflineMaterialTradeIdForUpdate(91L)).thenReturn(91L);
+        when(chatMapper.findChatRoomIdByTradeId(91L)).thenReturn(11L);
+
+        OfflineTradeChatRoomCreateResult result = chatService.createOrGetOfflineTradeChatRoom(91L);
+
+        assertThat(result.getRoomId()).isEqualTo(11L);
+        assertThat(result.isCreated()).isFalse();
+        verify(chatMapper, never()).insertChatRoom(any(ChatRoom.class));
+    }
+
+    @Test
+    void rejectsChatRoomCreationForNonOfflineTrade() {
+        when(chatMapper.findOfflineMaterialTradeIdForUpdate(91L)).thenReturn(null);
+
+        assertThatThrownBy(() -> chatService.createOrGetOfflineTradeChatRoom(91L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+        verify(chatMapper, never()).insertChatRoom(any(ChatRoom.class));
     }
 
     @Test

@@ -7,10 +7,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.chat.domain.ChatMessage;
+import nct.chat.domain.ChatRoom;
 import nct.chat.dto.ChatMessageResponse;
 import nct.chat.dto.ChatMessageSendRequest;
 import nct.chat.dto.ChatRoomAccess;
 import nct.chat.dto.ChatRoomResponse;
+import nct.chat.dto.OfflineTradeChatRoomCreateResult;
 import nct.chat.mapper.ChatMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -21,11 +23,36 @@ import nct.ops.security.port.SensitiveContentInspectionUseCase;
 @RequiredArgsConstructor
 public class ChatService {
 
+    private static final String ACTIVE_ROOM = "CHRC0001";
     private static final String CLOSED_ROOM = "CHRC0002";
     private static final String TRADE_REFERENCE = "REFC0005";
 
     private final ChatMapper chatMapper;
     private final SensitiveContentInspectionUseCase sensitiveContentInspectionUseCase;
+
+    /**
+     * F-AUC-023 공개 계약: 경매 거래 생성 흐름이 직거래에만 호출한다.
+     * 거래 행 잠금과 CHAT_ROOM의 거래별 유니크 제약을 함께 사용해 재시도에도 방을 하나만 유지한다.
+     */
+    @Transactional
+    public OfflineTradeChatRoomCreateResult createOrGetOfflineTradeChatRoom(long tradeId) {
+        if (tradeId <= 0 || chatMapper.findOfflineMaterialTradeIdForUpdate(tradeId) == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "존재하지 않거나 직거래 채팅방을 생성할 수 없는 거래입니다.");
+        }
+
+        Long existingRoomId = chatMapper.findChatRoomIdByTradeId(tradeId);
+        if (existingRoomId != null) {
+            return new OfflineTradeChatRoomCreateResult(existingRoomId, false);
+        }
+
+        ChatRoom chatRoom = new ChatRoom();
+        chatRoom.setTradeId(tradeId);
+        chatRoom.setRoomStatus(ACTIVE_ROOM);
+        chatMapper.insertChatRoom(chatRoom);
+
+        return new OfflineTradeChatRoomCreateResult(chatRoom.getRoomId(), true);
+    }
 
     /** 로그인 사용자가 참여하는 대면 거래 채팅방만 조회한다. */
     @Transactional(readOnly = true)

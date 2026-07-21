@@ -4,6 +4,36 @@
 
 <mapper namespace="nct.chat.mapper.ChatMapper">
 
+    <!-- 직거래가 아닌 거래에는 CHAT_ROOM을 만들지 않는다. 거래 행 잠금은 생성 재시도 경합도 직렬화한다. -->
+    <select id="findOfflineMaterialTradeIdForUpdate" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+        FOR UPDATE
+    </select>
+
+    <select id="findChatRoomIdByTradeId" resultType="long">
+        SELECT CH_RM_SN
+        FROM CHAT_ROOM
+        WHERE TRD_SN = #{tradeId}
+    </select>
+
+    <insert id="insertChatRoom" parameterType="nct.chat.domain.ChatRoom"
+            useGeneratedKeys="true" keyProperty="roomId">
+        INSERT INTO CHAT_ROOM (
+            TRD_SN,
+            CH_RM_STATUS_CD
+        )
+        VALUES (
+            #{tradeId},
+            #{roomStatus}
+        )
+    </insert>
+
     <!-- 대면 거래의 판매자·구매자만 본인 채팅방 목록에 포함한다. -->
     <select id="findMyChatRooms" resultType="nct.chat.dto.ChatRoomResponse">
         SELECT

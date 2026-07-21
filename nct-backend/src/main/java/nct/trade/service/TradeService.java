@@ -206,7 +206,11 @@ public class TradeService {
                     index + 1);
         }
 
-        tradeMapper.startDelivery(tradeId, String.valueOf(sellerUserId));
+        // 행 잠금 뒤에도 조건부 상태 전이가 실패하면 사진 연결까지 함께 롤백해야 한다.
+        if (tradeMapper.startDelivery(tradeId, String.valueOf(sellerUserId)) == 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "거래 상태가 변경되어 발송 인증을 등록할 수 없습니다.");
+        }
         tradeMapper.insertStatusHistory(
                 tradeId,
                 DELIVERING,

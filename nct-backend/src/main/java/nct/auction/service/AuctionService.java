@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.point.exception.PointException;
 import nct.point.service.PointService;
+import nct.product.service.ProductService;
 
 @Service
 @RequiredArgsConstructor
@@ -36,11 +38,14 @@ public class AuctionService {
     private static final int DEFAULT_PAGE = 1;
     private static final int DEFAULT_SIZE = 12;
     private static final int MAX_SIZE = 60;
+    private static final int MAX_FINALIZATION_BATCH_SIZE = 500;
     private static final BigDecimal DEFAULT_BID_UNIT = BigDecimal.valueOf(1000);
+    private static final String SYSTEM_ACTOR = "SYSTEM";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
+    private final ObjectProvider<ProductService> productServiceProvider;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -62,14 +67,12 @@ public class AuctionService {
 
     @Transactional
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
-        auctionMapper.incrementProductViewCount(auctionId);
-        return loadAuctionDetail(auctionId, null);
+        return findAuctionDetailAndIncreaseView(auctionId, null);
     }
 
     @Transactional
     public AuctionDetailResponse findAuctionDetail(Long auctionId, Long userId) {
-        auctionMapper.incrementProductViewCount(auctionId);
-        return loadAuctionDetail(auctionId, userId);
+        return findAuctionDetailAndIncreaseView(auctionId, userId);
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +99,39 @@ public class AuctionService {
         }
 
         return auctionMapper.findAuctionStatusesByProducts(prdSns);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Long> findExpiredActiveAuctionIds(int limit) {
+        int batchSize = Math.max(1, Math.min(limit, MAX_FINALIZATION_BATCH_SIZE));
+        return auctionMapper.findExpiredActiveAuctionIds(batchSize);
+    }
+
+    @Transactional
+    public boolean finalizeExpiredAuction(Long auctionId) {
+        AuctionBidTarget target = findBidTarget(auctionId);
+        if (!AuctionStatusCode.ACTIVE.equals(target.getAuctionStatusCode())) {
+            return false;
+        }
+        if (target.getEndDateTime() == null || target.getEndDateTime().isAfter(databaseNow(target))) {
+            return false;
+        }
+
+        String finalStatus = AuctionStatusCode.FAILED;
+        if (target.getCurrentHighestBidId() != null && target.getCurrentHighestBidderId() != null) {
+            pointService.convertHoldToEscrow(
+                    target.getCurrentHighestBidderId(),
+                    RefType.BID,
+                    target.getCurrentHighestBidId(),
+                    "경매 낙찰 보관금 전환");
+            finalStatus = AuctionStatusCode.ENDED;
+        }
+
+        int updated = auctionMapper.updateExpiredAuctionStatus(auctionId, finalStatus, SYSTEM_ACTOR);
+        if (updated == 0) {
+            throw new CustomException(ErrorCode.CONFLICT, "경매 마감 상태가 이미 변경되었습니다.");
+        }
+        return true;
     }
 
     @Transactional
@@ -125,6 +161,18 @@ public class AuctionService {
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId) {
         return loadAuctionDetail(auctionId, null);
+    }
+
+    private AuctionDetailResponse findAuctionDetailAndIncreaseView(Long auctionId, Long userId) {
+        Long productId = auctionMapper.findProductIdByAuctionId(auctionId);
+        if (productId == null) {
+            throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
+        }
+
+        ProductService productService = productServiceProvider.getObject();
+        productService.getProduct(productId);
+        productService.increaseViewCount(productId);
+        return loadAuctionDetail(auctionId, userId);
     }
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId, Long userId) {
@@ -186,7 +234,10 @@ public class AuctionService {
         pointService.hold(userId, toPointAmount(instantBuyPrice), RefType.BID, bid.getBidId(), "즉시구매 포인트 홀딩");
         pointService.convertHoldToEscrow(userId, RefType.BID, bid.getBidId(), "즉시구매 보관금 전환");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
-        auctionMapper.closeAuctionByInstantBuy(auctionId, instantBuyPrice, userId.toString());
+        int closed = auctionMapper.closeAuctionByInstantBuy(auctionId, instantBuyPrice, userId.toString());
+        if (closed == 0) {
+            throw new CustomException(ErrorCode.CONFLICT, "경매 상태가 이미 변경되었습니다.");
+        }
 
         return loadAuctionDetail(auctionId);
     }
@@ -203,7 +254,7 @@ public class AuctionService {
         if (!AuctionStatusCode.ACTIVE.equals(target.getAuctionStatusCode())) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
-        if (target.getEndDateTime() != null && target.getEndDateTime().isBefore(java.time.LocalDateTime.now())) {
+        if (target.getEndDateTime() != null && !target.getEndDateTime().isAfter(databaseNow(target))) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
         if (target.getSellerId() != null && target.getSellerId().equals(userId)) {
@@ -215,6 +266,10 @@ public class AuctionService {
         if (target.getCurrentHighestBidderId() != null && target.getCurrentHighestBidderId().equals(userId)) {
             throw new CustomException(ErrorCode.CONFLICT, "현재 최고 입찰자입니다.");
         }
+    }
+
+    private LocalDateTime databaseNow(AuctionBidTarget target) {
+        return target.getDatabaseNow() == null ? LocalDateTime.now() : target.getDatabaseNow();
     }
 
     private BigDecimal minimumBidPrice(AuctionBidTarget target) {

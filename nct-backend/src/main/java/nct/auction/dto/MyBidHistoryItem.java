@@ -43,9 +43,6 @@ public class MyBidHistoryItem {
                 || AuctionStatusCode.FAILED.equals(auctionStatusCode)) {
             return "CANCELED";
         }
-        if (AuctionStatusCode.CANCEL_REQUESTED.equals(auctionStatusCode)) {
-            return "CANCEL_REQUESTED";
-        }
         if (BidStatusCode.HIGHEST.equals(bidStatusCode)
                 && AuctionStatusCode.ACTIVE.equals(auctionStatusCode)) {
             return "HIGHEST";

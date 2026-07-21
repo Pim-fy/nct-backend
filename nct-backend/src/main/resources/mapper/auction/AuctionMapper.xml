@@ -150,6 +150,12 @@
         <include refid="auctionListWhere"/>
     </select>
 
+    <select id="findProductIdByAuctionId" resultType="long">
+        SELECT PRD_SN
+        FROM AUCTION
+        WHERE AUC_SN = #{auctionId}
+    </select>
+
     <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
         SELECT
             a.AUC_SN AS auctionId,
@@ -284,7 +290,8 @@
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
             a.AUC_STATUS_CD AS auctionStatusCode,
-            a.AUC_END_DT AS endDateTime
+            a.AUC_END_DT AS endDateTime,
+            NOW() AS databaseNow
         FROM AUCTION a
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
@@ -309,14 +316,14 @@
         FOR UPDATE
     </select>
 
-    <update id="incrementProductViewCount">
-        UPDATE PRODUCT p
-        JOIN AUCTION a
-          ON a.PRD_SN = p.PRD_SN
-        SET p.PRD_VIEW_CNT = p.PRD_VIEW_CNT + 1
-        WHERE a.AUC_SN = #{auctionId}
-          AND p.PRD_USE_YN = 'Y'
-    </update>
+    <select id="findExpiredActiveAuctionIds" resultType="long">
+        SELECT AUC_SN
+        FROM AUCTION
+        WHERE AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &lt;= NOW()
+        ORDER BY AUC_END_DT, AUC_SN
+        LIMIT #{limit}
+    </select>
 
     <insert id="insertAuction">
         INSERT INTO AUCTION (
@@ -398,6 +405,18 @@
             AUC_UPDT_ID = #{actor},
             AUC_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &gt; NOW()
+    </update>
+
+    <update id="updateExpiredAuctionStatus">
+        UPDATE AUCTION
+        SET AUC_STATUS_CD = #{statusCode},
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &lt;= NOW()
     </update>
 
 </mapper>

@@ -10,6 +10,10 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -63,6 +67,25 @@ public class SecurityConfig {
     // Controller까지 도달하지 못한 401·403 응답 경로도 F-OPS-012 규칙으로 마스킹한다.
     private final SensitiveDataMasker sensitiveDataMasker;
 
+    /**
+     * F-AUTH-013: 제공자 모드는 일반 사용자 권한을 포함한다.
+     *
+     * <p>관리자 권한은 이번 결정 범위에서 다른 역할을 포함하지 않는다. JWT 필터도 이 Bean을
+     * 사용해 Authentication에 도달 권한을 구성하므로 URL 인가와 메서드 인가가 같은 계층을 따른다.</p>
+     */
+    @Bean
+    public static RoleHierarchy roleHierarchy() {
+        return RoleHierarchyImpl.fromHierarchy("ROLE_SERVICE > ROLE_USER");
+    }
+
+    /** @PreAuthorize 등 메서드 인가에서도 위 역할 계층을 동일하게 적용한다. */
+    @Bean
+    public static MethodSecurityExpressionHandler methodSecurityExpressionHandler(RoleHierarchy roleHierarchy) {
+        DefaultMethodSecurityExpressionHandler handler = new DefaultMethodSecurityExpressionHandler();
+        handler.setRoleHierarchy(roleHierarchy);
+        return handler;
+    }
+
     // @ai_generated: 작업단위5 작업 2 - SPEC 설계 결정(F) - "연동" 전용 콜백(*-link)만 매칭하는 별도
     // SecurityFilterChain. 로그인 체인(@Order(2), 아래)보다 먼저 평가돼야 하므로 @Order(1).
     // 이 체인은 permitAll로 두고, "누구에게 연동할지" 식별은 OAuthLinkUserService 내부의 JWT 쿠키
@@ -94,7 +117,7 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, RoleHierarchy roleHierarchy) throws Exception {
         http
             // JWT 기반이므로 CSRF 비활성화 (쿠키 SameSite=Lax 로 보완)
             .csrf(csrf -> csrf.disable())
@@ -158,7 +181,8 @@ public class SecurityConfig {
                                        "접근 권한이 없습니다.", request.getRequestURI()))
             )
             // JWT 필터를 폼 로그인 필터 앞에 배치
-            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil, jwtTokenProvider, customUserDetailsService, objectMapper),
+            .addFilterBefore(new JwtAuthenticationFilter(cookieUtil, jwtTokenProvider, customUserDetailsService,
+                                                         objectMapper, roleHierarchy),
                              UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

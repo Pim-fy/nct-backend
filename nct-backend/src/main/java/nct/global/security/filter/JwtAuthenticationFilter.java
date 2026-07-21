@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -46,6 +47,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
     private final ObjectMapper objectMapper;
+    private final RoleHierarchy roleHierarchy;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -95,7 +97,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority(role));
+        // F-AUTH-013: 토큰에 적힌 현재 모드를 원본 권한으로 삼되, ROLE_SERVICE가 ROLE_USER를
+        // 포함한다는 정본 계층까지 Authentication에 반영한다. DB의 고정 USR_ROLE_CD는 사용하지 않는다.
+        List<GrantedAuthority> authorities = List.copyOf(roleHierarchy.getReachableGrantedAuthorities(
+                List.of(new SimpleGrantedAuthority(role))));
 
         // 인증 객체 생성 (credentials 는 JWT 방식에서 불필요 -> null)
         UsernamePasswordAuthenticationToken authentication =

@@ -24,12 +24,18 @@ import org.mockito.ArgumentCaptor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.file.service.FileStorageService;
+import nct.file.domain.FileMeta;
 import nct.trade.domain.Trade;
+import nct.trade.domain.AuctionTradeSource;
+import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
+import nct.trade.dto.TradeDeliveryProofSubmitRequest;
+import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -69,6 +75,8 @@ class TradeServiceTest {
                 BigDecimal.valueOf(128000));
         when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
+        when(tradeMapper.insertDeliverySnapshotFromBuyer(91L, 20L)).thenReturn(1);
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -86,6 +94,101 @@ class TradeServiceTest {
                 91L,
                 "TRDC0003",
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+        verify(tradeMapper).insertDeliverySnapshotFromBuyer(91L, 20L);
+    }
+
+    @Test
+    void createsAuctionTradeWithBuyNowSource() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L,
+                30L,
+                50L,
+                10L,
+                20L,
+                BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW);
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0010");
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+
+        AuctionTradeCreateResult result = tradeService.createAuctionTrade(command);
+
+        assertThat(result.getTradeSn()).isEqualTo(91L);
+        assertThat(result.isCreated()).isTrue();
+        assertThat(result.isExistingTrade()).isFalse();
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0003",
+                "즉시구매로 거래가 생성되었습니다.");
+    }
+
+    @Test
+    void rejectsAuctionTradeWithoutWinningBid() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L,
+                30L,
+                0L,
+                10L,
+                20L,
+                BigDecimal.valueOf(128000),
+                AuctionTradeSource.AUCTION_WIN);
+
+        assertThatThrownBy(() -> tradeService.createAuctionTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void createsOfflineTradeWithoutDeliverySnapshot() {
+        MaterialTradeCreateCommand command = new MaterialTradeCreateCommand(
+                10L,
+                20L,
+                30L,
+                BigDecimal.valueOf(128000));
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0010");
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+
+        MaterialTradeCreateResult result = tradeService.createOrGetMaterialTrade(command);
+
+        assertThat(result.isCreated()).isTrue();
+        verify(tradeMapper, never()).insertDeliverySnapshotFromBuyer(anyLong(), anyLong());
+    }
+
+    @Test
+    void rejectsDeliveryTradeWhenWinningBuyerHasNoAddress() {
+        MaterialTradeCreateCommand command = new MaterialTradeCreateCommand(
+                10L,
+                20L,
+                30L,
+                BigDecimal.valueOf(128000));
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+        when(tradeMapper.insertDeliverySnapshotFromBuyer(91L, 20L)).thenReturn(0);
+
+        assertThatThrownBy(() -> tradeService.createOrGetMaterialTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
     }
 
     @Test
@@ -134,6 +237,29 @@ class TradeServiceTest {
     }
 
     @Test
+    void returnsTradeStatusesForDistinctProductIds() {
+        SellerTradeStatusItem item = new SellerTradeStatusItem();
+        item.setPrdSn(30L);
+        item.setTradeSn(91L);
+        item.setTradeStatusCd("TRDC0004");
+        when(tradeMapper.findTradeStatusesByProducts(List.of(30L, 40L)))
+                .thenReturn(List.of(item));
+
+        List<SellerTradeStatusItem> result = tradeService.getTradeStatusesByProducts(
+                List.of(30L, 40L, 30L));
+
+        assertThat(result).containsExactly(item);
+        verify(tradeMapper).findTradeStatusesByProducts(List.of(30L, 40L));
+    }
+
+    @Test
+    void returnsEmptyTradeStatusListWhenProductIdsAreEmpty() {
+        assertThat(tradeService.getTradeStatusesByProducts(null)).isEmpty();
+        assertThat(tradeService.getTradeStatusesByProducts(List.of())).isEmpty();
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
     void rejectsTradeDetailOutsideCurrentUsersTransactions() {
         when(tradeMapper.findMyMaterialTradeDetail(anyLong(), anyLong())).thenReturn(null);
 
@@ -152,6 +278,99 @@ class TradeServiceTest {
         TradeDetailResponse result = tradeService.getMyMaterialTradeDetail(91L, 10L);
 
         assertThat(result).isSameAs(detail);
+    }
+
+    @Test
+    void submitsDeliveryProofAndStartsDeliveryInOneFlow() {
+        TradeDeliverySubmitTarget target = deliveryTarget("TRDC0003", 501L);
+        TradeDeliveryProofSubmitRequest request = deliveryProofRequest(List.of(801L, 802L));
+        TradeDetailResponse detail = deliveryDetail(91L, 501L);
+
+        when(tradeMapper.findMyDeliveryTradeForUpdate(91L, 10L)).thenReturn(target);
+        when(fileStorageService.requireOwnedActiveFile(801L, 10L))
+                .thenReturn(deliveryFile(801L));
+        when(fileStorageService.requireOwnedActiveFile(802L, 10L))
+                .thenReturn(deliveryFile(802L));
+        when(tradeMapper.startDelivery(91L, "10")).thenReturn(1);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
+        when(tradeMapper.findTradeDeliveryProofFiles(501L)).thenReturn(List.of());
+
+        TradeDetailResponse result = tradeService.submitDeliveryProof(91L, 10L, request);
+
+        verify(tradeMapper).updateDeliveryMessage(501L, "포장 후 발송했습니다.", "10");
+        verify(tradeMapper).insertTradeDeliveryFile(501L, 801L, 1);
+        verify(tradeMapper).insertTradeDeliveryFile(501L, 802L, 2);
+        verify(tradeMapper).startDelivery(91L, "10");
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0004",
+                "판매자가 발송 인증사진과 배송 메모를 등록했습니다.");
+        assertThat(result).isSameAs(detail);
+    }
+
+    @Test
+    void rejectsDeliveryProofThatUsesNonDeliveryFile() {
+        TradeDeliverySubmitTarget target = deliveryTarget("TRDC0003", 501L);
+        TradeDeliveryProofSubmitRequest request = deliveryProofRequest(List.of(801L));
+        FileMeta productFile = FileMeta.builder()
+                .flSn(801L)
+                .flPath("/api/attachment/product/20260721/product.jpg")
+                .build();
+
+        when(tradeMapper.findMyDeliveryTradeForUpdate(91L, 10L)).thenReturn(target);
+        when(fileStorageService.requireOwnedActiveFile(801L, 10L)).thenReturn(productFile);
+
+        assertThatThrownBy(() -> tradeService.submitDeliveryProof(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(tradeMapper, never()).updateDeliveryMessage(anyLong(), any(), any());
+        verify(tradeMapper, never()).startDelivery(anyLong(), any());
+    }
+
+    @Test
+    void rejectsDuplicateDeliveryProofFilesBeforeSaving() {
+        TradeDeliverySubmitTarget target = deliveryTarget("TRDC0003", 501L);
+        TradeDeliveryProofSubmitRequest request = deliveryProofRequest(List.of(801L, 801L));
+
+        when(tradeMapper.findMyDeliveryTradeForUpdate(91L, 10L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.submitDeliveryProof(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verifyNoInteractions(fileStorageService);
+        verify(tradeMapper, never()).updateDeliveryMessage(anyLong(), any(), any());
+    }
+
+    @Test
+    void rejectsDeliveryProofWhenTradeIsAlreadyDelivering() {
+        TradeDeliverySubmitTarget target = deliveryTarget("TRDC0004", 501L);
+        TradeDeliveryProofSubmitRequest request = deliveryProofRequest(List.of(801L));
+
+        when(tradeMapper.findMyDeliveryTradeForUpdate(91L, 10L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.submitDeliveryProof(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void rollsBackDeliveryProofWhenStatusTransitionFails() {
+        TradeDeliverySubmitTarget target = deliveryTarget("TRDC0003", 501L);
+        TradeDeliveryProofSubmitRequest request = deliveryProofRequest(List.of(801L));
+
+        when(tradeMapper.findMyDeliveryTradeForUpdate(91L, 10L)).thenReturn(target);
+        when(fileStorageService.requireOwnedActiveFile(801L, 10L)).thenReturn(deliveryFile(801L));
+        when(tradeMapper.startDelivery(91L, "10")).thenReturn(0);
+
+        assertThatThrownBy(() -> tradeService.submitDeliveryProof(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+        verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
     }
 
     @Test
@@ -321,5 +540,34 @@ class TradeServiceTest {
 
         assertThat(completed).isFalse();
         verifyNoInteractions(notificationService);
+    }
+
+    private TradeDeliverySubmitTarget deliveryTarget(String tradeStatus, Long deliveryId) {
+        TradeDeliverySubmitTarget target = new TradeDeliverySubmitTarget();
+        target.setTradeId(91L);
+        target.setDeliveryId(deliveryId);
+        target.setTradeStatus(tradeStatus);
+        return target;
+    }
+
+    private TradeDeliveryProofSubmitRequest deliveryProofRequest(List<Long> fileIds) {
+        TradeDeliveryProofSubmitRequest request = new TradeDeliveryProofSubmitRequest();
+        request.setDeliveryMessage("포장 후 발송했습니다.");
+        request.setFileIds(fileIds);
+        return request;
+    }
+
+    private TradeDetailResponse deliveryDetail(long tradeId, long deliveryId) {
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setTradeId(tradeId);
+        detail.setDeliveryId(deliveryId);
+        return detail;
+    }
+
+    private FileMeta deliveryFile(long fileId) {
+        return FileMeta.builder()
+                .flSn(fileId)
+                .flPath("/api/attachment/delivery/20260721/proof.jpg")
+                .build();
     }
 }

@@ -21,6 +21,9 @@ import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
 import nct.trade.domain.Trade;
+import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
@@ -64,12 +67,43 @@ public class TradeService {
     }
 
     /**
+     * AuctionService의 즉시구매·자동 낙찰 트랜잭션 안에서 호출하는 공개 계약이다.
+     * 기본 REQUIRED 전파를 사용하므로 거래·입찰·포인트·경매 상태 변경과 하나의 트랜잭션으로 롤백된다.
+     */
+    @Transactional
+    public AuctionTradeCreateResult createAuctionTrade(
+            AuctionTradeCreateCommand command) {
+        validateAuctionTrade(command);
+
+        MaterialTradeCreateResult result = createOrGetMaterialTrade(
+                new MaterialTradeCreateCommand(
+                        command.getSellerUserId(),
+                        command.getBuyerUserId(),
+                        command.getProductId(),
+                        command.getTradeAmount()),
+                command.getSource().getStatusHistoryReason());
+
+        return new AuctionTradeCreateResult(
+                result.getTradeId(),
+                result.getTradeStatusCode(),
+                result.isCreated());
+    }
+
+    /**
      * 낙찰·즉시구매 공통 공개 계약이다. 같은 상품의 재호출은 기존 거래를 반환해
      * 경매 종료 처리의 재시도에도 TRADE와 최초 상태 이력이 중복 생성되지 않게 한다.
      */
     @Transactional
     public MaterialTradeCreateResult createOrGetMaterialTrade(
             MaterialTradeCreateCommand command) {
+        return createOrGetMaterialTrade(
+                command,
+                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+    }
+
+    private MaterialTradeCreateResult createOrGetMaterialTrade(
+            MaterialTradeCreateCommand command,
+            String creationReason) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -108,7 +142,7 @@ public class TradeService {
         tradeMapper.insertStatusHistory(
                 trade.getTrdSn(),
                 IN_PROGRESS,
-                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+                creationReason);
 
         return new MaterialTradeCreateResult(trade.getTrdSn(), IN_PROGRESS, true);
     }
@@ -385,6 +419,19 @@ public class TradeService {
 
         if (command.getSellerUserId() == command.getBuyerUserId()) {
             throw new CustomException(ErrorCode.FORBIDDEN, "본인 상품은 거래할 수 없습니다.");
+        }
+    }
+
+    // 경매·입찰 행의 실체와 낙찰자 검증은 해당 행을 잠근 AuctionService가 책임진다.
+    // 여기서는 공개 계약의 식별자가 비어 있지 않은지만 확인해 잘못된 내부 호출을 막는다.
+    private void validateAuctionTrade(AuctionTradeCreateCommand command) {
+        if (command == null
+                || command.getAuctionId() <= 0
+                || command.getWinningBidId() <= 0
+                || command.getSource() == null) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "경매 거래 생성 정보가 올바르지 않습니다.");
         }
     }
 

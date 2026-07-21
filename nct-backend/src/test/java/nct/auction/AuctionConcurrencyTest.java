@@ -173,7 +173,7 @@ class AuctionConcurrencyTest {
         assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
 
         assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0002");
         assertThat(auctionCurrentAmount(aucSn)).isEqualByComparingTo("10000");
@@ -201,7 +201,7 @@ class AuctionConcurrencyTest {
         assertThatThrownBy(() -> auctionService.finalizeExpiredAuction(aucSn))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
 
         assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0002");
         assertThat(materialTradeCount(prdSn)).isZero();

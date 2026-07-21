@@ -147,6 +147,7 @@ public class ProductService {
             if (s != null) {
                 p.setAucSn(s.getAucSn());
                 p.setAucStatusCd(s.getAucStatusCd());
+                p.setAucStatusNm(s.getAucStatusNm());
             }
 
             SellerTradeStatusItem tradeStatus = tradeStatusMap.get(p.getPrdSn());

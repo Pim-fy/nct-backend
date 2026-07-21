@@ -31,10 +31,12 @@ public interface TradeMapper {
 
     int insertMaterialTrade(Trade trade);
 
-    /** 택배 낙찰자의 현재 주소를 거래 배송지로 복사한다. 주소가 없으면 0건으로 반환한다. */
-    int insertDeliverySnapshotFromBuyer(
+    /** MemberService가 검증한 낙찰자 주소를 거래 배송지 스냅샷으로 저장한다. */
+    int insertDeliverySnapshot(
             @Param("tradeId") long tradeId,
-            @Param("buyerUserId") long buyerUserId);
+            @Param("zip") String zip,
+            @Param("address") String address,
+            @Param("detailAddress") String detailAddress);
 
     int insertStatusHistory(
             @Param("tradeId") long tradeId,

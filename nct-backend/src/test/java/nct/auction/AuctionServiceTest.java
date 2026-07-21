@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import nct.auction.dto.AuctionStatusResponse;
+import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.service.AuctionService;
@@ -63,6 +65,40 @@ class AuctionServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.AUCTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("상품 번호 목록으로 경매 상태를 일괄 조회한다")
+    void getAuctionStatusesByProducts() {
+        long sellerSn = insertUser("t_auc_seller");
+        long activePrdSn = insertProduct(sellerSn);
+        long canceledPrdSn = insertProduct(sellerSn);
+        long noAuctionPrdSn = insertProduct(sellerSn);
+        long activeAucSn = insertAuction(activePrdSn, BigDecimal.valueOf(10000), "AUCC0002");
+        long canceledAucSn = insertAuction(canceledPrdSn, BigDecimal.valueOf(20000), "AUCC0005");
+
+        List<AuctionStatusSummaryResponse> responses = auctionService.getAuctionStatusesByProducts(List.of(
+                activePrdSn,
+                canceledPrdSn,
+                noAuctionPrdSn,
+                activePrdSn));
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses)
+                .extracting(
+                        AuctionStatusSummaryResponse::getPrdSn,
+                        AuctionStatusSummaryResponse::getAucSn,
+                        AuctionStatusSummaryResponse::getAucStatusCd)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002"),
+                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005"));
+    }
+
+    @Test
+    @DisplayName("상품 번호 목록이 비어 있으면 빈 경매 상태 목록을 반환한다")
+    void getAuctionStatusesByProductsEmpty() {
+        assertThat(auctionService.getAuctionStatusesByProducts(List.of())).isEmpty();
+        assertThat(auctionService.getAuctionStatusesByProducts(null)).isEmpty();
     }
 
     @Test
@@ -222,7 +258,20 @@ class AuctionServiceTest {
         return insertAuction(prdSn, currentAmount, LocalDateTime.now().plusHours(1), 0);
     }
 
+    private long insertAuction(long prdSn, BigDecimal currentAmount, String statusCode) {
+        return insertAuction(prdSn, currentAmount, LocalDateTime.now().plusHours(1), 0, statusCode);
+    }
+
     private long insertAuction(long prdSn, BigDecimal currentAmount, LocalDateTime endDateTime, int extensionCount) {
+        return insertAuction(prdSn, currentAmount, endDateTime, extensionCount, "AUCC0002");
+    }
+
+    private long insertAuction(
+            long prdSn,
+            BigDecimal currentAmount,
+            LocalDateTime endDateTime,
+            int extensionCount,
+            String statusCode) {
         jdbc.update("""
                 INSERT INTO AUCTION (
                     PRD_SN,
@@ -233,9 +282,10 @@ class AuctionServiceTest {
                     AUC_END_DT,
                     AUC_EXT_CNT
                 )
-                VALUES (?, 'AUCC0002', ?, 1000, ?, ?, ?)
+                VALUES (?, ?, ?, 1000, ?, ?, ?)
                 """,
                 prdSn,
+                statusCode,
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
                 endDateTime,

@@ -223,6 +223,19 @@
             a.AUC_EXT_CNT
     </select>
 
+    <select id="findAuctionStatusesByProducts" resultType="nct.auction.dto.AuctionStatusSummaryResponse">
+        SELECT
+            a.PRD_SN AS prdSn,
+            a.AUC_SN AS aucSn,
+            a.AUC_STATUS_CD AS aucStatusCd
+        FROM AUCTION a
+        WHERE a.PRD_SN IN
+        <foreach collection="prdSns" item="prdSn" open="(" separator="," close=")">
+            #{prdSn}
+        </foreach>
+        ORDER BY a.PRD_SN
+    </select>
+
     <select id="findAuctionImages" resultType="nct.auction.dto.AuctionImageItem">
         SELECT
             pi.PRD_IMG_SN AS imageId,

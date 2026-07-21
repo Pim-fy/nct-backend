@@ -3,6 +3,7 @@ package nct.auction.service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
+import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
@@ -77,6 +79,23 @@ public class AuctionService {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
         return status;
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuctionStatusSummaryResponse> getAuctionStatusesByProducts(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> prdSns = productIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (prdSns.isEmpty()) {
+            return List.of();
+        }
+
+        return auctionMapper.findAuctionStatusesByProducts(prdSns);
     }
 
     @Transactional

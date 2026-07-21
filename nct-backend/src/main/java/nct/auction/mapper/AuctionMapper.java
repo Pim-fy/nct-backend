@@ -15,6 +15,7 @@ import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionImageItem;
 import nct.auction.dto.AuctionStatusResponse;
+import nct.auction.dto.AuctionStatusSummaryResponse;
 
 @Mapper
 public interface AuctionMapper {
@@ -26,6 +27,8 @@ public interface AuctionMapper {
     AuctionDetailResponse findAuctionDetail(@Param("auctionId") Long auctionId);
 
     AuctionStatusResponse findAuctionStatusByProduct(@Param("prdSn") Long prdSn);
+
+    List<AuctionStatusSummaryResponse> findAuctionStatusesByProducts(@Param("prdSns") List<Long> prdSns);
 
     List<AuctionImageItem> findAuctionImages(@Param("productId") Long productId);
 

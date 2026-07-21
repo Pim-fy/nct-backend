@@ -21,6 +21,9 @@ import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
 import nct.trade.domain.Trade;
+import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
@@ -44,6 +47,8 @@ import nct.setting.mapper.SystemSettingAdminMapper;
 public class TradeService {
 
     private static final String MATERIAL_TRADE = "TRDC0001";
+    private static final String DELIVERY_METHOD = "TRDC0009";
+    private static final String OFFLINE_METHOD = "TRDC0010";
     private static final String IN_PROGRESS = "TRDC0003";
     private static final String DELIVERING = "TRDC0004";
     private static final String WAITING_CONFIRMATION = "TRDC0005";
@@ -62,12 +67,43 @@ public class TradeService {
     }
 
     /**
+     * AuctionService의 즉시구매·자동 낙찰 트랜잭션 안에서 호출하는 공개 계약이다.
+     * 기본 REQUIRED 전파를 사용하므로 거래·입찰·포인트·경매 상태 변경과 하나의 트랜잭션으로 롤백된다.
+     */
+    @Transactional
+    public AuctionTradeCreateResult createAuctionTrade(
+            AuctionTradeCreateCommand command) {
+        validateAuctionTrade(command);
+
+        MaterialTradeCreateResult result = createOrGetMaterialTrade(
+                new MaterialTradeCreateCommand(
+                        command.getSellerUserId(),
+                        command.getBuyerUserId(),
+                        command.getProductId(),
+                        command.getTradeAmount()),
+                command.getSource().getStatusHistoryReason());
+
+        return new AuctionTradeCreateResult(
+                result.getTradeId(),
+                result.getTradeStatusCode(),
+                result.isCreated());
+    }
+
+    /**
      * 낙찰·즉시구매 공통 공개 계약이다. 같은 상품의 재호출은 기존 거래를 반환해
      * 경매 종료 처리의 재시도에도 TRADE와 최초 상태 이력이 중복 생성되지 않게 한다.
      */
     @Transactional
     public MaterialTradeCreateResult createOrGetMaterialTrade(
             MaterialTradeCreateCommand command) {
+        return createOrGetMaterialTrade(
+                command,
+                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+    }
+
+    private MaterialTradeCreateResult createOrGetMaterialTrade(
+            MaterialTradeCreateCommand command,
+            String creationReason) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -81,6 +117,9 @@ public class TradeService {
             return new MaterialTradeCreateResult(existingTradeId, IN_PROGRESS, false);
         }
 
+        String tradeMethod = tradeMapper.findProductTradeMethod(command.getProductId());
+        validateMaterialTradeMethod(tradeMethod);
+
         Trade trade = new Trade();
         trade.setSellerUserId(command.getSellerUserId());
         trade.setBuyerUserId(command.getBuyerUserId());
@@ -90,10 +129,20 @@ public class TradeService {
         trade.setTradeAmount(command.getTradeAmount());
 
         tradeMapper.insertMaterialTrade(trade);
+
+        // 택배는 낙찰 시점 주소를 복사해야 판매자가 이후 변경된 회원 주소를 보지 않는다.
+        if (DELIVERY_METHOD.equals(tradeMethod)
+                && tradeMapper.insertDeliverySnapshotFromBuyer(
+                        trade.getTrdSn(),
+                        command.getBuyerUserId()) == 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "낙찰자의 배송지가 등록되어 있지 않습니다.");
+        }
+
         tradeMapper.insertStatusHistory(
                 trade.getTrdSn(),
                 IN_PROGRESS,
-                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+                creationReason);
 
         return new MaterialTradeCreateResult(trade.getTrdSn(), IN_PROGRESS, true);
     }
@@ -371,6 +420,29 @@ public class TradeService {
         if (command.getSellerUserId() == command.getBuyerUserId()) {
             throw new CustomException(ErrorCode.FORBIDDEN, "본인 상품은 거래할 수 없습니다.");
         }
+    }
+
+    // 경매·입찰 행의 실체와 낙찰자 검증은 해당 행을 잠근 AuctionService가 책임진다.
+    // 여기서는 공개 계약의 식별자가 비어 있지 않은지만 확인해 잘못된 내부 호출을 막는다.
+    private void validateAuctionTrade(AuctionTradeCreateCommand command) {
+        if (command == null
+                || command.getAuctionId() <= 0
+                || command.getWinningBidId() <= 0
+                || command.getSource() == null) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "경매 거래 생성 정보가 올바르지 않습니다.");
+        }
+    }
+
+    // 상품 거래 방식은 정본 공통코드의 택배·직거래 두 값만 물건 거래 생성에 허용한다.
+    private void validateMaterialTradeMethod(String tradeMethod) {
+        if (DELIVERY_METHOD.equals(tradeMethod) || OFFLINE_METHOD.equals(tradeMethod)) {
+            return;
+        }
+
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                "상품 거래 방식이 올바르지 않습니다.");
     }
 
     // 컨트롤러 검증과 별개로, 다른 도메인 코드가 서비스를 직접 호출해도 과거 일정은 막는다.

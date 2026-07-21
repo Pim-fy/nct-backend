@@ -26,6 +26,9 @@ import nct.global.exception.ErrorCode;
 import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
 import nct.trade.domain.Trade;
+import nct.trade.domain.AuctionTradeSource;
+import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
@@ -72,6 +75,8 @@ class TradeServiceTest {
                 BigDecimal.valueOf(128000));
         when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
+        when(tradeMapper.insertDeliverySnapshotFromBuyer(91L, 20L)).thenReturn(1);
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -89,6 +94,101 @@ class TradeServiceTest {
                 91L,
                 "TRDC0003",
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+        verify(tradeMapper).insertDeliverySnapshotFromBuyer(91L, 20L);
+    }
+
+    @Test
+    void createsAuctionTradeWithBuyNowSource() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L,
+                30L,
+                50L,
+                10L,
+                20L,
+                BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW);
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0010");
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+
+        AuctionTradeCreateResult result = tradeService.createAuctionTrade(command);
+
+        assertThat(result.getTradeSn()).isEqualTo(91L);
+        assertThat(result.isCreated()).isTrue();
+        assertThat(result.isExistingTrade()).isFalse();
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0003",
+                "즉시구매로 거래가 생성되었습니다.");
+    }
+
+    @Test
+    void rejectsAuctionTradeWithoutWinningBid() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L,
+                30L,
+                0L,
+                10L,
+                20L,
+                BigDecimal.valueOf(128000),
+                AuctionTradeSource.AUCTION_WIN);
+
+        assertThatThrownBy(() -> tradeService.createAuctionTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void createsOfflineTradeWithoutDeliverySnapshot() {
+        MaterialTradeCreateCommand command = new MaterialTradeCreateCommand(
+                10L,
+                20L,
+                30L,
+                BigDecimal.valueOf(128000));
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0010");
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+
+        MaterialTradeCreateResult result = tradeService.createOrGetMaterialTrade(command);
+
+        assertThat(result.isCreated()).isTrue();
+        verify(tradeMapper, never()).insertDeliverySnapshotFromBuyer(anyLong(), anyLong());
+    }
+
+    @Test
+    void rejectsDeliveryTradeWhenWinningBuyerHasNoAddress() {
+        MaterialTradeCreateCommand command = new MaterialTradeCreateCommand(
+                10L,
+                20L,
+                30L,
+                BigDecimal.valueOf(128000));
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+        when(tradeMapper.insertDeliverySnapshotFromBuyer(91L, 20L)).thenReturn(0);
+
+        assertThatThrownBy(() -> tradeService.createOrGetMaterialTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
     }
 
     @Test

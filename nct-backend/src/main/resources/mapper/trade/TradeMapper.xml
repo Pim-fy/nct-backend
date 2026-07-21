@@ -26,6 +26,12 @@
         LIMIT 1
     </select>
 
+    <select id="findProductTradeMethod" resultType="string">
+        SELECT PRD_TRD_METHOD_CD
+        FROM PRODUCT
+        WHERE PRD_SN = #{productId}
+    </select>
+
     <insert id="insertMaterialTrade" parameterType="nct.trade.domain.Trade"
             useGeneratedKeys="true" keyProperty="trdSn">
         INSERT INTO TRADE (
@@ -44,6 +50,24 @@
             #{tradeStatusCode},
             #{tradeAmount}
         )
+    </insert>
+
+    <!-- USERS 주소를 거래 생성 시점에 복사해 이후 회원정보 변경과 무관하게 배송지를 고정한다. -->
+    <insert id="insertDeliverySnapshotFromBuyer">
+        INSERT INTO TRADE_DELIVERY (
+            TRD_SN,
+            TRD_DLVR_ADDR,
+            TRD_DLVR_DADDR,
+            TRD_DLVR_ZIP
+        )
+        SELECT
+            #{tradeId},
+            u.USR_ADDR,
+            u.USR_DADDR,
+            u.USR_ZIP
+        FROM USERS u
+        WHERE u.USR_SN = #{buyerUserId}
+          AND NULLIF(TRIM(u.USR_ADDR), '') IS NOT NULL
     </insert>
 
     <insert id="insertStatusHistory">

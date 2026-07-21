@@ -26,7 +26,15 @@ public interface TradeMapper {
 
     Long findMaterialTradeIdByProductId(@Param("productId") long productId);
 
+    /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
+    String findProductTradeMethod(@Param("productId") long productId);
+
     int insertMaterialTrade(Trade trade);
+
+    /** 택배 낙찰자의 현재 주소를 거래 배송지로 복사한다. 주소가 없으면 0건으로 반환한다. */
+    int insertDeliverySnapshotFromBuyer(
+            @Param("tradeId") long tradeId,
+            @Param("buyerUserId") long buyerUserId);
 
     int insertStatusHistory(
             @Param("tradeId") long tradeId,

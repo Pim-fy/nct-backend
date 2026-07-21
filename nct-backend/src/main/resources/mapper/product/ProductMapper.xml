@@ -82,6 +82,9 @@
          WHERE p.USR_SN = #{usrSn}
            AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'
+           <if test="prdStatusCd != null and prdStatusCd != ''">
+           AND p.PRD_STATUS_CD = #{prdStatusCd}
+           </if>
          ORDER BY p.PRD_REG_DT DESC
     </select>
 
@@ -94,6 +97,15 @@
           FROM PRODUCT
          WHERE PRD_SN = #{prdSn}
     </select>
+
+    <!-- ── 조회수 증가 ────────────────────────────────────────── -->
+    <update id="incrementViewCount">
+        /* ProductMapper.incrementViewCount */
+        UPDATE PRODUCT
+           SET PRD_VIEW_CNT = PRD_VIEW_CNT + 1
+         WHERE PRD_SN = #{prdSn}
+           AND PRD_USE_YN = 'Y'
+    </update>
 
     <!-- ── 논리 삭제 (PRD_STATUS_CD=PRDC0004, PRD_USE_YN=N) ─ -->
     <update id="deleteProduct">

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.product.mapper.ProductCommentMapper">
+
+    <insert id="insertComment" useGeneratedKeys="true" keyProperty="prdCmtSn">
+        INSERT INTO PRODUCT_COMMENT (
+            PRD_SN,
+            USR_SN,
+            PRD_CMT_TTL,
+            PRD_CMT_CN,
+            PRD_CMT_REG_ID,
+            PRD_CMT_UPDT_ID
+        ) VALUES (
+            #{prdSn},
+            #{usrSn},
+            #{prdCmtTtl},
+            #{prdCmtCn},
+            #{prdCmtRegId},
+            #{prdCmtUpdtId}
+        )
+    </insert>
+
+    <select id="findLatestComments" resultType="nct.product.dto.ProductCommentResponse">
+        SELECT PRD_CMT_SN    AS prdCmtSn,
+               PRD_CMT_TTL   AS prdCmtTtl,
+               PRD_CMT_CN    AS prdCmtCn,
+               PRD_CMT_REG_DT  AS prdCmtRegDt,
+               PRD_CMT_UPDT_DT AS prdCmtUpdtDt
+          FROM PRODUCT_COMMENT
+         WHERE PRD_SN = #{prdSn}
+         ORDER BY PRD_CMT_SN DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

@@ -44,6 +44,8 @@ import nct.setting.mapper.SystemSettingAdminMapper;
 public class TradeService {
 
     private static final String MATERIAL_TRADE = "TRDC0001";
+    private static final String DELIVERY_METHOD = "TRDC0009";
+    private static final String OFFLINE_METHOD = "TRDC0010";
     private static final String IN_PROGRESS = "TRDC0003";
     private static final String DELIVERING = "TRDC0004";
     private static final String WAITING_CONFIRMATION = "TRDC0005";
@@ -81,6 +83,9 @@ public class TradeService {
             return new MaterialTradeCreateResult(existingTradeId, IN_PROGRESS, false);
         }
 
+        String tradeMethod = tradeMapper.findProductTradeMethod(command.getProductId());
+        validateMaterialTradeMethod(tradeMethod);
+
         Trade trade = new Trade();
         trade.setSellerUserId(command.getSellerUserId());
         trade.setBuyerUserId(command.getBuyerUserId());
@@ -90,6 +95,16 @@ public class TradeService {
         trade.setTradeAmount(command.getTradeAmount());
 
         tradeMapper.insertMaterialTrade(trade);
+
+        // 택배는 낙찰 시점 주소를 복사해야 판매자가 이후 변경된 회원 주소를 보지 않는다.
+        if (DELIVERY_METHOD.equals(tradeMethod)
+                && tradeMapper.insertDeliverySnapshotFromBuyer(
+                        trade.getTrdSn(),
+                        command.getBuyerUserId()) == 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "낙찰자의 배송지가 등록되어 있지 않습니다.");
+        }
+
         tradeMapper.insertStatusHistory(
                 trade.getTrdSn(),
                 IN_PROGRESS,
@@ -371,6 +386,16 @@ public class TradeService {
         if (command.getSellerUserId() == command.getBuyerUserId()) {
             throw new CustomException(ErrorCode.FORBIDDEN, "본인 상품은 거래할 수 없습니다.");
         }
+    }
+
+    // 상품 거래 방식은 정본 공통코드의 택배·직거래 두 값만 물건 거래 생성에 허용한다.
+    private void validateMaterialTradeMethod(String tradeMethod) {
+        if (DELIVERY_METHOD.equals(tradeMethod) || OFFLINE_METHOD.equals(tradeMethod)) {
+            return;
+        }
+
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                "상품 거래 방식이 올바르지 않습니다.");
     }
 
     // 컨트롤러 검증과 별개로, 다른 도메인 코드가 서비스를 직접 호출해도 과거 일정은 막는다.

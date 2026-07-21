@@ -23,14 +23,18 @@ import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
+import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.point.exception.PointException;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
 import nct.product.service.ProductService;
+import nct.trade.domain.AuctionTradeSource;
+import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.service.TradeService;
 
 @Service
 @RequiredArgsConstructor
@@ -41,11 +45,14 @@ public class AuctionService {
     private static final int MAX_SIZE = 60;
     private static final int MAX_FINALIZATION_BATCH_SIZE = 500;
     private static final String SYSTEM_ACTOR = "SYSTEM";
+    private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
     private final ObjectProvider<ProductService> productServiceProvider;
+    private final TradeService tradeService;
+    private final ChatService chatService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -131,6 +138,14 @@ public class AuctionService {
         if (updated == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "경매 마감 상태가 이미 변경되었습니다.");
         }
+        if (AuctionStatusCode.ENDED.equals(finalStatus)) {
+            createAuctionTrade(
+                    target,
+                    target.getCurrentHighestBidId(),
+                    target.getCurrentHighestBidderId(),
+                    target.getCurrentPrice(),
+                    AuctionTradeSource.AUCTION_WIN);
+        }
         return true;
     }
 
@@ -163,10 +178,6 @@ public class AuctionService {
         if (inserted == 0) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
-    }
-
-    private AuctionDetailResponse loadAuctionDetail(Long auctionId) {
-        return loadAuctionDetail(auctionId, null);
     }
 
     private AuctionDetailResponse findAuctionDetailAndIncreaseView(Long auctionId, Long userId) {
@@ -224,7 +235,7 @@ public class AuctionService {
                 policy.getAucExtMaxCnt(),
                 userId.toString());
 
-        return loadAuctionDetail(auctionId);
+        return loadAuctionDetail(auctionId, userId);
     }
 
     @Transactional
@@ -249,8 +260,35 @@ public class AuctionService {
         if (closed == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "경매 상태가 이미 변경되었습니다.");
         }
+        createAuctionTrade(
+                target,
+                bid.getBidId(),
+                userId,
+                instantBuyPrice,
+                AuctionTradeSource.BUY_NOW);
 
-        return loadAuctionDetail(auctionId);
+        return loadAuctionDetail(auctionId, userId);
+    }
+
+    private void createAuctionTrade(
+            AuctionBidTarget target,
+            Long winningBidId,
+            Long buyerUserId,
+            BigDecimal tradeAmount,
+            AuctionTradeSource source) {
+        AuctionTradeCreateResult result = tradeService.createAuctionTrade(
+                new AuctionTradeCreateCommand(
+                        target.getAuctionId(),
+                        target.getProductId(),
+                        winningBidId,
+                        target.getSellerId(),
+                        buyerUserId,
+                        tradeAmount,
+                        source));
+
+        if (result.isCreated() && OFFLINE_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
+            chatService.createOrGetOfflineTradeChatRoom(result.getTradeSn());
+        }
     }
 
     private AuctionBidTarget findBidTarget(Long auctionId) {
@@ -320,15 +358,11 @@ public class AuctionService {
         if (previousHighestBidderId == null || previousHighestBidId == null) {
             return;
         }
-        try {
-            pointService.releaseHold(
-                    previousHighestBidderId,
-                    RefType.BID,
-                    previousHighestBidId,
-                    "상위 입찰 발생에 따른 기존 입찰 홀딩 반환");
-        } catch (PointException ignored) {
-            // 기존 테스트/마이그레이션 데이터처럼 포인트 홀딩 없이 존재하는 과거 입찰은 상태 변경만 유지한다.
-        }
+        pointService.releaseHold(
+                previousHighestBidderId,
+                RefType.BID,
+                previousHighestBidId,
+                "상위 입찰 발생에 따른 기존 입찰 홀딩 반환");
     }
 
     private long toPointAmount(BigDecimal amount) {

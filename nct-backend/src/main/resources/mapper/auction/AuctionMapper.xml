@@ -289,6 +289,7 @@
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
+            p.PRD_TRD_METHOD_CD AS tradeMethodCode,
             a.AUC_STATUS_CD AS auctionStatusCode,
             a.AUC_END_DT AS endDateTime,
             NOW() AS databaseNow

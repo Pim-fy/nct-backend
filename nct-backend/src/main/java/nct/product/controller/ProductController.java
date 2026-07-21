@@ -1,6 +1,7 @@
 package nct.product.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -81,6 +82,7 @@ public class ProductController {
     }
 
     /** 추가 공지 등록 (판매자 전용, F-AUC-007) */
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/{prdSn}/comments")
     public ResponseEntity<ApiResponse<ProductCommentResponse>> addComment(
             @AuthenticationPrincipal CustomUserDetails userDetails,

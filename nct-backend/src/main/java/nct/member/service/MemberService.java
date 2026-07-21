@@ -11,6 +11,7 @@ import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.member.domain.Member;
+import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.dto.ProfileUpdateRequest;
 import nct.member.dto.ProfileUpdateResponse;
 import nct.member.mapper.MemberMapper;
@@ -95,6 +96,26 @@ public class MemberService {
         memberMapper.withdraw(usrSn, anonymizedEmail(usrSn), anonymizedNickname(usrSn));
         // @ai_generated: 전 기기 로그아웃 - AuthService.logout과 동일 패턴(null 저장)
         authMemberPort.updateRefreshToken(usrSn, null);
+    }
+
+    /**
+     * F-AUC-024 지원: 택배 거래 생성 시 낙찰자(구매자) 주소 스냅샷을 조회한다.
+     * 회원이 존재하지 않으면 USER_NOT_FOUND, 주소 3필드 중 하나라도 비어 있으면
+     * BUYER_ADDRESS_INCOMPLETE를 던진다 - 호출 측은 반환값을 그대로 TRADE_DELIVERY에 복사하면 된다.
+     */
+    public BuyerAddressSnapshot getBuyerAddressSnapshot(Long buyerUsrSn) {
+        Member member = memberMapper.findMemberById(buyerUsrSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        if (isBlank(member.getUsrZip()) || isBlank(member.getUsrAddr()) || isBlank(member.getUsrDaddr())) {
+            throw new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+        }
+
+        return new BuyerAddressSnapshot(member.getUsrZip(), member.getUsrAddr(), member.getUsrDaddr());
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private String anonymizedEmail(Long usrSn) {

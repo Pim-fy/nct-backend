@@ -19,6 +19,8 @@ public enum ErrorCode {
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "이메일 형식이 올바르지 않습니다."),
     INVALID_PASSWORD_FORMAT(HttpStatus.BAD_REQUEST, "비밀번호 형식이 올바르지 않습니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
+    // F-AUC-024 지원 - 배송지 스냅샷 조회 계약(MemberService.getBuyerAddressSnapshot) 전용
+    BUYER_ADDRESS_INCOMPLETE(HttpStatus.BAD_REQUEST, "회원의 배송지 정보가 등록되어 있지 않습니다."),
 
     // 401 Unauthorized
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),

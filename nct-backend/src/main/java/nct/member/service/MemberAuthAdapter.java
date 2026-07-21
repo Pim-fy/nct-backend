@@ -1,10 +1,14 @@
 package nct.member.service;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Optional;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.auth.mapper.UserOauthMapper;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
@@ -29,8 +33,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class MemberAuthAdapter implements AuthMemberPort {
 
+    // @ai_generated: 작업단위5 - OAUTH_+ULID 로그인ID·CSPRNG 시스템 비밀번호 생성용
+    private static final char[] CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ".toCharArray();
+    private static final int SYSTEM_PASSWORD_BYTES = 32;
+
     private final MemberMapper memberMapper;
     private final TokenHashUtil tokenHashUtil;
+    private final PasswordEncoder passwordEncoder;
+    private final UserOauthMapper userOauthMapper;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     @Override
     @Transactional(readOnly = true)
@@ -92,15 +103,81 @@ public class MemberAuthAdapter implements AuthMemberPort {
         return toAuthMember(member);
     }
 
+    // @ai_generated: 작업단위5 - POL-AUTH-010. OAUTH_+ULID 시스템 로그인ID·CSPRNG+BCrypt 비밀번호로
+    // USERS를 만들고 같은 트랜잭션에서 USER_OAUTH 연동 행을 저장한다. 이메일/닉네임 중복은 사전 확인
+    // 없이(온보딩 화면 제출 시점 호출이라 이 계층에서 사전 확인이 불가) DataIntegrityViolationException을
+    // 그대로 던진다 - 호출측(작업단위5 온보딩: OauthOnboardingService.duplicateException)이 변환한다.
     @Override
     @Transactional
     public AuthMember registerOAuthMember(OAuthProfile profile) {
-        // TODO: 현재 스키마로는 OAuth 가입을 완전히 구현할 수 없음
-        //   1) USERS.USR_PSWD_HASH가 NOT NULL이라 비밀번호 없는 소셜 가입 저장 불가
-        //   2) 소셜 로그인 연동 정보(USR_OAT_PROVIDER_CD 등)는 별도 USER_OAUTH 테이블인데 매퍼 미구현
-        // 임의 비밀번호를 지어내는 건 보안상 위험해서(전 계정 공용 비밀번호가 될 수 있음) 시도하지 않음.
-        throw new UnsupportedOperationException(
-            "OAuth 회원가입 미구현: USERS.USR_PSWD_HASH NOT NULL 제약 및 USER_OAUTH 연동 매퍼 필요");
+        Member member = Member.builder()
+            .usrLoginId("OAUTH_" + generateUlid())
+            .usrPswdHash(passwordEncoder.encode(generateSystemPassword()))
+            .usrNm(profile.getNickname())
+            .usrEml(profile.getEmail())
+            .usrEmlCertYn('Y')          // 제공자가 이미 검증한 이메일로 간주 (자체 EMAIL_VERIFICATION 재검증 없음)
+            .usrStatusCd("USRC0001")    // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)
+            .usrRoleCd("ROLE_USER")     // 신규가입 기본 역할
+            .build();
+        memberMapper.saveCertifiedMember(member);   // useGeneratedKeys 로 usrSn 채워짐
+        userOauthMapper.insert(member.getUsrSn(), profile.getProvider(), profile.getProviderKey());
+        return toAuthMember(member);
+    }
+
+    // @ai_generated: 작업단위5 - USER_OAUTH(provider, providerKey) 기준 기존 연동 회원 조회.
+    // ISS-001/설계 결정(A) - 로그인용 email 대신 이 조회로 재로그인 시 기존 회원을 찾는다.
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AuthMember> findByOauthProviderKey(String providerCd, String providerKey) {
+        return userOauthMapper.findUsrSnByProviderAndKey(providerCd, providerKey)
+                              .flatMap(memberMapper::findMemberById)
+                              .map(this::toAuthMember);
+    }
+
+    // @ai_generated: 작업단위5 - Crockford Base32 ULID(48비트 타임스탬프 + 80비트 CSPRNG 랜덤 = 128비트/26자).
+    // 신규 라이브러리 의존성 추가 없이 자체 구현 (POL-AUTH-010은 형식만 요구, 특정 라이브러리를 요구하지 않음).
+    private String generateUlid() {
+        long timestamp = System.currentTimeMillis();
+        byte[] data = new byte[16];
+        data[0] = (byte) (timestamp >>> 40);
+        data[1] = (byte) (timestamp >>> 32);
+        data[2] = (byte) (timestamp >>> 24);
+        data[3] = (byte) (timestamp >>> 16);
+        data[4] = (byte) (timestamp >>> 8);
+        data[5] = (byte) timestamp;
+        byte[] entropy = new byte[10];
+        secureRandom.nextBytes(entropy);
+        System.arraycopy(entropy, 0, data, 6, 10);
+        return encodeCrockfordBase32(data);
+    }
+
+    private String encodeCrockfordBase32(byte[] data) {
+        StringBuilder sb = new StringBuilder(26);
+        long buffer = 0;
+        int bitsInBuffer = 0;
+        for (byte b : data) {
+            buffer = (buffer << 8) | (b & 0xFFL);
+            bitsInBuffer += 8;
+            while (bitsInBuffer >= 5) {
+                bitsInBuffer -= 5;
+                int index = (int) ((buffer >>> bitsInBuffer) & 0x1F);
+                sb.append(CROCKFORD_BASE32[index]);
+            }
+        }
+        if (bitsInBuffer > 0) {
+            int index = (int) ((buffer << (5 - bitsInBuffer)) & 0x1F);
+            sb.append(CROCKFORD_BASE32[index]);
+        }
+        return sb.toString();
+    }
+
+    // @ai_generated: 작업단위5 - POL-AUTH-010 CSPRNG 원문. PasswordResetService의 토큰 생성 패턴과 동일.
+    // 원문은 즉시 BCrypt 인코딩 후 버려지며 어디에도 저장·노출되지 않는다 - 사용자 로그인 수단이 아니라
+    // USERS.USR_PSWD_HASH NOT NULL 제약을 만족시키기 위한 값이다.
+    private String generateSystemPassword() {
+        byte[] tokenBytes = new byte[SYSTEM_PASSWORD_BYTES];
+        secureRandom.nextBytes(tokenBytes);
+        return Base64.getEncoder().encodeToString(tokenBytes);
     }
 
     // @ai_generated: 저장 전 SHA-256 해시화(원문 저장 금지). null(로그아웃) 은 해시하지 않고 그대로 저장.

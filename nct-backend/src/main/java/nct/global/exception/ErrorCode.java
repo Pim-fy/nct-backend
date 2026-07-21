@@ -54,6 +54,11 @@ public enum ErrorCode {
     INVALID_VERIFICATION_CODE(HttpStatus.UNAUTHORIZED, "인증번호가 일치하지 않습니다."),
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 요청입니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
+    // @ai_generated: 작업단위5 작업 2(F-AUTH-016) - 마이페이지 연동 관리 REST API 전용
+    OAUTH_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "연동된 계정을 찾을 수 없습니다."),
+    OAUTH_LINK_MINIMUM_REQUIRED(HttpStatus.CONFLICT, "최소 1개의 로그인 수단은 유지해야 합니다."),
+    // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 온보딩 완료 API 전용
+    ONBOARDING_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "온보딩 정보를 찾을 수 없습니다. 소셜 로그인을 다시 시도해주세요."),
 
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
@@ -86,6 +91,9 @@ public enum ErrorCode {
     CHARGE_AMOUNT_OUT_OF_RANGE(HttpStatus.BAD_REQUEST, "충전 금액이 허용 범위를 벗어났습니다."),
     CHARGE_ORDER_EXPIRED(HttpStatus.CONFLICT, "시간이 만료된 충전 주문입니다."),
     CHARGE_INTERNAL_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "충전 처리 중 오류가 발생하여 결제를 취소 처리했습니다."),
+
+    // 시스템 설정 읽기 계약 (F-OPS-024 SYSTEM_SETTING, 타 도메인 소비용 — 값 이상 시 임의 기본값 대신 실패)
+    SYSTEM_SETTING_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "시스템 설정 값을 확인할 수 없어 요청을 처리할 수 없습니다."),
 
     // 포인트 환전 (F-PAY-012)
     EXCHANGE_ACCOUNT_NOT_REGISTERED(HttpStatus.BAD_REQUEST, "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요."),

@@ -17,6 +17,8 @@ import nct.point.exception.DuplicateHoldException;
 import nct.point.exception.InsufficientPointException;
 import nct.point.exception.PointException;
 import nct.point.mapper.PointMapper;
+import nct.point.domain.AuctionPolicy;
+import nct.point.mapper.SystemSettingMapper;
 
 /**
  * [포인트 원장 - 서비스 계약] (담당자6 백종남)
@@ -25,6 +27,9 @@ import nct.point.mapper.PointMapper;
  * 이 서비스의 계약 메서드(hold / releaseHold / convertHoldToEscrow /
  * debitEscrow / creditEscrowToSettleable / refundEscrow)만 호출한다.
  * 포인트 원장(POINT_LEDGER)은 이 서비스 외부에서 직접 변경하지 않는다.
+ *
+ * getAuctionPolicy()는 SYSTEM_SETTING 읽기 계약(2026-07-21, 담당자5 요청) — 원장과는
+ * 무관하지만, 다른 담당자가 담당자6 계약을 부르는 창구를 이 서비스 하나로 유지하기 위해 둔다.
  *
  * 핵심 설계:
  * - 잔액 = 원장 SUM (잔액 컬럼 없음). 원장은 INSERT만 하고 수정·삭제하지 않는다
@@ -40,12 +45,31 @@ public class PointService {
 
     private final PointMapper pointMapper;
     private final NotificationService notificationService;
+    private final SystemSettingMapper systemSettingMapper;
 
     // ---------- 조회 (F-PAY-038, F-PAY-039) ----------
 
     /** 잔액 조회 — 포인트분류(사용가능/홀딩/정산가능)별 원장 합계 */
     public PointBalance getBalance(long usrSn) {
         return pointMapper.selectBalance(usrSn);
+    }
+
+    /**
+     * 경매 정책 조회 (담당자5 소비 계약, 2026-07-21) — 자동연장 기준·최대횟수·최소입찰단위.
+     * 설정 행이 없거나 값이 비정상(0 이하)이면 임의 기본값으로 채우지 않고 예외로 실패시킨다
+     * (동민씨 요청 정책 그대로 — 있으면 쓰고 없으면 요청 자체를 막는다).
+     */
+    @Transactional(readOnly = true)
+    public AuctionPolicy getAuctionPolicy() {
+        AuctionPolicy policy = systemSettingMapper.selectAuctionPolicy();
+        if (policy == null
+                || policy.getAucExtMin() == null || policy.getAucExtMin() <= 0
+                || policy.getAucExtMaxCnt() == null || policy.getAucExtMaxCnt() < 0
+                || policy.getMinBidUnit() == null || policy.getMinBidUnit() <= 0) {
+            throw new PointException(ErrorCode.SYSTEM_SETTING_INVALID,
+                    "경매 정책 설정값을 확인할 수 없습니다 (aucExtMin/aucExtMaxCnt/minBidUnit).");
+        }
+        return policy;
     }
 
     /** 원장 목록 조회 — 공통코드 한글명 포함, 최신순 100건 */

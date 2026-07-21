@@ -51,6 +51,10 @@ public interface TradeMapper {
     List<SellerTradeStatusItem> findMySellerTradeStatuses(
             @Param("sellerUserId") long sellerUserId);
 
+    /** ProductService가 이미 조회한 상품 목록에 붙일 물건 거래 상태를 일괄 조회한다. */
+    List<SellerTradeStatusItem> findTradeStatusesByProducts(
+            @Param("prdSns") List<Long> prdSns);
+
     TradeDetailResponse findMyMaterialTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);

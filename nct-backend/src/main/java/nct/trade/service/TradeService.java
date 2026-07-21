@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -174,6 +175,27 @@ public class TradeService {
     @Transactional(readOnly = true)
     public List<SellerTradeStatusItem> getMySellerTradeStatuses(long sellerUserId) {
         return tradeMapper.findMySellerTradeStatuses(sellerUserId);
+    }
+
+    /**
+     * ProductService가 이미 판매자 본인 범위로 조회한 상품 목록에 거래 상태를 병합할 때 사용한다.
+     * 이 서비스는 상품 소유권을 다시 판단하지 않으므로 외부 HTTP API로 노출하지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public List<SellerTradeStatusItem> getTradeStatusesByProducts(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> prdSns = productIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (prdSns.isEmpty()) {
+            return List.of();
+        }
+
+        return tradeMapper.findTradeStatusesByProducts(prdSns);
     }
 
     /** 거래 당사자만 상세 정보를 조회하도록 쿼리 단계에서 범위를 제한한다. */

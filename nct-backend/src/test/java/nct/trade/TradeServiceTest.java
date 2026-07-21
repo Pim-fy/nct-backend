@@ -237,6 +237,29 @@ class TradeServiceTest {
     }
 
     @Test
+    void returnsTradeStatusesForDistinctProductIds() {
+        SellerTradeStatusItem item = new SellerTradeStatusItem();
+        item.setPrdSn(30L);
+        item.setTradeSn(91L);
+        item.setTradeStatusCd("TRDC0004");
+        when(tradeMapper.findTradeStatusesByProducts(List.of(30L, 40L)))
+                .thenReturn(List.of(item));
+
+        List<SellerTradeStatusItem> result = tradeService.getTradeStatusesByProducts(
+                List.of(30L, 40L, 30L));
+
+        assertThat(result).containsExactly(item);
+        verify(tradeMapper).findTradeStatusesByProducts(List.of(30L, 40L));
+    }
+
+    @Test
+    void returnsEmptyTradeStatusListWhenProductIdsAreEmpty() {
+        assertThat(tradeService.getTradeStatusesByProducts(null)).isEmpty();
+        assertThat(tradeService.getTradeStatusesByProducts(List.of())).isEmpty();
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
     void rejectsTradeDetailOutsideCurrentUsersTransactions() {
         when(tradeMapper.findMyMaterialTradeDetail(anyLong(), anyLong())).thenReturn(null);
 

@@ -94,7 +94,7 @@ class PointChargeConfirmFailureTest {
         String orderNo = pointChargeService.createOrder(usrSn, 50000);
         // 사전 기록(50,000)과 다른 금액(49,000)이 승인된 상황 — 위변조 의심 케이스
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
-                .thenReturn(TossConfirmResult.success("test-payment-key", 49000, "DONE"));
+                .thenReturn(TossConfirmResult.success(49000));
 
         assertThatThrownBy(() -> pointChargeService.confirm(orderNo, "test-payment-key"))
                 .isInstanceOf(PointException.class);
@@ -117,7 +117,7 @@ class PointChargeConfirmFailureTest {
     void internalFailureTriggersAutoCancelAndReversal() {
         String orderNo = pointChargeService.createOrder(usrSn, 50000);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
-                .thenReturn(TossConfirmResult.success("test-payment-key", 50000, "DONE"));
+                .thenReturn(TossConfirmResult.success(50000));
         when(tossPaymentsClient.cancel(anyString(), anyString())).thenReturn(true); // ⓐ 자동취소 성공
         // 지급·완료까지 끝난 뒤 마지막 단계(알림 저장)에서 터지는 상황 재현
         doThrow(new RuntimeException("알림 저장 실패"))
@@ -151,7 +151,7 @@ class PointChargeConfirmFailureTest {
     void cancelFailureLeavesAdminNote() {
         String orderNo = pointChargeService.createOrder(usrSn, 50000);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
-                .thenReturn(TossConfirmResult.success("test-payment-key", 50000, "DONE"));
+                .thenReturn(TossConfirmResult.success(50000));
         when(tossPaymentsClient.cancel(anyString(), anyString())).thenReturn(false); // ⓑ 취소 실패
         doThrow(new RuntimeException("알림 저장 실패"))
                 .when(notificationService).notifyCharge(anyLong(), anyLong());

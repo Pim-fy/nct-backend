@@ -1,6 +1,7 @@
 package nct.point.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +35,7 @@ import nct.point.service.PointService;
  * 엔드포인트 (모두 로그인 필요):
  *   GET  /api/point/balance         내 포인트 잔액 (사용가능/홀딩/정산가능/총보유)
  *   GET  /api/point/ledger          내 포인트 원장 목록 (최신순 100건)
+ *   GET  /api/point/charge/limits   현재 충전 한도 (모달 안내문용, SYSTEM_SETTING 실시간 값)
  *   POST /api/point/charge/request  충전 주문 생성 (결제창 호출 전) — F-PG-01
  *   POST /api/point/charge/confirm  결제 승인 확정 — F-PG-01
  *   GET  /api/point/charge/orders   내 충전 주문 이력 (실패·취소 포함, 최신순 100건)
@@ -81,6 +83,17 @@ public class PointController {
                 .map(PointLedgerResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    /**
+     * 현재 충전 한도 조회 — 지갑 충전 모달의 안내문용 (2026-07-20).
+     * 검증에 실제 쓰이는 SYSTEM_SETTING 값을 그대로 내려서 안내문이 스테일해질 수 없게 한다
+     */
+    @GetMapping("/charge/limits")
+    public ResponseEntity<ApiResponse<Map<String, Long>>> getChargeLimits() {
+        var limits = pointChargeService.getChargeLimits();
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of("min", limits.getMinChrgAmt(), "max", limits.getMaxChrgAmt())));
     }
 
     /** 충전 주문 생성 — 결제위젯을 띄우기 전에 서버가 먼저 신뢰 기준 금액을 기록한다 */

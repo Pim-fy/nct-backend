@@ -62,15 +62,7 @@ public class NotificationService {
     public void notify(long usrSn, NotificationType type, NotificationDomain domain,
                        NotificationAudience audience, String title, String content,
                        RefType refType, Long refSn) {
-        Notification n = new Notification();
-        n.setUsrSn(usrSn);
-        n.setNtfTypeCd(type.getCode());
-        n.setNtfDomainCd(domain.getCode());
-        n.setNtfAudienceCd(audience.getCode());
-        n.setNtfTtl(title);
-        n.setNtfCn(content);
-        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
-        n.setNtfRefSn(refSn);
+        Notification n = build(usrSn, type, domain, audience, title, content, refType, refSn);
         n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
         notificationMapper.insert(n);
     }
@@ -84,15 +76,7 @@ public class NotificationService {
     public void notifyImportant(long usrSn, NotificationType type, NotificationDomain domain,
                                 NotificationAudience audience, String title, String content,
                                 RefType refType, Long refSn) {
-        Notification n = new Notification();
-        n.setUsrSn(usrSn);
-        n.setNtfTypeCd(type.getCode());
-        n.setNtfDomainCd(domain.getCode());
-        n.setNtfAudienceCd(audience.getCode());
-        n.setNtfTtl(title);
-        n.setNtfCn(content);
-        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
-        n.setNtfRefSn(refSn);
+        Notification n = build(usrSn, type, domain, audience, title, content, refType, refSn);
 
         // 발송 대상이 아니면(스위치·토글·메일 미설정 환경) 미대상으로 기록하고 인앱만 남긴다
         if (!emailEligible(usrSn, domain)) {
@@ -112,6 +96,22 @@ public class NotificationService {
                         + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
         notificationMapper.updateEmailStatus(n.getNtfSn(),
                 (sent ? NotificationEmailStatus.SENT : NotificationEmailStatus.FAILED).getCode());
+    }
+
+    /** 알림 행 공통 조립 — notify/notifyImportant가 공유 (이메일 상태만 호출부가 결정) */
+    private Notification build(long usrSn, NotificationType type, NotificationDomain domain,
+                               NotificationAudience audience, String title, String content,
+                               RefType refType, Long refSn) {
+        Notification n = new Notification();
+        n.setUsrSn(usrSn);
+        n.setNtfTypeCd(type.getCode());
+        n.setNtfDomainCd(domain.getCode());
+        n.setNtfAudienceCd(audience.getCode());
+        n.setNtfTtl(title);
+        n.setNtfCn(content);
+        n.setNtfRefTypeCd(refType != null ? refType.getCode() : null);
+        n.setNtfRefSn(refSn);
+        return n;
     }
 
     /**
@@ -212,6 +212,23 @@ public class NotificationService {
                 "포인트 전환 완료",
                 String.format("정산 가능 포인트 %,dP가 사용 가능 포인트로 전환되었습니다.", amt),
                 null, null);
+    }
+
+    /** 보관금 정산 적립 알림 (F-SVC-015) — PointService.creditEscrowToSettleable가 호출. 대금을 받는 쪽(제공자 업무)이라 PROVIDER */
+    public void notifyEscrowSettled(long usrSn, long amt, RefType refType, long refSn) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                NotificationAudience.PROVIDER,
+                "정산 가능 포인트 적립",
+                String.format("거래대금 %,dP가 정산 가능 포인트로 적립되었습니다.", amt),
+                refType, refSn);
+    }
+
+    /** 분쟁 판정 보관금 환불 알림 — PointService.refundEscrow가 호출. 판정 내용 이메일은 notifyDisputeResolved(분쟁 담당자 호출) 몫이라 여기서는 인앱만 */
+    public void notifyPointRefund(long usrSn, long amt, RefType refType, long refSn, String reason) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "포인트 환불",
+                String.format("%,dP가 사용 가능 포인트로 환불되었습니다. (%s)", amt, reason),
+                refType, refSn);
     }
 
     /** 환전 반려 알림 — 실제 돈이 오간 결과라 이메일 보조 발송 대상 (F-COM-006 트리거) */

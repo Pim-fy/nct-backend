@@ -46,6 +46,10 @@ class MyBidHistoryItemTest {
                 .isEqualTo("CANCELED");
         assertThat(item(BidStatusCode.HIGHEST, AuctionStatusCode.CANCELED).resolveDisplayStatus())
                 .isEqualTo("CANCELED");
+        assertThat(item(BidStatusCode.OUTBID, AuctionStatusCode.FAILED).resolveDisplayStatus())
+                .isEqualTo("CANCELED");
+        assertThat(item(BidStatusCode.OUTBID, AuctionStatusCode.CANCELED).resolveDisplayStatus())
+                .isEqualTo("CANCELED");
     }
 
     private MyBidHistoryItem item(String bidStatusCode, String auctionStatusCode) {

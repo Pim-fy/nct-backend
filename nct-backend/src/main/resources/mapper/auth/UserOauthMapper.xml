@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- @ai_generated: 작업단위5 - USER_OAUTH(소셜 로그인 연동) 조회/저장 -->
+<mapper namespace="nct.auth.mapper.UserOauthMapper">
+
+    <select id="findUsrSnByProviderAndKey" resultType="java.lang.Long">
+        SELECT USR_SN
+        FROM USER_OAUTH
+        WHERE USR_OAT_PROVIDER_CD = #{providerCd}
+          AND USR_OAT_PROVIDER_KEY = #{providerKey}
+    </select>
+
+    <insert id="insert">
+        INSERT INTO USER_OAUTH (
+            USR_SN, USR_OAT_PROVIDER_CD, USR_OAT_PROVIDER_KEY
+        ) VALUES (
+            #{usrSn}, #{providerCd}, #{providerKey}
+        )
+    </insert>
+
+    <resultMap id="UserOauthLinkRowMap" type="nct.auth.domain.UserOauthLinkRow">
+        <constructor>
+            <arg column="USR_OAT_PROVIDER_CD" javaType="java.lang.String"/>
+            <arg column="USR_OAT_REG_DT" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findByUsrSn" resultMap="UserOauthLinkRowMap">
+        SELECT USR_OAT_PROVIDER_CD, USR_OAT_REG_DT
+        FROM USER_OAUTH
+        WHERE USR_SN = #{usrSn}
+    </select>
+
+    <select id="findByUsrSnForUpdate" resultMap="UserOauthLinkRowMap">
+        SELECT USR_OAT_PROVIDER_CD, USR_OAT_REG_DT
+        FROM USER_OAUTH
+        WHERE USR_SN = #{usrSn}
+        FOR UPDATE
+    </select>
+
+    <delete id="deleteByUsrSnAndProvider">
+        DELETE FROM USER_OAUTH
+        WHERE USR_SN = #{usrSn}
+          AND USR_OAT_PROVIDER_CD = #{providerCd}
+    </delete>
+</mapper>

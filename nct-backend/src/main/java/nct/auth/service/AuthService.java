@@ -1,9 +1,6 @@
 package nct.auth.service;
 
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,12 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 import nct.auth.dto.LoginRequest;
 import nct.auth.dto.LoginResponse;
 import nct.auth.dto.SignUpRequest;
-import nct.auth.dto.AgreementRequest;
 import nct.auth.dto.AvailabilityResponse;
 import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.FindEmailResponse;
-import nct.auth.domain.UserAgreement;
 import nct.auth.mapper.UserAgreementMapper;
+import nct.auth.util.AgreementValidator;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
@@ -64,7 +60,7 @@ public class AuthService {
         String nickname = requireText(request.getNickname(), ErrorCode.INVALID_INPUT_VALUE);
         String email = normalizeEmail(request.getEmail());
 
-        validateAgreementSet(request.getAgreements());
+        AgreementValidator.validateAgreementSet(request.getAgreements());
         ensureSignupIdentifiersAvailable(loginId, nickname, email);
         emailVerificationService.requireVerifiedSignup(request.getVerificationId(), email);
 
@@ -78,7 +74,7 @@ public class AuthService {
                                       .telno(request.getTelno())
                                       .build());
 
-            userAgreementMapper.insertAll(toUserAgreements(member.getId(), request.getAgreements()));
+            userAgreementMapper.insertAll(AgreementValidator.toUserAgreements(member.getId(), request.getAgreements()));
             emailVerificationService.markSignupUsed(request.getVerificationId());
             return toLoginResponse(member);
         } catch (DataIntegrityViolationException ex) {
@@ -260,42 +256,6 @@ public class AuthService {
         if (authMemberPort.existsByEmail(email)) {
             throw new CustomException(ErrorCode.DUPLICATE_EMAIL);
         }
-    }
-
-    private void validateAgreementSet(List<AgreementRequest> agreements) {
-        if (agreements == null || agreements.size() != 3) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-        if (agreements.stream().anyMatch(agreement -> agreement.getAgreementTypeCode() == null
-                || agreement.getAgreed() == null)) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        Map<String, Boolean> agreementMap = agreements.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        AgreementRequest::getAgreementTypeCode,
-                        AgreementRequest::getAgreed,
-                        (left, right) -> {
-                            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-                        }));
-        Set<String> requiredCodes = Set.of("AGRC0001", "AGRC0002", "AGRC0003");
-        if (!agreementMap.keySet().equals(requiredCodes)) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-        if (!Boolean.TRUE.equals(agreementMap.get("AGRC0001"))
-                || !Boolean.TRUE.equals(agreementMap.get("AGRC0002"))) {
-            throw new CustomException(ErrorCode.REQUIRED_AGREEMENT_NOT_ACCEPTED);
-        }
-    }
-
-    private List<UserAgreement> toUserAgreements(Long userId, List<AgreementRequest> agreements) {
-        return agreements.stream()
-                .map(agreement -> UserAgreement.builder()
-                        .usrSn(userId)
-                        .usrAgrTypeCd(agreement.getAgreementTypeCode())
-                        .usrAgrYn(Boolean.TRUE.equals(agreement.getAgreed()) ? 'Y' : 'N')
-                        .build())
-                .toList();
     }
 
     private String normalizeLoginId(String loginId) {

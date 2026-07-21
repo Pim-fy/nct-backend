@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import nct.file.domain.FileMeta;
 import nct.file.dto.FileUploadResponse;
 import nct.file.service.FileStorageService;
+import nct.global.idempotency.SkipIdempotency;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 
@@ -23,8 +24,9 @@ import nct.global.security.domain.CustomUserDetails;
  * [파일 - REST 컨트롤러] (담당자6, F-AUC-002 이미지 연계)
  *
  * /api/attachment 축은 두 갈래로 처리된다:
- *   - GET  /api/attachment/**        파일 서빙 — 이 컨트롤러가 아니라 WebConfig의
- *                                    정적 리소스 핸들러가 담당 (비로그인 허용, SecurityConfig 참조)
+ *   - GET  /api/attachment/product/** 파일 서빙 — 이 컨트롤러가 아니라 WebConfig의
+ *                                    정적 리소스 핸들러가 담당 (비로그인 허용은 product만,
+ *                                    provider 서류는 AdminProviderFileController 전용 — SecurityConfig 참조)
  *   - POST/DELETE/PUT (아래)         파일 관리 — 로그인 필요
  *
  * 엔드포인트:
@@ -43,6 +45,7 @@ public class FileController {
 
     private final FileStorageService fileStorageService;
 
+    @SkipIdempotency // @ai_generated: 멀티파트 바디라 전역 중복요청 방지 캐싱 대상에서 제외 (F-COM-017)
     @PostMapping
     public ResponseEntity<ApiResponse<FileUploadResponse>> upload(
             @RequestParam("file") MultipartFile file,
@@ -62,7 +65,7 @@ public class FileController {
 
     @DeleteMapping("/{flSn}")
     public ResponseEntity<ApiResponse<Void>> delete(
-            @PathVariable Long flSn,
+            @PathVariable(name = "flSn") Long flSn,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         Long usrSn = userDetails.getMember().getId();
@@ -70,9 +73,10 @@ public class FileController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
+    @SkipIdempotency // @ai_generated: 멀티파트 바디라 전역 중복요청 방지 캐싱 대상에서 제외 (F-COM-017)
     @PutMapping("/{flSn}")
     public ResponseEntity<ApiResponse<FileUploadResponse>> replace(
-            @PathVariable Long flSn,
+            @PathVariable(name = "flSn") Long flSn,
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 

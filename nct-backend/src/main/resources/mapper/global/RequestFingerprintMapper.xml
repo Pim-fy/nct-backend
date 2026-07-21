@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.global.idempotency.RequestFingerprintMapper">
+
+    <!-- 신규 지문 등록 시도. UNIQUE(RQF_HASH) 위반 시 DuplicateKeyException으로 변환되어 전파된다 -->
+    <insert id="tryInsert">
+        /* 전역 중복요청 방지: 지문 등록 시도 */
+        INSERT INTO REQ_FGPT (RQF_HASH, RQF_EXP_DT)
+        VALUES (#{hash}, #{expDt})
+    </insert>
+
+    <!-- 기존 지문의 저장된 응답 조회 -->
+    <select id="selectByHash" resultType="map">
+        /* 전역 중복요청 방지: 지문 응답 조회 */
+        SELECT RQF_RESP_STAT AS RQF_RESP_STAT,
+               RQF_RESP_BODY AS RQF_RESP_BODY
+          FROM REQ_FGPT
+         WHERE RQF_HASH = #{hash}
+    </select>
+
+    <!-- 처리 완료 후 응답 저장 -->
+    <update id="updateResponse">
+        /* 전역 중복요청 방지: 응답 저장 */
+        UPDATE REQ_FGPT
+           SET RQF_RESP_STAT = #{status},
+               RQF_RESP_BODY = #{body}
+         WHERE RQF_HASH = #{hash}
+    </update>
+
+    <!-- 만료 지문 배치 삭제 (1회 최대 1000행, 스케줄러가 소진될 때까지 반복 호출) -->
+    <delete id="deleteExpired">
+        /* 전역 중복요청 방지: 만료 지문 삭제 */
+        DELETE FROM REQ_FGPT
+         WHERE RQF_EXP_DT &lt; #{now}
+         LIMIT 1000
+    </delete>
+
+</mapper>

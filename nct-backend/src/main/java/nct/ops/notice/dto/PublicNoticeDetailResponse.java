@@ -18,4 +18,5 @@ public class PublicNoticeDetailResponse {
     private final boolean pinned;
     private final long viewCount;
     private final LocalDateTime publishedAt;
+    private final LocalDateTime postingEndAt;
 }

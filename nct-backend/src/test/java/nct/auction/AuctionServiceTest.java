@@ -104,10 +104,11 @@ class AuctionServiceTest {
                 .extracting(
                         AuctionStatusSummaryResponse::getPrdSn,
                         AuctionStatusSummaryResponse::getAucSn,
-                        AuctionStatusSummaryResponse::getAucStatusCd)
+                        AuctionStatusSummaryResponse::getAucStatusCd,
+                        AuctionStatusSummaryResponse::getAucStatusNm)
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002"),
-                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005"));
+                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002", "진행"),
+                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005", "취소"));
     }
 
     @Test
@@ -244,6 +245,24 @@ class AuctionServiceTest {
         assertThat(balance.getAvailableAmt()).isEqualTo(20000);
         assertThat(balance.getHoldAmt()).isZero();
         assertThat(activeHoldAmount(buyerSn, bidSn)).isZero();
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+        assertThat(deliverySnapshotCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("직거래 즉시구매는 거래와 채팅방을 함께 생성한다")
+    void buyNowCreatesOfflineTradeChatRoom() {
+        long sellerSn = insertUser("t_auc_seller");
+        long buyerSn = insertUser("t_auc_buyer");
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000), "TRDC0010");
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(buyerSn, 50000);
+
+        auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest());
+
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+        assertThat(chatRoomCount(prdSn)).isEqualTo(1);
+        assertThat(deliverySnapshotCount(prdSn)).isZero();
     }
 
     @Test
@@ -267,6 +286,8 @@ class AuctionServiceTest {
         assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0003");
         assertThat(pointService.getBalance(bidderSn).getHoldAmt()).isZero();
         assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+        assertThat(deliverySnapshotCount(prdSn)).isEqualTo(1);
     }
 
     @Test
@@ -284,6 +305,7 @@ class AuctionServiceTest {
 
         assertThat(finalized).isTrue();
         assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0004");
+        assertThat(materialTradeCount(prdSn)).isZero();
     }
 
     @Test
@@ -322,6 +344,7 @@ class AuctionServiceTest {
         assertThat(auctionService.finalizeExpiredAuction(aucSn)).isTrue();
         assertThat(auctionService.finalizeExpiredAuction(aucSn)).isFalse();
         assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
     }
 
     @Test
@@ -369,8 +392,18 @@ class AuctionServiceTest {
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
+                INSERT INTO USERS (
+                    USR_LOGIN_ID,
+                    USR_PSWD_HASH,
+                    USR_NM,
+                    USR_EML,
+                    USR_STATUS_CD,
+                    USR_ROLE_CD,
+                    USR_ADDR,
+                    USR_DADDR,
+                    USR_ZIP
+                )
+                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER', '테스트 주소', '101호', '12345')
                 """, loginId, prefix, loginId + "@test.local");
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
@@ -380,13 +413,14 @@ class AuctionServiceTest {
     }
 
     private long insertProduct(long sellerSn, BigDecimal instantBuyAmount) {
+        return insertProduct(sellerSn, instantBuyAmount, "TRDC0009");
+    }
+
+    private long insertProduct(long sellerSn, BigDecimal instantBuyAmount, String tradeMethodCode) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD)
-                VALUES (?, 2, '테스트 경매 상품', 'PRDC0002', 10000, ?,
-                        (SELECT C.CMM_CD FROM CMM_CODE C
-                         JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
-                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
-                """, sellerSn, instantBuyAmount);
+                VALUES (?, 2, '테스트 경매 상품', 'PRDC0002', 10000, ?, ?)
+                """, sellerSn, instantBuyAmount, tradeMethodCode);
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
@@ -519,5 +553,32 @@ class AuctionServiceTest {
 
     private int bidCount(long aucSn) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM BID WHERE AUC_SN = ?", Integer.class, aucSn);
+    }
+
+    private int materialTradeCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM TRADE
+                WHERE PRD_SN = ?
+                  AND TRD_TYPE_CD = 'TRDC0001'
+                """, Integer.class, prdSn);
+    }
+
+    private int deliverySnapshotCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM TRADE_DELIVERY d
+                JOIN TRADE t ON t.TRD_SN = d.TRD_SN
+                WHERE t.PRD_SN = ?
+                """, Integer.class, prdSn);
+    }
+
+    private int chatRoomCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM CHAT_ROOM c
+                JOIN TRADE t ON t.TRD_SN = c.TRD_SN
+                WHERE t.PRD_SN = ?
+                """, Integer.class, prdSn);
     }
 }

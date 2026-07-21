@@ -25,6 +25,8 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
+import nct.member.dto.BuyerAddressSnapshot;
+import nct.member.service.MemberService;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
@@ -51,6 +53,7 @@ class TradeServiceTest {
     private NotificationService notificationService;
     private SystemSettingAdminMapper systemSettingMapper;
     private FileStorageService fileStorageService;
+    private MemberService memberService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -59,11 +62,13 @@ class TradeServiceTest {
         notificationService = mock(NotificationService.class);
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
         fileStorageService = mock(FileStorageService.class);
+        memberService = mock(MemberService.class);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
                 systemSettingMapper,
-                fileStorageService);
+                fileStorageService,
+                memberService);
     }
 
     @Test
@@ -76,7 +81,8 @@ class TradeServiceTest {
         when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
         when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
-        when(tradeMapper.insertDeliverySnapshotFromBuyer(91L, 20L)).thenReturn(1);
+        when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
+                new BuyerAddressSnapshot("01234", "서울시 마포구", "101호"));
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -94,7 +100,11 @@ class TradeServiceTest {
                 91L,
                 "TRDC0003",
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
-        verify(tradeMapper).insertDeliverySnapshotFromBuyer(91L, 20L);
+        verify(tradeMapper).insertDeliverySnapshot(
+                91L,
+                "01234",
+                "서울시 마포구",
+                "101호");
     }
 
     @Test
@@ -164,11 +174,16 @@ class TradeServiceTest {
         MaterialTradeCreateResult result = tradeService.createOrGetMaterialTrade(command);
 
         assertThat(result.isCreated()).isTrue();
-        verify(tradeMapper, never()).insertDeliverySnapshotFromBuyer(anyLong(), anyLong());
+        verifyNoInteractions(memberService);
+        verify(tradeMapper, never()).insertDeliverySnapshot(
+                anyLong(),
+                any(),
+                any(),
+                any());
     }
 
     @Test
-    void rejectsDeliveryTradeWhenWinningBuyerHasNoAddress() {
+    void propagatesIncompleteBuyerAddressForAuctionTransactionRollback() {
         MaterialTradeCreateCommand command = new MaterialTradeCreateCommand(
                 10L,
                 20L,
@@ -182,12 +197,18 @@ class TradeServiceTest {
             trade.setTrdSn(91L);
             return 1;
         }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
-        when(tradeMapper.insertDeliverySnapshotFromBuyer(91L, 20L)).thenReturn(0);
+        when(memberService.getBuyerAddressSnapshot(20L)).thenThrow(
+                new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE));
 
         assertThatThrownBy(() -> tradeService.createOrGetMaterialTrade(command))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+        verify(tradeMapper, never()).insertDeliverySnapshot(
+                anyLong(),
+                any(),
+                any(),
+                any());
         verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
     }
 

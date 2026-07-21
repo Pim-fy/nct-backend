@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.trade.mapper.TradeMapper">
+
+    <!--
+        상품 행을 잠근 뒤 거래 존재 여부를 검사한다.
+        같은 상품에 대한 동시 낙찰 처리도 한 요청씩 순서대로 거래를 생성하게 한다.
+    -->
+    <select id="findOwnedProductIdForUpdate" resultType="long">
+        SELECT PRD_SN
+        FROM PRODUCT
+        WHERE PRD_SN = #{productId}
+          AND USR_SN = #{sellerUserId}
+        FOR UPDATE
+    </select>
+
+    <!-- 상품당 거래는 한 번만 생성한다. 경매 종료 처리와 같은 트랜잭션에서 호출한다. -->
+    <select id="findMaterialTradeIdByProductId" resultType="long">
+        SELECT TRD_SN
+        FROM TRADE
+        WHERE PRD_SN = #{productId}
+          AND TRD_TYPE_CD = 'TRDC0001'
+        ORDER BY TRD_SN DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertMaterialTrade" parameterType="nct.trade.domain.Trade"
+            useGeneratedKeys="true" keyProperty="trdSn">
+        INSERT INTO TRADE (
+            SLLR_USR_SN,
+            BYPR_USR_SN,
+            PRD_SN,
+            TRD_TYPE_CD,
+            TRD_STATUS_CD,
+            TRD_AMT
+        )
+        VALUES (
+            #{sellerUserId},
+            #{buyerUserId},
+            #{productId},
+            #{tradeTypeCode},
+            #{tradeStatusCode},
+            #{tradeAmount}
+        )
+    </insert>
+
+    <insert id="insertStatusHistory">
+        INSERT INTO TRADE_STATUS_HIST (
+            TRD_SN,
+            TRD_STS_HST_STATUS_CD,
+            TRD_STS_HST_RSN_CN
+        )
+        VALUES (
+            #{tradeId},
+            #{statusCode},
+            #{reason}
+        )
+    </insert>
+
+    <select id="findMyMaterialTrades" resultType="nct.trade.dto.TradeListItem">
+        SELECT
+            t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
+                ELSE 'SELLER'
+            END AS userRole,
+            p.PRD_NM AS productName,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                ELSE buyer.USR_NM
+            END AS counterpartNickname,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_REG_DT AS createdAt,
+            t.TRD_STATUS_CD AS tradeStatus,
+            CASE p.PRD_TRD_METHOD_CD
+                WHEN 'TRDC0009' THEN 'DELIVERY'
+                WHEN 'TRDC0010' THEN 'OFFLINE'
+            END AS tradeMethod
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        JOIN USERS seller
+          ON seller.USR_SN = t.SLLR_USR_SN
+        JOIN USERS buyer
+          ON buyer.USR_SN = t.BYPR_USR_SN
+        WHERE t.TRD_TYPE_CD = 'TRDC0001'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        <if test="role == 'BUYER'">
+          AND t.BYPR_USR_SN = #{userId}
+        </if>
+        <if test="role == 'SELLER'">
+          AND t.SLLR_USR_SN = #{userId}
+        </if>
+        <if test="statusCode != null">
+          AND t.TRD_STATUS_CD = #{statusCode}
+        </if>
+        <if test="keyword != null">
+          AND (
+              LOWER(p.PRD_NM) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+              OR LOWER(
+                  CASE
+                      WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                      ELSE buyer.USR_NM
+                  END
+              ) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+              OR CAST(t.TRD_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+          )
+        </if>
+        ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+    </select>
+
+    <!-- F-AUC-005: 판매 상품 목록이 AUCTION 상태와 결합할 수 있는 생성 거래 상태만 조회한다. -->
+    <select id="findMySellerTradeStatuses" resultType="nct.trade.dto.SellerTradeStatusItem">
+        SELECT
+            t.PRD_SN AS prdSn,
+            t.TRD_SN AS tradeSn,
+            t.TRD_STATUS_CD AS tradeStatusCd
+        FROM TRADE t
+        WHERE t.SLLR_USR_SN = #{sellerUserId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+        ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+    </select>
+
+    <select id="findMyMaterialTradeDetail" resultType="nct.trade.dto.TradeDetailResponse">
+        SELECT
+            t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
+                ELSE 'SELLER'
+            END AS userRole,
+            p.PRD_NM AS productName,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                ELSE buyer.USR_NM
+            END AS counterpartNickname,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_STATUS_CD AS tradeStatus,
+            CASE p.PRD_TRD_METHOD_CD
+                WHEN 'TRDC0009' THEN 'DELIVERY'
+                WHEN 'TRDC0010' THEN 'OFFLINE'
+            END AS tradeMethod,
+            t.TRD_REG_DT AS createdAt,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            CONCAT_WS(' ', d.TRD_DLVR_ADDR, d.TRD_DLVR_DADDR) AS deliveryAddress,
+            d.TRD_DLVR_MEMO_CN AS deliveryMessage,
+            d.TRD_DLVR_SN AS deliveryId,
+            o.TRD_OFL_DT AS meetingDateTime,
+            o.TRD_OFL_PLC_NM AS meetingPlace,
+            o.TRD_OFL_ADDR AS meetingAddress
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        JOIN USERS seller
+          ON seller.USR_SN = t.SLLR_USR_SN
+        JOIN USERS buyer
+          ON buyer.USR_SN = t.BYPR_USR_SN
+        LEFT JOIN TRADE_DELIVERY d
+          ON d.TRD_SN = t.TRD_SN
+        LEFT JOIN TRADE_OFFLINE o
+          ON o.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+    </select>
+
+    <!-- 사진 원문은 파일 API가 권한 검사 후 내려준다. 상세에는 식별자와 정렬 순서만 반환한다. -->
+    <select id="findTradeDeliveryProofFiles" resultType="nct.trade.dto.TradeDeliveryProofFile">
+        SELECT
+            f.FL_SN AS fileId,
+            f.TRD_DLVR_FL_SORT_NO AS sortOrder
+        FROM TRADE_DELIVERY_FILE f
+        WHERE f.TRD_DLVR_SN = #{deliveryId}
+        ORDER BY f.TRD_DLVR_FL_SORT_NO ASC, f.FL_SN ASC
+    </select>
+
+    <!-- 판매자 본인의 배송 거래를 잠가 중복 제출과 거래 상태 전이가 경합하지 않게 한다. -->
+    <select id="findMyDeliveryTradeForUpdate"
+            resultType="nct.trade.dto.TradeDeliverySubmitTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            d.TRD_DLVR_SN AS deliveryId,
+            t.TRD_STATUS_CD AS tradeStatus
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        LEFT JOIN TRADE_DELIVERY d
+          ON d.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.SLLR_USR_SN = #{sellerUserId}
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0009'
+        FOR UPDATE
+    </select>
+
+    <!-- 배송 주소 스냅샷이 아직 없는 기존 거래도 발송 메모·사진을 연결할 최소 행을 만든다. -->
+    <insert id="ensureTradeDelivery">
+        INSERT INTO TRADE_DELIVERY (TRD_SN)
+        VALUES (#{tradeId})
+        ON DUPLICATE KEY UPDATE TRD_SN = VALUES(TRD_SN)
+    </insert>
+
+    <select id="findDeliveryIdByTradeIdForUpdate" resultType="long">
+        SELECT TRD_DLVR_SN
+        FROM TRADE_DELIVERY
+        WHERE TRD_SN = #{tradeId}
+        FOR UPDATE
+    </select>
+
+    <update id="updateDeliveryMessage">
+        UPDATE TRADE_DELIVERY
+        SET TRD_DLVR_MEMO_CN = #{deliveryMessage}
+        WHERE TRD_DLVR_SN = #{deliveryId}
+    </update>
+
+    <insert id="insertTradeDeliveryFile">
+        INSERT INTO TRADE_DELIVERY_FILE (
+            TRD_DLVR_SN,
+            FL_SN,
+            TRD_DLVR_FL_SORT_NO
+        )
+        VALUES (
+            #{deliveryId},
+            #{fileId},
+            #{sortOrder}
+        )
+    </insert>
+
+    <update id="startDelivery">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0004',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
+
+    <!-- 판매자 본인의 직거래만 잠가, 일정 수정과 조회 결과가 같은 거래를 기준으로 처리되게 한다. -->
+    <select id="findMyOfflineTradeIdForUpdate" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.SLLR_USR_SN = #{sellerUserId}
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+        FOR UPDATE
+    </select>
+
+    <!-- 거래별 직거래 정보는 한 건이므로, 최초 제안과 이후 수정에 같은 저장 계약을 사용한다. -->
+    <insert id="upsertOfflineSchedule">
+        INSERT INTO TRADE_OFFLINE (
+            TRD_SN,
+            TRD_OFL_PLC_NM,
+            TRD_OFL_ADDR,
+            TRD_OFL_DT
+        )
+        VALUES (
+            #{tradeId},
+            #{meetingPlace},
+            #{meetingAddress},
+            #{meetingDateTime}
+        )
+        ON DUPLICATE KEY UPDATE
+            TRD_OFL_PLC_NM = VALUES(TRD_OFL_PLC_NM),
+            TRD_OFL_ADDR = VALUES(TRD_OFL_ADDR),
+            TRD_OFL_DT = VALUES(TRD_OFL_DT)
+    </insert>
+
+    <!-- 구매자 조건과 FOR UPDATE를 함께 적용해 타인의 거래 요청과 중복 완료 요청을 모두 차단한다. -->
+    <select id="findBuyerTradeForConfirmationForUpdate"
+            resultType="nct.trade.dto.TradeConfirmationTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.TRD_STATUS_CD AS tradeStatus
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.BYPR_USR_SN = #{buyerUserId}
+        FOR UPDATE
+    </select>
+
+    <!-- 요청 시점의 시스템 설정 일수를 계산한 완료 시각을 저장한다. -->
+    <update id="startCompletionConfirmation">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0005',
+            TRD_AUTO_CMPL_DT = #{autoCompleteAt},
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+    </update>
+
+    <!-- 한 번의 스케줄 실행이 과도한 행을 잡지 않도록 만료 거래를 배치 크기로 나눠 조회한다. -->
+    <select id="findExpiredAutoCompletionTradeIds" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        WHERE t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.TRD_STATUS_CD = 'TRDC0005'
+          AND t.TRD_AUTO_CMPL_DT IS NOT NULL
+          AND t.TRD_AUTO_CMPL_DT &lt;= #{now}
+        ORDER BY t.TRD_AUTO_CMPL_DT ASC, t.TRD_SN ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 행 잠금 후 상태와 만료 시각을 재확인해 다중 인스턴스의 중복 완료를 막는다. -->
+    <select id="findAutoCompletionTargetForUpdate"
+            resultType="nct.trade.dto.TradeAutoCompletionTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.TRD_STATUS_CD AS tradeStatus,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.TRD_STATUS_CD = 'TRDC0005'
+        FOR UPDATE
+    </select>
+
+    <!-- 잠금 대상이 변경됐거나 만료 시각이 연장된 경우에는 UPDATE가 0건이 되어 이력도 남기지 않는다. -->
+    <update id="completeExpiredConfirmation">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0006',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = 'TRDC0005'
+          AND TRD_AUTO_CMPL_DT &lt;= #{now}
+    </update>
+
+</mapper>

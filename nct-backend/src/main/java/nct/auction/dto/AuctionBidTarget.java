@@ -20,4 +20,5 @@ public class AuctionBidTarget {
     private BigDecimal instantBuyPrice;
     private String auctionStatusCode;
     private LocalDateTime endDateTime;
+    private LocalDateTime databaseNow;
 }

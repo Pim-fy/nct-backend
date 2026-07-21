@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import nct.auth.dto.LoginRequest;
 import nct.auth.dto.LoginResponse;
+import nct.auth.dto.OauthOnboardingPendingResponse;
+import nct.auth.dto.OauthOnboardingRequest;
 import nct.auth.dto.SignUpRequest;
 import nct.auth.dto.AvailabilityResponse;
 import nct.auth.dto.EmailVerificationSendRequest;
@@ -25,6 +27,7 @@ import nct.auth.dto.PasswordResetRequestDto;
 import nct.auth.service.AuthService;
 import nct.auth.service.AuthSessionResult;
 import nct.auth.service.EmailVerificationService;
+import nct.auth.service.OauthOnboardingService;
 import nct.auth.service.PasswordResetService;
 import nct.global.idempotency.SkipIdempotency;
 import nct.global.response.ApiResponse;
@@ -49,6 +52,8 @@ import lombok.RequiredArgsConstructor;
  *  POST /api/auth/find-email                    F-AUTH-014 아이디 찾기          (permitAll)
  *  POST /api/auth/password-reset-links          F-AUTH-007 재설정 링크 발송     (permitAll)
  *  POST /api/auth/password-reset-links/confirm  F-AUTH-007 재설정 확정          (permitAll)
+ *  GET  /api/auth/oauth-onboarding/pending      F-AUTH-004 소셜 온보딩 화면 진입값 조회 (permitAll - 온보딩 쿠키로 검증)
+ *  POST /api/auth/oauth-onboarding/complete     F-AUTH-004 소셜 온보딩 완료      (permitAll - 온보딩 쿠키로 검증)
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -58,6 +63,7 @@ public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final PasswordResetService passwordResetService;
+    private final OauthOnboardingService oauthOnboardingService;
     private final CookieUtil cookieUtil;
 
     /** 회원가입 */
@@ -70,17 +76,19 @@ public class AuthController {
     // @ai_generated: 기존 프론트의 중복 확인 URL은 유지하고 로그인 ID 확인만 추가한다.
     @GetMapping("/check-login-id")
     public ResponseEntity<ApiResponse<AvailabilityResponse>> checkLoginId(
-            @RequestParam String loginId) {
+            @RequestParam("loginId") String loginId) {
         return ResponseEntity.ok(ApiResponse.success(authService.checkLoginId(loginId)));
     }
 
     @GetMapping("/check-email")
-    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkEmail(@RequestParam String email) {
+    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkEmail(
+            @RequestParam("email") String email) {
         return ResponseEntity.ok(ApiResponse.success(authService.checkEmail(email)));
     }
 
     @GetMapping("/check-nickname")
-    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkNickname(@RequestParam String nickname) {
+    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkNickname(
+            @RequestParam("nickname") String nickname) {
         return ResponseEntity.ok(ApiResponse.success(authService.checkNickname(nickname)));
     }
 
@@ -121,6 +129,31 @@ public class AuthController {
             @Valid @RequestBody PasswordResetConfirmRequest request) {
         passwordResetService.confirmReset(request);
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** F-AUTH-004: 온보딩 화면 진입 시 닉네임 기본값·provider 표시용 조회 */
+    @GetMapping("/oauth-onboarding/pending")
+    public ResponseEntity<ApiResponse<OauthOnboardingPendingResponse>> getOauthOnboardingPending(
+            HttpServletRequest request) {
+        String onboardingToken = cookieUtil.extractCookie(request, CookieUtil.ONBOARDING_TOKEN_COOKIE);
+        return ResponseEntity.ok(ApiResponse.success(oauthOnboardingService.getPending(onboardingToken)));
+    }
+
+    /**
+     * F-AUTH-004: 소셜 최초 가입 온보딩 완료 - 약관 동의+닉네임 확정 제출.
+     * 온보딩 토큰은 CustomOAuth2UserService가 심어둔 httpOnly 쿠키에서 읽는다(본문에 없음).
+     */
+    @SkipIdempotency // @ai_generated: Set-Cookie 응답이라 전역 중복요청 방지 재반환과 충돌 (F-COM-017, login과 동일 근거)
+    @PostMapping("/oauth-onboarding/complete")
+    public ResponseEntity<ApiResponse<LoginResponse>> completeOauthOnboarding(
+            @Valid @RequestBody OauthOnboardingRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse response) {
+        String onboardingToken = cookieUtil.extractCookie(httpRequest, CookieUtil.ONBOARDING_TOKEN_COOKIE);
+        AuthSessionResult session = oauthOnboardingService.complete(onboardingToken, request);
+        writeLoginCookies(response, session, true); // @ai_generated: 소셜은 별도 로그인 유지 체크박스가 없어 OAuth2SuccessHandler와 동일하게 rememberMe 고정
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.deleteOnboardingTokenCookie().toString());
+        return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
     }
 
     /** 로그인 - 토큰은 httpOnly 쿠키로, 본문에는 사용자 정보만 */

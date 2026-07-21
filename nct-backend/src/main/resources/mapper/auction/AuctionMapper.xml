@@ -284,7 +284,8 @@
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
             a.AUC_STATUS_CD AS auctionStatusCode,
-            a.AUC_END_DT AS endDateTime
+            a.AUC_END_DT AS endDateTime,
+            NOW() AS databaseNow
         FROM AUCTION a
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
@@ -307,6 +308,15 @@
           ON currentBid.AUC_SN = a.AUC_SN
         WHERE a.AUC_SN = #{auctionId}
         FOR UPDATE
+    </select>
+
+    <select id="findExpiredActiveAuctionIds" resultType="long">
+        SELECT AUC_SN
+        FROM AUCTION
+        WHERE AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &lt;= NOW()
+        ORDER BY AUC_END_DT, AUC_SN
+        LIMIT #{limit}
     </select>
 
     <update id="incrementProductViewCount">
@@ -398,6 +408,18 @@
             AUC_UPDT_ID = #{actor},
             AUC_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &gt; NOW()
+    </update>
+
+    <update id="updateExpiredAuctionStatus">
+        UPDATE AUCTION
+        SET AUC_STATUS_CD = #{statusCode},
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &lt;= NOW()
     </update>
 
 </mapper>

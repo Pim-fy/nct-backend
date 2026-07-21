@@ -98,10 +98,6 @@ public enum ErrorCode {
     PRODUCT_ALREADY_DELETED(HttpStatus.CONFLICT, "이미 삭제된 상품입니다."),
     PRODUCT_CANCEL_INVALID_STATUS(HttpStatus.CONFLICT, "취소 요청이 불가능한 경매 상태입니다."),
     AUCTION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경매입니다."),
-    AUCTION_CANCEL_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경매 취소 요청입니다."),
-    AUCTION_CANCEL_REQUEST_DUPLICATED(HttpStatus.CONFLICT, "이미 처리 대기 중인 경매 취소 요청이 있습니다."),
-    AUCTION_CANCEL_REQUEST_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 경매 취소 요청입니다."),
-    AUCTION_CANCEL_REQUEST_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 경매 취소 요청을 처리할 수 없습니다."),
 
     /*==================== 파일 도메인 (담당자6, F-AUC-002 이미지 연계) ====================*/
 

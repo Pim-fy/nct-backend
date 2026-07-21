@@ -36,6 +36,8 @@ public interface AuctionMapper {
 
     AuctionBidTarget findAuctionBidTargetForUpdate(@Param("auctionId") Long auctionId);
 
+    List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
+
     int incrementProductViewCount(@Param("auctionId") Long auctionId);
 
     int insertAuction(
@@ -62,5 +64,10 @@ public interface AuctionMapper {
     int closeAuctionByInstantBuy(
             @Param("auctionId") Long auctionId,
             @Param("bidAmount") java.math.BigDecimal bidAmount,
+            @Param("actor") String actor);
+
+    int updateExpiredAuctionStatus(
+            @Param("auctionId") Long auctionId,
+            @Param("statusCode") String statusCode,
             @Param("actor") String actor);
 }

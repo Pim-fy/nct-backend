@@ -23,6 +23,7 @@ import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.point.domain.PointBalance;
+import nct.point.exception.PointException;
 import nct.point.service.PointService;
 
 @SpringBootTest
@@ -230,6 +231,126 @@ class AuctionServiceTest {
         assertThat(activeHoldAmount(buyerSn, bidSn)).isZero();
     }
 
+    @Test
+    @DisplayName("최고입찰이 있는 만료 경매는 종료되고 홀딩이 보관금으로 전환된다")
+    void finalizeExpiredAuctionEndsWithWinningBid() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1),
+                0);
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "낙찰 테스트 홀딩");
+
+        boolean finalized = auctionService.finalizeExpiredAuction(aucSn);
+
+        assertThat(finalized).isTrue();
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0003");
+        assertThat(pointService.getBalance(bidderSn).getHoldAmt()).isZero();
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("입찰이 없는 만료 경매는 유찰된다")
+    void finalizeExpiredAuctionFailsWithoutBid() {
+        long sellerSn = insertUser("t_auc_seller");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                databaseNow().minusMinutes(1),
+                0);
+
+        boolean finalized = auctionService.finalizeExpiredAuction(aucSn);
+
+        assertThat(finalized).isTrue();
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0004");
+    }
+
+    @Test
+    @DisplayName("낙찰자의 홀딩이 없으면 경매 종료 상태를 확정하지 않는다")
+    void finalizeExpiredAuctionRequiresWinningBidHold() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1),
+                0);
+        insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+
+        assertThatThrownBy(() -> auctionService.finalizeExpiredAuction(aucSn))
+                .isInstanceOf(PointException.class);
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0002");
+    }
+
+    @Test
+    @DisplayName("이미 확정된 만료 경매는 다시 처리하지 않는다")
+    void finalizeExpiredAuctionOnlyOnce() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1),
+                0);
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "낙찰 테스트 홀딩");
+
+        assertThat(auctionService.finalizeExpiredAuction(aucSn)).isTrue();
+        assertThat(auctionService.finalizeExpiredAuction(aucSn)).isFalse();
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("마감된 경매에는 입찰할 수 없다")
+    void placeBidRejectsExpiredAuction() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                databaseNow().minusMinutes(1),
+                0);
+        creditAvailable(bidderSn, 50000);
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+        assertThat(bidCount(aucSn)).isZero();
+    }
+
+    @Test
+    @DisplayName("마감된 경매에는 즉시구매할 수 없다")
+    void buyNowRejectsExpiredAuction() {
+        long sellerSn = insertUser("t_auc_seller");
+        long buyerSn = insertUser("t_auc_buyer");
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000));
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                databaseNow().minusMinutes(1),
+                0);
+        creditAvailable(buyerSn, 50000);
+
+        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+        assertThat(bidCount(aucSn)).isZero();
+    }
+
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
         jdbc.update("""
@@ -339,6 +460,28 @@ class AuctionServiceTest {
                   AND PT_LDG_REF_SN = ?
                 """, Long.class, usrSn, RefType.BID.getCode(), bidSn);
         return amount == null ? 0 : amount;
+    }
+
+    private int escrowLedgerCount(long usrSn, long bidSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM POINT_LEDGER
+                WHERE USR_SN = ?
+                  AND PT_LDG_TYPE_CD = 'PTLC0007'
+                  AND PT_LDG_REF_TYPE_CD = ?
+                  AND PT_LDG_REF_SN = ?
+                """, Integer.class, usrSn, RefType.BID.getCode(), bidSn);
+    }
+
+    private String auctionStatus(long aucSn) {
+        return jdbc.queryForObject(
+                "SELECT AUC_STATUS_CD FROM AUCTION WHERE AUC_SN = ?",
+                String.class,
+                aucSn);
+    }
+
+    private LocalDateTime databaseNow() {
+        return jdbc.queryForObject("SELECT NOW()", LocalDateTime.class);
     }
 
     private int auctionRemainingSeconds(long aucSn) {

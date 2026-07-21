@@ -117,6 +117,38 @@ class AuctionConcurrencyTest {
         assertThat(pointService.getBalance(secondBuyerSn).getHoldAmt()).isZero();
     }
 
+    @Test
+    @DisplayName("만료 경매 마감이 동시에 실행되어도 낙찰은 한 번만 확정된다")
+    void concurrentFinalizationOnlyOneSucceeds() throws InterruptedException {
+        long sellerSn = insertUser("t_auc_con_seller");
+        long bidderSn = insertUser("t_auc_con_bidder");
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1));
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000));
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "동시 마감 테스트 홀딩");
+
+        AtomicInteger successCount = new AtomicInteger();
+        runConcurrently(
+                () -> {
+                    if (auctionService.finalizeExpiredAuction(aucSn)) {
+                        successCount.incrementAndGet();
+                    }
+                },
+                () -> {
+                    if (auctionService.finalizeExpiredAuction(aucSn)) {
+                        successCount.incrementAndGet();
+                    }
+                });
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0003");
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+    }
+
     private void runConcurrently(Runnable first, Runnable second) throws InterruptedException {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
@@ -167,6 +199,10 @@ class AuctionConcurrencyTest {
     }
 
     private long insertAuction(long prdSn, BigDecimal currentAmount) {
+        return insertAuction(prdSn, currentAmount, LocalDateTime.now().plusHours(1));
+    }
+
+    private long insertAuction(long prdSn, BigDecimal currentAmount, LocalDateTime endDateTime) {
         jdbc.update("""
                 INSERT INTO AUCTION (
                     PRD_SN,
@@ -182,10 +218,18 @@ class AuctionConcurrencyTest {
                 prdSn,
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
-                LocalDateTime.now().plusHours(1));
+                endDateTime);
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         auctionIds.add(id);
         return id;
+    }
+
+    private long insertBid(long aucSn, long bidderSn, BigDecimal amount) {
+        jdbc.update("""
+                INSERT INTO BID (AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD)
+                VALUES (?, ?, ?, 'BIDC0001')
+                """, aucSn, bidderSn, amount);
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
     private void creditAvailable(long usrSn, long amount) {
@@ -215,6 +259,21 @@ class AuctionConcurrencyTest {
                 "SELECT COUNT(*) FROM BID WHERE AUC_SN = ? AND BID_STATUS_CD = 'BIDC0001'",
                 Integer.class,
                 aucSn);
+    }
+
+    private int escrowLedgerCount(long usrSn, long bidSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM POINT_LEDGER
+                WHERE USR_SN = ?
+                  AND PT_LDG_TYPE_CD = 'PTLC0007'
+                  AND PT_LDG_REF_TYPE_CD = ?
+                  AND PT_LDG_REF_SN = ?
+                """, Integer.class, usrSn, RefType.BID.getCode(), bidSn);
+    }
+
+    private LocalDateTime databaseNow() {
+        return jdbc.queryForObject("SELECT NOW()", LocalDateTime.class);
     }
 
     private List<Long> bidIdsByAuctions() {

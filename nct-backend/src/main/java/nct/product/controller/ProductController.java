@@ -13,9 +13,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import java.util.List;
+
 import nct.global.dto.PagedResponse;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.product.dto.ProductCommentRequest;
+import nct.product.dto.ProductCommentResponse;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
 import nct.product.service.ProductService;
@@ -23,10 +27,13 @@ import nct.product.service.ProductService;
 /**
  * [상품 API]
  *
- *  POST   /api/products          상품 등록         (authenticated)
- *  GET    /api/products/me       내 판매 목록       (authenticated)
- *  GET    /api/products/{prdSn}  상품 상세 조회     (authenticated)
- *  DELETE /api/products/{prdSn}  상품 삭제          (authenticated, 본인만)
+ *  POST   /api/products                        상품 등록         (authenticated)
+ *  GET    /api/products/me                     내 판매 목록       (authenticated)
+ *  GET    /api/products/{prdSn}                상품 상세 조회     (permit-all)
+ *  DELETE /api/products/{prdSn}                상품 삭제          (authenticated, 본인만)
+ *  GET    /api/products/banned-keywords        금지 키워드 목록   (permit-all)
+ *  POST   /api/products/{prdSn}/comments       추가 공지 등록     (authenticated, 판매자만)
+ *  GET    /api/products/{prdSn}/comments       추가 공지 조회     (permit-all)
  */
 @RestController
 @RequestMapping("/api/products")
@@ -51,10 +58,11 @@ public class ProductController {
     public ResponseEntity<ApiResponse<PagedResponse<ProductResponse>>> getMyProducts(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestParam(defaultValue = "1")  int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false)    String prdStatusCd) {
 
         Long usrSn = userDetails.getMember().getId();
-        PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size);
+        PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size, prdStatusCd);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -64,6 +72,39 @@ public class ProductController {
             @PathVariable Long prdSn) {
 
         return ResponseEntity.ok(ApiResponse.success(productService.getProduct(prdSn)));
+    }
+
+    /** 금지 키워드 목록 조회 (F-AUC-004) */
+    @GetMapping("/banned-keywords")
+    public ResponseEntity<ApiResponse<List<String>>> getBannedKeywords() {
+        return ResponseEntity.ok(ApiResponse.success(productService.getBannedKeywords()));
+    }
+
+    /** 추가 공지 등록 (판매자 전용, F-AUC-007) */
+    @PostMapping("/{prdSn}/comments")
+    public ResponseEntity<ApiResponse<ProductCommentResponse>> addComment(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long prdSn,
+            @Valid @RequestBody ProductCommentRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        ProductCommentResponse response = productService.addComment(prdSn, usrSn, request);
+        return ResponseEntity.status(201).body(ApiResponse.created(response));
+    }
+
+    /** 추가 공지 목록 조회 — 최신 4개, 비로그인 포함 (F-AUC-007) */
+    @GetMapping("/{prdSn}/comments")
+    public ResponseEntity<ApiResponse<List<ProductCommentResponse>>> getComments(
+            @PathVariable Long prdSn) {
+
+        return ResponseEntity.ok(ApiResponse.success(productService.getComments(prdSn)));
+    }
+
+    /** 상품 조회수 증가 — 옥동민(5) 경매 상세 조회 시 호출 */
+    @PostMapping("/{prdSn}/view")
+    public ResponseEntity<ApiResponse<Void>> increaseViewCount(@PathVariable Long prdSn) {
+        productService.increaseViewCount(prdSn);
+        return ResponseEntity.ok(ApiResponse.success());
     }
 
     /** 상품 삭제 (논리 삭제) */

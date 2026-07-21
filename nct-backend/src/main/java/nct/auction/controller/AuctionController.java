@@ -1,13 +1,13 @@
 package nct.auction.controller;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +34,7 @@ public class AuctionController {
         return ApiResponse.success(auctionService.findAuctions(request));
     }
 
+    // F-AUC-008 판매자 취소 요청
     @PostMapping("/{aucSn}/cancel-request")
     public ApiResponse<Void> requestCancellation(
             @PathVariable Long aucSn,

@@ -10,4 +10,5 @@ public class AuctionStatusSummaryResponse {
     private Long prdSn;
     private Long aucSn;
     private String aucStatusCd;
+    private String aucStatusNm;
 }

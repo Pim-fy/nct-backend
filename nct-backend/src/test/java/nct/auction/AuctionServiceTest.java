@@ -104,10 +104,11 @@ class AuctionServiceTest {
                 .extracting(
                         AuctionStatusSummaryResponse::getPrdSn,
                         AuctionStatusSummaryResponse::getAucSn,
-                        AuctionStatusSummaryResponse::getAucStatusCd)
+                        AuctionStatusSummaryResponse::getAucStatusCd,
+                        AuctionStatusSummaryResponse::getAucStatusNm)
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002"),
-                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005"));
+                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002", "진행"),
+                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005", "취소"));
     }
 
     @Test

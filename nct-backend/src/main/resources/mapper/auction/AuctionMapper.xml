@@ -233,8 +233,11 @@
         SELECT
             a.PRD_SN AS prdSn,
             a.AUC_SN AS aucSn,
-            a.AUC_STATUS_CD AS aucStatusCd
+            a.AUC_STATUS_CD AS aucStatusCd,
+            aucStatus.CMM_NM AS aucStatusNm
         FROM AUCTION a
+        LEFT JOIN CMM_CODE aucStatus
+          ON aucStatus.CMM_CD = a.AUC_STATUS_CD
         WHERE a.PRD_SN IN
         <foreach collection="prdSns" item="prdSn" open="(" separator="," close=")">
             #{prdSn}

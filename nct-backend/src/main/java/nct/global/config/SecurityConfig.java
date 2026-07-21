@@ -112,6 +112,9 @@ public class SecurityConfig {
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()
+                // 담당자 7 · F-COM-003/F-OPS-007: 화면 공통코드 선택지는 읽기 전용으로 공개한다.
+                .requestMatchers(HttpMethod.GET, "/api/reference/codes")
+                    .permitAll()
                 // 담당자 7 · F-COM-013: 방문자도 게시 중인 공지 목록·상세를 조회할 수 있다.
                 // 쓰기 API는 /api/admin/** 아래에 분리되어 있어 이 규칙으로 공개되지 않는다.
                 .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/**")

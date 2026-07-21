@@ -47,8 +47,8 @@ public class TradeDeliveryFileController {
 
     @GetMapping("/{trdDlvrSn}/files/{flSn}/download")
     public ResponseEntity<Resource> download(
-            @PathVariable Long trdDlvrSn,
-            @PathVariable Long flSn,
+            @PathVariable(name = "trdDlvrSn") Long trdDlvrSn,
+            @PathVariable(name = "flSn") Long flSn,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long usrSn = userDetails.getMember().getId();

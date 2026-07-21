@@ -102,7 +102,7 @@ public class AuthController {
 
     @PostMapping("/email-verifications/{verificationId}/verify")
     public ResponseEntity<ApiResponse<Void>> verifyEmailVerification(
-            @PathVariable Long verificationId,
+            @PathVariable(name = "verificationId") Long verificationId,
             @Valid @RequestBody EmailVerificationVerifyRequest request) {
         emailVerificationService.verifySignupCode(verificationId, request);
         return ResponseEntity.ok(ApiResponse.success());

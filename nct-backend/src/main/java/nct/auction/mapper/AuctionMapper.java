@@ -59,6 +59,8 @@ public interface AuctionMapper {
 
     int extendAuctionTime(
             @Param("auctionId") Long auctionId,
+            @Param("extensionMinutes") int extensionMinutes,
+            @Param("maxExtensionCount") int maxExtensionCount,
             @Param("actor") String actor);
 
     int closeAuctionByInstantBuy(

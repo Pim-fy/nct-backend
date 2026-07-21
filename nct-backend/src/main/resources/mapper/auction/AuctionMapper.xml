@@ -386,15 +386,15 @@
 
     <update id="extendAuctionTime">
         UPDATE AUCTION
-        SET AUC_END_DT = DATE_ADD(NOW(), INTERVAL 10 MINUTE),
+        SET AUC_END_DT = DATE_ADD(NOW(), INTERVAL #{extensionMinutes} MINUTE),
             AUC_EXT_CNT = AUC_EXT_CNT + 1,
             AUC_UPDT_ID = #{actor},
             AUC_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
           AND AUC_STATUS_CD = 'AUCC0002'
-          AND AUC_EXT_CNT = 0
+          AND AUC_EXT_CNT &lt; #{maxExtensionCount}
           AND AUC_END_DT &gt; NOW()
-          AND AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL 10 MINUTE)
+          AND AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL #{extensionMinutes} MINUTE)
     </update>
 
     <update id="closeAuctionByInstantBuy">

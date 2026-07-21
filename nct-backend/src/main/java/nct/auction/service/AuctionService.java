@@ -28,6 +28,7 @@ import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.point.exception.PointException;
+import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
 import nct.product.service.ProductService;
 
@@ -39,7 +40,6 @@ public class AuctionService {
     private static final int DEFAULT_SIZE = 12;
     private static final int MAX_SIZE = 60;
     private static final int MAX_FINALIZATION_BATCH_SIZE = 500;
-    private static final BigDecimal DEFAULT_BID_UNIT = BigDecimal.valueOf(1000);
     private static final String SYSTEM_ACTOR = "SYSTEM";
 
     private final AuctionMapper auctionMapper;
@@ -144,8 +144,14 @@ public class AuctionService {
             Long actorUserId) {
         validateAuctionCreation(productId, startAmount, bidUnitAmount, endDateTime, actorUserId);
 
+        AuctionPolicy policy = pointService.getAuctionPolicy();
+        BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
+        if (bidUnitAmount != null && bidUnitAmount.compareTo(minimumBidUnit) < 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 단위는 시스템 최소 입찰 단위 이상이어야 합니다.");
+        }
+
         String statusCode = openImmediately ? AuctionStatusCode.ACTIVE : AuctionStatusCode.READY;
-        BigDecimal actualBidUnit = bidUnitAmount == null ? DEFAULT_BID_UNIT : bidUnitAmount;
+        BigDecimal actualBidUnit = bidUnitAmount == null ? minimumBidUnit : bidUnitAmount;
 
         int inserted = auctionMapper.insertAuction(
                 productId,
@@ -192,9 +198,10 @@ public class AuctionService {
         AuctionBidTarget target = findBidTarget(auctionId);
         validateBidAvailable(target, userId);
         validateNotCurrentHighestBidder(target, userId);
+        AuctionPolicy policy = pointService.getAuctionPolicy();
 
         BigDecimal bidAmount = request == null ? null : request.getBidAmount();
-        if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target)) < 0) {
+        if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target, policy)) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         validateBidBelowInstantBuyPrice(target, bidAmount);
@@ -211,7 +218,11 @@ public class AuctionService {
         AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, bidAmount);
         pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
-        auctionMapper.extendAuctionTime(auctionId, userId.toString());
+        auctionMapper.extendAuctionTime(
+                auctionId,
+                policy.getAucExtMin(),
+                policy.getAucExtMaxCnt(),
+                userId.toString());
 
         return loadAuctionDetail(auctionId);
     }
@@ -272,9 +283,13 @@ public class AuctionService {
         return target.getDatabaseNow() == null ? LocalDateTime.now() : target.getDatabaseNow();
     }
 
-    private BigDecimal minimumBidPrice(AuctionBidTarget target) {
+    private BigDecimal minimumBidPrice(AuctionBidTarget target, AuctionPolicy policy) {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
-        BigDecimal bidUnitPrice = target.getBidUnitPrice() == null ? BigDecimal.valueOf(1000) : target.getBidUnitPrice();
+        BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
+        BigDecimal bidUnitPrice = target.getBidUnitPrice();
+        if (bidUnitPrice == null || bidUnitPrice.compareTo(minimumBidUnit) < 0) {
+            bidUnitPrice = minimumBidUnit;
+        }
         return currentPrice.add(bidUnitPrice);
     }
 

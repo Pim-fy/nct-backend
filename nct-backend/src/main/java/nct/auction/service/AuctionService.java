@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.point.exception.PointException;
 import nct.point.service.PointService;
+import nct.product.service.ProductService;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +45,7 @@ public class AuctionService {
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
+    private final ObjectProvider<ProductService> productServiceProvider;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -64,14 +67,12 @@ public class AuctionService {
 
     @Transactional
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
-        auctionMapper.incrementProductViewCount(auctionId);
-        return loadAuctionDetail(auctionId, null);
+        return findAuctionDetailAndIncreaseView(auctionId, null);
     }
 
     @Transactional
     public AuctionDetailResponse findAuctionDetail(Long auctionId, Long userId) {
-        auctionMapper.incrementProductViewCount(auctionId);
-        return loadAuctionDetail(auctionId, userId);
+        return findAuctionDetailAndIncreaseView(auctionId, userId);
     }
 
     @Transactional(readOnly = true)
@@ -160,6 +161,18 @@ public class AuctionService {
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId) {
         return loadAuctionDetail(auctionId, null);
+    }
+
+    private AuctionDetailResponse findAuctionDetailAndIncreaseView(Long auctionId, Long userId) {
+        Long productId = auctionMapper.findProductIdByAuctionId(auctionId);
+        if (productId == null) {
+            throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
+        }
+
+        ProductService productService = productServiceProvider.getObject();
+        productService.getProduct(productId);
+        productService.increaseViewCount(productId);
+        return loadAuctionDetail(auctionId, userId);
     }
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId, Long userId) {

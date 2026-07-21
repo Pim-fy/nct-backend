@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.dto.AuctionBidRequest;
@@ -33,6 +34,20 @@ class AuctionServiceTest {
     @Autowired AuctionService auctionService;
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
+
+    @Test
+    @DisplayName("경매 상세 조회는 상품 서비스 계약으로 조회수를 증가시킨다")
+    void findAuctionDetailIncreasesProductViewCount() {
+        long sellerSn = insertUser("t_auc_seller");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+
+        AuctionDetailResponse response = auctionService.findAuctionDetail(aucSn);
+
+        assertThat(response.getProductId()).isEqualTo(prdSn);
+        assertThat(response.getViewCount()).isEqualTo(1);
+        assertThat(productViewCount(prdSn)).isEqualTo(1);
+    }
 
     @Test
     @DisplayName("상품 번호로 경매 현황을 조회한다")
@@ -438,6 +453,13 @@ class AuctionServiceTest {
                 )
                 VALUES (?, 'PTLC0001', 'PTLC0004', ?, ?, '테스트 충전')
                 """, usrSn, amount, amount);
+    }
+
+    private int productViewCount(long prdSn) {
+        return jdbc.queryForObject(
+                "SELECT PRD_VIEW_CNT FROM PRODUCT WHERE PRD_SN = ?",
+                Integer.class,
+                prdSn);
     }
 
     private long latestBidSn(long aucSn) {

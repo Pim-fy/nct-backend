@@ -24,6 +24,8 @@ public interface AuctionMapper {
 
     long countAuctions(@Param("condition") AuctionListRequest condition);
 
+    Long findProductIdByAuctionId(@Param("auctionId") Long auctionId);
+
     AuctionDetailResponse findAuctionDetail(@Param("auctionId") Long auctionId);
 
     AuctionStatusResponse findAuctionStatusByProduct(@Param("prdSn") Long prdSn);
@@ -37,8 +39,6 @@ public interface AuctionMapper {
     AuctionBidTarget findAuctionBidTargetForUpdate(@Param("auctionId") Long auctionId);
 
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
-
-    int incrementProductViewCount(@Param("auctionId") Long auctionId);
 
     int insertAuction(
             @Param("productId") Long productId,

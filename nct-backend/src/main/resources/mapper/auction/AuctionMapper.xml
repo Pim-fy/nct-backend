@@ -150,6 +150,12 @@
         <include refid="auctionListWhere"/>
     </select>
 
+    <select id="findProductIdByAuctionId" resultType="long">
+        SELECT PRD_SN
+        FROM AUCTION
+        WHERE AUC_SN = #{auctionId}
+    </select>
+
     <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
         SELECT
             a.AUC_SN AS auctionId,
@@ -318,15 +324,6 @@
         ORDER BY AUC_END_DT, AUC_SN
         LIMIT #{limit}
     </select>
-
-    <update id="incrementProductViewCount">
-        UPDATE PRODUCT p
-        JOIN AUCTION a
-          ON a.PRD_SN = p.PRD_SN
-        SET p.PRD_VIEW_CNT = p.PRD_VIEW_CNT + 1
-        WHERE a.AUC_SN = #{auctionId}
-          AND p.PRD_USE_YN = 'Y'
-    </update>
 
     <insert id="insertAuction">
         INSERT INTO AUCTION (

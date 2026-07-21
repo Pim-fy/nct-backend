@@ -2,6 +2,8 @@ package nct.product.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 
+import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.service.AuctionService;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
@@ -118,7 +121,25 @@ public class ProductService {
     public PagedResponse<ProductResponse> getMyProducts(Long usrSn, int page, int size, String prdStatusCd) {
         PageHelper.startPage(page, size);
         List<ProductResponse> list = productMapper.findMyProducts(usrSn, prdStatusCd);
-        return PagedResponse.of(new PageInfo<>(list));
+        PagedResponse<ProductResponse> result = PagedResponse.of(new PageInfo<>(list));
+
+        List<Long> prdSns = result.getList().stream()
+                .map(ProductResponse::getPrdSn)
+                .collect(Collectors.toList());
+
+        Map<Long, AuctionStatusSummaryResponse> statusMap =
+                auctionService.getAuctionStatusesByProducts(prdSns).stream()
+                        .collect(Collectors.toMap(AuctionStatusSummaryResponse::getPrdSn, s -> s));
+
+        result.getList().forEach(p -> {
+            AuctionStatusSummaryResponse s = statusMap.get(p.getPrdSn());
+            if (s != null) {
+                p.setAucSn(s.getAucSn());
+                p.setAucStatusCd(s.getAucStatusCd());
+            }
+        });
+
+        return result;
     }
 
     @Transactional

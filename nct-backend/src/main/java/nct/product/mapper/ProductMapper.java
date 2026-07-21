@@ -21,4 +21,6 @@ public interface ProductMapper {
     Optional<Product> findProductEntityById(@Param("prdSn") Long prdSn);
 
     void deleteProduct(@Param("prdSn") Long prdSn, @Param("usrSn") Long usrSn);
+
+    void incrementViewCount(@Param("prdSn") Long prdSn);
 }

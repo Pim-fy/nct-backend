@@ -100,6 +100,13 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.getComments(prdSn)));
     }
 
+    /** 상품 조회수 증가 — 옥동민(5) 경매 상세 조회 시 호출 */
+    @PostMapping("/{prdSn}/view")
+    public ResponseEntity<ApiResponse<Void>> increaseViewCount(@PathVariable Long prdSn) {
+        productService.increaseViewCount(prdSn);
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
     /** 상품 삭제 (논리 삭제) */
     @DeleteMapping("/{prdSn}")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(

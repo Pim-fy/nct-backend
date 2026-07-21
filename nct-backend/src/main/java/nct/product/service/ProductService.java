@@ -173,6 +173,11 @@ public class ProductService {
     }
 
     @Transactional
+    public void increaseViewCount(Long prdSn) {
+        productMapper.incrementViewCount(prdSn);
+    }
+
+    @Transactional
     public void deleteProduct(Long prdSn, Long usrSn) {
         Product product = productMapper.findProductEntityById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));

@@ -150,6 +150,12 @@
         <include refid="auctionListWhere"/>
     </select>
 
+    <select id="findProductIdByAuctionId" resultType="long">
+        SELECT PRD_SN
+        FROM AUCTION
+        WHERE AUC_SN = #{auctionId}
+    </select>
+
     <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
         SELECT
             a.AUC_SN AS auctionId,
@@ -227,8 +233,11 @@
         SELECT
             a.PRD_SN AS prdSn,
             a.AUC_SN AS aucSn,
-            a.AUC_STATUS_CD AS aucStatusCd
+            a.AUC_STATUS_CD AS aucStatusCd,
+            aucStatus.CMM_NM AS aucStatusNm
         FROM AUCTION a
+        LEFT JOIN CMM_CODE aucStatus
+          ON aucStatus.CMM_CD = a.AUC_STATUS_CD
         WHERE a.PRD_SN IN
         <foreach collection="prdSns" item="prdSn" open="(" separator="," close=")">
             #{prdSn}
@@ -283,8 +292,10 @@
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
+            p.PRD_TRD_METHOD_CD AS tradeMethodCode,
             a.AUC_STATUS_CD AS auctionStatusCode,
-            a.AUC_END_DT AS endDateTime
+            a.AUC_END_DT AS endDateTime,
+            NOW() AS databaseNow
         FROM AUCTION a
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
@@ -309,14 +320,14 @@
         FOR UPDATE
     </select>
 
-    <update id="incrementProductViewCount">
-        UPDATE PRODUCT p
-        JOIN AUCTION a
-          ON a.PRD_SN = p.PRD_SN
-        SET p.PRD_VIEW_CNT = p.PRD_VIEW_CNT + 1
-        WHERE a.AUC_SN = #{auctionId}
-          AND p.PRD_USE_YN = 'Y'
-    </update>
+    <select id="findExpiredActiveAuctionIds" resultType="long">
+        SELECT AUC_SN
+        FROM AUCTION
+        WHERE AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &lt;= NOW()
+        ORDER BY AUC_END_DT, AUC_SN
+        LIMIT #{limit}
+    </select>
 
     <insert id="insertAuction">
         INSERT INTO AUCTION (
@@ -379,15 +390,15 @@
 
     <update id="extendAuctionTime">
         UPDATE AUCTION
-        SET AUC_END_DT = DATE_ADD(NOW(), INTERVAL 10 MINUTE),
+        SET AUC_END_DT = DATE_ADD(NOW(), INTERVAL #{extensionMinutes} MINUTE),
             AUC_EXT_CNT = AUC_EXT_CNT + 1,
             AUC_UPDT_ID = #{actor},
             AUC_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
           AND AUC_STATUS_CD = 'AUCC0002'
-          AND AUC_EXT_CNT = 0
+          AND AUC_EXT_CNT &lt; #{maxExtensionCount}
           AND AUC_END_DT &gt; NOW()
-          AND AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL 10 MINUTE)
+          AND AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL #{extensionMinutes} MINUTE)
     </update>
 
     <update id="closeAuctionByInstantBuy">
@@ -398,6 +409,18 @@
             AUC_UPDT_ID = #{actor},
             AUC_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &gt; NOW()
+    </update>
+
+    <update id="updateExpiredAuctionStatus">
+        UPDATE AUCTION
+        SET AUC_STATUS_CD = #{statusCode},
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &lt;= NOW()
     </update>
 
 </mapper>

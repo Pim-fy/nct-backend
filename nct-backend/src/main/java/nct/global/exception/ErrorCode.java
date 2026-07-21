@@ -19,6 +19,8 @@ public enum ErrorCode {
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "이메일 형식이 올바르지 않습니다."),
     INVALID_PASSWORD_FORMAT(HttpStatus.BAD_REQUEST, "비밀번호 형식이 올바르지 않습니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
+    // F-AUC-024 지원 - 배송지 스냅샷 조회 계약(MemberService.getBuyerAddressSnapshot) 전용
+    BUYER_ADDRESS_INCOMPLETE(HttpStatus.BAD_REQUEST, "회원의 배송지 정보가 등록되어 있지 않습니다."),
 
     // 401 Unauthorized
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -54,6 +56,11 @@ public enum ErrorCode {
     INVALID_VERIFICATION_CODE(HttpStatus.UNAUTHORIZED, "인증번호가 일치하지 않습니다."),
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 요청입니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
+    // @ai_generated: 작업단위5 작업 2(F-AUTH-016) - 마이페이지 연동 관리 REST API 전용
+    OAUTH_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "연동된 계정을 찾을 수 없습니다."),
+    OAUTH_LINK_MINIMUM_REQUIRED(HttpStatus.CONFLICT, "최소 1개의 로그인 수단은 유지해야 합니다."),
+    // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 온보딩 완료 API 전용
+    ONBOARDING_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "온보딩 정보를 찾을 수 없습니다. 소셜 로그인을 다시 시도해주세요."),
 
     // ---- 리뷰 도메인 (F-COM-007, REVIEW 테이블 고정 기술 소유 - 09_기능단위_7인_업무분장 v10) ----
     REVIEW_TRADE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "리뷰를 작성할 수 없는 거래입니다."),
@@ -92,6 +99,9 @@ public enum ErrorCode {
     CHARGE_ORDER_EXPIRED(HttpStatus.CONFLICT, "시간이 만료된 충전 주문입니다."),
     CHARGE_INTERNAL_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "충전 처리 중 오류가 발생하여 결제를 취소 처리했습니다."),
 
+    // 시스템 설정 읽기 계약 (F-OPS-024 SYSTEM_SETTING, 타 도메인 소비용 — 값 이상 시 임의 기본값 대신 실패)
+    SYSTEM_SETTING_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "시스템 설정 값을 확인할 수 없어 요청을 처리할 수 없습니다."),
+
     // 포인트 환전 (F-PAY-012)
     EXCHANGE_ACCOUNT_NOT_REGISTERED(HttpStatus.BAD_REQUEST, "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요."),
     EXCHANGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 환전 신청입니다."),
@@ -103,10 +113,6 @@ public enum ErrorCode {
     PRODUCT_ALREADY_DELETED(HttpStatus.CONFLICT, "이미 삭제된 상품입니다."),
     PRODUCT_CANCEL_INVALID_STATUS(HttpStatus.CONFLICT, "취소 요청이 불가능한 경매 상태입니다."),
     AUCTION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경매입니다."),
-    AUCTION_CANCEL_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경매 취소 요청입니다."),
-    AUCTION_CANCEL_REQUEST_DUPLICATED(HttpStatus.CONFLICT, "이미 처리 대기 중인 경매 취소 요청이 있습니다."),
-    AUCTION_CANCEL_REQUEST_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 경매 취소 요청입니다."),
-    AUCTION_CANCEL_REQUEST_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 경매 취소 요청을 처리할 수 없습니다."),
 
     /*==================== 파일 도메인 (담당자6, F-AUC-002 이미지 연계) ====================*/
 

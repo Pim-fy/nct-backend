@@ -32,8 +32,12 @@ public class ProductResponse {
     private String prdImgUrl;
 
     // F-AUC-005 경매 상태 연계 — 옥동민(5) AuctionService 일괄 조회로 세팅
-    @Setter
-    private Long aucSn;
-    @Setter
-    private String aucStatusCd;
+    @Setter private Long aucSn;
+    @Setter private String aucStatusCd;
+    // F-AUC-005 경매 상태 라벨 연계 — AuctionService 일괄 조회 결과로 세팅
+    @Setter private String aucStatusNm;
+
+    // F-AUC-005 거래 상태 연계 — 정민재(4) TradeService 일괄 조회로 세팅
+    @Setter private Long tradeSn;
+    @Setter private String tradeStatusCd;
 }

@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.dto.AuctionBidRequest;
@@ -23,6 +24,7 @@ import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.point.domain.PointBalance;
+import nct.point.exception.PointException;
 import nct.point.service.PointService;
 
 @SpringBootTest
@@ -32,6 +34,20 @@ class AuctionServiceTest {
     @Autowired AuctionService auctionService;
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
+
+    @Test
+    @DisplayName("경매 상세 조회는 상품 서비스 계약으로 조회수를 증가시킨다")
+    void findAuctionDetailIncreasesProductViewCount() {
+        long sellerSn = insertUser("t_auc_seller");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+
+        AuctionDetailResponse response = auctionService.findAuctionDetail(aucSn);
+
+        assertThat(response.getProductId()).isEqualTo(prdSn);
+        assertThat(response.getViewCount()).isEqualTo(1);
+        assertThat(productViewCount(prdSn)).isEqualTo(1);
+    }
 
     @Test
     @DisplayName("상품 번호로 경매 현황을 조회한다")
@@ -88,10 +104,11 @@ class AuctionServiceTest {
                 .extracting(
                         AuctionStatusSummaryResponse::getPrdSn,
                         AuctionStatusSummaryResponse::getAucSn,
-                        AuctionStatusSummaryResponse::getAucStatusCd)
+                        AuctionStatusSummaryResponse::getAucStatusCd,
+                        AuctionStatusSummaryResponse::getAucStatusNm)
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002"),
-                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005"));
+                        org.assertj.core.groups.Tuple.tuple(activePrdSn, activeAucSn, "AUCC0002", "진행"),
+                        org.assertj.core.groups.Tuple.tuple(canceledPrdSn, canceledAucSn, "AUCC0005", "취소"));
     }
 
     @Test
@@ -228,13 +245,165 @@ class AuctionServiceTest {
         assertThat(balance.getAvailableAmt()).isEqualTo(20000);
         assertThat(balance.getHoldAmt()).isZero();
         assertThat(activeHoldAmount(buyerSn, bidSn)).isZero();
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+        assertThat(deliverySnapshotCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("직거래 즉시구매는 거래와 채팅방을 함께 생성한다")
+    void buyNowCreatesOfflineTradeChatRoom() {
+        long sellerSn = insertUser("t_auc_seller");
+        long buyerSn = insertUser("t_auc_buyer");
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000), "TRDC0010");
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(buyerSn, 50000);
+
+        auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest());
+
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+        assertThat(chatRoomCount(prdSn)).isEqualTo(1);
+        assertThat(deliverySnapshotCount(prdSn)).isZero();
+    }
+
+    @Test
+    @DisplayName("최고입찰이 있는 만료 경매는 종료되고 홀딩이 보관금으로 전환된다")
+    void finalizeExpiredAuctionEndsWithWinningBid() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1),
+                0);
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "낙찰 테스트 홀딩");
+
+        boolean finalized = auctionService.finalizeExpiredAuction(aucSn);
+
+        assertThat(finalized).isTrue();
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0003");
+        assertThat(pointService.getBalance(bidderSn).getHoldAmt()).isZero();
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+        assertThat(deliverySnapshotCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("입찰이 없는 만료 경매는 유찰된다")
+    void finalizeExpiredAuctionFailsWithoutBid() {
+        long sellerSn = insertUser("t_auc_seller");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                databaseNow().minusMinutes(1),
+                0);
+
+        boolean finalized = auctionService.finalizeExpiredAuction(aucSn);
+
+        assertThat(finalized).isTrue();
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0004");
+        assertThat(materialTradeCount(prdSn)).isZero();
+    }
+
+    @Test
+    @DisplayName("낙찰자의 홀딩이 없으면 경매 종료 상태를 확정하지 않는다")
+    void finalizeExpiredAuctionRequiresWinningBidHold() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1),
+                0);
+        insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+
+        assertThatThrownBy(() -> auctionService.finalizeExpiredAuction(aucSn))
+                .isInstanceOf(PointException.class);
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0002");
+    }
+
+    @Test
+    @DisplayName("이미 확정된 만료 경매는 다시 처리하지 않는다")
+    void finalizeExpiredAuctionOnlyOnce() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1),
+                0);
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "낙찰 테스트 홀딩");
+
+        assertThat(auctionService.finalizeExpiredAuction(aucSn)).isTrue();
+        assertThat(auctionService.finalizeExpiredAuction(aucSn)).isFalse();
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("마감된 경매에는 입찰할 수 없다")
+    void placeBidRejectsExpiredAuction() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                databaseNow().minusMinutes(1),
+                0);
+        creditAvailable(bidderSn, 50000);
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+        assertThat(bidCount(aucSn)).isZero();
+    }
+
+    @Test
+    @DisplayName("마감된 경매에는 즉시구매할 수 없다")
+    void buyNowRejectsExpiredAuction() {
+        long sellerSn = insertUser("t_auc_seller");
+        long buyerSn = insertUser("t_auc_buyer");
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000));
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(10000),
+                databaseNow().minusMinutes(1),
+                0);
+        creditAvailable(buyerSn, 50000);
+
+        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+        assertThat(bidCount(aucSn)).isZero();
     }
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
+                INSERT INTO USERS (
+                    USR_LOGIN_ID,
+                    USR_PSWD_HASH,
+                    USR_NM,
+                    USR_EML,
+                    USR_STATUS_CD,
+                    USR_ROLE_CD,
+                    USR_ADDR,
+                    USR_DADDR,
+                    USR_ZIP
+                )
+                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER', '테스트 주소', '101호', '12345')
                 """, loginId, prefix, loginId + "@test.local");
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
@@ -244,13 +413,14 @@ class AuctionServiceTest {
     }
 
     private long insertProduct(long sellerSn, BigDecimal instantBuyAmount) {
+        return insertProduct(sellerSn, instantBuyAmount, "TRDC0009");
+    }
+
+    private long insertProduct(long sellerSn, BigDecimal instantBuyAmount, String tradeMethodCode) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD)
-                VALUES (?, 2, '테스트 경매 상품', 'PRDC0002', 10000, ?,
-                        (SELECT C.CMM_CD FROM CMM_CODE C
-                         JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
-                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
-                """, sellerSn, instantBuyAmount);
+                VALUES (?, 2, '테스트 경매 상품', 'PRDC0002', 10000, ?, ?)
+                """, sellerSn, instantBuyAmount, tradeMethodCode);
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
@@ -319,6 +489,13 @@ class AuctionServiceTest {
                 """, usrSn, amount, amount);
     }
 
+    private int productViewCount(long prdSn) {
+        return jdbc.queryForObject(
+                "SELECT PRD_VIEW_CNT FROM PRODUCT WHERE PRD_SN = ?",
+                Integer.class,
+                prdSn);
+    }
+
     private long latestBidSn(long aucSn) {
         return jdbc.queryForObject("""
                 SELECT BID_SN
@@ -341,6 +518,28 @@ class AuctionServiceTest {
         return amount == null ? 0 : amount;
     }
 
+    private int escrowLedgerCount(long usrSn, long bidSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM POINT_LEDGER
+                WHERE USR_SN = ?
+                  AND PT_LDG_TYPE_CD = 'PTLC0007'
+                  AND PT_LDG_REF_TYPE_CD = ?
+                  AND PT_LDG_REF_SN = ?
+                """, Integer.class, usrSn, RefType.BID.getCode(), bidSn);
+    }
+
+    private String auctionStatus(long aucSn) {
+        return jdbc.queryForObject(
+                "SELECT AUC_STATUS_CD FROM AUCTION WHERE AUC_SN = ?",
+                String.class,
+                aucSn);
+    }
+
+    private LocalDateTime databaseNow() {
+        return jdbc.queryForObject("SELECT NOW()", LocalDateTime.class);
+    }
+
     private int auctionRemainingSeconds(long aucSn) {
         return jdbc.queryForObject(
                 "SELECT TIMESTAMPDIFF(SECOND, NOW(), AUC_END_DT) FROM AUCTION WHERE AUC_SN = ?",
@@ -354,5 +553,32 @@ class AuctionServiceTest {
 
     private int bidCount(long aucSn) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM BID WHERE AUC_SN = ?", Integer.class, aucSn);
+    }
+
+    private int materialTradeCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM TRADE
+                WHERE PRD_SN = ?
+                  AND TRD_TYPE_CD = 'TRDC0001'
+                """, Integer.class, prdSn);
+    }
+
+    private int deliverySnapshotCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM TRADE_DELIVERY d
+                JOIN TRADE t ON t.TRD_SN = d.TRD_SN
+                WHERE t.PRD_SN = ?
+                """, Integer.class, prdSn);
+    }
+
+    private int chatRoomCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM CHAT_ROOM c
+                JOIN TRADE t ON t.TRD_SN = c.TRD_SN
+                WHERE t.PRD_SN = ?
+                """, Integer.class, prdSn);
     }
 }

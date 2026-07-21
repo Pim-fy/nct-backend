@@ -1,6 +1,7 @@
 package nct.auction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -23,6 +24,8 @@ import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.service.AuctionService;
 import nct.common.domain.RefType;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.point.domain.PointBalance;
 import nct.point.service.PointService;
 
@@ -39,6 +42,11 @@ class AuctionConcurrencyTest {
 
     @AfterEach
     void cleanUp() {
+        List<Long> tradeIds = tradeIdsByProducts();
+        deleteIn("CHAT_ROOM", "TRD_SN", tradeIds);
+        deleteIn("TRADE_DELIVERY", "TRD_SN", tradeIds);
+        deleteIn("TRADE_STATUS_HIST", "TRD_SN", tradeIds);
+        deleteIn("TRADE", "TRD_SN", tradeIds);
         if (!auctionIds.isEmpty()) {
             deleteIn("POINT_LEDGER", "PT_LDG_REF_SN", bidIdsByAuctions());
             deleteIn("BID", "AUC_SN", auctionIds);
@@ -85,6 +93,7 @@ class AuctionConcurrencyTest {
         PointBalance buyerBalance = pointService.getBalance(buyerSn);
         assertThat(buyerBalance.getAvailableAmt()).isEqualTo(20000);
         assertThat(buyerBalance.getHoldAmt()).isZero();
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
     }
 
     @Test
@@ -115,6 +124,90 @@ class AuctionConcurrencyTest {
         assertThat(highestBidCount(aucSn)).isEqualTo(1);
         assertThat(pointService.getBalance(firstBuyerSn).getHoldAmt()).isZero();
         assertThat(pointService.getBalance(secondBuyerSn).getHoldAmt()).isZero();
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("만료 경매 마감이 동시에 실행되어도 낙찰은 한 번만 확정된다")
+    void concurrentFinalizationOnlyOneSucceeds() throws InterruptedException {
+        long sellerSn = insertUser("t_auc_con_seller");
+        long bidderSn = insertUser("t_auc_con_bidder");
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1));
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000));
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "동시 마감 테스트 홀딩");
+
+        AtomicInteger successCount = new AtomicInteger();
+        runConcurrently(
+                () -> {
+                    if (auctionService.finalizeExpiredAuction(aucSn)) {
+                        successCount.incrementAndGet();
+                    }
+                },
+                () -> {
+                    if (auctionService.finalizeExpiredAuction(aucSn)) {
+                        successCount.incrementAndGet();
+                    }
+                });
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0003");
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
+        assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("배송지 스냅샷 생성 실패 시 즉시구매 전체 처리를 롤백한다")
+    void buyNowRollsBackWhenTradeCreationFails() {
+        long sellerSn = insertUser("t_auc_tx_seller");
+        long buyerSn = insertUser("t_auc_tx_buyer");
+        jdbc.update("UPDATE USERS SET USR_ADDR = NULL, USR_DADDR = NULL, USR_ZIP = NULL WHERE USR_SN = ?", buyerSn);
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000));
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(buyerSn, 50000);
+
+        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0002");
+        assertThat(auctionCurrentAmount(aucSn)).isEqualByComparingTo("10000");
+        assertThat(highestBidCount(aucSn)).isZero();
+        assertThat(materialTradeCount(prdSn)).isZero();
+        assertThat(pointService.getBalance(buyerSn).getAvailableAmt()).isEqualTo(50000);
+        assertThat(pointService.getBalance(buyerSn).getHoldAmt()).isZero();
+    }
+
+    @Test
+    @DisplayName("배송지 스냅샷 생성 실패 시 자동 낙찰 전체 처리를 롤백한다")
+    void finalizationRollsBackWhenTradeCreationFails() {
+        long sellerSn = insertUser("t_auc_tx_seller");
+        long bidderSn = insertUser("t_auc_tx_bidder");
+        jdbc.update("UPDATE USERS SET USR_ADDR = NULL, USR_DADDR = NULL, USR_ZIP = NULL WHERE USR_SN = ?", bidderSn);
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(
+                prdSn,
+                BigDecimal.valueOf(12000),
+                databaseNow().minusMinutes(1));
+        long bidSn = insertBid(aucSn, bidderSn, BigDecimal.valueOf(12000));
+        creditAvailable(bidderSn, 50000);
+        pointService.hold(bidderSn, 12000, RefType.BID, bidSn, "롤백 테스트 홀딩");
+
+        assertThatThrownBy(() -> auctionService.finalizeExpiredAuction(aucSn))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0002");
+        assertThat(materialTradeCount(prdSn)).isZero();
+        assertThat(pointService.getBalance(bidderSn).getAvailableAmt()).isEqualTo(38000);
+        assertThat(pointService.getBalance(bidderSn).getHoldAmt()).isEqualTo(12000);
+        assertThat(escrowLedgerCount(bidderSn, bidSn)).isZero();
     }
 
     private void runConcurrently(Runnable first, Runnable second) throws InterruptedException {
@@ -145,8 +238,18 @@ class AuctionConcurrencyTest {
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
+                INSERT INTO USERS (
+                    USR_LOGIN_ID,
+                    USR_PSWD_HASH,
+                    USR_NM,
+                    USR_EML,
+                    USR_STATUS_CD,
+                    USR_ROLE_CD,
+                    USR_ADDR,
+                    USR_DADDR,
+                    USR_ZIP
+                )
+                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER', '테스트 주소', '101호', '12345')
                 """, loginId, prefix, loginId + "@test.local");
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);
@@ -156,10 +259,7 @@ class AuctionConcurrencyTest {
     private long insertProduct(long sellerSn, BigDecimal instantBuyAmount) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD)
-                VALUES (?, 2, '동시성 테스트 경매 상품', 'PRDC0002', 10000, ?,
-                        (SELECT C.CMM_CD FROM CMM_CODE C
-                         JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
-                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
+                VALUES (?, 2, '동시성 테스트 경매 상품', 'PRDC0002', 10000, ?, 'TRDC0009')
                 """, sellerSn, instantBuyAmount);
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         productIds.add(id);
@@ -167,6 +267,10 @@ class AuctionConcurrencyTest {
     }
 
     private long insertAuction(long prdSn, BigDecimal currentAmount) {
+        return insertAuction(prdSn, currentAmount, LocalDateTime.now().plusHours(1));
+    }
+
+    private long insertAuction(long prdSn, BigDecimal currentAmount, LocalDateTime endDateTime) {
         jdbc.update("""
                 INSERT INTO AUCTION (
                     PRD_SN,
@@ -182,10 +286,18 @@ class AuctionConcurrencyTest {
                 prdSn,
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
-                LocalDateTime.now().plusHours(1));
+                endDateTime);
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         auctionIds.add(id);
         return id;
+    }
+
+    private long insertBid(long aucSn, long bidderSn, BigDecimal amount) {
+        jdbc.update("""
+                INSERT INTO BID (AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD)
+                VALUES (?, ?, ?, 'BIDC0001')
+                """, aucSn, bidderSn, amount);
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
     private void creditAvailable(long usrSn, long amount) {
@@ -215,6 +327,41 @@ class AuctionConcurrencyTest {
                 "SELECT COUNT(*) FROM BID WHERE AUC_SN = ? AND BID_STATUS_CD = 'BIDC0001'",
                 Integer.class,
                 aucSn);
+    }
+
+    private int escrowLedgerCount(long usrSn, long bidSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM POINT_LEDGER
+                WHERE USR_SN = ?
+                  AND PT_LDG_TYPE_CD = 'PTLC0007'
+                  AND PT_LDG_REF_TYPE_CD = ?
+                  AND PT_LDG_REF_SN = ?
+                """, Integer.class, usrSn, RefType.BID.getCode(), bidSn);
+    }
+
+    private LocalDateTime databaseNow() {
+        return jdbc.queryForObject("SELECT NOW()", LocalDateTime.class);
+    }
+
+    private int materialTradeCount(long prdSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM TRADE
+                WHERE PRD_SN = ?
+                  AND TRD_TYPE_CD = 'TRDC0001'
+                """, Integer.class, prdSn);
+    }
+
+    private List<Long> tradeIdsByProducts() {
+        if (productIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(",", productIds.stream().map(id -> "?").toList());
+        return jdbc.queryForList(
+                "SELECT TRD_SN FROM TRADE WHERE PRD_SN IN (" + placeholders + ")",
+                Long.class,
+                productIds.toArray());
     }
 
     private List<Long> bidIdsByAuctions() {

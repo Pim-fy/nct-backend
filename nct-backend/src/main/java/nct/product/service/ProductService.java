@@ -28,6 +28,8 @@ import nct.product.mapper.BannedKeywordMapper;
 import nct.product.mapper.ProductCommentMapper;
 import nct.product.mapper.ProductImageMapper;
 import nct.product.mapper.ProductMapper;
+import nct.trade.dto.SellerTradeStatusItem;
+import nct.trade.service.TradeService;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -38,6 +40,7 @@ public class ProductService {
     private final ReferenceDataService referenceDataService;
     private final ProductImageMapper productImageMapper;
     private final AuctionService auctionService;
+    private final TradeService tradeService;
     private final BannedKeywordMapper bannedKeywordMapper;
     private final ProductCommentMapper productCommentMapper;
 
@@ -131,11 +134,26 @@ public class ProductService {
                 auctionService.getAuctionStatusesByProducts(prdSns).stream()
                         .collect(Collectors.toMap(AuctionStatusSummaryResponse::getPrdSn, s -> s));
 
+        Map<Long, SellerTradeStatusItem> tradeStatusMap =
+                tradeService.getTradeStatusesByProducts(prdSns).stream()
+                        // 비정상 중복 거래가 있으면 SQL 정렬상 최신 상태를 우선한다.
+                        .collect(Collectors.toMap(
+                                SellerTradeStatusItem::getPrdSn,
+                                status -> status,
+                                (existing, ignored) -> existing));
+
         result.getList().forEach(p -> {
             AuctionStatusSummaryResponse s = statusMap.get(p.getPrdSn());
             if (s != null) {
                 p.setAucSn(s.getAucSn());
                 p.setAucStatusCd(s.getAucStatusCd());
+                p.setAucStatusNm(s.getAucStatusNm());
+            }
+
+            SellerTradeStatusItem tradeStatus = tradeStatusMap.get(p.getPrdSn());
+            if (tradeStatus != null) {
+                p.setTradeSn(tradeStatus.getTradeSn());
+                p.setTradeStatusCd(tradeStatus.getTradeStatusCd());
             }
         });
 

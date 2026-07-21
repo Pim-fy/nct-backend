@@ -61,4 +61,17 @@
         WHERE PT_CHG_ORD_SN = #{ptChgOrdSn}
     </update>
 
+    <!-- 대사 배치 전용: cutoff 이전에 등록된, 여전히 PENDING인 주문 전부 -->
+    <select id="selectPendingOlderThan" resultType="nct.point.domain.PointChargeOrder">
+        /* 포인트 충전 주문: 대사 배치 대상 조회 (PENDING이면서 cutoff보다 오래된 건) */
+        SELECT PT_CHG_ORD_SN AS ptChgOrdSn, USR_SN AS usrSn, PT_CHG_ORD_NO AS ptChgOrdNo,
+               PT_CHG_ORD_AMT AS ptChgOrdAmt, PT_CHG_ORD_STATUS_CD AS ptChgOrdStatusCd,
+               PT_CHG_ORD_PG_KEY AS ptChgOrdPgKey, PT_LDG_SN AS ptLdgSn,
+               PT_CHG_ORD_FAIL_RSN_CN AS ptChgOrdFailRsnCn,
+               PT_CHG_ORD_REG_DT AS ptChgOrdRegDt, PT_CHG_ORD_UPDT_DT AS ptChgOrdUpdtDt
+        FROM POINT_CHARGE_ORDER
+        WHERE PT_CHG_ORD_STATUS_CD = 'PCOC0001'
+          AND PT_CHG_ORD_REG_DT &lt; #{cutoff}
+    </select>
+
 </mapper>

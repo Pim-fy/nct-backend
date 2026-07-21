@@ -1,2 +1,4 @@
 .claude/
 .codex/
+.DS_Store
+.vscode/

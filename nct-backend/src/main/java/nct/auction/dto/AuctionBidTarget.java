@@ -18,6 +18,8 @@ public class AuctionBidTarget {
     private BigDecimal currentPrice;
     private BigDecimal bidUnitPrice;
     private BigDecimal instantBuyPrice;
+    private String tradeMethodCode;
     private String auctionStatusCode;
     private LocalDateTime endDateTime;
+    private LocalDateTime databaseNow;
 }

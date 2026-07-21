@@ -34,6 +34,11 @@ public interface AuthMemberPort {
     /** 소셜 로그인 최초 1회 자동 가입 */
     AuthMember registerOAuthMember(OAuthProfile profile);
 
+    // @ai_generated: 작업단위5 - OAuth 재로그인 시 기존 연동 회원 조회. email이 아니라
+    // USER_OAUTH(provider, providerKey) 기준으로 찾아야 타 계정과의 의도치 않은 이메일 매칭을 막는다.
+    /** USER_OAUTH 연동 기준 기존 회원 조회 */
+    Optional<AuthMember> findByOauthProviderKey(String providerCd, String providerKey);
+
     /** Refresh Token 저장/삭제 (로그아웃 시 null 전달) */
     void updateRefreshToken(Long memberId, String refreshToken);
 

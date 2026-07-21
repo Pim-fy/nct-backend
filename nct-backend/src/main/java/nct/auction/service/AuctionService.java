@@ -3,6 +3,7 @@ package nct.auction.service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
+import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
@@ -79,6 +81,23 @@ public class AuctionService {
         return status;
     }
 
+    @Transactional(readOnly = true)
+    public List<AuctionStatusSummaryResponse> getAuctionStatusesByProducts(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> prdSns = productIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (prdSns.isEmpty()) {
+            return List.of();
+        }
+
+        return auctionMapper.findAuctionStatusesByProducts(prdSns);
+    }
+
     @Transactional
     public void createAuctionForProduct(
             Long productId,
@@ -130,6 +149,7 @@ public class AuctionService {
         if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target)) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        validateBidBelowInstantBuyPrice(target, bidAmount);
 
         int updatedCount = auctionMapper.updateAuctionCurrentPrice(auctionId, bidAmount, userId.toString());
         if (updatedCount == 0) {
@@ -143,6 +163,7 @@ public class AuctionService {
         AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, bidAmount);
         pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
+        auctionMapper.extendAuctionTime(auctionId, userId.toString());
 
         return loadAuctionDetail(auctionId);
     }
@@ -200,6 +221,15 @@ public class AuctionService {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
         BigDecimal bidUnitPrice = target.getBidUnitPrice() == null ? BigDecimal.valueOf(1000) : target.getBidUnitPrice();
         return currentPrice.add(bidUnitPrice);
+    }
+
+    private void validateBidBelowInstantBuyPrice(AuctionBidTarget target, BigDecimal bidAmount) {
+        BigDecimal instantBuyPrice = target.getInstantBuyPrice();
+        if (instantBuyPrice != null
+                && instantBuyPrice.compareTo(BigDecimal.ZERO) > 0
+                && bidAmount.compareTo(instantBuyPrice) >= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 금액은 즉시구매가보다 낮아야 합니다.");
+        }
     }
 
     private AuctionBidCreateCommand insertHighestBid(Long auctionId, Long userId, BigDecimal bidAmount) {

@@ -11,12 +11,15 @@ import lombok.Setter;
 public class AuctionBidTarget {
 
     private Long auctionId;
+    private Long productId;
     private Long sellerId;
     private Long currentHighestBidId;
     private Long currentHighestBidderId;
     private BigDecimal currentPrice;
     private BigDecimal bidUnitPrice;
     private BigDecimal instantBuyPrice;
+    private String tradeMethodCode;
     private String auctionStatusCode;
     private LocalDateTime endDateTime;
+    private LocalDateTime databaseNow;
 }

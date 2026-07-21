@@ -44,6 +44,8 @@ import nct.global.exception.ErrorCode;
  *   - provider(제공자 서류): pdf + 이미지 — 자격증·증빙 등 민감 파일, 공개 서빙 금지·관리자 전용 열람
  *   - delivery(배송 발송 인증사진, F-AUC-009): 이미지만 — 공개 서빙 아님, **거래 당사자(구매자·판매자)만** 열람
  *     (TRADE_DELIVERY_FILE 연결 테이블 — 생성 백종남/소유 담당자4, 실DB 적용 2026-07-20, D-034)
+ *   - review(리뷰 사진, CHG-021): 이미지만 — product와 동일하게 공개 서빙
+ *     (REVIEW_IMAGE 연결 테이블 — 소유 담당자3, 2026-07-21)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -61,11 +63,14 @@ public class FileStorageService {
      * 서비스 구분(저장 폴더 이름)별 허용 확장자 — 화이트리스트이자 확장자 정책의 단일 확장 지점.
      * 새 도메인이 파일을 쓰게 되면 여기에만 항목을 추가한다.
      * provider에 gif를 뺀 것은 서류 제출 목록(담당자7 협의)에 없어서 — 움짤은 증빙이 아니다.
+     * review는 product와 확장자 목록을 동일하게 둔다 — 둘 다 공개 서빙되는 일반 사용자 사진이고,
+     * delivery(증빙 목적이라 gif 제외)와 달리 리뷰 사진은 증빙이 아니라 후기용이라 gif도 막을 이유가 없다.
      */
     private static final Map<String, Set<String>> SERVICE_EXTENSIONS = Map.of(
             "product", Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "provider", Set.of("pdf", "jpg", "jpeg", "png", "webp"),
-            "delivery", Set.of("jpg", "jpeg", "png", "webp"));
+            "delivery", Set.of("jpg", "jpeg", "png", "webp"),
+            "review", Set.of("jpg", "jpeg", "png", "gif", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -84,22 +89,12 @@ public class FileStorageService {
     public FileMeta storeImage(MultipartFile file, String service, Long usrSn) {
         String svc = validateService(service);
         String ext = validateFile(file, svc); // 확장자 정책은 서비스 구분별 (provider는 pdf 포함)
-
-        String dateDir = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
-        String saveNm = UUID.randomUUID() + "." + ext;
-        Path targetPath = Path.of(uploadDir, svc, dateDir, saveNm);
-
-        try {
-            Files.createDirectories(targetPath.getParent()); // {서비스}/{일자} 중첩 폴더까지 생성
-            file.transferTo(targetPath);
-        } catch (IOException e) {
-            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
-        }
+        StoredFile stored = writeToDisk(file, svc, ext); // 디스크 저장은 교체와 공용 헬퍼
 
         FileMeta fileMeta = FileMeta.builder()
                 .flOrgNm(file.getOriginalFilename())
-                .flSaveNm(saveNm)
-                .flPath(ATTACHMENT_URL_PREFIX + "/" + svc + "/" + dateDir + "/" + saveNm)
+                .flSaveNm(stored.saveNm())
+                .flPath(stored.url())
                 .flExt(ext)
                 .flSizeAmt(BigDecimal.valueOf(file.getSize()))
                 .flTypeCd(resolveTypeCd(ext)) // pdf는 '문서', 나머지는 '이미지'로 기록
@@ -110,7 +105,7 @@ public class FileStorageService {
             fileMapper.insert(fileMeta);
         } catch (RuntimeException e) {
             // insert 실패 시 방금 디스크에 쓴 파일이 고아로 남지 않게 정리하고 원래 예외를 올린다
-            deleteQuietly(targetPath);
+            deleteQuietly(stored.path());
             throw e;
         }
         return fileMeta;
@@ -119,19 +114,17 @@ public class FileStorageService {
     /**
      * 삭제: 존재(404) → 소유자(403) → 참조(409) 순서로 검증 후
      * FILES 소프트 삭제(FL_USE_YN='N') + 디스크 파일 물리 삭제.
-     * 검사 순서를 404를 먼저로 둔 것은 타인에게 파일 존재 여부보다 소유 여부가 먼저 새지 않게 하기 위함.
+     * 존재·소유 검증은 requireOwnedActiveFile 재사용 — 검증 규칙(404를 403보다 먼저)이 한 곳에 모인다.
      */
     @Transactional
     public void deleteImage(Long flSn, Long usrSn) {
-        FileMeta fileMeta = fileMapper.findById(flSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+        FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
 
-        if (!String.valueOf(usrSn).equals(fileMeta.getFlRegId())) {
-            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
-        }
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
-        // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20). 리뷰 등 새 참조처가 생기면 같은 방식으로 추가)
-        if (fileMapper.countProductImageRefs(flSn) > 0 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0) {
+        // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20) + 리뷰 사진(CHG-021, 실DB 적용 2026-07-21))
+        if (fileMapper.countProductImageRefs(flSn) > 0
+                || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
+                || fileMapper.countReviewImageRefs(flSn) > 0) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 
@@ -148,31 +141,17 @@ public class FileStorageService {
      */
     @Transactional
     public FileMeta replaceImage(Long flSn, MultipartFile file, Long usrSn) {
-        FileMeta oldMeta = fileMapper.findById(flSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
-
-        if (!String.valueOf(usrSn).equals(oldMeta.getFlRegId())) {
-            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
-        }
+        FileMeta oldMeta = requireOwnedActiveFile(flSn, usrSn); // 존재·소유 검증 공용화
 
         String svc = extractService(oldMeta.getFlPath()); // 서비스 구분은 원본 파일의 것을 그대로 따른다
         String ext = validateFile(file, svc); // 교체 파일도 해당 서비스의 확장자 정책을 따른다
-        String dateDir = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String saveNm = UUID.randomUUID() + "." + ext;
-        Path targetPath = Path.of(uploadDir, svc, dateDir, saveNm);
-
-        try {
-            Files.createDirectories(targetPath.getParent());
-            file.transferTo(targetPath);
-        } catch (IOException e) {
-            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
-        }
+        StoredFile stored = writeToDisk(file, svc, ext); // 디스크 저장은 업로드와 공용 헬퍼
 
         FileMeta newMeta = FileMeta.builder()
                 .flSn(flSn)
                 .flOrgNm(file.getOriginalFilename())
-                .flSaveNm(saveNm)
-                .flPath(ATTACHMENT_URL_PREFIX + "/" + svc + "/" + dateDir + "/" + saveNm)
+                .flSaveNm(stored.saveNm())
+                .flPath(stored.url())
                 .flExt(ext)
                 .flSizeAmt(BigDecimal.valueOf(file.getSize()))
                 .flTypeCd(resolveTypeCd(ext)) // pdf↔이미지 교체 시 유형도 함께 갱신
@@ -183,7 +162,7 @@ public class FileStorageService {
             fileMapper.updateMeta(newMeta);
         } catch (RuntimeException e) {
             // 메타 갱신 실패 시 방금 저장한 새 파일을 정리 — DB는 롤백되므로 기존 상태 그대로 유지된다
-            deleteQuietly(targetPath);
+            deleteQuietly(stored.path());
             throw e;
         }
 
@@ -273,6 +252,26 @@ public class FileStorageService {
     /*===========================
      * 내부 검증/경로 헬퍼
      *===========================*/
+
+    /**
+     * 디스크 저장 공통 (업로드/교체 공용): {uploadDir}/{서비스}/{yyyyMMdd}/UUID.확장자 로 쓰고
+     * 후속 처리에 필요한 위치 정보(저장명·디스크 경로·서빙 URL)를 묶어 돌려준다
+     */
+    private StoredFile writeToDisk(MultipartFile file, String svc, String ext) {
+        String dateDir = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
+        String saveNm = UUID.randomUUID() + "." + ext;
+        Path targetPath = Path.of(uploadDir, svc, dateDir, saveNm);
+        try {
+            Files.createDirectories(targetPath.getParent()); // {서비스}/{일자} 중첩 폴더까지 생성
+            file.transferTo(targetPath);
+        } catch (IOException e) {
+            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
+        }
+        return new StoredFile(saveNm, targetPath, ATTACHMENT_URL_PREFIX + "/" + svc + "/" + dateDir + "/" + saveNm);
+    }
+
+    /** writeToDisk 결과 묶음 */
+    private record StoredFile(String saveNm, Path path, String url) {}
 
     /** 서비스 구분 검증 — 누락(null/공백)도 미허용 값과 똑같이 400 하나로 응답한다 */
     private String validateService(String service) {

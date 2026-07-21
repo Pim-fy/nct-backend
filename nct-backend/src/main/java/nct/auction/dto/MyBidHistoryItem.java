@@ -34,17 +34,14 @@ public class MyBidHistoryItem {
 
     @JsonProperty("displayStatus")
     public String getDisplayStatus() {
-        if (BidStatusCode.OUTBID.equals(bidStatusCode)) {
-            return "OUTBID";
-        }
         if (BidStatusCode.CANCELED.equals(bidStatusCode)
                 || BidStatusCode.EXCEPTION_CANCELED.equals(bidStatusCode)
                 || AuctionStatusCode.CANCELED.equals(auctionStatusCode)
                 || AuctionStatusCode.FAILED.equals(auctionStatusCode)) {
             return "CANCELED";
         }
-        if (AuctionStatusCode.CANCEL_REQUESTED.equals(auctionStatusCode)) {
-            return "CANCEL_REQUESTED";
+        if (BidStatusCode.OUTBID.equals(bidStatusCode)) {
+            return "OUTBID";
         }
         if (BidStatusCode.HIGHEST.equals(bidStatusCode)
                 && AuctionStatusCode.ACTIVE.equals(auctionStatusCode)) {

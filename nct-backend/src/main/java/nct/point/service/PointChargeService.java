@@ -45,8 +45,17 @@ public class PointChargeService {
      * 3시간은 결제창을 열어둔 채 자리를 비운 극단적인 경우까지 덮는 버퍼.
      * 별도 배치 없이 승인·조회 시점에 이 기준으로 판정한다 (만료된 대기 건은 이후 아무 일도
      * 일으킬 수 없으므로 상태를 실제로 바꾸는 배치와 실질 효과가 같다).
+     * public인 이유: PointChargeReconciliationScheduler(2단계 배치)가 "확인해봤는데 결제
+     * 이력이 없고 TTL도 지났다 → 진짜 실패로 확정"을 판단할 때 같은 기준을 써야 하기 때문.
      */
-    private static final Duration PENDING_TTL = Duration.ofHours(3);
+    public static final Duration PENDING_TTL = Duration.ofHours(3);
+
+    /**
+     * 결제 승인 API 통신 실패 재시도 간격 — 1s, 2s, 4s (F-PG-04, 2026-07-21).
+     * 비즈니스 거절(카드 한도초과 등)은 재시도 대상이 아니다 — 다시 불러도 똑같이 거절되므로
+     * TossPaymentsClient가 통신 실패로 예외를 던진 경우(ErrorCode.EXTERNAL_API_ERROR)에만 재시도한다.
+     */
+    private static final long[] CONFIRM_RETRY_BACKOFF_MS = {1000, 2000, 4000};
 
     /**
      * 충전 주문 생성 (결제위젯 호출 전). @return 프론트에 넘길 주문번호
@@ -55,6 +64,16 @@ public class PointChargeService {
      * DB CHECK 제약이 아니라 여기서 막는 이유: 한도가 운영 중 바뀔 수 있는 설정값이라
      * 매번 배포 없이 SYSTEM_SETTING 값만 바꿔서 조정할 수 있어야 하기 때문.
      */
+    /**
+     * 현재 충전 한도(최소·최대) 조회 — 지갑 충전 모달 안내문용 (2026-07-20).
+     * 안내문을 프론트에 하드코딩하면 관리자가 시스템 설정에서 한도를 바꿀 때 안내만 스테일이 되므로,
+     * 검증에 실제로 쓰는 값(SYSTEM_SETTING)을 그대로 노출한다 — 안내와 검증의 출처 단일화
+     */
+    @Transactional(readOnly = true)
+    public SystemSetting getChargeLimits() {
+        return systemSettingMapper.selectChargeLimits();
+    }
+
     @Transactional
     public String createOrder(long usrSn, long amt) {
         if (amt <= 0) {
@@ -94,7 +113,12 @@ public class PointChargeService {
     public void confirm(String orderNo, String paymentKey) {
         PointChargeOrder order = requirePending(orderNo);
 
-        TossConfirmResult result = tossPaymentsClient.confirm(paymentKey, orderNo, order.getPtChgOrdAmt());
+        // confirmWithRetry가 재시도를 다 써도 통신 실패로 끝나면 여기서 예외가 그대로 터져나간다
+        // (아래 orderMapper.fail 경로를 타지 않음) — 의도적이다. 통신 실패는 토스 쪽에서
+        // 실제로 결제가 됐는지 안 됐는지 이 시점엔 알 수 없으므로 '실패'로 단정하지 않고
+        // 주문을 '대기'로 남겨둔다. 2단계 배치(PointChargeReconciliationScheduler)가 나중에
+        // 토스 조회 API로 직접 확인해 실제 성공분은 복구하고, 진짜 미체결분만 최종 실패 처리한다.
+        TossConfirmResult result = confirmWithRetry(paymentKey, orderNo, order.getPtChgOrdAmt());
 
         if (!result.success()) {
             orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(),
@@ -102,10 +126,33 @@ public class PointChargeService {
             throw new PointException(ErrorCode.EXTERNAL_API_ERROR, "결제 승인 실패: " + result.failMessage());
         }
 
-        // 위변조 방지 핵심: Toss가 승인한 실제 금액과 사전 기록 금액이 정확히 일치할 때만 반영
-        if (result.approvedAmount() != order.getPtChgOrdAmt()) {
+        applyVerifiedPayment(order, paymentKey, result.approvedAmount());
+    }
+
+    /**
+     * 2단계 대사 배치(PointChargeReconciliationScheduler) 전용 진입점.
+     * confirm 콜백을 못 받아 계속 PENDING으로 남아있던 주문을, 배치가 토스 조회 API로
+     * 실제 결제완료(DONE)를 확인한 뒤 호출한다. confirm()과 달리 3시간 TTL 만료 여부를
+     * 따지지 않는다 — TTL을 넘겨서까지 확인 못 했던 결제를 뒤늦게라도 복구하는 게 이 경로의
+     * 목적이라, 여기서 TTL을 걸면 정작 구하려는 케이스를 스스로 막아버리게 된다.
+     */
+    @Transactional(noRollbackFor = PointException.class)
+    public void recoverFromReconciliation(String orderNo, String paymentKey, long approvedAmount) {
+        PointChargeOrder order = requirePendingStatus(orderNo);
+        applyVerifiedPayment(order, paymentKey, approvedAmount);
+    }
+
+    /**
+     * 검증까지 끝난 결제를 실제로 반영 — 금액 대조 → 지급 → 완료 처리 → 알림.
+     * confirm()(클라이언트 트리거)과 recoverFromReconciliation()(배치 발견)이 둘 다
+     * 이 메서드를 거쳐서만 지급한다 — 검증·보상 경로를 하나로 유지하기 위함. 호출부가
+     * 이미 FOR UPDATE로 잠근 order를 넘겨준다고 가정한다(requirePending/requirePendingStatus).
+     */
+    private void applyVerifiedPayment(PointChargeOrder order, String paymentKey, long approvedAmount) {
+        // 위변조 방지 핵심: 토스가 승인한 실제 금액과 사전 기록 금액이 정확히 일치할 때만 반영
+        if (approvedAmount != order.getPtChgOrdAmt()) {
             orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(), paymentKey,
-                    "승인 금액 불일치 (기록: " + order.getPtChgOrdAmt() + ", 승인: " + result.approvedAmount() + ")");
+                    "승인 금액 불일치 (기록: " + order.getPtChgOrdAmt() + ", 승인: " + approvedAmount + ")");
             throw new PointException(ErrorCode.CHARGE_AMOUNT_MISMATCH,
                     "결제 승인 금액이 사전 기록과 일치하지 않습니다.");
         }
@@ -115,7 +162,7 @@ public class PointChargeService {
         Long ptLdgSn = null;
         try {
             ptLdgSn = pointService.creditCharge(order.getUsrSn(), order.getPtChgOrdAmt(),
-                    "포인트 충전 (주문번호 " + orderNo + ")");
+                    "포인트 충전 (주문번호 " + order.getPtChgOrdNo() + ")");
             orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey, ptLdgSn);
 
             // 같은 트랜잭션 안에서 알림까지 기록 — 충전은 됐는데 알림만 누락되는 일이 없도록
@@ -157,6 +204,24 @@ public class PointChargeService {
                          : "충전 처리 중 오류가 발생했습니다. 결제 취소가 지연될 수 있어 관리자가 확인할 예정입니다.");
     }
 
+    /**
+     * 2단계 대사 배치 전용 — 토스에 결제 이력이 없거나(주문 자체를 포기) 취소·만료 상태이고
+     * TTL(3시간)도 지난 PENDING 주문을 실제로 FAILED로 확정한다. 지금까지는 화면 표시만
+     * "취소"로 바뀌고 DB는 PENDING으로 남아있었는데, 배치가 토스와 대조까지 마친 뒤에는
+     * DB 상태도 실제로 정리한다. 그 사이 사용자가 confirm()으로 먼저 처리했을 수도 있어
+     * 다시 행 잠금 후 여전히 PENDING인지 확인한다 — 아니라면 조용히 넘어간다.
+     */
+    @Transactional
+    public void expireIfStillPending(String orderNo, String reason) {
+        PointChargeOrder order;
+        try {
+            order = requirePendingStatus(orderNo);
+        } catch (PointException alreadyProcessed) {
+            return;
+        }
+        orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(), null, reason);
+    }
+
     /** 내 충전 주문 목록 조회 (최신순 100건, 실패·취소·대기 포함) */
     @Transactional(readOnly = true)
     public List<PointChargeOrder> getOrderList(long usrSn) {
@@ -165,8 +230,52 @@ public class PointChargeService {
         return orders;
     }
 
-    /** 상태 전이 사전 검증 — 행 잠금 후 대기 상태인지 확인 */
+    /**
+     * 결제 승인 API 호출 — 통신 실패(EXTERNAL_API_ERROR)에만 지수 백오프로 재시도한다(F-PG-04).
+     * 토스가 명시적으로 거절한 비즈니스 오류는 TossConfirmResult.failure(...)로 정상 반환되므로
+     * 여기서 예외로 잡히지 않고 그대로 통과한다 — 재시도 없이 즉시 실패 처리된다.
+     */
+    private TossConfirmResult confirmWithRetry(String paymentKey, String orderNo, long amount) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return tossPaymentsClient.confirm(paymentKey, orderNo, amount);
+            } catch (PointException e) {
+                boolean retryable = e.getErrorCode() == ErrorCode.EXTERNAL_API_ERROR
+                        && attempt < CONFIRM_RETRY_BACKOFF_MS.length;
+                if (!retryable) {
+                    throw e;
+                }
+                sleepBeforeRetry(CONFIRM_RETRY_BACKOFF_MS[attempt]);
+            }
+        }
+    }
+
+    private void sleepBeforeRetry(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new PointException(ErrorCode.EXTERNAL_API_ERROR, "결제 승인 재시도 중 인터럽트가 발생했습니다.");
+        }
+    }
+
+    /** 상태 전이 사전 검증 — 행 잠금 후 대기 상태인지 확인, TTL도 함께 검사(D-025) */
     private PointChargeOrder requirePending(String orderNo) {
+        PointChargeOrder order = requirePendingStatus(orderNo);
+        // D-025: 3시간 지난 대기 주문은 승인 거부 — 오래 전에 열어둔 결제창으로 뒤늦게 결제되는 것을 막는다
+        if (isExpiredPending(order)) {
+            throw new PointException(ErrorCode.CHARGE_ORDER_EXPIRED,
+                    "시간이 만료된 충전 주문입니다 (대기 3시간 초과): " + orderNo);
+        }
+        return order;
+    }
+
+    /**
+     * 상태 전이 사전 검증 — 행 잠금 후 대기 상태인지만 확인, TTL은 보지 않는다.
+     * recoverFromReconciliation() 전용 — 배치가 구하려는 대상이 바로 "TTL을 넘긴 PENDING 건"이라
+     * 여기서 TTL을 걸면 안 된다.
+     */
+    private PointChargeOrder requirePendingStatus(String orderNo) {
         PointChargeOrder order = orderMapper.selectForUpdateByOrderNo(orderNo);
         if (order == null) {
             throw new PointException(ErrorCode.CHARGE_ORDER_NOT_FOUND, "존재하지 않는 충전 주문입니다: " + orderNo);
@@ -174,11 +283,6 @@ public class PointChargeService {
         if (!PointChargeOrderStatus.PENDING.getCode().equals(order.getPtChgOrdStatusCd())) {
             throw new PointException(ErrorCode.CHARGE_ORDER_ALREADY_PROCESSED,
                     "이미 처리된 충전 주문입니다: " + orderNo);
-        }
-        // D-025: 3시간 지난 대기 주문은 승인 거부 — 오래 전에 열어둔 결제창으로 뒤늦게 결제되는 것을 막는다
-        if (isExpiredPending(order)) {
-            throw new PointException(ErrorCode.CHARGE_ORDER_EXPIRED,
-                    "시간이 만료된 충전 주문입니다 (대기 3시간 초과): " + orderNo);
         }
         return order;
     }

@@ -13,4 +13,15 @@
         LIMIT 1
     </select>
 
+    <!-- 시스템 설정: 경매 정책 조회 (담당자5 소비용) -->
+    <select id="selectAuctionPolicy" resultType="nct.point.domain.AuctionPolicy">
+        /* 시스템 설정: 경매 정책 조회 */
+        SELECT
+            SYS_SET_AUC_EXT_MIN     AS aucExtMin,
+            SYS_SET_AUC_EXT_MAX_CNT AS aucExtMaxCnt,
+            SYS_SET_MIN_BID_UNIT    AS minBidUnit
+        FROM SYSTEM_SETTING
+        LIMIT 1
+    </select>
+
 </mapper>

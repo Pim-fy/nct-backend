@@ -25,6 +25,7 @@ import nct.point.exception.PointException;
  * - 시크릿 키로 서버 대 서버 통신만 한다. 프론트는 이 키를 절대 알지 못한다(클라이언트 키만 사용)
  * - 충전 방식은 결제위젯 단일(사용자 결정, 2026-07-16)이라 위젯 전용 키(gsk)만 사용한다
  * - 자체 재시도는 하지 않는다 — 재시도 정책(F-PG-04)은 호출하는 쪽에서 관리한다
+ * - lookupByOrderId는 confirm 콜백을 못 받은 결제를 사후 대사하는 배치 전용(2026-07-21 추가)
  */
 @Component
 @RequiredArgsConstructor
@@ -79,10 +80,7 @@ public class TossPaymentsClient {
                 String message = messageValue != null ? String.valueOf(messageValue) : "결제 승인에 실패했습니다.";
                 return TossConfirmResult.failure(message);
             }
-            return TossConfirmResult.success(
-                    (String) json.get("paymentKey"),
-                    ((Number) json.get("totalAmount")).longValue(),
-                    (String) json.get("status"));
+            return TossConfirmResult.success(((Number) json.get("totalAmount")).longValue());
         } catch (PointException e) {
             throw e;
         } catch (Exception e) {
@@ -119,6 +117,46 @@ public class TossPaymentsClient {
             return response.statusCode() == 200;
         } catch (Exception e) {
             return false; // 통신 오류도 "취소 실패"로 취급 — 관리자 확인 경로로
+        }
+    }
+
+    /**
+     * 주문번호로 결제 이력 조회 (2단계 대사 배치 전용, 2026-07-21).
+     * confirm 콜백이 오지 않은 PENDING 주문에 대해, 토스 쪽에는 실제로 결제가 끝났는지
+     * 서버가 직접 확인할 때 쓴다. "통신 실패로 확인 못 함"과 "확인했는데 결제 이력이 없음"을
+     * 반드시 구분해야 한다 — 전자를 후자로 오인하면 통신 장애 중에 멀쩡한 결제 건을
+     * 잘못 실패 처리할 수 있다({@link TossOrderLookupResult} 참고).
+     */
+    public TossOrderLookupResult lookupByOrderId(String orderId) {
+        String authHeader = "Basic " + Base64.getEncoder()
+                .encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
+
+        // 조회 주소도 취소 주소와 같은 API 뿌리를 쓴다: .../v1/payments/orders/{orderId}
+        String lookupUrl = confirmUrl.replace("/confirm", "") + "/orders/" + orderId;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(lookupUrl))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", authHeader)
+                .GET()
+                .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 404) {
+                return TossOrderLookupResult.notFound();
+            }
+            if (response.statusCode() != 200) {
+                return TossOrderLookupResult.unreachable();
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> json = objectMapper.readValue(response.body(), Map.class);
+            String status = (String) json.get("status");
+            long totalAmount = ((Number) json.get("totalAmount")).longValue();
+            String paymentKey = (String) json.get("paymentKey");
+            return TossOrderLookupResult.found(status, totalAmount, paymentKey);
+        } catch (Exception e) {
+            return TossOrderLookupResult.unreachable();
         }
     }
 }

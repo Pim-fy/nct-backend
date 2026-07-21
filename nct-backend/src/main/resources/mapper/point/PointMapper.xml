@@ -136,4 +136,20 @@
           AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
     </select>
 
+    <!-- 대사 배치: 전 회원 원장 전체 합계 (총 발행량 = 총 충전 − 총 환전 항등식의 좌변) -->
+    <select id="selectTotalLedgerSum" resultType="long">
+        /* 포인트: 대사 배치 - 전체 원장 합계 */
+        SELECT COALESCE(SUM(PT_LDG_AMT), 0)
+        FROM POINT_LEDGER
+    </select>
+
+    <!-- 대사 배치: 시스템 경계를 넘나드는 원장 유형(충전·환전) + 그 취소분(보정/ADJUST, D-027 충전
+         회수 전용) 합계 (항등식의 우변). ADJUST 누락 시 D-027 보상 건마다 거짓 불일치 발생 -->
+    <select id="selectBoundaryCrossingSum" resultType="long">
+        /* 포인트: 대사 배치 - 충전·환전(경계이동)+보정 합계 */
+        SELECT COALESCE(SUM(PT_LDG_AMT), 0)
+        FROM POINT_LEDGER
+        WHERE PT_LDG_TYPE_CD IN ('PTLC0004', 'PTLC0009', 'PTLC0010', 'PTLC0011')
+    </select>
+
 </mapper>

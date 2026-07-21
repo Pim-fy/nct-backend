@@ -66,4 +66,21 @@ public interface PointMapper {
      * - TRADE_DISPUTE는 타 담당자 소유 — 읽기 전용 조회만, 변경 금지
      */
     int countActiveDisputesByTrade(@Param("trdSn") long trdSn);
+
+    /**
+     * 대사 배치(F-PT-06/QSC-PT-08) 전용 — 전 회원 원장 전체 합계.
+     * selectBalance는 회원 1명 기준이라(WHERE USR_SN=...) 재사용 불가, 회원 무관 전체 집계다.
+     */
+    long selectTotalLedgerSum();
+
+    /**
+     * 대사 배치 전용 — 시스템 경계를 넘나드는 원장 유형(충전 PTLC0004, 환전출금 PTLC0010,
+     * 환전복원 PTLC0011)과, 그 경계이동을 취소하는 보정(PTLC0009 ADJUST — D-027 충전 내부실패
+     * 회수 전용, reverseCharge)까지의 합계. ADJUST를 빼면 D-027 보상이 실행될 때마다
+     * "충전은 +amt로 잡혔는데 그 취소분은 안 잡혀서" 항등식이 거짓으로 깨진다 — 실제로
+     * 2026-07-21 이 누락 때문에 공유 DB에서 위양성(false positive) 위험 이벤트가 발생했다.
+     * 나머지 유형(홀딩·반환·보관금전환·정산·전환·환불)은 전부 회원 내부 카테고리 이동이라
+     * 정상이라면 거래별로 합이 0이 된다 — selectTotalLedgerSum과 항등식을 이룬다.
+     */
+    long selectBoundaryCrossingSum();
 }

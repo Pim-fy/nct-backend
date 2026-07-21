@@ -1,5 +1,6 @@
 package nct.point.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -36,4 +37,10 @@ public interface PointChargeOrderMapper {
 
     /** 내 충전 주문 목록 (최신순 100건) — 실패·취소·대기 건까지 전부 포함해 시도 이력을 보여준다 */
     List<PointChargeOrder> selectListByUser(@Param("usrSn") long usrSn);
+
+    /**
+     * 대사 배치(PointChargeReconciliationScheduler) 전용 — 등록 후 cutoff 이전까지 여전히
+     * PENDING인 주문 전부 (TTL 만료 여부와 무관, 상한 없음 — 정상 운영이라면 소량이라 가정)
+     */
+    List<PointChargeOrder> selectPendingOlderThan(@Param("cutoff") LocalDateTime cutoff);
 }

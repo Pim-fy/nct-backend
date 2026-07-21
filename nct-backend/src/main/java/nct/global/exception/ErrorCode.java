@@ -87,6 +87,9 @@ public enum ErrorCode {
     CHARGE_ORDER_EXPIRED(HttpStatus.CONFLICT, "시간이 만료된 충전 주문입니다."),
     CHARGE_INTERNAL_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "충전 처리 중 오류가 발생하여 결제를 취소 처리했습니다."),
 
+    // 시스템 설정 읽기 계약 (F-OPS-024 SYSTEM_SETTING, 타 도메인 소비용 — 값 이상 시 임의 기본값 대신 실패)
+    SYSTEM_SETTING_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "시스템 설정 값을 확인할 수 없어 요청을 처리할 수 없습니다."),
+
     // 포인트 환전 (F-PAY-012)
     EXCHANGE_ACCOUNT_NOT_REGISTERED(HttpStatus.BAD_REQUEST, "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요."),
     EXCHANGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 환전 신청입니다."),

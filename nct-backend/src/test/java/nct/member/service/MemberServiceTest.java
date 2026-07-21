@@ -1,5 +1,6 @@
 package nct.member.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -27,6 +28,7 @@ import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.member.domain.Member;
+import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.dto.ProfileUpdateRequest;
 import nct.member.mapper.MemberMapper;
 
@@ -117,6 +119,41 @@ class MemberServiceTest {
 
         verify(memberMapper).withdraw(eq(101L), eq("withdrawn_101@withdrawn.local"), eq("탈퇴한 사용자_101"));
         verify(authMemberPort).updateRefreshToken(101L, null);
+    }
+
+    @Test
+    void 구매자가_존재하지_않으면_USER_NOT_FOUND를_던진다() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> memberService.getBuyerAddressSnapshot(101L))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    void 구매자_주소가_불완전하면_BUYER_ADDRESS_INCOMPLETE를_던진다() {
+        when(memberMapper.findMemberById(101L))
+                .thenReturn(Optional.of(memberWithAddress("12345", "서울시 강남구", "  ")));
+
+        assertThatThrownBy(() -> memberService.getBuyerAddressSnapshot(101L))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+    }
+
+    @Test
+    void 구매자_주소가_모두_있으면_스냅샷을_반환한다() {
+        when(memberMapper.findMemberById(101L))
+                .thenReturn(Optional.of(memberWithAddress("12345", "서울시 강남구", "101동 202호")));
+
+        BuyerAddressSnapshot snapshot = memberService.getBuyerAddressSnapshot(101L);
+
+        assertThat(snapshot).isEqualTo(new BuyerAddressSnapshot("12345", "서울시 강남구", "101동 202호"));
+    }
+
+    private Member memberWithAddress(String zip, String addr, String daddr) {
+        return Member.builder().usrSn(101L).usrZip(zip).usrAddr(addr).usrDaddr(daddr).build();
     }
 
     private Member memberWithNickname(String nickname) {

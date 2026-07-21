@@ -20,8 +20,8 @@ import lombok.RequiredArgsConstructor;
  * - /api/attachment/** 정적 리소스 서빙 (담당자6, F-AUC-002 이미지 연계)
  *   app.upload.dir 디스크 경로({서비스}/{yyyyMMdd}/파일명 구조)를 URL로 노출.
  *   POST/DELETE/PUT /api/attachment 는 FileController(컨트롤러 매핑이 우선)가 담당하므로 충돌 없음.
- *   ⚠️ 공개 서빙은 product(상품 이미지)만 — provider(제공자 서류)는 민감정보라 정적 서빙에서
- *   물리적으로 제외하고, 관리자 전용 API(AdminProviderFileController)로만 열람한다 (2026-07-20)
+ *   ⚠️ 공개 서빙은 product(상품 이미지)·review(리뷰 사진, CHG-021)만 — provider(제공자 서류)는 민감정보라
+ *   정적 서빙에서 물리적으로 제외하고, 관리자 전용 API(AdminProviderFileController)로만 열람한다 (2026-07-20)
  */
 @Configuration
 @RequiredArgsConstructor
@@ -54,5 +54,9 @@ public class WebConfig implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler("/api/attachment/product/**")
                 .addResourceLocations("file:" + uploadDir + "/product/");
+        // 리뷰 사진(CHG-021)도 상품 이미지와 같은 이유로 공개 서빙 — product 핸들러와 완전히 같은 구조,
+        // 서비스 구분(review)만 다른 별도 핸들러로 등록한다 (경로별 물리 루트가 다르기 때문에 하나로 합칠 수 없음).
+        registry.addResourceHandler("/api/attachment/review/**")
+                .addResourceLocations("file:" + uploadDir + "/review/");
     }
 }

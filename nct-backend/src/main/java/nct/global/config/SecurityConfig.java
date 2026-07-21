@@ -79,12 +79,12 @@ public class SecurityConfig {
                 // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
                     .permitAll()
-                // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지는 비로그인 탐색에서도 보여야 한다.
+                // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지·리뷰 사진은 비로그인 탐색에서도 보여야 한다.
                 //   업로드/삭제/교체(POST·DELETE·PUT)는 인증 필요라 GET만 연다.
                 //   (properties의 permit-all-paths는 HTTP 메서드 구분이 없어 여기 Java에서 지정)
-                //   ⚠️ 공개는 product 경로만 - provider(제공자 서류)는 민감정보라 공개 서빙 금지,
+                //   ⚠️ 공개는 product·review 경로만 - provider(제공자 서류)는 민감정보라 공개 서빙 금지,
                 //   관리자 전용 API(/api/admin/provider-applications/**, 위 ROLE_ADMIN 규칙)로만 열람 (2026-07-20)
-                .requestMatchers(HttpMethod.GET, "/api/attachment/product/**")
+                .requestMatchers(HttpMethod.GET, "/api/attachment/product/**", "/api/attachment/review/**")
                     .permitAll()
                 // 화이트리스트 - application.properties 의 app.security.permit-all-paths
                 .requestMatchers(securityProperties.getPermitAllPaths().toArray(String[]::new))

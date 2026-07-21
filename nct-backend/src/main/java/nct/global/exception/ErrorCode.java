@@ -111,7 +111,8 @@ public enum ErrorCode {
     /*==================== 파일 도메인 (담당자6, F-AUC-002 이미지 연계) ====================*/
 
     FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드할 파일이 비어 있습니다."),
-    FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "이미지 파일(jpg, png, gif, webp)만 업로드할 수 있습니다."),
+    // 허용 확장자는 서비스 구분별로 다름(FileStorageService.SERVICE_EXTENSIONS) — 특정 목록을 박지 않는 중립 문구 (2026-07-20)
+    FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일 형식입니다."),
     FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 크기는 10MB를 초과할 수 없습니다."),
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장 중 오류가 발생했습니다."),
     FILE_INVALID_SERVICE(HttpStatus.BAD_REQUEST, "허용되지 않은 첨부 서비스 구분입니다."),

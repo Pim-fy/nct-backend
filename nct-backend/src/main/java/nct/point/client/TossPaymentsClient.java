@@ -79,10 +79,7 @@ public class TossPaymentsClient {
                 String message = messageValue != null ? String.valueOf(messageValue) : "결제 승인에 실패했습니다.";
                 return TossConfirmResult.failure(message);
             }
-            return TossConfirmResult.success(
-                    (String) json.get("paymentKey"),
-                    ((Number) json.get("totalAmount")).longValue(),
-                    (String) json.get("status"));
+            return TossConfirmResult.success(((Number) json.get("totalAmount")).longValue());
         } catch (PointException e) {
             throw e;
         } catch (Exception e) {

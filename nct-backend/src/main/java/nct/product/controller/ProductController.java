@@ -70,7 +70,7 @@ public class ProductController {
     /** 상품 상세 조회 */
     @GetMapping("/{prdSn}")
     public ResponseEntity<ApiResponse<ProductResponse>> getProduct(
-            @PathVariable Long prdSn) {
+            @PathVariable(name = "prdSn") Long prdSn) {
 
         return ResponseEntity.ok(ApiResponse.success(productService.getProduct(prdSn)));
     }
@@ -113,7 +113,7 @@ public class ProductController {
     @DeleteMapping("/{prdSn}")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long prdSn) {
+            @PathVariable(name = "prdSn") Long prdSn) {
 
         Long usrSn = userDetails.getMember().getId();
         productService.deleteProduct(prdSn, usrSn);

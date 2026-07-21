@@ -18,6 +18,8 @@ import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.BuyerAddressSnapshot;
+import nct.member.service.MemberService;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
@@ -60,6 +62,7 @@ public class TradeService {
     private final NotificationService notificationService;
     private final SystemSettingAdminMapper systemSettingMapper;
     private final FileStorageService fileStorageService;
+    private final MemberService memberService;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -131,13 +134,15 @@ public class TradeService {
 
         tradeMapper.insertMaterialTrade(trade);
 
-        // 택배는 낙찰 시점 주소를 복사해야 판매자가 이후 변경된 회원 주소를 보지 않는다.
-        if (DELIVERY_METHOD.equals(tradeMethod)
-                && tradeMapper.insertDeliverySnapshotFromBuyer(
-                        trade.getTrdSn(),
-                        command.getBuyerUserId()) == 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "낙찰자의 배송지가 등록되어 있지 않습니다.");
+        // MemberService가 주소 완전성을 보장한다. 예외를 잡지 않아 경매 트랜잭션 전체가 롤백된다.
+        if (DELIVERY_METHOD.equals(tradeMethod)) {
+            BuyerAddressSnapshot address = memberService.getBuyerAddressSnapshot(
+                    command.getBuyerUserId());
+            tradeMapper.insertDeliverySnapshot(
+                    trade.getTrdSn(),
+                    address.zip(),
+                    address.addr(),
+                    address.daddr());
         }
 
         tradeMapper.insertStatusHistory(

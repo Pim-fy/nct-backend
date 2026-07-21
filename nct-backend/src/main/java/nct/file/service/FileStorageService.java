@@ -44,6 +44,8 @@ import nct.global.exception.ErrorCode;
  *   - provider(제공자 서류): pdf + 이미지 — 자격증·증빙 등 민감 파일, 공개 서빙 금지·관리자 전용 열람
  *   - delivery(배송 발송 인증사진, F-AUC-009): 이미지만 — 공개 서빙 아님, **거래 당사자(구매자·판매자)만** 열람
  *     (TRADE_DELIVERY_FILE 연결 테이블 — 생성 백종남/소유 담당자4, 실DB 적용 2026-07-20, D-034)
+ *   - review(리뷰 사진, CHG-021): 이미지만 — product와 동일하게 공개 서빙
+ *     (REVIEW_IMAGE 연결 테이블 — 소유 담당자3, 2026-07-21)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -61,11 +63,14 @@ public class FileStorageService {
      * 서비스 구분(저장 폴더 이름)별 허용 확장자 — 화이트리스트이자 확장자 정책의 단일 확장 지점.
      * 새 도메인이 파일을 쓰게 되면 여기에만 항목을 추가한다.
      * provider에 gif를 뺀 것은 서류 제출 목록(담당자7 협의)에 없어서 — 움짤은 증빙이 아니다.
+     * review는 product와 확장자 목록을 동일하게 둔다 — 둘 다 공개 서빙되는 일반 사용자 사진이고,
+     * delivery(증빙 목적이라 gif 제외)와 달리 리뷰 사진은 증빙이 아니라 후기용이라 gif도 막을 이유가 없다.
      */
     private static final Map<String, Set<String>> SERVICE_EXTENSIONS = Map.of(
             "product", Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "provider", Set.of("pdf", "jpg", "jpeg", "png", "webp"),
-            "delivery", Set.of("jpg", "jpeg", "png", "webp"));
+            "delivery", Set.of("jpg", "jpeg", "png", "webp"),
+            "review", Set.of("jpg", "jpeg", "png", "gif", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -116,8 +121,10 @@ public class FileStorageService {
         FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
 
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
-        // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20). 리뷰 등 새 참조처가 생기면 같은 방식으로 추가)
-        if (fileMapper.countProductImageRefs(flSn) > 0 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0) {
+        // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20) + 리뷰 사진(CHG-021, 실DB 적용 2026-07-21))
+        if (fileMapper.countProductImageRefs(flSn) > 0
+                || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
+                || fileMapper.countReviewImageRefs(flSn) > 0) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 

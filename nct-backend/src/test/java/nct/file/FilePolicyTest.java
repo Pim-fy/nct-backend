@@ -74,12 +74,56 @@ class FilePolicyTest {
     }
 
     @Test
+    @DisplayName("업로드: review는 product와 동일하게 이미지 허용 + review 경로로 기록된다 (CHG-021)")
+    void reviewImageAllowed() throws Exception {
+        MockMultipartFile png = new MockMultipartFile("file", "review.png", "image/png", "x".getBytes());
+
+        FileMeta meta = fileStorageService.storeImage(png, "review", ownerSn);
+        try {
+            assertThat(meta.getFlTypeCd()).isEqualTo("FILC0001");
+            assertThat(meta.getFlPath()).startsWith("/api/attachment/review/");
+        } finally {
+            Files.deleteIfExists(fileStorageService.diskPathOf(meta));
+        }
+    }
+
+    @Test
+    @DisplayName("업로드: review에 pdf는 거부된다 (이미지만 허용)")
+    void reviewPdfRejected() {
+        MockMultipartFile pdf = new MockMultipartFile("file", "doc.pdf", "application/pdf", "x".getBytes());
+
+        assertThatThrownBy(() -> fileStorageService.storeImage(pdf, "review", ownerSn))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
     @DisplayName("업로드: 미등록 서비스 구분은 기존대로 거부된다 (화이트리스트)")
     void unknownServiceRejected() {
         MockMultipartFile img = new MockMultipartFile("file", "a.png", "image/png", "x".getBytes());
 
         assertThatThrownBy(() -> fileStorageService.storeImage(img, "unknown", ownerSn))
                 .isInstanceOf(CustomException.class); // FILE_INVALID_SERVICE
+    }
+
+    // ---------- 삭제 가드 (리뷰 사진, CHG-021) ----------
+
+    @Test
+    @DisplayName("삭제 가드: REVIEW_IMAGE에 연결된 파일은 409로 거부된다")
+    void reviewImageRefBlocksDelete() {
+        // REVIEW_IMAGE(RVW_SN, FL_SN)가 존재하려면 먼저 REVIEW가, REVIEW가 있으려면 먼저 TRADE가 있어야
+        // FK 체인이 성립한다 — 그래서 거래→리뷰→리뷰이미지 순으로 픽스처를 쌓는다.
+        long reviewerSn = insertUser("t_review_reviewer");
+        long reviewedSn = insertUser("t_review_reviewed");
+        long trdSn = insertTrade(reviewerSn, reviewedSn);
+        long rvwSn = insertReview(trdSn, reviewerSn, reviewedSn);
+        long flSn = insertFileRow(reviewerSn, "review.png");
+        // REVIEW_IMAGE는 담당자3(리뷰) 소유 테이블이라 평소엔 손대지 않지만,
+        // 삭제 가드가 "연결이 있으면 막는다"를 실제로 검증하려면 연결 행 자체가 필요해 테스트 픽스처로만 직접 INSERT한다.
+        jdbc.update("INSERT INTO REVIEW_IMAGE (RVW_SN, FL_SN) VALUES (?, ?)", rvwSn, flSn);
+
+        assertThatThrownBy(() -> fileStorageService.deleteImage(flSn, reviewerSn))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("사용 중인 파일");
     }
 
     // ---------- 관리자 전용 서류 열람 ----------
@@ -161,6 +205,45 @@ class FilePolicyTest {
                 INSERT INTO FILES (FL_ORG_NM, FL_SAVE_NM, FL_PATH, FL_EXT, FL_SIZE_AMT, FL_TYPE_CD, FL_REG_ID)
                 VALUES (?, ?, ?, 'pdf', 1024, 'FILC0002', ?)
                 """, orgNm, saveNm, "/api/attachment/provider/20260720/" + saveNm, String.valueOf(usrSn));
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    /**
+     * 리뷰 가드 테스트용 최소 거래 — REVIEW.TRD_SN이 TRADE를 참조하므로 리뷰보다 먼저 만들어야 한다.
+     * TRADE의 CHK_TRADE_REF_COMBINATION 제약 때문에 물건거래로 만들려면 판매자·구매자·상품(PRD_SN)이
+     * 전부 채워져야 하고, 서비스거래 쪽 컬럼(REQ_USR_SN 등)은 전부 비워야 한다 — TradeDeliveryFileTest의
+     * insertTradeWithDelivery와 동일한 최소 조합이다. 'TRDC0001'(물건거래)·'TRDC0004'(거래 진행중 — 값 자체는
+     * 이 테스트 목적과 무관, 리뷰 생성 가능한 임의의 유효 상태면 충분)는 DB정의서 TRDG01/TRDG02 공통코드.
+     */
+    private long insertTrade(long sellerSn, long buyerSn) {
+        jdbc.update("""
+                INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
+                VALUES (?, 2, '리뷰가드 테스트 상품', 'PRDC0003', 10000,
+                        (SELECT C.CMM_CD FROM CMM_CODE C JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
+                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
+                """, sellerSn);
+        long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO TRADE (TRD_TYPE_CD, TRD_STATUS_CD, TRD_AMT, SLLR_USR_SN, BYPR_USR_SN, PRD_SN)
+                VALUES ('TRDC0001', 'TRDC0004', 10000, ?, ?, ?)
+                """, sellerSn, buyerSn, prdSn);
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    /**
+     * 리뷰 가드 테스트용 최소 리뷰 (REVIEW는 담당자3 소유 — 이 테스트는 REVIEW_IMAGE 삭제 가드만 검증하므로
+     * 리뷰 자체의 도메인 규칙(평점 범위, 도메인 구분 로직 등)은 확인하지 않고 FK 조건만 채운다).
+     * RVW_DOMAIN_CD는 RVWG01 그룹의 첫 값(값 자체는 이 테스트와 무관), RVW_SCORE=5는 유효 범위 내 임의값.
+     */
+    private long insertReview(long trdSn, long reviewerSn, long reviewedSn) {
+        jdbc.update("""
+                INSERT INTO REVIEW (TRD_SN, REVWR_USR_SN, REVWD_USR_SN, RVW_DOMAIN_CD, RVW_SCORE)
+                VALUES (?, ?, ?,
+                        (SELECT C.CMM_CD FROM CMM_CODE C JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
+                         WHERE P.CMM_CD = 'RVWG01' ORDER BY C.CMM_SORT_NO LIMIT 1),
+                        5)
+                """, trdSn, reviewerSn, reviewedSn);
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

@@ -82,6 +82,9 @@
          WHERE p.USR_SN = #{usrSn}
            AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'
+           <if test="prdStatusCd != null and prdStatusCd != ''">
+           AND p.PRD_STATUS_CD = #{prdStatusCd}
+           </if>
          ORDER BY p.PRD_REG_DT DESC
     </select>
 

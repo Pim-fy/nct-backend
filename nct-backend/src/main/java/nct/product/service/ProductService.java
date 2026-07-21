@@ -115,9 +115,9 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public PagedResponse<ProductResponse> getMyProducts(Long usrSn, int page, int size) {
+    public PagedResponse<ProductResponse> getMyProducts(Long usrSn, int page, int size, String prdStatusCd) {
         PageHelper.startPage(page, size);
-        List<ProductResponse> list = productMapper.findMyProducts(usrSn);
+        List<ProductResponse> list = productMapper.findMyProducts(usrSn, prdStatusCd);
         return PagedResponse.of(new PageInfo<>(list));
     }
 

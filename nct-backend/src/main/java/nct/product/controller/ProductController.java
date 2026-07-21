@@ -58,10 +58,11 @@ public class ProductController {
     public ResponseEntity<ApiResponse<PagedResponse<ProductResponse>>> getMyProducts(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestParam(defaultValue = "1")  int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false)    String prdStatusCd) {
 
         Long usrSn = userDetails.getMember().getId();
-        PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size);
+        PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size, prdStatusCd);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

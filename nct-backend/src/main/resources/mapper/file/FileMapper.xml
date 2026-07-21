@@ -111,4 +111,12 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 삭제 가드: 리뷰 이미지로 연결된 파일인지 -->
+    <select id="countReviewImageRefs" resultType="int">
+        /* 파일: 리뷰이미지 참조 수 */
+        SELECT COUNT(*)
+          FROM REVIEW_IMAGE
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

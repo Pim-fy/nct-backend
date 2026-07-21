@@ -7,8 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -22,10 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
-import nct.common.domain.RefType;
-import nct.file.domain.FileAttach;
 import nct.file.domain.FileMeta;
-import nct.file.mapper.FileAttachMapper;
 import nct.file.mapper.FileMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -48,15 +43,15 @@ import nct.global.exception.ErrorCode;
  *   - product(상품 이미지): 이미지만 — 비로그인 탐색 화면에 공개 서빙되는 파일
  *   - provider(제공자 서류): pdf + 이미지 — 자격증·증빙 등 민감 파일, 공개 서빙 금지·관리자 전용 열람
  *   - delivery(배송 발송 인증사진, F-AUC-009): 이미지만 — 공개 서빙 아님, 거래 당사자(구매자·판매자)만 열람
- *   - review(리뷰 사진, FILE_ATTACH 다형성 연결): 이미지만 — HSK 담당자3 추가
+ *   - review(리뷰 사진, REVIEW_IMAGE 전용 연결테이블): 이미지만 — HSK 담당자3 추가
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
  *
- * storeImage()는 상품 이미지처럼 소비자가 FL_SN을 직접 자기 테이블(PRODUCT_IMAGE 등)에
- * 보관하는 1단계 방식이고, attach()/getUrls()는 리뷰 사진처럼 소비자가 자기 테이블에 FL_SN을
- * 두지 않고 FILE_ATTACH 다형성 연결에 맡기는 방식이다. 두 소비자가 FILES/FILE_ATTACH를
- * 직접 건드리지 않고 이 서비스만 호출하도록 하는 게 이 클래스의 목적이다.
+ * 도메인별 연결: storeImage()로 FILES에 저장 후 반환된 flSn을 각 도메인이 자기 연결
+ * 테이블(PRODUCT_IMAGE, REVIEW_IMAGE 등)에 직접 기록하는 단일 패턴만 사용한다.
+ * 다른 도메인은 FILES/REVIEW_IMAGE 등을 직접 건드리지 말고 이 서비스를 통해 저장만 하고,
+ * 연결 기록은 각 도메인 매퍼가 담당한다.
  */
 @Slf4j
 @Service
@@ -82,7 +77,6 @@ public class FileStorageService {
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
 
     private final FileMapper fileMapper;
-    private final FileAttachMapper fileAttachMapper;
     private final AuditLogService auditLogService;
 
     @Value("${app.upload.dir}")
@@ -129,44 +123,6 @@ public class FileStorageService {
     }
 
     /**
-     * 여러 파일을 저장하고 지정된 업무 레코드(refType, refSn)에 FILE_ATTACH로 연결한다.
-     * 소비자는 FILES/FILE_ATTACH를 직접 쓰지 않고 이 메서드만 호출한다.
-     *
-     * @param service        저장 폴더 구분 ("review" 등 ALLOWED_SERVICES에 등록된 값)
-     * @param submitterUsrSn 제출자 회원번호 (FILES.FL_REG_ID와 FILE_ATTACH.FL_ATT_SUBM_USR_SN에 함께 쓰임)
-     */
-    @Transactional
-    public List<FileMeta> attach(List<MultipartFile> files, String service,
-                                 RefType refType, long refSn, long submitterUsrSn) {
-        if (files == null || files.isEmpty()) {
-            return List.of();
-        }
-
-        List<FileMeta> stored = new ArrayList<>();
-        int sortNo = 0;
-        for (MultipartFile file : files) {
-            if (file == null || file.isEmpty()) {
-                continue;
-            }
-            FileMeta fileMeta = storeImage(file, service, submitterUsrSn);
-            fileAttachMapper.insertAttach(FileAttach.builder()
-                    .flSn(fileMeta.getFlSn())
-                    .flAttRefTypeCd(refType.getCode())
-                    .flAttRefSn(refSn)
-                    .flAttSortNo(sortNo++)
-                    .flAttSubmUsrSn(submitterUsrSn)
-                    .build());
-            stored.add(fileMeta);
-        }
-        return stored;
-    }
-
-    /** 참조 건에 붙은 파일 URL 목록 (정렬순서순, 프론트 &lt;img src&gt;에 그대로 사용 가능) */
-    public List<String> getUrls(RefType refType, long refSn) {
-        return fileAttachMapper.selectFilePathsByRef(refType.getCode(), refSn);
-    }
-
-    /**
      * 삭제: 존재(404) → 소유자(403) → 참조(409) 순서로 검증 후
      * FILES 소프트 삭제(FL_USE_YN='N') + 디스크 파일 물리 삭제.
      * 검사 순서를 404를 먼저로 둔 것은 타인에게 파일 존재 여부보다 소유 여부가 먼저 새지 않게 하기 위함.
@@ -180,8 +136,9 @@ public class FileStorageService {
             throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
         }
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
-        // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20). 리뷰 등 새 참조처가 생기면 같은 방식으로 추가)
-        if (fileMapper.countProductImageRefs(flSn) > 0 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0) {
+        if (fileMapper.countProductImageRefs(flSn) > 0
+                || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
+                || fileMapper.countReviewImageRefs(flSn) > 0) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 

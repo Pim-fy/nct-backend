@@ -24,10 +24,7 @@ public enum RefType {
     QUOTE("REFC0008"),
     POINT_LEDGER("REFC0009"),
     SYSTEM_SETTING("REFC0010"),
-    NOTICE("REFC0011"),
-    // REFC0012 제안값 - 08_DB_기초데이터에 아직 없음. CMM_CODE 소유자(담당자7) 반영 전까지
-    // 리뷰 사진 첨부 INSERT는 FK 제약 위반으로 실패한다 (docs ISSUES 참고 대상).
-    REVIEW("REFC0012");
+    NOTICE("REFC0011");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

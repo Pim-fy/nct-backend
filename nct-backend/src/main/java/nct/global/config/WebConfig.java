@@ -54,5 +54,8 @@ public class WebConfig implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler("/api/attachment/product/**")
                 .addResourceLocations("file:" + uploadDir + "/product/");
+        // 리뷰 사진은 공개 서빙 — provider(민감 서류)와 달리 누구나 볼 수 있어야 한다
+        registry.addResourceHandler("/api/attachment/review/**")
+                .addResourceLocations("file:" + uploadDir + "/review/");
     }
 }

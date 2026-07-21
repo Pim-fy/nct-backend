@@ -3,6 +3,9 @@ package nct.review.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,10 +22,11 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import nct.common.domain.RefType;
+import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
+import nct.review.domain.ReviewImage;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewUpdateResult;
@@ -30,6 +34,7 @@ import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
 import nct.review.exception.TradeNotReviewableException;
+import nct.review.mapper.ReviewImageMapper;
 import nct.review.mapper.ReviewMapper;
 
 /**
@@ -42,6 +47,7 @@ class ReviewServiceTest {
 
     @Mock private ReviewMapper reviewMapper;
     @Mock private FileStorageService fileStorageService;
+    @Mock private ReviewImageMapper reviewImageMapper;
 
     private ReviewService reviewService;
 
@@ -50,7 +56,7 @@ class ReviewServiceTest {
     private static final long COUNTERPART_USR_SN = 2L;
 
     private void setUp() {
-        reviewService = new ReviewService(reviewMapper, fileStorageService);
+        reviewService = new ReviewService(reviewMapper, fileStorageService, reviewImageMapper);
     }
 
     private WritableTradeItem healthyTrade(String dealType) {
@@ -74,7 +80,6 @@ class ReviewServiceTest {
         assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 6, "내용", null))
                 .isInstanceOf(InvalidRatingException.class);
 
-        // 평점 검증에서 이미 막혔으므로 거래 조회 자체가 일어나지 않아야 한다.
         verify(reviewMapper, never()).selectWritableTrade(any(Long.class), any(Long.class));
     }
 
@@ -101,7 +106,6 @@ class ReviewServiceTest {
 
         ReviewCreateResult result = reviewService.createReview(USR_SN, TRADE_ID, 5, "만족합니다", null);
 
-        // then: 저장된 Review 의 필드가 정확한지 확인
         org.mockito.ArgumentCaptor<Review> captor = org.mockito.ArgumentCaptor.forClass(Review.class);
         verify(reviewMapper).insertReview(captor.capture());
         Review saved = captor.getValue();
@@ -114,8 +118,7 @@ class ReviewServiceTest {
         assertThat(result.getId()).isEqualTo(900L);
         assertThat(result.getPhotoCount()).isZero();
 
-        // 사진이 없으므로 첨부 로직은 호출되지 않아야 한다.
-        verify(fileStorageService, never()).attach(any(), any(), any(Long.class), any(Long.class));
+        verify(fileStorageService, never()).storeImage(any(), any(), any());
     }
 
     @Test
@@ -131,7 +134,7 @@ class ReviewServiceTest {
     }
 
     @Test
-    void 사진이_있으면_저장된_리뷰번호로_첨부를_요청한다() {
+    void 사진이_있으면_저장된_리뷰번호로_REVIEW_IMAGE에_연결한다() {
         setUp();
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("goods")));
         doAnswer(invocation -> {
@@ -139,6 +142,9 @@ class ReviewServiceTest {
             ReflectionTestUtils.setField(saved, "rvwSn", 901L);
             return null;
         }).when(reviewMapper).insertReview(any(Review.class));
+        when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
+                .thenReturn(FileMeta.builder().flSn(10L).build())
+                .thenReturn(FileMeta.builder().flSn(11L).build());
 
         MultipartFile photo1 = new MockMultipartFile("photos", "a.jpg", "image/jpeg", "data".getBytes());
         MultipartFile photo2 = new MockMultipartFile("photos", "b.jpg", "image/jpeg", "data".getBytes());
@@ -147,7 +153,17 @@ class ReviewServiceTest {
                 USR_SN, TRADE_ID, 5, "사진 첨부 테스트", List.of(photo1, photo2));
 
         assertThat(result.getPhotoCount()).isEqualTo(2);
-        verify(fileStorageService).attach(List.of(photo1, photo2), RefType.REVIEW, 901L, USR_SN);
+
+        org.mockito.ArgumentCaptor<List<ReviewImage>> captor =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(reviewImageMapper).insertAll(captor.capture());
+        List<ReviewImage> inserted = captor.getValue();
+        assertThat(inserted).hasSize(2);
+        assertThat(inserted.get(0).getRvwSn()).isEqualTo(901L);
+        assertThat(inserted.get(0).getFlSn()).isEqualTo(10L);
+        assertThat(inserted.get(0).getRvwImgSortNo()).isEqualTo(0);
+        assertThat(inserted.get(1).getFlSn()).isEqualTo(11L);
+        assertThat(inserted.get(1).getRvwImgSortNo()).isEqualTo(1);
     }
 
     @Test
@@ -159,14 +175,13 @@ class ReviewServiceTest {
                 .completedDate("2026-06-18")
                 .build();
         when(reviewMapper.selectMyReviews(USR_SN)).thenReturn(List.of(item));
-        when(fileStorageService.getUrls(RefType.REVIEW, 1L))
-                .thenReturn(List.of("/uploads/2026/06/18/a.jpg"));
+        when(reviewImageMapper.selectUrlsByReviewSn(1L))
+                .thenReturn(List.of("/api/attachment/review/20260618/a.jpg"));
 
         List<MyReviewItem> result = reviewService.getMyReviews(USR_SN);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getPhotos()).containsExactly("/uploads/2026/06/18/a.jpg");
-        // 원본 필드는 그대로 유지되어야 한다 (toBuilder로 photos만 채워 넣었는지 확인)
+        assertThat(result.get(0).getPhotos()).containsExactly("/api/attachment/review/20260618/a.jpg");
         assertThat(result.get(0).getTitle()).isEqualTo("상품");
     }
 
@@ -190,8 +205,7 @@ class ReviewServiceTest {
         assertThatThrownBy(() -> reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null))
                 .isInstanceOf(ReviewNotFoundException.class);
 
-        // 대상이 없으므로 사진 첨부도 시도하지 않아야 한다.
-        verify(fileStorageService, never()).attach(any(), any(), any(Long.class), any(Long.class));
+        verify(fileStorageService, never()).storeImage(any(), any(), any());
     }
 
     @Test
@@ -204,19 +218,26 @@ class ReviewServiceTest {
         assertThat(result.getId()).isEqualTo(900L);
         assertThat(result.getRating()).isEqualTo(4);
         assertThat(result.getAddedPhotoCount()).isZero();
-        verify(fileStorageService, never()).attach(any(), any(), any(Long.class), any(Long.class));
+        verify(fileStorageService, never()).storeImage(any(), any(), any());
     }
 
     @Test
-    void 리뷰_수정시_새_사진이_있으면_기존_첨부에_추가로_요청한다() {
+    void 리뷰_수정시_새_사진이_있으면_REVIEW_IMAGE에_추가로_연결한다() {
         setUp();
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
+                .thenReturn(FileMeta.builder().flSn(20L).build());
         MultipartFile photo = new MockMultipartFile("photos", "c.jpg", "image/jpeg", "data".getBytes());
 
         ReviewUpdateResult result = reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", List.of(photo));
 
         assertThat(result.getAddedPhotoCount()).isEqualTo(1);
-        verify(fileStorageService).attach(List.of(photo), RefType.REVIEW, 900L, USR_SN);
+
+        org.mockito.ArgumentCaptor<List<ReviewImage>> captor =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(reviewImageMapper).insertAll(captor.capture());
+        assertThat(captor.getValue().get(0).getRvwSn()).isEqualTo(900L);
+        assertThat(captor.getValue().get(0).getFlSn()).isEqualTo(20L);
     }
 
     @Test

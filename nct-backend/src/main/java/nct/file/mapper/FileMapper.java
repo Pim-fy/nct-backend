@@ -55,4 +55,7 @@ public interface FileMapper {
 
     /** 이 파일을 참조 중인 배송 인증사진 행 수 — 삭제 가드에 상품 이미지와 OR로 합산 */
     int countTradeDeliveryFileRefs(@Param("flSn") Long flSn);
+
+    /** 이 파일을 참조 중인 리뷰 이미지 행 수 — 삭제 가드에 합산 */
+    int countReviewImageRefs(@Param("flSn") Long flSn);
 }

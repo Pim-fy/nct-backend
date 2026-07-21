@@ -1,5 +1,6 @@
 package nct.review.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -7,11 +8,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
-import nct.common.domain.RefType;
+import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.response.PageResponse;
 import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
+import nct.review.domain.ReviewImage;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewUpdateResult;
@@ -21,6 +23,7 @@ import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
 import nct.review.exception.TradeNotReviewableException;
+import nct.review.mapper.ReviewImageMapper;
 import nct.review.mapper.ReviewMapper;
 
 /**
@@ -35,6 +38,7 @@ public class ReviewService {
 
     private final ReviewMapper reviewMapper;
     private final FileStorageService fileStorageService;
+    private final ReviewImageMapper reviewImageMapper;
 
     /** 작성 가능한 리뷰 목록 (완료된 거래 중 아직 리뷰를 안 쓴 것) */
     public List<WritableTradeItem> getWritableTrades(long usrSn) {
@@ -47,14 +51,14 @@ public class ReviewService {
         // 리뷰마다 사진을 별도 조회한다 (목록이 최대 100건이라 N+1이어도 지금 단계에서는 허용 범위).
         return items.stream()
                 .map(item -> item.toBuilder()
-                        .photos(fileStorageService.getUrls(RefType.REVIEW, item.getId()))
+                        .photos(reviewImageMapper.selectUrlsByReviewSn(item.getId()))
                         .build())
                 .toList();
     }
 
     /**
      * 리뷰 등록.
-     * 
+     *
      * @param tradeId 리뷰 대상 거래 (클라이언트가 보낸 값 - 서버가 아래에서 다시 검증한다)
      * @param rating  평점 1~5
      * @param content 리뷰 내용
@@ -69,7 +73,6 @@ public class ReviewService {
 
         // 서버 측 재검증 - 클라이언트가 보낸 tradeId를 그대로 믿지 않는다
         // (BidService의 "서버 측 재검증" 원칙과 동일: 완료 여부·참여자 여부·중복 작성 여부를 다시 확인).
-        // 이 조회 결과에 이미 counterpartUsrSn(리뷰 대상자)까지 포함되어 있어 별도 조회가 필요 없다.
         WritableTradeItem trade = reviewMapper.selectWritableTrade(tradeId, usrSn)
                 .orElseThrow(() -> new TradeNotReviewableException(tradeId));
 
@@ -85,9 +88,9 @@ public class ReviewService {
                 .build();
         reviewMapper.insertReview(review);
 
-        int photoCount = photos == null ? 0 : (int) photos.stream().filter(f -> !f.isEmpty()).count();
-        if (photoCount > 0) {
-            fileStorageService.attach(photos, "review", RefType.REVIEW, review.getRvwSn(), usrSn);
+        int photoCount = 0;
+        if (photos != null && !photos.isEmpty()) {
+            photoCount = storeReviewImages(photos, review.getRvwSn(), usrSn);
         }
 
         return ReviewCreateResult.builder()
@@ -115,9 +118,9 @@ public class ReviewService {
             throw new ReviewNotFoundException(rvwSn);
         }
 
-        int addedPhotoCount = photos == null ? 0 : (int) photos.stream().filter(f -> !f.isEmpty()).count();
-        if (addedPhotoCount > 0) {
-            fileStorageService.attach(photos, "review", RefType.REVIEW, rvwSn, usrSn);
+        int addedPhotoCount = 0;
+        if (photos != null && !photos.isEmpty()) {
+            addedPhotoCount = storeReviewImages(photos, rvwSn, usrSn);
         }
 
         return ReviewUpdateResult.builder()
@@ -173,6 +176,28 @@ public class ReviewService {
                 .usrSn(usrSn)
                 .hasReviews(raw.getTotalCount() > 0)
                 .build();
+    }
+
+    /** 사진 목록을 FILES에 저장하고 REVIEW_IMAGE에 연결한다. 저장된 건수를 반환한다. */
+    private int storeReviewImages(List<MultipartFile> photos, long rvwSn, long usrSn) {
+        if (photos == null || photos.isEmpty()) {
+            return 0;
+        }
+        List<ReviewImage> images = new ArrayList<>();
+        int sortNo = 0;
+        for (MultipartFile photo : photos) {
+            if (photo == null || photo.isEmpty()) continue;
+            FileMeta fileMeta = fileStorageService.storeImage(photo, "review", usrSn);
+            images.add(ReviewImage.builder()
+                    .rvwSn(rvwSn)
+                    .flSn(fileMeta.getFlSn())
+                    .rvwImgSortNo(sortNo++)
+                    .build());
+        }
+        if (!images.isEmpty()) {
+            reviewImageMapper.insertAll(images);
+        }
+        return images.size();
     }
 
     /** 한국식 이름 마스킹: 홍길동→홍*동, 홍길→홍*, 홍→홍 */

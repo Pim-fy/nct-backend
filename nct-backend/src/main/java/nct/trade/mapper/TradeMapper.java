@@ -9,8 +9,12 @@ import org.apache.ibatis.annotations.Param;
 import nct.trade.domain.Trade;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeDetailResponse;
+import nct.trade.dto.TradeDeliveryProofFile;
+import nct.trade.dto.TradeDeliverySubmitTarget;
+import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeListItem;
+import nct.trade.dto.SellerTradeStatusItem;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -35,9 +39,38 @@ public interface TradeMapper {
             @Param("statusCode") String statusCode,
             @Param("keyword") String keyword);
 
+    /** F-AUC-005가 AUCTION 상태와 결합할 수 있도록 판매자 본인의 생성 거래 상태만 반환한다. */
+    List<SellerTradeStatusItem> findMySellerTradeStatuses(
+            @Param("sellerUserId") long sellerUserId);
+
     TradeDetailResponse findMyMaterialTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    List<TradeDeliveryProofFile> findTradeDeliveryProofFiles(
+            @Param("deliveryId") long deliveryId);
+
+    TradeDeliverySubmitTarget findMyDeliveryTradeForUpdate(
+            @Param("tradeId") long tradeId,
+            @Param("sellerUserId") long sellerUserId);
+
+    int ensureTradeDelivery(@Param("tradeId") long tradeId);
+
+    Long findDeliveryIdByTradeIdForUpdate(@Param("tradeId") long tradeId);
+
+    int updateDeliveryMessage(
+            @Param("deliveryId") long deliveryId,
+            @Param("deliveryMessage") String deliveryMessage,
+            @Param("updaterId") String updaterId);
+
+    int insertTradeDeliveryFile(
+            @Param("deliveryId") long deliveryId,
+            @Param("fileId") long fileId,
+            @Param("sortOrder") int sortOrder);
+
+    int startDelivery(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
 
     Long findMyOfflineTradeIdForUpdate(
             @Param("tradeId") long tradeId,

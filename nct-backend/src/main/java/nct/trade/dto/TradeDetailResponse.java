@@ -2,6 +2,7 @@ package nct.trade.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.Data;
 
@@ -20,6 +21,8 @@ public class TradeDetailResponse {
     private LocalDateTime autoCompleteAt;
     private String deliveryAddress;
     private String deliveryMessage;
+    private Long deliveryId;
+    private List<TradeDeliveryProofFile> deliveryProofFiles;
     private LocalDateTime meetingDateTime;
     private String meetingPlace;
     private String meetingAddress;

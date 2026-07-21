@@ -5,12 +5,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
+import nct.file.domain.FileMeta;
+import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.notification.domain.NotificationDomain;
@@ -18,11 +22,15 @@ import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
 import nct.trade.domain.Trade;
 import nct.trade.dto.MaterialTradeCreateCommand;
+import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
+import nct.trade.dto.TradeDeliveryProofSubmitRequest;
+import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
+import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.mapper.TradeMapper;
 import nct.setting.domain.SystemSettingDetail;
 import nct.setting.mapper.SystemSettingAdminMapper;
@@ -45,13 +53,21 @@ public class TradeService {
     private final TradeMapper tradeMapper;
     private final NotificationService notificationService;
     private final SystemSettingAdminMapper systemSettingMapper;
+    private final FileStorageService fileStorageService;
 
-    /**
-     * 낙찰 또는 즉시구매가 확정된 물건 거래를 생성하고 최초 상태 이력을 남긴다.
-     * 호출자는 경매 도메인이며, 이 메서드는 HTTP로 직접 공개하지 않는다.
-     */
+    /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
     public long createMaterialTrade(MaterialTradeCreateCommand command) {
+        return createOrGetMaterialTrade(command).getTradeId();
+    }
+
+    /**
+     * 낙찰·즉시구매 공통 공개 계약이다. 같은 상품의 재호출은 기존 거래를 반환해
+     * 경매 종료 처리의 재시도에도 TRADE와 최초 상태 이력이 중복 생성되지 않게 한다.
+     */
+    @Transactional
+    public MaterialTradeCreateResult createOrGetMaterialTrade(
+            MaterialTradeCreateCommand command) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -60,9 +76,9 @@ public class TradeService {
             throw new CustomException(ErrorCode.PRODUCT_NOT_FOUND);
         }
 
-        if (tradeMapper.findMaterialTradeIdByProductId(command.getProductId()) != null) {
-            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
-                    "이미 거래가 생성된 상품입니다.");
+        Long existingTradeId = tradeMapper.findMaterialTradeIdByProductId(command.getProductId());
+        if (existingTradeId != null) {
+            return new MaterialTradeCreateResult(existingTradeId, IN_PROGRESS, false);
         }
 
         Trade trade = new Trade();
@@ -79,7 +95,7 @@ public class TradeService {
                 IN_PROGRESS,
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
 
-        return trade.getTrdSn();
+        return new MaterialTradeCreateResult(trade.getTrdSn(), IN_PROGRESS, true);
     }
 
     /** 로그인한 사용자가 구매자 또는 판매자인 물건 거래만 최신순으로 조회한다. */
@@ -102,6 +118,15 @@ public class TradeService {
                 normalizeKeyword(keyword));
     }
 
+    /**
+     * F-AUC-005에서 AUCTION 상태와 결합할 수 있게, 판매자 본인의 생성된 물건 거래 상태만 조회한다.
+     * 진행 중이거나 유찰된 경매처럼 TRADE가 없는 상품은 경매 도메인 조회 결과가 담당한다.
+     */
+    @Transactional(readOnly = true)
+    public List<SellerTradeStatusItem> getMySellerTradeStatuses(long sellerUserId) {
+        return tradeMapper.findMySellerTradeStatuses(sellerUserId);
+    }
+
     /** 거래 당사자만 상세 정보를 조회하도록 쿼리 단계에서 범위를 제한한다. */
     @Transactional(readOnly = true)
     public TradeDetailResponse getMyMaterialTradeDetail(long tradeId, long userId) {
@@ -111,7 +136,83 @@ public class TradeService {
             throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 거래입니다.");
         }
 
+        if (detail.getDeliveryId() != null) {
+            detail.setDeliveryProofFiles(
+                    tradeMapper.findTradeDeliveryProofFiles(detail.getDeliveryId()));
+        }
+
         return detail;
+    }
+
+    /**
+     * 판매자가 먼저 업로드한 사진을 실제 배송 거래에 연결하고 발송 상태로 전환한다.
+     * FILES 실체는 파일 도메인이 관리하고, 이 서비스는 배송 건과의 관계만 기록한다.
+     */
+    @Transactional
+    public TradeDetailResponse submitDeliveryProof(
+            long tradeId,
+            long sellerUserId,
+            TradeDeliveryProofSubmitRequest request) {
+        validateDeliveryProofRequest(request);
+
+        TradeDeliverySubmitTarget target = tradeMapper.findMyDeliveryTradeForUpdate(
+                tradeId,
+                sellerUserId);
+
+        if (target == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "존재하지 않거나 발송 처리할 수 없는 배송 거래입니다.");
+        }
+
+        if (!IN_PROGRESS.equals(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "현재 거래 상태에서는 발송 인증을 등록할 수 없습니다.");
+        }
+
+        // 같은 파일을 여러 번 연결하면 파일 장수와 표시 순서가 불명확해지므로 사전에 차단한다.
+        Set<Long> uniqueFileIds = new HashSet<>(request.getFileIds());
+        if (uniqueFileIds.size() != request.getFileIds().size()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "같은 인증 사진을 중복해서 등록할 수 없습니다.");
+        }
+
+        for (Long fileId : request.getFileIds()) {
+            FileMeta fileMeta = fileStorageService.requireOwnedActiveFile(fileId, sellerUserId);
+
+            if (!fileMeta.getFlPath().startsWith("/api/attachment/delivery/")) {
+                throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                        "배송 인증으로 업로드한 사진만 등록할 수 있습니다.");
+            }
+        }
+
+        Long deliveryId = target.getDeliveryId();
+        if (deliveryId == null) {
+            tradeMapper.ensureTradeDelivery(tradeId);
+            deliveryId = tradeMapper.findDeliveryIdByTradeIdForUpdate(tradeId);
+        }
+
+        if (deliveryId == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR,
+                    "배송 정보를 준비하지 못했습니다.");
+        }
+
+        tradeMapper.updateDeliveryMessage(deliveryId, request.getDeliveryMessage().trim(),
+                String.valueOf(sellerUserId));
+
+        for (int index = 0; index < request.getFileIds().size(); index++) {
+            tradeMapper.insertTradeDeliveryFile(
+                    deliveryId,
+                    request.getFileIds().get(index),
+                    index + 1);
+        }
+
+        tradeMapper.startDelivery(tradeId, String.valueOf(sellerUserId));
+        tradeMapper.insertStatusHistory(
+                tradeId,
+                DELIVERING,
+                "판매자가 발송 인증사진과 배송 메모를 등록했습니다.");
+
+        return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
 
     /** 판매자 본인의 직거래 일정과 장소를 등록하거나 기존 제안을 수정한다. */
@@ -281,6 +382,21 @@ public class TradeService {
         if (request.getMeetingDate().isBefore(LocalDate.now())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래 날짜는 오늘 이후로 선택해 주세요.");
+        }
+    }
+
+    // 컨트롤러 검증을 통과하지 않는 직접 서비스 호출도 동일하게 제한한다.
+    private void validateDeliveryProofRequest(TradeDeliveryProofSubmitRequest request) {
+        if (request == null
+                || request.getDeliveryMessage() == null
+                || request.getDeliveryMessage().isBlank()
+                || request.getDeliveryMessage().trim().length() > 4000
+                || request.getFileIds() == null
+                || request.getFileIds().isEmpty()
+                || request.getFileIds().size() > 5
+                || request.getFileIds().stream().anyMatch(fileId -> fileId == null || fileId <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "배송 메모와 발송 인증 사진을 확인해 주세요.");
         }
     }
 

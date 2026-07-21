@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -22,13 +23,16 @@ import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.file.service.FileStorageService;
 import nct.trade.domain.Trade;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
+import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
+import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.mapper.TradeMapper;
 import nct.trade.service.TradeService;
 import nct.notification.service.NotificationService;
@@ -40,6 +44,7 @@ class TradeServiceTest {
     private TradeMapper tradeMapper;
     private NotificationService notificationService;
     private SystemSettingAdminMapper systemSettingMapper;
+    private FileStorageService fileStorageService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -47,10 +52,12 @@ class TradeServiceTest {
         tradeMapper = mock(TradeMapper.class);
         notificationService = mock(NotificationService.class);
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
+        fileStorageService = mock(FileStorageService.class);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
-                systemSettingMapper);
+                systemSettingMapper,
+                fileStorageService);
     }
 
     @Test
@@ -82,7 +89,7 @@ class TradeServiceTest {
     }
 
     @Test
-    void rejectsDuplicateTradeForProduct() {
+    void returnsExistingTradeForDuplicateProductCreation() {
         MaterialTradeCreateCommand command = new MaterialTradeCreateCommand(
                 10L,
                 20L,
@@ -91,10 +98,13 @@ class TradeServiceTest {
         when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(91L);
 
-        assertThatThrownBy(() -> tradeService.createMaterialTrade(command))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        MaterialTradeCreateResult result = tradeService.createOrGetMaterialTrade(command);
+
+        assertThat(result.getTradeId()).isEqualTo(91L);
+        assertThat(result.getTradeStatusCode()).isEqualTo("TRDC0003");
+        assertThat(result.isCreated()).isFalse();
+        verify(tradeMapper, never()).insertMaterialTrade(any(Trade.class));
+        verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
     }
 
     @Test
@@ -107,6 +117,20 @@ class TradeServiceTest {
 
         assertThat(result).containsExactly(item);
         verify(tradeMapper).findMyMaterialTrades(10L, null, null, null);
+    }
+
+    @Test
+    void returnsOnlyCurrentSellersCreatedTradeStatuses() {
+        SellerTradeStatusItem item = new SellerTradeStatusItem();
+        item.setPrdSn(30L);
+        item.setTradeSn(91L);
+        item.setTradeStatusCd("TRDC0004");
+        when(tradeMapper.findMySellerTradeStatuses(10L)).thenReturn(List.of(item));
+
+        List<SellerTradeStatusItem> result = tradeService.getMySellerTradeStatuses(10L);
+
+        assertThat(result).containsExactly(item);
+        verify(tradeMapper).findMySellerTradeStatuses(10L);
     }
 
     @Test

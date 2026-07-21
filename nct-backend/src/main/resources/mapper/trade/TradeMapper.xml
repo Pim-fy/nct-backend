@@ -111,6 +111,18 @@
         ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
     </select>
 
+    <!-- F-AUC-005: 판매 상품 목록이 AUCTION 상태와 결합할 수 있는 생성 거래 상태만 조회한다. -->
+    <select id="findMySellerTradeStatuses" resultType="nct.trade.dto.SellerTradeStatusItem">
+        SELECT
+            t.PRD_SN AS prdSn,
+            t.TRD_SN AS tradeSn,
+            t.TRD_STATUS_CD AS tradeStatusCd
+        FROM TRADE t
+        WHERE t.SLLR_USR_SN = #{sellerUserId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+        ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+    </select>
+
     <select id="findMyMaterialTradeDetail" resultType="nct.trade.dto.TradeDetailResponse">
         SELECT
             t.TRD_SN AS tradeId,
@@ -133,6 +145,7 @@
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
             CONCAT_WS(' ', d.TRD_DLVR_ADDR, d.TRD_DLVR_DADDR) AS deliveryAddress,
             d.TRD_DLVR_MEMO_CN AS deliveryMessage,
+            d.TRD_DLVR_SN AS deliveryId,
             o.TRD_OFL_DT AS meetingDateTime,
             o.TRD_OFL_PLC_NM AS meetingPlace,
             o.TRD_OFL_ADDR AS meetingAddress
@@ -151,6 +164,76 @@
           AND t.TRD_TYPE_CD = 'TRDC0001'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
     </select>
+
+    <!-- 사진 원문은 파일 API가 권한 검사 후 내려준다. 상세에는 식별자와 정렬 순서만 반환한다. -->
+    <select id="findTradeDeliveryProofFiles" resultType="nct.trade.dto.TradeDeliveryProofFile">
+        SELECT
+            f.FL_SN AS fileId,
+            f.TRD_DLVR_FL_SORT_NO AS sortOrder
+        FROM TRADE_DELIVERY_FILE f
+        WHERE f.TRD_DLVR_SN = #{deliveryId}
+        ORDER BY f.TRD_DLVR_FL_SORT_NO ASC, f.FL_SN ASC
+    </select>
+
+    <!-- 판매자 본인의 배송 거래를 잠가 중복 제출과 거래 상태 전이가 경합하지 않게 한다. -->
+    <select id="findMyDeliveryTradeForUpdate"
+            resultType="nct.trade.dto.TradeDeliverySubmitTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            d.TRD_DLVR_SN AS deliveryId,
+            t.TRD_STATUS_CD AS tradeStatus
+        FROM TRADE t
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        LEFT JOIN TRADE_DELIVERY d
+          ON d.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.SLLR_USR_SN = #{sellerUserId}
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0009'
+        FOR UPDATE
+    </select>
+
+    <!-- 배송 주소 스냅샷이 아직 없는 기존 거래도 발송 메모·사진을 연결할 최소 행을 만든다. -->
+    <insert id="ensureTradeDelivery">
+        INSERT INTO TRADE_DELIVERY (TRD_SN)
+        VALUES (#{tradeId})
+        ON DUPLICATE KEY UPDATE TRD_SN = VALUES(TRD_SN)
+    </insert>
+
+    <select id="findDeliveryIdByTradeIdForUpdate" resultType="long">
+        SELECT TRD_DLVR_SN
+        FROM TRADE_DELIVERY
+        WHERE TRD_SN = #{tradeId}
+        FOR UPDATE
+    </select>
+
+    <update id="updateDeliveryMessage">
+        UPDATE TRADE_DELIVERY
+        SET TRD_DLVR_MEMO_CN = #{deliveryMessage}
+        WHERE TRD_DLVR_SN = #{deliveryId}
+    </update>
+
+    <insert id="insertTradeDeliveryFile">
+        INSERT INTO TRADE_DELIVERY_FILE (
+            TRD_DLVR_SN,
+            FL_SN,
+            TRD_DLVR_FL_SORT_NO
+        )
+        VALUES (
+            #{deliveryId},
+            #{fileId},
+            #{sortOrder}
+        )
+    </insert>
+
+    <update id="startDelivery">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0004',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
 
     <!-- 판매자 본인의 직거래만 잠가, 일정 수정과 조회 결과가 같은 거래를 기준으로 처리되게 한다. -->
     <select id="findMyOfflineTradeIdForUpdate" resultType="long">

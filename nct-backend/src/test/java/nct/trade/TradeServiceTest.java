@@ -27,11 +27,14 @@ import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
 import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
+import nct.ops.operation.port.SellerCancellationDecision;
+import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
+import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeConfirmationTarget;
@@ -561,6 +564,64 @@ class TradeServiceTest {
 
         assertThat(completed).isFalse();
         verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void approvesSellerCancellationAndRecordsTradeStatusHistory() {
+        TradeCancellationTarget target = new TradeCancellationTarget();
+        target.setTradeId(91L);
+        target.setTradeStatus("TRDC0004");
+        SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
+                91L,
+                SellerCancellationDecision.APPROVED,
+                "판매자 취소 요청을 승인합니다.",
+                "admin-1",
+                "request-1");
+        when(tradeMapper.findMaterialTradeForCancellationForUpdate(91L)).thenReturn(target);
+        when(tradeMapper.cancelMaterialTrade(91L, "admin-1")).thenReturn(1);
+
+        tradeService.decide(command);
+
+        verify(tradeMapper).cancelMaterialTrade(91L, "admin-1");
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0008",
+                "판매자 취소 요청을 승인합니다.");
+    }
+
+    @Test
+    void rejectsSellerCancellationWithoutChangingTrade() {
+        SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
+                91L,
+                SellerCancellationDecision.REJECTED,
+                "취소 사유가 충분하지 않습니다.",
+                "admin-1",
+                "request-1");
+
+        tradeService.decide(command);
+
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void preventsSellerCancellationAfterTradeCompletion() {
+        TradeCancellationTarget target = new TradeCancellationTarget();
+        target.setTradeId(91L);
+        target.setTradeStatus("TRDC0006");
+        SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
+                91L,
+                SellerCancellationDecision.APPROVED,
+                "판매자 취소 요청을 승인합니다.",
+                "admin-1",
+                "request-1");
+        when(tradeMapper.findMaterialTradeForCancellationForUpdate(91L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.decide(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verify(tradeMapper, never()).cancelMaterialTrade(anyLong(), any());
+        verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
     }
 
     private TradeDeliverySubmitTarget deliveryTarget(String tradeStatus, Long deliveryId) {

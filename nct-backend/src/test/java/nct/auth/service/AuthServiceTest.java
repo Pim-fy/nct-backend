@@ -32,6 +32,8 @@ import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
 import nct.global.security.provider.JwtTokenProvider;
 import nct.global.utils.TokenHashUtil;
+import nct.ops.sanction.port.SanctionStatusReader;
+import nct.provider.service.ProviderApplicationService;
 import jakarta.validation.Validation;
 
 // @ai_generated
@@ -52,6 +54,10 @@ class AuthServiceTest {
     private UserAgreementMapper userAgreementMapper;
     @Mock
     private TokenHashUtil tokenHashUtil;
+    @Mock
+    private ProviderApplicationService providerApplicationService;
+    @Mock
+    private SanctionStatusReader sanctionStatusReader;
 
     private AuthService authService;
 
@@ -64,7 +70,9 @@ class AuthServiceTest {
                 emailVerificationService,
                 userAgreementMapper,
                 Validation.buildDefaultValidatorFactory().getValidator(),
-                tokenHashUtil);
+                tokenHashUtil,
+                providerApplicationService,
+                sanctionStatusReader);
     }
 
     @Test
@@ -211,7 +219,7 @@ class AuthServiceTest {
         AuthMember member = activeMember();
         when(authMemberPort.findByLoginId("buyer01")).thenReturn(java.util.Optional.of(member));
         when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
-        when(jwtTokenProvider.createAccessToken(101L, "ROLE_USER")).thenReturn("access-token");
+        when(jwtTokenProvider.createAccessToken(101L)).thenReturn("access-token");
         when(jwtTokenProvider.createRefreshToken(101L)).thenReturn("refresh-token-raw");
 
         AuthSessionResult result = authService.login(loginRequest("buyer01", "Password1!"));
@@ -234,7 +242,7 @@ class AuthServiceTest {
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.ACCOUNT_SUSPENDED);
 
-        verify(jwtTokenProvider, never()).createAccessToken(any(), any());
+        verify(jwtTokenProvider, never()).createAccessToken(any());
         verify(authMemberPort, never()).updateRefreshToken(any(), any());
     }
 
@@ -251,12 +259,112 @@ class AuthServiceTest {
     }
 
     @Test
+    void 제공자_전환은_활성권한과_제재없음을_확인한뒤_DB_ROLE을_바꾸고_AccessToken을_재발급한다() {
+        AuthMember member = activeMember();
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(member));
+        when(authMemberPort.updateRole(101L, "ROLE_SERVICE")).thenReturn(1);
+        when(jwtTokenProvider.createAccessToken(101L)).thenReturn("service-access-token");
+        doNothing().when(providerApplicationService).requireAnyActivePermission(101L);
+        doNothing().when(sanctionStatusReader).requireNoActiveSanction(101L);
+
+        AuthSessionResult result = authService.switchMode(101L, "SERVICE");
+
+        assertThat(result.getLoginResponse().getRole()).isEqualTo("ROLE_SERVICE");
+        assertThat(result.getAccessToken()).isEqualTo("service-access-token");
+        verify(providerApplicationService).requireAnyActivePermission(101L);
+        verify(sanctionStatusReader).requireNoActiveSanction(101L);
+        verify(authMemberPort).updateRole(101L, "ROLE_SERVICE");
+    }
+
+    @Test
+    void 일반전환은_제공자_자격조회없이_ROLE_USER로_변경한다() {
+        AuthMember member = memberWithRole("ROLE_SERVICE");
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(member));
+        when(authMemberPort.updateRole(101L, "ROLE_USER")).thenReturn(1);
+        when(jwtTokenProvider.createAccessToken(101L)).thenReturn("user-access-token");
+
+        AuthSessionResult result = authService.switchMode(101L, "USER");
+
+        assertThat(result.getLoginResponse().getRole()).isEqualTo("ROLE_USER");
+        verify(providerApplicationService, never()).requireAnyActivePermission(any());
+        verify(sanctionStatusReader, never()).requireNoActiveSanction(any());
+        verify(authMemberPort).updateRole(101L, "ROLE_USER");
+    }
+
+    @Test
+    void 제공자_자격이_없으면_ROLE은_변경하지_않는다() {
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(activeMember()));
+        org.mockito.Mockito.doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(providerApplicationService).requireAnyActivePermission(101L);
+
+        assertThatThrownBy(() -> authService.switchMode(101L, "SERVICE"))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(authMemberPort, never()).updateRole(any(), any());
+        verify(sanctionStatusReader, never()).requireNoActiveSanction(any());
+    }
+
+    @Test
+    void 유효제재가_있으면_ROLE은_변경하지_않는다() {
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(activeMember()));
+        doNothing().when(providerApplicationService).requireAnyActivePermission(101L);
+        org.mockito.Mockito.doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(sanctionStatusReader).requireNoActiveSanction(101L);
+
+        assertThatThrownBy(() -> authService.switchMode(101L, "SERVICE"))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(authMemberPort, never()).updateRole(any(), any());
+    }
+
+    @Test
+    void 관리자는_모드전환_대상이_아니며_ROLE은_변경하지_않는다() {
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(memberWithRole("ROLE_ADMIN")));
+
+        assertThatThrownBy(() -> authService.switchMode(101L, "USER"))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(authMemberPort, never()).updateRole(any(), any());
+        verify(providerApplicationService, never()).requireAnyActivePermission(any());
+    }
+
+    @Test
+    void 모드대상값이_올바르지_않으면_ROLE은_변경하지_않는다() {
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(activeMember()));
+
+        assertThatThrownBy(() -> authService.switchMode(101L, "ADMIN"))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(authMemberPort, never()).updateRole(any(), any());
+    }
+
+    @Test
+    void 모드대상값이_누락되어도_ROLE은_변경하지_않는다() {
+        when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(activeMember()));
+
+        assertThatThrownBy(() -> authService.switchMode(101L, null))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(authMemberPort, never()).updateRole(any(), any());
+    }
+
+    @Test
     void 재발급은_요청토큰을_해시화한뒤_DB저장값과_일치해야_성공한다() {
         AuthMember member = activeMemberWithRefreshHash("stored-hash");
         when(jwtTokenProvider.getUsrSn("raw-refresh-token")).thenReturn(101L);
         when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(member));
         when(tokenHashUtil.hash("raw-refresh-token")).thenReturn("stored-hash");
-        when(jwtTokenProvider.createAccessToken(101L, "ROLE_USER")).thenReturn("new-access-token");
+        when(jwtTokenProvider.createAccessToken(101L)).thenReturn("new-access-token");
 
         String accessToken = authService.refresh("raw-refresh-token");
 
@@ -378,6 +486,13 @@ class AuthServiceTest {
         return AuthMember.builder()
                 .id(101L).email("user@example.com").password("encoded-password")
                 .name("구매자").nickname("구매자").role("ROLE_USER").status(status).build();
+    }
+
+    // @ai_generated: CHG-032 모드 전환 대상별 현재 ROLE 검증용 fixture.
+    private AuthMember memberWithRole(String role) {
+        return AuthMember.builder()
+                .id(101L).email("user@example.com").password("encoded-password")
+                .name("구매자").nickname("구매자").role(role).status("USRC0001").build();
     }
 
     private AuthMember activeMemberWithRefreshHash(String refreshTokenHash) {

@@ -49,6 +49,11 @@ import nct.global.exception.ErrorCode;
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
+ *
+ * 도메인별 연결: storeImage()로 FILES에 저장 후 반환된 flSn을 각 도메인이 자기 연결
+ * 테이블(PRODUCT_IMAGE, REVIEW_IMAGE 등)에 직접 기록하는 단일 패턴만 사용한다.
+ * 다른 도메인은 FILES/REVIEW_IMAGE 등을 직접 건드리지 말고 이 서비스를 통해 저장만 하고,
+ * 연결 기록은 각 도메인 매퍼가 담당한다.
  */
 @Slf4j
 @Service
@@ -67,7 +72,7 @@ public class FileStorageService {
      * delivery(증빙 목적이라 gif 제외)와 달리 리뷰 사진은 증빙이 아니라 후기용이라 gif도 막을 이유가 없다.
      */
     private static final Map<String, Set<String>> SERVICE_EXTENSIONS = Map.of(
-            "product", Set.of("jpg", "jpeg", "png", "gif", "webp"),
+            "product",  Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "provider", Set.of("pdf", "jpg", "jpeg", "png", "webp"),
             "delivery", Set.of("jpg", "jpeg", "png", "webp"),
             "review", Set.of("jpg", "jpeg", "png", "gif", "webp"));
@@ -324,9 +329,11 @@ public class FileStorageService {
     }
 
     private String extractExtension(String originalFilename) {
-        if (originalFilename == null) return null;
+        if (originalFilename == null)
+            return null;
         int dot = originalFilename.lastIndexOf('.');
-        if (dot < 0 || dot == originalFilename.length() - 1) return null;
+        if (dot < 0 || dot == originalFilename.length() - 1)
+            return null;
         return originalFilename.substring(dot + 1);
     }
 }

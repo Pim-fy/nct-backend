@@ -162,7 +162,7 @@ public class PointChargeService {
         Long ptLdgSn = null;
         try {
             ptLdgSn = pointService.creditCharge(order.getUsrSn(), order.getPtChgOrdAmt(),
-                    "포인트 충전 (주문번호 " + order.getPtChgOrdNo() + ")");
+                    "포인트 충전");
             orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey, ptLdgSn);
 
             // 같은 트랜잭션 안에서 알림까지 기록 — 충전은 됐는데 알림만 누락되는 일이 없도록
@@ -191,7 +191,7 @@ public class PointChargeService {
         // 지급 원장까지 만들어진 뒤 실패했다면 보정(-) 원장으로 회수 — 합계 0으로 원상복구
         if (creditedLdgSn != null) {
             pointService.reverseCharge(order.getUsrSn(), order.getPtChgOrdAmt(),
-                    "충전 내부 처리 실패 회수 (주문번호 " + order.getPtChgOrdNo() + ")");
+                    "충전 내부 처리 실패 회수");
         }
 
         orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(), paymentKey,

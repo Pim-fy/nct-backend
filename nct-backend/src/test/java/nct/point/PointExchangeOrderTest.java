@@ -158,10 +158,81 @@ class PointExchangeOrderTest {
         assertThat(order.getPtExcOrdStatusCd()).isEqualTo(PointExchangeOrderStatus.REJECTED.getCode());
         assertThat(order.getPtExcOrdRestoreLdgSn()).isNotNull(); // 복원 원장 연결
         assertThat(order.getPtExcOrdRjctRsnCn()).isEqualTo("계좌 정보 불일치");
-        // 잔액 원상복구 — 차감(-30,000)과 복원(+30,000)이 짝으로 남아 합계 0
-        assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(50_000);
+        // 복원은 항상 사용가능 버킷으로 간다(차감이 항상 사용가능에서 이루어지므로) — 총 보유는 원상복구
+        var bal = pointService.getBalance(usrSn);
+        assertThat(bal.getSettleableAmt()).isEqualTo(20_000); // 신청 시 전환된 그대로, 복원으로 안 돌아감
+        assertThat(bal.getAvailableAmt()).isEqualTo(30_000); // 차감분이 복원됨
+        assertThat(bal.getTotalAmt()).isEqualTo(50_000);
         assertThat(notificationService.getList(usrSn))
                 .anySatisfy(n -> assertThat(n.getNtfTtl()).isEqualTo("환전 신청 반려"));
+    }
+
+    // ---------- 사용가능 포인트 환전 대상 확대 (2026-07-22 사용자 결정) ----------
+
+    @Test
+    @DisplayName("사용가능 포인트만으로도 환전 신청이 성공한다 — 정산가능 0이어도 무관")
+    void applyWithAvailableOnly() {
+        jdbc.update("""
+                INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)
+                VALUES (?, 'PTLC0001', 'PTLC0004', 100000, 100000, '테스트 충전')
+                """, usrSn);
+
+        long ordSn = pointExchangeService.apply(usrSn, 40_000);
+
+        assertThat(pointExchangeService.getOrderList(usrSn)).singleElement()
+                .satisfies(o -> assertThat(o.getPtExcOrdSn()).isEqualTo(ordSn));
+        var bal = pointService.getBalance(usrSn);
+        assertThat(bal.getAvailableAmt()).isEqualTo(60_000);
+        assertThat(bal.getSettleableAmt()).isZero();
+    }
+
+    @Test
+    @DisplayName("정산가능+사용가능 혼합 사용 — 사용가능을 먼저 다 쓰고 부족분만 정산가능이 채운다")
+    void applyWithMixedBuckets() {
+        // 정산가능 20,000 + 사용가능 10,000 보유, 25,000 신청
+        // → 사용가능 10,000 전액 사용 + 정산가능에서 부족분 15,000만 전환·차감 (사용가능 우선 소진)
+        pointService.creditSettleable(usrSn, 20_000, RefType.TRADE, 1L, "테스트 정산");
+        jdbc.update("""
+                INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)
+                VALUES (?, 'PTLC0001', 'PTLC0004', 10000, 10000, '테스트 충전')
+                """, usrSn);
+
+        pointExchangeService.apply(usrSn, 25_000);
+
+        var bal = pointService.getBalance(usrSn);
+        assertThat(bal.getSettleableAmt()).isEqualTo(5_000); // 20,000 중 15,000만 전환되고 5,000 남음
+        assertThat(bal.getAvailableAmt()).isZero(); // 10,000 + 15,000(전환) - 25,000(차감) = 0
+    }
+
+    @Test
+    @DisplayName("정산가능분을 쓰는 신청은 진행 중인 거래 문제가 있으면 차단된다")
+    void applyBlockedByDisputeWhenUsingSettleable() {
+        pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
+        insertDispute("TRDC0016"); // 접수 상태
+
+        assertThatThrownBy(() -> pointExchangeService.apply(usrSn, 10_000))
+                .isInstanceOf(PointException.class)
+                .hasMessageContaining("거래 문제");
+
+        assertThat(pointExchangeService.getOrderList(usrSn)).isEmpty();
+        assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(50_000); // 차감 안 됨
+    }
+
+    @Test
+    @DisplayName("사용가능만으로 충분한 신청은 거래 문제가 있어도 차단되지 않는다")
+    void applyNotBlockedByDisputeWhenAvailableSuffices() {
+        pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
+        jdbc.update("""
+                INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)
+                VALUES (?, 'PTLC0001', 'PTLC0004', 100000, 100000, '테스트 충전')
+                """, usrSn);
+        insertDispute("TRDC0016"); // 접수 상태 — 하지만 정산가능을 안 건드리므로 무관해야 한다
+
+        pointExchangeService.apply(usrSn, 30_000);
+
+        var bal = pointService.getBalance(usrSn);
+        assertThat(bal.getSettleableAmt()).isEqualTo(50_000); // 정산가능은 손대지 않음
+        assertThat(bal.getAvailableAmt()).isEqualTo(70_000);
     }
 
     @Test
@@ -180,5 +251,39 @@ class PointExchangeOrderTest {
 
         // 반려 시도가 거부됐으니 복원도 일어나지 않았어야 한다
         assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(20_000);
+    }
+
+    /** usrSn이 판매자인 거래에 지정 상태의 거래 문제를 건다 (PointConvertTest와 같은 방식) */
+    private void insertDispute(String statusCd) {
+        long counterpartSn = insertUser("t_exc_counterpart");
+
+        jdbc.update("""
+                INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
+                VALUES (?, 2, '환전 테스트 상품', 'PRDC0003', 10000,
+                        (SELECT C.CMM_CD FROM CMM_CODE C
+                         JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
+                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
+                """, usrSn);
+        long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO TRADE (TRD_TYPE_CD, TRD_STATUS_CD, TRD_AMT, SLLR_USR_SN, BYPR_USR_SN, PRD_SN)
+                VALUES ('TRDC0001', 'TRDC0006', 10000, ?, ?, ?)
+                """, usrSn, counterpartSn, prdSn);
+        long trdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO TRADE_DISPUTE (TRD_SN, DSPT_USR_SN, TRD_DSP_TYPE_CD, TRD_DSP_STATUS_CD, TRD_DSP_CN)
+                VALUES (?, ?, 'TRDC0014', ?, '환전 차단 테스트용 거래 문제')
+                """, trdSn, counterpartSn, statusCd);
+    }
+
+    private long insertUser(String prefix) {
+        String loginId = prefix + "_" + System.nanoTime();
+        jdbc.update("""
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix, loginId + "@test.local");
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 }

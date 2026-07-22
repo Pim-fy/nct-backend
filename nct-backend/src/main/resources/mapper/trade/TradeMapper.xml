@@ -372,4 +372,26 @@
           AND TRD_AUTO_CMPL_DT &lt;= #{now}
     </update>
 
+    <!-- 관리자 취소 승인 전에 물건 거래만 잠가 완료·분쟁 처리와 같은 행을 동시에 바꾸지 못하게 한다. -->
+    <select id="findMaterialTradeForCancellationForUpdate"
+            resultType="nct.trade.dto.TradeCancellationTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.TRD_STATUS_CD AS tradeStatus
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+        FOR UPDATE
+    </select>
+
+    <!-- 상태 검증을 UPDATE에도 포함해, 이력은 실제 취소 상태 전환이 성공한 뒤에만 남긴다. -->
+    <update id="cancelMaterialTrade">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0008',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0001'
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+    </update>
+
 </mapper>

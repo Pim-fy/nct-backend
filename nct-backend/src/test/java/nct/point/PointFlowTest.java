@@ -137,6 +137,25 @@ class PointFlowTest {
     }
 
     @Test
+    @DisplayName("관리자 취소 승인 환불: 정산 완료된 물건 거래는 차단 (보관금 참조 BID·정산 참조 TRADE가 달라도 tradeSn 기준으로 확인)")
+    void refundEscrowAfterAdminCancellationBlockedWhenSettled() {
+        long bidSn = 101L; // 보관금 참조 — 정산 참조(tradeSn)와 값이 겹치지 않음을 보이기 위해 임의로 고정
+        pointService.hold(buyerSn, 30000, RefType.BID, bidSn, "입찰 홀딩");
+        pointService.convertHoldToEscrow(buyerSn, RefType.BID, bidSn, "낙찰 확정");
+
+        long tradeSn = insertCompletedTrade(30000);
+        assertThat(tradeSn).isNotEqualTo(bidSn); // 두 참조가 실제로 다른 값임을 명시적으로 확인
+
+        long stlmSn = settlementService.createPending(tradeSn, sellerSn, 30000);
+        settlementService.complete(stlmSn);
+
+        assertThatThrownBy(() ->
+                pointService.refundEscrow(buyerSn, tradeSn, RefType.BID, bidSn, "관리자 취소 승인 환불"))
+                .isInstanceOf(PointException.class)
+                .hasMessageContaining("정산 지급이 끝나");
+    }
+
+    @Test
     @DisplayName("낙찰 전체 흐름: 홀딩 → 보관금 전환 → 정산 대기 → 정산 완료 (ML-PAY-004, F-PAY-042/043)")
     void fullSettlementFlow() {
         pointService.hold(buyerSn, 30000, RefType.BID, 1L, "입찰 홀딩");

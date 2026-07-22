@@ -36,6 +36,10 @@ public interface MemberMapper {
     void updateRefreshTokenById(@Param("usrSn") Long usrSn,
                                 @Param("refreshTokenHash") String refreshTokenHash);
 
+    // @ai_generated: CHG-032/F-PROV-015 - 계정 자격이 아닌 현재 활성 접근 역할만 바꾼다.
+    int updateRoleById(@Param("usrSn") Long usrSn,
+                       @Param("role") String role);
+
     // @ai_generated: F-AUTH-007 - #{encodedPassword} 는 BCrypt 인코딩 완료 상태(PasswordResetService)
     void updatePasswordById(@Param("usrSn") Long usrSn,
                             @Param("encodedPassword") String encodedPassword);

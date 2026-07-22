@@ -53,6 +53,11 @@ public interface AuctionMapper {
 
     int updateCurrentHighestBids(@Param("auctionId") Long auctionId);
 
+    int exceptionCancelHighestBid(
+            @Param("auctionId") Long auctionId,
+            @Param("bidId") Long bidId,
+            @Param("actor") String actor);
+
     int insertBid(AuctionBidCreateCommand command);
 
     int updateAuctionCurrentPrice(

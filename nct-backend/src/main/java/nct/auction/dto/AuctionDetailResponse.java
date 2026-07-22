@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -32,6 +34,9 @@ public class AuctionDetailResponse {
     private Integer viewCount;
     private Long sellerId;
     private String sellerName;
+    @JsonIgnore
+    private Long currentHighestBidderId;
+    private boolean currentHighestBidder;
     private List<AuctionImageItem> images = List.of();
     private List<AuctionBidItem> bids = List.of();
 }

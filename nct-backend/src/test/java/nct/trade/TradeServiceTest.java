@@ -33,6 +33,7 @@ import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
@@ -134,6 +135,9 @@ class TradeServiceTest {
         assertThat(result.getTradeSn()).isEqualTo(91L);
         assertThat(result.isCreated()).isTrue();
         assertThat(result.isExistingTrade()).isFalse();
+        ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
+        verify(tradeMapper).insertMaterialTrade(tradeCaptor.capture());
+        assertThat(tradeCaptor.getValue().getBidId()).isEqualTo(50L);
         verify(tradeMapper).insertStatusHistory(
                 91L,
                 "TRDC0003",
@@ -156,6 +160,27 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
         verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void returnsAuctionTradeEscrowInfoByProductId() {
+        AuctionTradeEscrowInfo info = new AuctionTradeEscrowInfo();
+        info.setTradeSn(91L);
+        info.setBidSn(501L);
+        info.setBuyerUsrSn(20L);
+        info.setTradeStatusCd("TRDC0003");
+        info.setTradeAmount(BigDecimal.valueOf(128000));
+        when(tradeMapper.findAuctionTradeEscrowInfoByProductId(30L)).thenReturn(info);
+
+        assertThat(tradeService.findAuctionTradeEscrowInfoByProductId(30L))
+                .containsSame(info);
+    }
+
+    @Test
+    void returnsEmptyWhenAuctionTradeDoesNotExist() {
+        when(tradeMapper.findAuctionTradeEscrowInfoByProductId(30L)).thenReturn(null);
+
+        assertThat(tradeService.findAuctionTradeEscrowInfoByProductId(30L)).isEmpty();
     }
 
     @Test

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import nct.ops.operation.port.SellerCancellationDecisionPort;
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
@@ -76,6 +78,22 @@ public class TradeService implements SellerCancellationDecisionPort {
     }
 
     /**
+     * 경매 취소·환불 흐름이 상품 번호만으로 거래와 보관금 원본 입찰을 확인하는 공개 계약이다.
+     * 거래가 없으면 empty를 반환하고, 기존 거래의 null bidSn은 호출자가 자동 환불 대상에서 제외한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AuctionTradeEscrowInfo> findAuctionTradeEscrowInfoByProductId(
+            long productId) {
+        if (productId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "상품 번호가 올바르지 않습니다.");
+        }
+
+        return Optional.ofNullable(
+                tradeMapper.findAuctionTradeEscrowInfoByProductId(productId));
+    }
+
+    /**
      * AuctionService의 즉시구매·자동 낙찰 트랜잭션 안에서 호출하는 공개 계약이다.
      * 기본 REQUIRED 전파를 사용하므로 거래·입찰·포인트·경매 상태 변경과 하나의 트랜잭션으로 롤백된다.
      */
@@ -90,7 +108,8 @@ public class TradeService implements SellerCancellationDecisionPort {
                         command.getBuyerUserId(),
                         command.getProductId(),
                         command.getTradeAmount()),
-                command.getSource().getStatusHistoryReason());
+                command.getSource().getStatusHistoryReason(),
+                command.getWinningBidId());
 
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
@@ -107,12 +126,14 @@ public class TradeService implements SellerCancellationDecisionPort {
             MaterialTradeCreateCommand command) {
         return createOrGetMaterialTrade(
                 command,
-                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+                "낙찰 또는 즉시구매로 거래가 생성되었습니다.",
+                null);
     }
 
     private MaterialTradeCreateResult createOrGetMaterialTrade(
             MaterialTradeCreateCommand command,
-            String creationReason) {
+            String creationReason,
+            Long bidId) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -133,6 +154,7 @@ public class TradeService implements SellerCancellationDecisionPort {
         trade.setSellerUserId(command.getSellerUserId());
         trade.setBuyerUserId(command.getBuyerUserId());
         trade.setProductId(command.getProductId());
+        trade.setBidId(bidId);
         trade.setTradeTypeCode(MATERIAL_TRADE);
         trade.setTradeStatusCode(IN_PROGRESS);
         trade.setTradeAmount(command.getTradeAmount());

@@ -17,4 +17,6 @@
   <update id="changeApplicationStatus">UPDATE PROVIDER_APPLY SET PRV_APLY_STATUS_CD=#{statusCode},PRV_APLY_RJCT_RSN_CN=#{reason},PRV_APLY_UPDT_ID=#{actorId} WHERE PRV_APLY_SN=#{applicationSn} AND PRV_APLY_STATUS_CD='PRVC0002' AND PRV_APLY_ACTV_YN='Y'</update>
   <insert id="insertActivePermission">INSERT INTO PROVIDER_CATEGORY_PERMISSION (USR_SN,CAT_SN,PRV_APLY_SN,PRV_CAT_PRM_STATUS_CD,PRV_CAT_PRM_USE_YN,PRV_CAT_PRM_REG_ID,PRV_CAT_PRM_UPDT_ID) VALUES (#{userSn},#{categorySn},#{applicationSn},'PRVC0006','Y',#{actorId},#{actorId})</insert>
   <select id="hasActivePermission" resultType="boolean">SELECT EXISTS(SELECT 1 FROM PROVIDER_CATEGORY_PERMISSION WHERE USR_SN=#{userSn} AND CAT_SN=#{categorySn} AND PRV_CAT_PRM_STATUS_CD='PRVC0006' AND PRV_CAT_PRM_USE_YN='Y')</select>
+  <!-- @ai_generated: F-PROV-015 - 특정 카테고리를 고르기 전 SERVICE 모드 진입 자격만 확인한다. -->
+  <select id="hasAnyActivePermission" resultType="boolean">SELECT EXISTS(SELECT 1 FROM PROVIDER_CATEGORY_PERMISSION WHERE USR_SN=#{userSn} AND PRV_CAT_PRM_STATUS_CD='PRVC0006' AND PRV_CAT_PRM_USE_YN='Y')</select>
 </mapper>

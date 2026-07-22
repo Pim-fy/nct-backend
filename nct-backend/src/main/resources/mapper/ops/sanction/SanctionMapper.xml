@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.sanction.mapper.SanctionMapper">
+
+    <!--
+        F-AUTH-012 / F-PROV-011의 "현재 유효 제재" 판정.
+        종료 시각과 DB 현재 시각이 같으면 종료된 것으로 본다(차단 조건은 END_DT > CURRENT_TIMESTAMP).
+    -->
+    <select id="existsActiveSanction" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM SANCTION
+            WHERE USR_SN = #{userSn}
+              AND SNC_START_DT &lt;= CURRENT_TIMESTAMP
+              AND (SNC_END_DT IS NULL OR SNC_END_DT > CURRENT_TIMESTAMP)
+        )
+    </select>
+</mapper>

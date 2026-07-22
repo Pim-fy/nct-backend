@@ -29,10 +29,12 @@ import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
@@ -57,6 +59,7 @@ class TradeServiceTest {
     private SystemSettingAdminMapper systemSettingMapper;
     private FileStorageService fileStorageService;
     private MemberService memberService;
+    private SettlementService settlementService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -66,12 +69,14 @@ class TradeServiceTest {
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
         fileStorageService = mock(FileStorageService.class);
         memberService = mock(MemberService.class);
+        settlementService = mock(SettlementService.class);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
                 systemSettingMapper,
                 fileStorageService,
-                memberService);
+                memberService,
+                settlementService);
     }
 
     @Test
@@ -134,6 +139,9 @@ class TradeServiceTest {
         assertThat(result.getTradeSn()).isEqualTo(91L);
         assertThat(result.isCreated()).isTrue();
         assertThat(result.isExistingTrade()).isFalse();
+        ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
+        verify(tradeMapper).insertMaterialTrade(tradeCaptor.capture());
+        assertThat(tradeCaptor.getValue().getBidId()).isEqualTo(50L);
         verify(tradeMapper).insertStatusHistory(
                 91L,
                 "TRDC0003",
@@ -156,6 +164,27 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
         verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void returnsAuctionTradeEscrowInfoByProductId() {
+        AuctionTradeEscrowInfo info = new AuctionTradeEscrowInfo();
+        info.setTradeSn(91L);
+        info.setBidSn(501L);
+        info.setBuyerUsrSn(20L);
+        info.setTradeStatusCd("TRDC0003");
+        info.setTradeAmount(BigDecimal.valueOf(128000));
+        when(tradeMapper.findAuctionTradeEscrowInfoByProductId(30L)).thenReturn(info);
+
+        assertThat(tradeService.findAuctionTradeEscrowInfoByProductId(30L))
+                .containsSame(info);
+    }
+
+    @Test
+    void returnsEmptyWhenAuctionTradeDoesNotExist() {
+        when(tradeMapper.findAuctionTradeEscrowInfoByProductId(30L)).thenReturn(null);
+
+        assertThat(tradeService.findAuctionTradeEscrowInfoByProductId(30L)).isEmpty();
     }
 
     @Test
@@ -522,6 +551,7 @@ class TradeServiceTest {
         target.setTradeId(91L);
         target.setSellerUserId(10L);
         target.setBuyerUserId(20L);
+        target.setTradeAmount(BigDecimal.valueOf(30000L));
         target.setTradeStatus("TRDC0005");
         target.setAutoCompleteAt(now.minusSeconds(1));
         when(tradeMapper.findAutoCompletionTargetForUpdate(91L)).thenReturn(target);
@@ -534,6 +564,7 @@ class TradeServiceTest {
                 91L,
                 "TRDC0006",
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
+        verify(settlementService).createPending(91L, 10L, 30000L);
         verify(notificationService).notify(
                 20L,
                 nct.notification.domain.NotificationType.TRADE,

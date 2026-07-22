@@ -26,6 +26,23 @@
         LIMIT 1
     </select>
 
+    <!-- 경매 도메인이 임의 JOIN 없이 거래·낙찰입찰·구매자 정보를 함께 조회하는 공개 계약이다. -->
+    <select id="findAuctionTradeEscrowInfoByProductId"
+            resultType="nct.trade.dto.AuctionTradeEscrowInfo">
+        SELECT
+            t.TRD_SN AS tradeSn,
+            t.BID_SN AS bidSn,
+            t.BYPR_USR_SN AS buyerUsrSn,
+            t.TRD_STATUS_CD AS tradeStatusCd,
+            t.TRD_AMT AS tradeAmount
+        FROM TRADE t
+        WHERE t.PRD_SN = #{productId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+        <!-- 현재 상품당 거래 1건 규칙을 따르되, 비정상 중복 데이터에서는 최신 건을 사용한다. -->
+        ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+        LIMIT 1
+    </select>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT
@@ -38,6 +55,7 @@
             SLLR_USR_SN,
             BYPR_USR_SN,
             PRD_SN,
+            BID_SN,
             TRD_TYPE_CD,
             TRD_STATUS_CD,
             TRD_AMT
@@ -46,6 +64,7 @@
             #{sellerUserId},
             #{buyerUserId},
             #{productId},
+            #{bidId},
             #{tradeTypeCode},
             #{tradeStatusCode},
             #{tradeAmount}
@@ -357,6 +376,7 @@
             t.TRD_SN AS tradeId,
             t.SLLR_USR_SN AS sellerUserId,
             t.BYPR_USR_SN AS buyerUserId,
+            t.TRD_AMT AS tradeAmount,
             t.TRD_STATUS_CD AS tradeStatus,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt
         FROM TRADE t
@@ -381,6 +401,8 @@
             resultType="nct.trade.dto.TradeCancellationTarget">
         SELECT
             t.TRD_SN AS tradeId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.BID_SN AS bidSn,
             t.TRD_STATUS_CD AS tradeStatus
         FROM TRADE t
         WHERE t.TRD_SN = #{tradeId}

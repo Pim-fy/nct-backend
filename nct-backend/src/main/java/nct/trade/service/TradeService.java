@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -26,9 +27,11 @@ import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.operation.port.SellerCancellationDecisionPort;
+import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
@@ -68,11 +71,28 @@ public class TradeService implements SellerCancellationDecisionPort {
     private final SystemSettingAdminMapper systemSettingMapper;
     private final FileStorageService fileStorageService;
     private final MemberService memberService;
+    private final SettlementService settlementService;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
     public long createMaterialTrade(MaterialTradeCreateCommand command) {
         return createOrGetMaterialTrade(command).getTradeId();
+    }
+
+    /**
+     * 경매 취소·환불 흐름이 상품 번호만으로 거래와 보관금 원본 입찰을 확인하는 공개 계약이다.
+     * 거래가 없으면 empty를 반환하고, 기존 거래의 null bidSn은 호출자가 자동 환불 대상에서 제외한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AuctionTradeEscrowInfo> findAuctionTradeEscrowInfoByProductId(
+            long productId) {
+        if (productId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "상품 번호가 올바르지 않습니다.");
+        }
+
+        return Optional.ofNullable(
+                tradeMapper.findAuctionTradeEscrowInfoByProductId(productId));
     }
 
     /**
@@ -90,7 +110,8 @@ public class TradeService implements SellerCancellationDecisionPort {
                         command.getBuyerUserId(),
                         command.getProductId(),
                         command.getTradeAmount()),
-                command.getSource().getStatusHistoryReason());
+                command.getSource().getStatusHistoryReason(),
+                command.getWinningBidId());
 
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
@@ -107,12 +128,14 @@ public class TradeService implements SellerCancellationDecisionPort {
             MaterialTradeCreateCommand command) {
         return createOrGetMaterialTrade(
                 command,
-                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+                "낙찰 또는 즉시구매로 거래가 생성되었습니다.",
+                null);
     }
 
     private MaterialTradeCreateResult createOrGetMaterialTrade(
             MaterialTradeCreateCommand command,
-            String creationReason) {
+            String creationReason,
+            Long bidId) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -133,6 +156,7 @@ public class TradeService implements SellerCancellationDecisionPort {
         trade.setSellerUserId(command.getSellerUserId());
         trade.setBuyerUserId(command.getBuyerUserId());
         trade.setProductId(command.getProductId());
+        trade.setBidId(bidId);
         trade.setTradeTypeCode(MATERIAL_TRADE);
         trade.setTradeStatusCode(IN_PROGRESS);
         trade.setTradeAmount(command.getTradeAmount());
@@ -382,6 +406,12 @@ public class TradeService implements SellerCancellationDecisionPort {
             return false;
         }
 
+        // 거래 완료와 정산 대기 생성은 같은 트랜잭션으로 처리해 반쪽 완료 상태를 막는다.
+        settlementService.createPending(
+                target.getTradeId(),
+                target.getSellerUserId(),
+                resolveSettlementAmount(target));
+
         tradeMapper.insertStatusHistory(
                 tradeId,
                 COMPLETED,
@@ -391,6 +421,23 @@ public class TradeService implements SellerCancellationDecisionPort {
 
         // 정산·포인트 원장 처리는 담당자5·6의 확정 계약을 받은 뒤 같은 완료 이벤트에 연결한다.
         return true;
+    }
+
+    /** 정산은 원 단위 양수 금액만 허용하므로 자동 완료 잠금 조회값을 다시 검증한다. */
+    private long resolveSettlementAmount(TradeAutoCompletionTarget target) {
+        if (target.getSellerUserId() <= 0
+                || target.getTradeAmount() == null
+                || target.getTradeAmount().signum() <= 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "자동 완료 거래의 정산 정보를 확인할 수 없습니다.");
+        }
+
+        try {
+            return target.getTradeAmount().longValueExact();
+        } catch (ArithmeticException exception) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "자동 완료 거래의 정산 금액이 올바르지 않습니다.");
+        }
     }
 
     /**

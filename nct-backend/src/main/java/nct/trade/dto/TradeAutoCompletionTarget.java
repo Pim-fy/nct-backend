@@ -1,5 +1,6 @@
 package nct.trade.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import lombok.Data;
@@ -14,6 +15,8 @@ public class TradeAutoCompletionTarget {
     private long tradeId;
     private long sellerUserId;
     private long buyerUserId;
+    /** 자동 완료와 함께 생성할 판매자 정산 대기 금액이다. */
+    private BigDecimal tradeAmount;
     private String tradeStatus;
     private LocalDateTime autoCompleteAt;
 }

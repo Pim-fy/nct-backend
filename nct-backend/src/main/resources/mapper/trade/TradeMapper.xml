@@ -376,6 +376,7 @@
             t.TRD_SN AS tradeId,
             t.SLLR_USR_SN AS sellerUserId,
             t.BYPR_USR_SN AS buyerUserId,
+            t.TRD_AMT AS tradeAmount,
             t.TRD_STATUS_CD AS tradeStatus,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt
         FROM TRADE t

@@ -17,11 +17,16 @@ public class PointBalance {
     /** 홀딩 포인트 (PTLC0002 합계) — 입찰 등으로 묶여 있는 금액 */
     private long holdAmt;
 
-    /** 정산가능(환전가능) 포인트 (PTLC0003 합계) — 판매대금으로 받은 금액 */
+    /** 정산가능 포인트 (PTLC0003 합계) — 판매대금으로 받은 금액 */
     private long settleableAmt;
 
     /** 총 보유 포인트 = 세 버킷의 합 */
     public long getTotalAmt() {
         return availableAmt + holdAmt + settleableAmt;
+    }
+
+    /** 환전 가능 포인트 = 사용가능 + 정산가능 (2026-07-22 사용자 결정 — 충전분도 환전 대상) */
+    public long getExchangeableAmt() {
+        return availableAmt + settleableAmt;
     }
 }

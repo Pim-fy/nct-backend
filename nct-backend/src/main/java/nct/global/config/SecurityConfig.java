@@ -119,6 +119,8 @@ public class SecurityConfig {
                 // 쓰기 API는 /api/admin/** 아래에 분리되어 있어 이 규칙으로 공개되지 않는다.
                 .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/**")
                     .permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/guides", "/api/guides/**")
+                    .permitAll()
                 // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
                     .permitAll()

@@ -13,6 +13,7 @@ import nct.auction.dto.AuctionCancelRequestCreateCommand;
 import nct.auction.dto.AuctionCancelRequestProcessTarget;
 import nct.auction.dto.AuctionCancelRequestResponse;
 import nct.auction.dto.AuctionCancellationTarget;
+import nct.auction.dto.AuctionPendingCancelRequestResponse;
 import nct.auction.mapper.AuctionCancelRequestMapper;
 import nct.auction.mapper.AuctionMapper;
 import nct.common.domain.RefType;
@@ -40,6 +41,20 @@ public class AuctionCancellationService {
     private final ReferenceDataService referenceDataService;
     private final TradeService tradeService;
     private final PointService pointService;
+
+    @Transactional(readOnly = true)
+    public AuctionPendingCancelRequestResponse getPendingCancellationRequest(Long aucSn) {
+        if (aucSn == null || aucSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        AuctionPendingCancelRequestResponse request =
+                cancelRequestMapper.findPendingByAuctionId(aucSn);
+        if (request == null) {
+            throw new CustomException(ErrorCode.AUCTION_CANCEL_REQUEST_NOT_FOUND);
+        }
+        return request;
+    }
 
     @Transactional
     public AuctionCancelRequestResponse requestCancellation(

@@ -27,6 +27,7 @@ import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.operation.port.SellerCancellationDecisionPort;
+import nct.point.service.PointService;
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
@@ -70,6 +71,7 @@ public class TradeService implements SellerCancellationDecisionPort {
     private final SystemSettingAdminMapper systemSettingMapper;
     private final FileStorageService fileStorageService;
     private final MemberService memberService;
+    private final PointService pointService;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -441,6 +443,9 @@ public class TradeService implements SellerCancellationDecisionPort {
                     "현재 거래 상태에서는 취소 승인 처리할 수 없습니다.");
         }
 
+        // 기존 거래처럼 낙찰 입찰번호가 없으면 상태를 바꾸기 전에 처리를 중단한다.
+        long bidSn = requireAuctionBidSn(target);
+
         if (tradeMapper.cancelMaterialTrade(
                 target.getTradeId(),
                 command.adminId()) == 0) {
@@ -448,10 +453,28 @@ public class TradeService implements SellerCancellationDecisionPort {
                     "거래 상태가 변경되어 취소 승인 처리할 수 없습니다.");
         }
 
+        // 물건 거래 보관금은 거래번호가 아니라 낙찰 입찰번호(BID) 기준으로 찾는다.
+        pointService.refundEscrow(
+                target.getBuyerUserId(),
+                target.getTradeId(),
+                RefType.BID,
+                bidSn,
+                "관리자 취소 승인: " + command.reason().trim());
+
         tradeMapper.insertStatusHistory(
                 target.getTradeId(),
                 CANCELED,
                 command.reason().trim());
+    }
+
+    /** 기존 거래처럼 낙찰 입찰번호가 없으면 잘못된 보관금을 환불하지 않고 전체 처리를 중단한다. */
+    private long requireAuctionBidSn(TradeCancellationTarget target) {
+        if (target.getBidSn() == null || target.getBidSn() <= 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "낙찰 입찰 정보가 없어 물건 거래 보관금을 환불할 수 없습니다.");
+        }
+
+        return target.getBidSn();
     }
 
     // 진행·발송 상태에서만 요청을 시작한다. 이미 대기/완료/보류/취소 상태의 중복 요청은 막는다.

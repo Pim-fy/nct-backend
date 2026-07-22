@@ -29,6 +29,7 @@ import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.point.service.PointService;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
@@ -58,6 +59,7 @@ class TradeServiceTest {
     private SystemSettingAdminMapper systemSettingMapper;
     private FileStorageService fileStorageService;
     private MemberService memberService;
+    private PointService pointService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -67,12 +69,14 @@ class TradeServiceTest {
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
         fileStorageService = mock(FileStorageService.class);
         memberService = mock(MemberService.class);
+        pointService = mock(PointService.class);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
                 systemSettingMapper,
                 fileStorageService,
-                memberService);
+                memberService,
+                pointService);
     }
 
     @Test
@@ -595,6 +599,8 @@ class TradeServiceTest {
     void approvesSellerCancellationAndRecordsTradeStatusHistory() {
         TradeCancellationTarget target = new TradeCancellationTarget();
         target.setTradeId(91L);
+        target.setBuyerUserId(12L);
+        target.setBidSn(31L);
         target.setTradeStatus("TRDC0004");
         SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
                 91L,
@@ -612,6 +618,35 @@ class TradeServiceTest {
                 91L,
                 "TRDC0008",
                 "판매자 취소 요청을 승인합니다.");
+        verify(pointService).refundEscrow(
+                12L,
+                91L,
+                nct.common.domain.RefType.BID,
+                31L,
+                "관리자 취소 승인: 판매자 취소 요청을 승인합니다.");
+    }
+
+    @Test
+    void blocksSellerCancellationWhenAuctionBidInformationIsMissing() {
+        TradeCancellationTarget target = new TradeCancellationTarget();
+        target.setTradeId(91L);
+        target.setBuyerUserId(12L);
+        target.setTradeStatus("TRDC0003");
+        SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
+                91L,
+                SellerCancellationDecision.APPROVED,
+                "판매자 취소 요청을 승인합니다.",
+                "admin-1",
+                "request-1");
+        when(tradeMapper.findMaterialTradeForCancellationForUpdate(91L)).thenReturn(target);
+        when(tradeMapper.cancelMaterialTrade(91L, "admin-1")).thenReturn(1);
+
+        assertThatThrownBy(() -> tradeService.decide(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+        verify(tradeMapper, never()).cancelMaterialTrade(anyLong(), any());
+        verifyNoInteractions(pointService);
     }
 
     @Test

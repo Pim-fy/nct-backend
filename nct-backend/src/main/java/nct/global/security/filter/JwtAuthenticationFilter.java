@@ -1,12 +1,8 @@
 package nct.global.security.filter;
 
 import java.io.IOException;
-import java.util.List;
-
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -73,36 +69,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // @ai_generated: 레드팀 3-A/3-B 대응 - subject 파싱 실패(구버전 토큰)·회원 조회 실패
-        //   (F-AUTH-009 정지/탈퇴 포함)·role 클레임 누락을 하나의 catch로 묶어 500 대신
+        // @ai_generated: CHG-032 - subject 파싱 실패(구버전 토큰)·회원 조회 실패
+        //   (F-AUTH-009 정지/탈퇴 포함)를 하나의 catch로 묶어 500 대신
         //   일관된 ApiResponse JSON(401/403/410)으로 응답한다.
         UserDetails userDetails;
-        String role;
         try {
             Long usrSn = jwtTokenProvider.getUsrSn(accessToken);
             userDetails = customUserDetailsService.loadUserByUsername(String.valueOf(usrSn));
-
-            // @ai_generated: 권한은 DB 고정 USR_ROLE_CD(userDetails.getAuthorities())가 아니라
-            //   JWT의 role 클레임으로 구성한다. USR_ROLE_CD는 모드 전환 시 변경되지 않으므로(F-AUTH-013),
-            //   세션에서 실제로 유효한 권한은 재발급되는 JWT의 role 클레임이어야 한다(F-PROV-015 모드 전환 반영).
-            role = jwtTokenProvider.getRole(accessToken);
-            if (!StringUtils.hasText(role)) {
-                // role 클레임이 없는 토큰(예: refresh 토큰 오용)은 이 필터 계약상 무효한 토큰이다.
-                throw new CustomException(ErrorCode.INVALID_TOKEN);
-            }
         } catch (CustomException ex) {
             writeErrorResponse(response, ex.getErrorCode(), requestURI);
             return;
         }
 
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority(role));
-
-        // 인증 객체 생성 (credentials 는 JWT 방식에서 불필요 -> null)
+        // @ai_generated: CHG-032 - 토큰은 회원 식별·서명 검증에만 사용하고,
+        // 현재 접근 권한은 방금 DB에서 읽은 USR_ROLE_CD 하나(userDetails authorities)로 구성한다.
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,
-                        authorities);
+                        userDetails.getAuthorities());
 
         // 요청 정보(IP 등)를 인증 객체에 추가
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

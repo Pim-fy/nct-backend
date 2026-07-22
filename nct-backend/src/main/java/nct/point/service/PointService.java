@@ -374,18 +374,26 @@ public class PointService {
     }
 
     /**
-     * 분쟁 판정 보관금 환불. 거래 문제 판정이 "환불"로 확정될 때 분쟁 담당자(4·5)가 호출한다.
+     * 보관금 환불. 거래 문제 판정이 "환불"로 확정되거나(분쟁 담당자 4·5) 관리자가 판매자
+     * 취소 요청을 승인했을 때(F-OPS-004, 담당자4) 호출한다.
      * 보관금으로 빠져 있던 거래대금 전액을 구매자/의뢰자의 사용가능 버킷에 되돌린다 —
      * 물건 거래(보관금 참조 BID)·서비스 거래(참조 TRADE) 공통 계약.
      *
      * 원장은 수정·삭제하지 않으므로(기록 불변) 환불(+) 행을 짝으로 남기는 방식이다 —
      * 같은 참조의 보관금전환(−)과 합산이 0이 되어 이중 환불이 원장만으로 차단된다.
      *
+     * 정산 완료 여부는 항상 tradeSn 기준으로 확인한다 — SETTLEMENT은 거래 단위로만 기록되고
+     * (SettlementService.complete은 RefType.TRADE + tradeSn으로 정산을 남긴다), 물건 거래의
+     * 보관금 참조(BID + bidSn)와는 값이 다르기 때문에 둘을 분리했다.
+     *
      * @param usrSn 보관금을 냈던 구매자/의뢰자 회원번호 (다른 회원을 넘기면 보관금이 안 잡혀 실패한다)
+     * @param tradeSn 정산 완료 여부 확인용 거래일련번호 (서비스 거래는 refSn과 같은 값)
+     * @param refType 환불할 보관금을 찾는 참조 유형 (물건 거래는 BID, 서비스 거래는 TRADE)
+     * @param refSn   환불할 보관금을 찾는 참조 일련번호 (물건 거래는 bidSn, 서비스 거래는 tradeSn)
      * @return 환불된 금액
      */
     @Transactional
-    public long refundEscrow(long usrSn, RefType refType, long refSn, String reason) {
+    public long refundEscrow(long usrSn, long tradeSn, RefType refType, long refSn, String reason) {
         lockUser(usrSn);
 
         // 이 회원 앞으로 살아있는 보관금이 있어야 한다 (없으면 이미 환불됐거나 잘못된 호출)
@@ -395,9 +403,9 @@ public class PointService {
                     "환불할 보관금이 없습니다. 참조: " + refType + "-" + refSn);
         }
         // 이미 판매자/제공자에게 정산 지급된 돈은 여기서 되돌릴 수 없다 — 관리자 수동 보정 영역
-        if (pointMapper.selectSettledAmtByRef(refType.getCode(), refSn) > 0) {
+        if (pointMapper.selectSettledAmtByRef(RefType.TRADE.getCode(), tradeSn) > 0) {
             throw new PointException(ErrorCode.POINT_ESCROW_ALREADY_SETTLED,
-                    "이미 정산 지급이 끝나 환불할 수 없습니다. 참조: " + refType + "-" + refSn);
+                    "이미 정산 지급이 끝나 환불할 수 없습니다. 거래: " + tradeSn);
         }
 
         long amt = -escrowNet; // 보관금 잔존액 전액 환불

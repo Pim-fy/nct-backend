@@ -122,6 +122,21 @@ class PointFlowTest {
     }
 
     @Test
+    @DisplayName("관리자 취소 승인 환불: 낙찰 보관금 전액 복원 + 알림 생성 (F-OPS-004)")
+    void refundEscrowAfterAdminCancellation() {
+        pointService.hold(buyerSn, 30000, RefType.BID, 1L, "입찰 홀딩");
+        pointService.convertHoldToEscrow(buyerSn, RefType.BID, 1L, "낙찰 확정");
+
+        long refunded = pointService.refundEscrow(buyerSn, 1L, RefType.BID, 1L, "관리자 취소 승인 환불");
+
+        assertThat(refunded).isEqualTo(30000);
+        PointBalance bal = pointService.getBalance(buyerSn);
+        assertThat(bal.getAvailableAmt()).isEqualTo(100000);
+        assertThat(bal.getTotalAmt()).isEqualTo(100000);
+        assertThat(notificationService.getUnreadCount(buyerSn)).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("낙찰 전체 흐름: 홀딩 → 보관금 전환 → 정산 대기 → 정산 완료 (ML-PAY-004, F-PAY-042/043)")
     void fullSettlementFlow() {
         pointService.hold(buyerSn, 30000, RefType.BID, 1L, "입찰 홀딩");

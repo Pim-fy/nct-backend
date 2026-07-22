@@ -70,7 +70,7 @@ public class NotificationController {
     /** 개별 읽음 처리 — id가 남의 알림이면 usrSn 가드로 아무 일도 일어나지 않음 */
     @PatchMapping("/{id}/read")
     public ResponseEntity<ApiResponse<Void>> markRead(
-            @PathVariable long id,
+            @PathVariable(name = "id") long id,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         notificationService.markRead(id, userDetails.getMember().getId());

@@ -45,8 +45,8 @@ public class AdminProviderFileController {
 
     @GetMapping("/{prvAplySn}/files/{flSn}/download")
     public ResponseEntity<Resource> download(
-            @PathVariable Long prvAplySn,
-            @PathVariable Long flSn,
+            @PathVariable(name = "prvAplySn") Long prvAplySn,
+            @PathVariable(name = "flSn") Long flSn,
             @AuthenticationPrincipal CustomUserDetails userDetails,
             HttpServletRequest httpRequest) {
 

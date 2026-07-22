@@ -20,7 +20,7 @@ import nct.global.exception.ErrorCode;
  * [JWT 발급/검증]
  * - JWT 구조: Header.Payload.Signature
  *   : Header    - 알고리즘 정보 (HS256)
- *   : Payload   - subject(회원일련번호 USR_SN), role, iat(발급시각), exp(만료시각)
+ *   : Payload   - subject(회원일련번호 USR_SN), iat(발급시각), exp(만료시각)
  *   : Signature - 시크릿 키 서명 -> 위변조 방지
  * - Access Token  : 만료 짧음 (기본 30분), API 인증에 사용
  * - Refresh Token : 만료 김 (기본 1일), Access Token 재발급에만 사용
@@ -43,12 +43,10 @@ public class JwtTokenProvider {
     /**
      * Access Token 생성
      * @param usrSn 토큰 subject 에 저장할 회원일련번호(불변 PK)
-     * @param role  커스텀 클레임으로 저장할 권한 (예: "ROLE_USER")
      */
-    public String createAccessToken(Long usrSn, String role) {
+    public String createAccessToken(Long usrSn) {
         return Jwts.builder()
                    .subject(String.valueOf(usrSn))
-                   .claim("role", role)
                    .issuedAt(new Date())
                    .expiration(new Date(System.currentTimeMillis() + accessTokenExpiry))
                    .signWith(getSigningKey())
@@ -77,11 +75,6 @@ public class JwtTokenProvider {
         } catch (NumberFormatException e) {
             throw new CustomException(ErrorCode.INVALID_TOKEN);
         }
-    }
-
-    /** 토큰에서 권한 추출 */
-    public String getRole(String token) {
-        return parseClaims(token).get("role", String.class);
     }
 
     /** 토큰 유효성 검증 (만료/서명/형식) */

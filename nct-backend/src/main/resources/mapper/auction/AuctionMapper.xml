@@ -320,6 +320,19 @@
         FOR UPDATE
     </select>
 
+    <select id="findAuctionCancellationTargetForUpdate"
+            resultType="nct.auction.dto.AuctionCancellationTarget">
+        SELECT
+            a.AUC_SN AS aucSn,
+            p.USR_SN AS sellerUsrSn,
+            a.AUC_STATUS_CD AS aucStatusCd
+        FROM AUCTION a
+        JOIN PRODUCT p
+          ON p.PRD_SN = a.PRD_SN
+        WHERE a.AUC_SN = #{auctionId}
+        FOR UPDATE
+    </select>
+
     <select id="findExpiredActiveAuctionIds" resultType="long">
         SELECT AUC_SN
         FROM AUCTION
@@ -421,6 +434,15 @@
         WHERE AUC_SN = #{auctionId}
           AND AUC_STATUS_CD = 'AUCC0002'
           AND AUC_END_DT &lt;= NOW()
+    </update>
+
+    <update id="updateAuctionStatusForCancellation">
+        UPDATE AUCTION
+        SET AUC_STATUS_CD = #{newStatusCode},
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = #{expectedStatusCode}
     </update>
 
 </mapper>

@@ -135,6 +135,14 @@
         WHERE  USR_SN = #{usrSn}
     </update>
 
+    <!-- @ai_generated: CHG-032/F-PROV-015 - USERS.USR_ROLE_CD는 현재 활성 접근 역할이다. -->
+    <update id="updateRoleById">
+        /* 일반/제공자 현재 접근 역할 변경 */
+        UPDATE USERS
+        SET    USR_ROLE_CD = #{role}
+        WHERE  USR_SN = #{usrSn}
+    </update>
+
     <!-- @ai_generated: F-AUTH-007 - 비밀번호 재설정 완료 시 USR_PSWD_HASH 갱신 -->
     <update id="updatePasswordById">
         /* 비밀번호 해시 갱신 */

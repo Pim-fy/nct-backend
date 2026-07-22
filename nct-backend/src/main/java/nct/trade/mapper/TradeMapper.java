@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.trade.domain.Trade;
 import nct.trade.dto.TradeAutoCompletionTarget;
+import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofFile;
 import nct.trade.dto.TradeDeliverySubmitTarget;
@@ -120,5 +121,14 @@ public interface TradeMapper {
     int completeExpiredConfirmation(
             @Param("tradeId") long tradeId,
             @Param("now") LocalDateTime now,
+            @Param("updaterId") String updaterId);
+
+    /** 관리자 취소 승인 전에 거래 행을 잠가 상태 전이와 중복 판단이 경합하지 않게 한다. */
+    TradeCancellationTarget findMaterialTradeForCancellationForUpdate(
+            @Param("tradeId") long tradeId);
+
+    /** 취소 가능한 상태만 취소로 바꿔, 잠금 해제 전 상태 변경에도 안전하게 대응한다. */
+    int cancelMaterialTrade(
+            @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
 }

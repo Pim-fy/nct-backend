@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.service.AuctionService;
+import nct.auction.service.AuctionCancellationService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -33,6 +34,7 @@ import nct.point.service.PointService;
 class AuctionConcurrencyTest {
 
     @Autowired AuctionService auctionService;
+    @Autowired AuctionCancellationService cancellationService;
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
 
@@ -48,6 +50,7 @@ class AuctionConcurrencyTest {
         deleteIn("TRADE_STATUS_HIST", "TRD_SN", tradeIds);
         deleteIn("TRADE", "TRD_SN", tradeIds);
         if (!auctionIds.isEmpty()) {
+            deleteIn("AUCTION_CANCEL_REQUEST", "AUC_SN", auctionIds);
             deleteIn("POINT_LEDGER", "PT_LDG_REF_SN", bidIdsByAuctions());
             deleteIn("BID", "AUC_SN", auctionIds);
             deleteIn("AUCTION", "AUC_SN", auctionIds);
@@ -158,6 +161,30 @@ class AuctionConcurrencyTest {
         assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0003");
         assertThat(escrowLedgerCount(bidderSn, bidSn)).isEqualTo(1);
         assertThat(materialTradeCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("판매자 취소 요청이 동시에 들어와도 처리 대기 요청은 한 건만 생성된다")
+    void concurrentCancellationRequestOnlyOneSucceeds() throws InterruptedException {
+        long sellerSn = insertUser("t_auc_cancel_con_seller");
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+
+        AtomicInteger successCount = new AtomicInteger();
+        runConcurrently(
+                () -> {
+                    cancellationService.requestCancellation(aucSn, sellerSn, "상품 상태 변경");
+                    successCount.incrementAndGet();
+                },
+                () -> {
+                    cancellationService.requestCancellation(aucSn, sellerSn, "판매 진행 불가");
+                    successCount.incrementAndGet();
+                });
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(auctionStatus(aucSn)).isEqualTo("AUCC0006");
+        assertThat(cancelRequestCount(aucSn)).isEqualTo(1);
+        assertThat(cancelRequestPreviousStatus(aucSn)).isEqualTo("AUCC0002");
     }
 
     @Test
@@ -351,6 +378,20 @@ class AuctionConcurrencyTest {
                 WHERE PRD_SN = ?
                   AND TRD_TYPE_CD = 'TRDC0001'
                 """, Integer.class, prdSn);
+    }
+
+    private int cancelRequestCount(long aucSn) {
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) FROM AUCTION_CANCEL_REQUEST WHERE AUC_SN = ?",
+                Integer.class,
+                aucSn);
+    }
+
+    private String cancelRequestPreviousStatus(long aucSn) {
+        return jdbc.queryForObject(
+                "SELECT PREV_AUC_STATUS_CD FROM AUCTION_CANCEL_REQUEST WHERE AUC_SN = ?",
+                String.class,
+                aucSn);
     }
 
     private List<Long> tradeIdsByProducts() {

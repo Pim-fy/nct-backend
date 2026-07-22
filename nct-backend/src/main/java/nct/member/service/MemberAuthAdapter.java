@@ -189,6 +189,13 @@ public class MemberAuthAdapter implements AuthMemberPort {
         memberMapper.updateRefreshTokenById(usrSn, refreshTokenHash);
     }
 
+    // @ai_generated: CHG-032/F-PROV-015 - AuthService가 정한 현재 활성 ROLE을 USERS에 반영한다.
+    @Override
+    @Transactional
+    public int updateRole(Long usrSn, String role) {
+        return memberMapper.updateRoleById(usrSn, role);
+    }
+
     // @ai_generated: F-AUTH-007 - 비밀번호 재설정 완료 시 호출. 인코딩은 PasswordResetService(BCrypt)에서 이미 완료됨.
     @Override
     @Transactional

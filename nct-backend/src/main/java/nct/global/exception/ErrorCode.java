@@ -62,6 +62,11 @@ public enum ErrorCode {
     // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 온보딩 완료 API 전용
     ONBOARDING_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "온보딩 정보를 찾을 수 없습니다. 소셜 로그인을 다시 시도해주세요."),
 
+    // ---- 리뷰 도메인 (F-COM-007, REVIEW 테이블 고정 기술 소유 - 09_기능단위_7인_업무분장 v10) ----
+    REVIEW_TRADE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "리뷰를 작성할 수 없는 거래입니다."),
+    REVIEW_INVALID_RATING(HttpStatus.BAD_REQUEST, "평점은 1~5점 사이여야 합니다."),
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
+
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     EMAIL_RESEND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "인증번호 재발송은 1분 후에 가능합니다."),

@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-NctBackendApplication<nct-backend>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "nct.NctBackendApplication",
+            "projectName": "nct-backend",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

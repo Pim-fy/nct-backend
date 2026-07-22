@@ -98,6 +98,13 @@ public class ProviderApplicationService {
         requireUser(userSn); referenceDataService.requireActiveCategory(categorySn, SERVICE_DOMAIN);
         if (!mapper.hasActivePermission(userSn, categorySn)) throw new CustomException(ErrorCode.FORBIDDEN);
     }
+
+    /** @ai_generated F-PROV-015: SERVICE 모드 진입에는 활성 승인 카테고리 하나 이상이 필요하다. */
+    @Transactional(readOnly = true)
+    public void requireAnyActivePermission(Long userSn) {
+        requireUser(userSn);
+        if (!mapper.hasAnyActivePermission(userSn)) throw new CustomException(ErrorCode.FORBIDDEN);
+    }
     private ProviderApplicationResponse requirePending(Long applicationSn) {
         if (applicationSn == null || applicationSn <= 0) throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         ProviderApplicationResponse application = mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));

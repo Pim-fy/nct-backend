@@ -75,7 +75,7 @@ public class OauthOnboardingService {
 
         userAgreementMapper.insertAll(AgreementValidator.toUserAgreements(member.getId(), request.getAgreements()));
 
-        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
+        String accessToken = jwtTokenProvider.createAccessToken(member.getId());
         String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
 

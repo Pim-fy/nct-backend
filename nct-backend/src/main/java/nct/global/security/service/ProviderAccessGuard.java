@@ -14,7 +14,7 @@ import nct.provider.service.ProviderApplicationService;
  * F-AUTH-012 / F-PROV-011: 제공자 전용 업무가 공통으로 호출할 서버 권한 검증 창구다.
  *
  * <p>프론트 라우트와 모드 표시는 UX일 뿐 권한 근거가 아니다. 실제 명령 Service는 이 guard를
- * 호출해 현재 JWT 역할, 담당자7의 카테고리 승인, 담당자5의 유효 제재를 모두 확인해야 한다.</p>
+ * 호출해 DB 현재 역할, 담당자7의 카테고리 승인, 담당자5의 유효 제재를 모두 확인해야 한다.</p>
  *
  * @ai_generated F-AUTH-012/013 제공자 권한 조합 검증을 한 지점으로 고정한다.
  */

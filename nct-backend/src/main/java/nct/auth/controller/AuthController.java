@@ -49,6 +49,7 @@ import lombok.RequiredArgsConstructor;
  *  GET  /api/auth/verify   새로고침 자동 로그인          (permitAll - Refresh 쿠키로 검증)
  *  POST /api/auth/logout   로그아웃                     (authenticated)
  *  GET  /api/auth/me       내 정보                      (authenticated)
+ *  POST /api/auth/mode     F-PROV-015 현재 역할 변경·Access JWT 재발급 (authenticated)
  *  POST /api/auth/find-email                    F-AUTH-014 아이디 찾기          (permitAll)
  *  POST /api/auth/password-reset-links          F-AUTH-007 재설정 링크 발송     (permitAll)
  *  POST /api/auth/password-reset-links/confirm  F-AUTH-007 재설정 확정          (permitAll)
@@ -175,6 +176,18 @@ public class AuthController {
         String accessToken = authService.refresh(refreshToken);
         response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.createAccessTokenCookie(accessToken).toString());
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** @ai_generated CHG-032/F-PROV-015: 일반/제공자 현재 역할을 변경하고 Access cookie를 교체한다. */
+    @SkipIdempotency // @ai_generated: CHG-032 Set-Cookie 응답은 캐시 재반환과 충돌하므로 login/refresh와 같은 예외를 적용한다.
+    @PostMapping("/mode")
+    public ResponseEntity<ApiResponse<LoginResponse>> switchMode(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam(value = "to", required = false) String target,
+            HttpServletResponse response) {
+        AuthSessionResult session = authService.switchMode(userDetails.getMember().getId(), target);
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.createAccessTokenCookie(session.getAccessToken()).toString());
+        return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
     }
 
     /** 새로고침 자동 로그인 - 프론트 전역 상태 복원용 */

@@ -2,8 +2,10 @@ package nct.global.security.filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -15,7 +17,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import nct.global.config.SecurityConfig;
 import nct.global.security.provider.JwtTokenProvider;
 import nct.global.security.service.CustomUserDetailsService;
 import nct.global.utils.CookieUtil;
@@ -30,19 +31,20 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void 제공자_JWT는_필터를_통과하면_일반사용자_권한도_갖는다() throws Exception {
+    void 제공자_현재_ROLE은_DB_UserDetails의_SERVICE_권한_하나로만_구성된다() throws Exception {
         CookieUtil cookieUtil = mock(CookieUtil.class);
         JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
         CustomUserDetailsService userDetailsService = mock(CustomUserDetailsService.class);
         UserDetails userDetails = mock(UserDetails.class);
         JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
-                cookieUtil, jwtTokenProvider, userDetailsService, new ObjectMapper(), SecurityConfig.roleHierarchy());
+                cookieUtil, jwtTokenProvider, userDetailsService, new ObjectMapper());
 
         when(cookieUtil.extractCookie(any(), any())).thenReturn("access-token");
         when(jwtTokenProvider.validateToken("access-token")).thenReturn(true);
         when(jwtTokenProvider.getUsrSn("access-token")).thenReturn(101L);
         when(userDetailsService.loadUserByUsername("101")).thenReturn(userDetails);
-        when(jwtTokenProvider.getRole("access-token")).thenReturn("ROLE_SERVICE");
+        doReturn(List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_SERVICE")))
+                .when(userDetails).getAuthorities();
 
         AtomicReference<java.util.Collection<?>> authorities = new AtomicReference<>();
         filter.doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), (request, response) ->
@@ -50,6 +52,6 @@ class JwtAuthenticationFilterTest {
 
         assertThat(authorities.get())
                 .extracting(authority -> ((org.springframework.security.core.GrantedAuthority) authority).getAuthority())
-                .containsExactlyInAnyOrder("ROLE_SERVICE", "ROLE_USER");
+                .containsExactly("ROLE_SERVICE");
     }
 }

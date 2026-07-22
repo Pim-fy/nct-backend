@@ -36,10 +36,9 @@ class JwtTokenProviderTest {
 
     @Test
     void usrSn을_subject로_발급한_토큰은_정상적으로_추출된다() {
-        String token = jwtTokenProvider.createAccessToken(101L, "ROLE_USER");
+        String token = jwtTokenProvider.createAccessToken(101L);
 
         assertThat(jwtTokenProvider.getUsrSn(token)).isEqualTo(101L);
-        assertThat(jwtTokenProvider.getRole(token)).isEqualTo("ROLE_USER");
     }
 
     @Test

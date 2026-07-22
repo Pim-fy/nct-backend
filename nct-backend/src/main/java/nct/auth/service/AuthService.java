@@ -22,6 +22,8 @@ import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
 import nct.global.security.provider.JwtTokenProvider;
 import nct.global.utils.TokenHashUtil;
+import nct.ops.sanction.port.SanctionStatusReader;
+import nct.provider.service.ProviderApplicationService;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,9 @@ public class AuthService {
     private static final String STATUS_ACTIVE = "USRC0001";
     private static final String STATUS_SUSPENDED = "USRC0002";
     private static final String STATUS_WITHDRAWN = "USRC0003";
+    private static final String ROLE_USER = "ROLE_USER";
+    private static final String ROLE_SERVICE = "ROLE_SERVICE";
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
     // @ai_generated: F-AUTH-014 - 마스킹된 로그인ID 앞부분 노출 글자 수(목업 "hong****" 패턴 기준)
     private static final int MASK_VISIBLE_CHARS = 4;
 
@@ -49,6 +54,8 @@ public class AuthService {
     private final UserAgreementMapper userAgreementMapper;
     private final Validator validator;
     private final TokenHashUtil tokenHashUtil;
+    private final ProviderApplicationService providerApplicationService;
+    private final SanctionStatusReader sanctionStatusReader;
 
     /**
      * 회원가입
@@ -155,7 +162,7 @@ public class AuthService {
         // @ai_generated: F-AUTH-009 - 정지/탈퇴 계정은 비밀번호가 맞아도 로그인을 차단한다.
         requireActiveStatus(member.getStatus());
 
-        String accessToken  = jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
+        String accessToken  = jwtTokenProvider.createAccessToken(member.getId());
         String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
 
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
@@ -173,7 +180,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public String refresh(String refreshToken) {
         AuthMember member = verifyRefreshToken(refreshToken);
-        return jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
+        return jwtTokenProvider.createAccessToken(member.getId());
     }
 
     /**
@@ -184,7 +191,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthSessionResult verifyAndRefresh(String refreshToken) {
         AuthMember member = verifyRefreshToken(refreshToken);
-        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getRole());
+        String accessToken = jwtTokenProvider.createAccessToken(member.getId());
         return AuthSessionResult.builder()
                                 .loginResponse(toLoginResponse(member))
                                 .accessToken(accessToken)
@@ -198,6 +205,39 @@ public class AuthService {
     @Transactional
     public void logout(Long memberId) {
         authMemberPort.updateRefreshToken(memberId, null);
+    }
+
+    /**
+     * @ai_generated CHG-032/F-PROV-015: 현재 활성 접근 역할을 DB에 반영하고 새 Access Token을 발급한다.
+     * Refresh Token은 역할 권한 원천이 아니므로 기존 로그인 유지 세션을 보존한다.
+     */
+    @Transactional
+    public AuthSessionResult switchMode(Long memberId, String target) {
+        if (memberId == null || memberId <= 0) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+
+        AuthMember member = authMemberPort.findById(memberId)
+                                          .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        requireActiveStatus(member.getStatus());
+        if (ROLE_ADMIN.equals(member.getRole())) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        String targetRole = resolveTargetRole(target);
+        if (ROLE_SERVICE.equals(targetRole)) {
+            providerApplicationService.requireAnyActivePermission(member.getId());
+            sanctionStatusReader.requireNoActiveSanction(member.getId());
+        }
+
+        if (authMemberPort.updateRole(member.getId(), targetRole) != 1) {
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
+        return AuthSessionResult.builder()
+                                .loginResponse(toLoginResponse(member, targetRole))
+                                .accessToken(jwtTokenProvider.createAccessToken(member.getId()))
+                                .build();
     }
 
     /** Refresh 쿠키 추출 -> JWT 검증 -> DB 저장 해시와 대조 */
@@ -235,13 +275,27 @@ public class AuthService {
         }
     }
 
+    private String resolveTargetRole(String target) {
+        if ("USER".equals(target)) {
+            return ROLE_USER;
+        }
+        if ("SERVICE".equals(target)) {
+            return ROLE_SERVICE;
+        }
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
     private LoginResponse toLoginResponse(AuthMember member) {
+        return toLoginResponse(member, member.getRole());
+    }
+
+    private LoginResponse toLoginResponse(AuthMember member, String role) {
         return LoginResponse.builder()
                             .id(member.getId())
                             .email(member.getEmail())
                             .name(member.getName())
                             .nickname(member.getNickname())
-                            .role(member.getRole())
+                             .role(role)
                             .provider(member.getProvider())
                             .build();
     }

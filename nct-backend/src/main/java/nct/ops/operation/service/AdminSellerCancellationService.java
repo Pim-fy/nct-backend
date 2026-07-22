@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.auction.dto.AuctionPendingCancelRequestResponse;
+import nct.auction.service.AuctionCancellationService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.audit.port.AuditLogCommand;
@@ -25,11 +27,51 @@ import nct.ops.operation.port.SellerCancellationDecisionPort;
 public class AdminSellerCancellationService {
 
     private static final String REF_TRADE = "TRADE";
+    private static final String REF_AUCTION = "AUCTION";
     private static final String ACTION_APPROVE = "ADMIN_APPROVE";
     private static final String ACTION_REJECT = "ADMIN_REJECT";
 
     private final SellerCancellationDecisionPort sellerCancellationDecisionPort;
+    private final AuctionCancellationService auctionCancellationService;
     private final AuditLogPort auditLogPort;
+
+    @Transactional(readOnly = true)
+    public AuctionPendingCancelRequestResponse getPendingAuctionCancellationRequest(Long aucSn) {
+        validateAuctionSn(aucSn);
+        return auctionCancellationService.getPendingCancellationRequest(aucSn);
+    }
+
+    @Transactional
+    public void decideAuctionCancellation(
+            Long aucSn,
+            SellerCancellationDecision decision,
+            String reason,
+            Long adminUserId) {
+        validate(aucSn, decision, reason, adminUserId);
+
+        String normalizedReason = reason.trim();
+        AuctionPendingCancelRequestResponse pendingRequest =
+                auctionCancellationService.getPendingCancellationRequest(aucSn);
+        String requestId = requestId(adminUserId, pendingRequest.getCancelRequestSn(), decision, normalizedReason);
+
+        if (decision == SellerCancellationDecision.APPROVED) {
+            auctionCancellationService.approveCancellation(
+                    pendingRequest.getCancelRequestSn(), adminUserId, normalizedReason);
+        } else {
+            auctionCancellationService.rejectCancellation(
+                    pendingRequest.getCancelRequestSn(), adminUserId, normalizedReason);
+        }
+
+        auditLogPort.record(new AuditLogCommand(
+                auditAction(decision),
+                String.valueOf(adminUserId),
+                REF_AUCTION,
+                aucSn,
+                normalizedReason,
+                "auctionCancellationRequest=pending",
+                "auctionCancellationDecision=" + decision.name(),
+                requestId));
+    }
 
     @Transactional
     public void decide(
@@ -73,6 +115,12 @@ public class AdminSellerCancellationService {
                 || reason.trim().length() > 1000
                 || adminUserId == null
                 || adminUserId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private void validateAuctionSn(Long aucSn) {
+        if (aucSn == null || aucSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
     }

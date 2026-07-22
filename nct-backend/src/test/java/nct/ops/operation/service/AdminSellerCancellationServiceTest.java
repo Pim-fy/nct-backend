@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
+import nct.auction.dto.AuctionPendingCancelRequestResponse;
+import nct.auction.service.AuctionCancellationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.operation.port.SellerCancellationDecision;
@@ -19,14 +21,19 @@ import nct.ops.operation.port.SellerCancellationDecisionPort;
 class AdminSellerCancellationServiceTest {
 
     private SellerCancellationDecisionPort sellerCancellationDecisionPort;
+    private AuctionCancellationService auctionCancellationService;
     private AuditLogPort auditLogPort;
     private AdminSellerCancellationService service;
 
     @BeforeEach
     void setUp() {
         sellerCancellationDecisionPort = mock(SellerCancellationDecisionPort.class);
+        auctionCancellationService = mock(AuctionCancellationService.class);
         auditLogPort = mock(AuditLogPort.class);
-        service = new AdminSellerCancellationService(sellerCancellationDecisionPort, auditLogPort);
+        service = new AdminSellerCancellationService(
+                sellerCancellationDecisionPort,
+                auctionCancellationService,
+                auditLogPort);
     }
 
     @Test
@@ -73,5 +80,40 @@ class AdminSellerCancellationServiceTest {
         assertThat(auditCaptor.getValue().actionCode()).isEqualTo("ADMIN_REJECT");
         assertThat(auditCaptor.getValue().reason()).isEqualTo("insufficient evidence");
         assertThat(auditCaptor.getValue().afterSummary()).isEqualTo("sellerCancellationDecision=REJECTED");
+    }
+
+    @Test
+    void approvesEndedAuctionThroughAuctionCancellationServiceAndRecordsAudit() {
+        AuctionPendingCancelRequestResponse pendingRequest = pendingAuctionRequest(31L);
+        org.mockito.Mockito.when(auctionCancellationService.getPendingCancellationRequest(81L))
+                .thenReturn(pendingRequest);
+
+        service.decideAuctionCancellation(
+                81L, SellerCancellationDecision.APPROVED, " ended auction cancellation approved ", 7L);
+
+        InOrder inOrder = inOrder(auctionCancellationService, auditLogPort);
+        inOrder.verify(auctionCancellationService).getPendingCancellationRequest(81L);
+        inOrder.verify(auctionCancellationService).approveCancellation(
+                31L, 7L, "ended auction cancellation approved");
+        inOrder.verify(auditLogPort).record(org.mockito.ArgumentMatchers.any(AuditLogCommand.class));
+    }
+
+    @Test
+    void rejectsEndedAuctionThroughAuctionCancellationService() {
+        AuctionPendingCancelRequestResponse pendingRequest = pendingAuctionRequest(31L);
+        org.mockito.Mockito.when(auctionCancellationService.getPendingCancellationRequest(81L))
+                .thenReturn(pendingRequest);
+
+        service.decideAuctionCancellation(
+                81L, SellerCancellationDecision.REJECTED, " cancellation rejected ", 7L);
+
+        org.mockito.Mockito.verify(auctionCancellationService).rejectCancellation(
+                31L, 7L, "cancellation rejected");
+    }
+
+    private AuctionPendingCancelRequestResponse pendingAuctionRequest(Long cancelRequestSn) {
+        AuctionPendingCancelRequestResponse request = new AuctionPendingCancelRequestResponse();
+        request.setCancelRequestSn(cancelRequestSn);
+        return request;
     }
 }

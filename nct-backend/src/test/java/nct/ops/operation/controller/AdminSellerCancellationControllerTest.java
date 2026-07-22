@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import nct.global.exception.GlobalExceptionHandler;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
+import nct.auction.dto.AuctionPendingCancelRequestResponse;
 import nct.ops.operation.dto.AdminSellerCancellationDecisionRequest;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.service.AdminSellerCancellationService;
@@ -61,6 +62,35 @@ class AdminSellerCancellationControllerTest {
                 SellerCancellationDecision.APPROVED,
                 " seller policy cancellation approved ",
                 7L);
+    }
+
+    @Test
+    void forwardsAuctionDecisionWhenPrincipalIsInjectedDirectly() {
+        AdminSellerCancellationController controller = new AdminSellerCancellationController(adminSellerCancellationService);
+        var request = new AdminSellerCancellationDecisionRequest();
+        request.setDecision(SellerCancellationDecision.APPROVED);
+        request.setReason(" ended auction cancellation approved ");
+
+        controller.decideAuctionCancellation(81L, request, adminUserDetails(7L));
+
+        verify(adminSellerCancellationService).decideAuctionCancellation(
+                81L,
+                SellerCancellationDecision.APPROVED,
+                " ended auction cancellation approved ",
+                7L);
+    }
+
+    @Test
+    void returnsPendingAuctionCancellationRequest() {
+        AuctionPendingCancelRequestResponse response = new AuctionPendingCancelRequestResponse();
+        response.setCancelRequestSn(31L);
+        org.mockito.Mockito.when(adminSellerCancellationService.getPendingAuctionCancellationRequest(81L))
+                .thenReturn(response);
+
+        var result = new AdminSellerCancellationController(adminSellerCancellationService)
+                .getPendingAuctionCancellationRequest(81L);
+
+        assertThat(result.getBody().getData().getCancelRequestSn()).isEqualTo(31L);
     }
 
     @Test

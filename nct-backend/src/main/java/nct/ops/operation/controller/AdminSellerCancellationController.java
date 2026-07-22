@@ -2,6 +2,7 @@ package nct.ops.operation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,6 +15,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.auction.dto.AuctionPendingCancelRequestResponse;
 import nct.ops.operation.dto.AdminSellerCancellationDecisionRequest;
 import nct.ops.operation.service.AdminSellerCancellationService;
 
@@ -27,6 +29,27 @@ import nct.ops.operation.service.AdminSellerCancellationService;
 public class AdminSellerCancellationController {
 
     private final AdminSellerCancellationService adminSellerCancellationService;
+
+    @GetMapping("/auctions/{aucSn}/cancellation-request")
+    public ResponseEntity<ApiResponse<AuctionPendingCancelRequestResponse>> getPendingAuctionCancellationRequest(
+            @PathVariable(name = "aucSn") Long aucSn) {
+        return ResponseEntity.ok(ApiResponse.success(
+                adminSellerCancellationService.getPendingAuctionCancellationRequest(aucSn)));
+    }
+
+    @PostMapping("/auctions/{aucSn}/cancellation-request/decision")
+    public ResponseEntity<ApiResponse<Void>> decideAuctionCancellation(
+            @PathVariable(name = "aucSn") Long aucSn,
+            @Valid @RequestBody AdminSellerCancellationDecisionRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        adminSellerCancellationService.decideAuctionCancellation(
+                aucSn,
+                request.getDecision(),
+                request.getReason(),
+                userId(userDetails));
+
+        return ResponseEntity.ok(ApiResponse.success());
+    }
 
     @PostMapping("/{tradeSn}/decision")
     public ResponseEntity<ApiResponse<Void>> decide(

@@ -33,13 +33,17 @@ class AuctionSecurityTest {
         detail.setTitle("공개 경매");
         detail.setFavorite(false);
         detail.setFavoriteCount(3);
+        detail.setCurrentHighestBidderId(99L);
+        detail.setCurrentHighestBidder(true);
 
         when(auctionService.findAuctionDetail(1L, null)).thenReturn(detail);
 
         mockMvc.perform(get("/api/auctions/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.favorite").value(false))
-                .andExpect(jsonPath("$.data.favoriteCount").value(3));
+                .andExpect(jsonPath("$.data.favoriteCount").value(3))
+                .andExpect(jsonPath("$.data.currentHighestBidder").value(true))
+                .andExpect(jsonPath("$.data.currentHighestBidderId").doesNotExist());
     }
 
     @Test

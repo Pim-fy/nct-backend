@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.trade.domain.Trade;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
@@ -26,6 +27,10 @@ public interface TradeMapper {
             @Param("sellerUserId") long sellerUserId);
 
     Long findMaterialTradeIdByProductId(@Param("productId") long productId);
+
+    /** 경매 취소·환불 흐름이 거래와 원본 입찰 보관금의 연결을 직접 확인한다. */
+    AuctionTradeEscrowInfo findAuctionTradeEscrowInfoByProductId(
+            @Param("productId") long productId);
 
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);

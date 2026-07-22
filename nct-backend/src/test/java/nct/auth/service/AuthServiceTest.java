@@ -75,6 +75,28 @@ class AuthServiceTest {
                 sanctionStatusReader);
     }
 
+    // @ai_generated: 가입 DTO·중복확인 API가 4자 경계값을 같은 규칙으로 적용하는지 검증한다.
+    @Test
+    void 네자리_로그인아이디는_가입검증과_중복확인에서_허용하고_세자리는_차단한다() {
+        var validator = Validation.buildDefaultValidatorFactory().getValidator();
+        SignUpRequest fourCharacterRequest = validRequest();
+        fourCharacterRequest.setLoginId("four");
+        SignUpRequest threeCharacterRequest = validRequest();
+        threeCharacterRequest.setLoginId("abc");
+
+        assertThat(validator.validate(fourCharacterRequest))
+                .noneMatch(violation -> violation.getPropertyPath().toString().equals("loginId"));
+        assertThat(validator.validate(threeCharacterRequest))
+                .anyMatch(violation -> violation.getPropertyPath().toString().equals("loginId"));
+
+        when(authMemberPort.existsByLoginId("four")).thenReturn(false);
+        assertThat(authService.checkLoginId("four").isAvailable()).isTrue();
+        assertThatThrownBy(() -> authService.checkLoginId("abc"))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
     @Test
     void 인증과_필수약관이_완료되면_회원과_약관3건을_저장하고_인증을_사용완료한다() {
         SignUpRequest request = validRequest();
@@ -229,6 +251,25 @@ class AuthServiceTest {
         // @ai_generated: 해시화 없이 원문을 그대로 저장하면 이 테스트가 실패한다 - MemberAuthAdapter가 해시화 책임을 지므로
         // 여기서는 AuthService가 원문 refreshToken을 그대로 포트에 넘기는지만 확인한다(해시화는 어댑터 단위 책임).
         verify(authMemberPort).updateRefreshToken(101L, "refresh-token-raw");
+    }
+
+    // @ai_generated: 로그인도 가입·중복확인과 같은 4자 최소 길이 경계를 사용해야 한다.
+    @Test
+    void 네자리_로그인아이디로_로그인하고_세자리는_조회전에_차단한다() {
+        AuthMember member = activeMember();
+        when(authMemberPort.findByLoginId("four")).thenReturn(java.util.Optional.of(member));
+        when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
+        when(jwtTokenProvider.createAccessToken(101L)).thenReturn("access-token");
+        when(jwtTokenProvider.createRefreshToken(101L)).thenReturn("refresh-token-raw");
+
+        AuthSessionResult result = authService.login(loginRequest("four", "Password1!"));
+
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        assertThatThrownBy(() -> authService.login(loginRequest("abc", "Password1!")))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(authMemberPort, never()).findByLoginId("abc");
     }
 
     @Test

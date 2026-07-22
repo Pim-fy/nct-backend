@@ -22,7 +22,7 @@ public class SignUpRequest {
 
     // @ai_generated: 이메일과 분리된 로컬 로그인 ID
     @NotBlank(message = "로그인 아이디는 필수입니다.")
-    @Size(min = 6, max = 50, message = "로그인 아이디는 6~50자여야 합니다.")
+    @Size(min = 4, max = 50, message = "로그인 아이디는 4~50자여야 합니다.")
     @Pattern(regexp = "^[A-Za-z0-9._-]+$", message = "로그인 아이디는 영문, 숫자, . _ - 만 사용할 수 있습니다.")
     private String loginId;
 

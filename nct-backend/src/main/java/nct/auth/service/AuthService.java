@@ -314,7 +314,7 @@ public class AuthService {
 
     private String normalizeLoginId(String loginId) {
         String value = requireText(loginId, ErrorCode.INVALID_INPUT_VALUE);
-        if (!value.matches("^[A-Za-z0-9._-]{6,50}$")) {
+        if (!value.matches("^[A-Za-z0-9._-]{4,50}$")) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         if (value.toUpperCase(Locale.ROOT).startsWith("OAUTH_")) {

@@ -7,12 +7,16 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import javax.sql.DataSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.ConnectionHolder;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
@@ -34,6 +38,7 @@ class AuctionServiceTest {
     @Autowired AuctionService auctionService;
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired DataSource dataSource;
 
     @Test
     @DisplayName("경매 상세 조회는 상품 서비스 계약으로 조회수를 증가시킨다")
@@ -47,6 +52,29 @@ class AuctionServiceTest {
         assertThat(response.getProductId()).isEqualTo(prdSn);
         assertThat(response.getViewCount()).isEqualTo(1);
         assertThat(productViewCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("경매 상세 조회는 로그인 사용자의 현재 최고입찰 여부를 반환한다")
+    void findAuctionDetailReturnsCurrentHighestBidderStatus() {
+        long sellerSn = insertUser("t_auc_seller");
+        long highestBidderSn = insertUser("t_auc_highest_bidder");
+        long otherBidderSn = insertUser("t_auc_other_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(12000));
+        insertBid(aucSn, highestBidderSn, BigDecimal.valueOf(12000), "BIDC0001");
+
+        AuctionDetailResponse highestBidderDetail = auctionService.findAuctionDetail(
+                aucSn,
+                highestBidderSn);
+        AuctionDetailResponse otherBidderDetail = auctionService.findAuctionDetail(
+                aucSn,
+                otherBidderSn);
+        AuctionDetailResponse anonymousDetail = auctionService.findAuctionDetail(aucSn);
+
+        assertThat(highestBidderDetail.isCurrentHighestBidder()).isTrue();
+        assertThat(otherBidderDetail.isCurrentHighestBidder()).isFalse();
+        assertThat(anonymousDetail.isCurrentHighestBidder()).isFalse();
     }
 
     @Test
@@ -137,6 +165,30 @@ class AuctionServiceTest {
         assertThat(balance.getAvailableAmt()).isEqualTo(38000);
         assertThat(balance.getHoldAmt()).isEqualTo(12000);
         assertThat(activeHoldAmount(bidderSn, bidSn)).isEqualTo(12000);
+    }
+
+    @Test
+    @DisplayName("사용 가능 포인트가 부족하면 입찰과 경매 가격 변경을 롤백한다")
+    void placeBidRollsBackWhenAvailablePointIsInsufficient() {
+        long sellerSn = insertUser("t_auc_seller");
+        long bidderSn = insertUser("t_auc_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(bidderSn, 11000);
+
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
+                .isInstanceOf(PointException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.POINT_INSUFFICIENT);
+
+        assertThat(isTransactionRollbackOnly()).isTrue();
+
+        PointBalance balance = pointService.getBalance(bidderSn);
+        assertThat(balance.getAvailableAmt()).isEqualTo(11000);
+        assertThat(balance.getHoldAmt()).isZero();
     }
 
     @Test
@@ -247,6 +299,27 @@ class AuctionServiceTest {
         assertThat(activeHoldAmount(buyerSn, bidSn)).isZero();
         assertThat(materialTradeCount(prdSn)).isEqualTo(1);
         assertThat(deliverySnapshotCount(prdSn)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("사용 가능 포인트가 부족하면 즉시구매 전체 처리를 롤백한다")
+    void buyNowRollsBackWhenAvailablePointIsInsufficient() {
+        long sellerSn = insertUser("t_auc_seller");
+        long buyerSn = insertUser("t_auc_buyer");
+        long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000));
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(buyerSn, 20000);
+
+        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
+                .isInstanceOf(PointException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.POINT_INSUFFICIENT);
+
+        assertThat(isTransactionRollbackOnly()).isTrue();
+
+        PointBalance balance = pointService.getBalance(buyerSn);
+        assertThat(balance.getAvailableAmt()).isEqualTo(20000);
+        assertThat(balance.getHoldAmt()).isZero();
     }
 
     @Test
@@ -538,6 +611,11 @@ class AuctionServiceTest {
 
     private LocalDateTime databaseNow() {
         return jdbc.queryForObject("SELECT NOW()", LocalDateTime.class);
+    }
+
+    private boolean isTransactionRollbackOnly() {
+        ConnectionHolder holder = (ConnectionHolder) TransactionSynchronizationManager.getResource(dataSource);
+        return holder != null && holder.isRollbackOnly();
     }
 
     private int auctionRemainingSeconds(long aucSn) {

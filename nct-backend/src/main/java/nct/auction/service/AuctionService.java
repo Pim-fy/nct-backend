@@ -199,6 +199,8 @@ public class AuctionService {
         }
         detail.setFavorite(userId != null
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
+        detail.setCurrentHighestBidder(userId != null
+                && userId.equals(detail.getCurrentHighestBidderId()));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
         return detail;

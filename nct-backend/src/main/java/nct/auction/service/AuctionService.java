@@ -45,7 +45,9 @@ public class AuctionService {
     private static final int MAX_SIZE = 60;
     private static final int MAX_FINALIZATION_BATCH_SIZE = 500;
     private static final String SYSTEM_ACTOR = "SYSTEM";
+    private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
+    private static final String BOTH_TRADE_METHOD_CODE = "TRDC0020";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -414,15 +416,20 @@ public class AuctionService {
         List<String> statuses = request.getStatus();
         boolean hasStatusFilter = statuses != null && !statuses.isEmpty();
         request.setHasStatusFilter(hasStatusFilter);
-        request.setStatusReady(!hasStatusFilter || statuses.contains("ready"));
-        request.setStatusActive(!hasStatusFilter || statuses.contains("active"));
+        request.setStatusReady(!hasStatusFilter
+                || statuses.contains("ready")
+                || statuses.contains(AuctionStatusCode.READY));
+        request.setStatusActive(!hasStatusFilter
+                || statuses.contains("active")
+                || statuses.contains(AuctionStatusCode.ACTIVE));
         request.setStatusEndingSoon(hasStatusFilter && statuses.contains("endingSoon"));
     }
 
     private String resolveTradeMethodCode(String tradeMethod) {
         return switch (tradeMethod) {
-            case "delivery" -> "TRDC0009";
-            case "direct" -> "TRDC0010";
+            case "delivery", DELIVERY_TRADE_METHOD_CODE -> DELIVERY_TRADE_METHOD_CODE;
+            case "direct", OFFLINE_TRADE_METHOD_CODE -> OFFLINE_TRADE_METHOD_CODE;
+            case BOTH_TRADE_METHOD_CODE -> BOTH_TRADE_METHOD_CODE;
             default -> null;
         };
     }

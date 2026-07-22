@@ -13,6 +13,25 @@
         )
     </select>
 
+    <select id="findPendingByAuctionId"
+            resultType="nct.auction.dto.AuctionPendingCancelRequestResponse">
+        SELECT
+            request.AUC_CNL_REQ_SN AS cancelRequestSn,
+            request.AUC_SN AS aucSn,
+            request.REQ_USR_SN AS requesterUsrSn,
+            request.AUC_CNL_REQ_RSN_CN AS reason,
+            request.PREV_AUC_STATUS_CD AS previousAuctionStatusCode,
+            auction.AUC_STATUS_CD AS currentAuctionStatusCode,
+            request.AUC_CNL_REQ_REG_DT AS requestedAt
+        FROM AUCTION_CANCEL_REQUEST request
+        JOIN AUCTION auction
+          ON auction.AUC_SN = request.AUC_SN
+        WHERE request.AUC_SN = #{auctionId}
+          AND request.AUC_CNL_REQ_APRV_YN IS NULL
+        ORDER BY request.AUC_CNL_REQ_SN DESC
+        LIMIT 1
+    </select>
+
     <insert id="insertCancelRequest"
             useGeneratedKeys="true"
             keyProperty="aucCnlReqSn"

@@ -380,6 +380,16 @@
           AND BID_STATUS_CD = 'BIDC0001'
     </update>
 
+    <update id="exceptionCancelHighestBid">
+        UPDATE BID
+        SET BID_STATUS_CD = 'BIDC0004',
+            BID_UPDT_ID = #{actor},
+            BID_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND BID_SN = #{bidId}
+          AND BID_STATUS_CD = 'BIDC0001'
+    </update>
+
     <insert id="insertBid" useGeneratedKeys="true" keyProperty="bidId" keyColumn="BID_SN">
         INSERT INTO BID (
             AUC_SN,

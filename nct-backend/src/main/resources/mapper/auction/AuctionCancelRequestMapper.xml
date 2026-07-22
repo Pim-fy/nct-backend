@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.auction.mapper.AuctionCancelRequestMapper">
+
+    <select id="existsPendingByAuctionId" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM AUCTION_CANCEL_REQUEST
+            WHERE AUC_SN = #{auctionId}
+              AND AUC_CNL_REQ_APRV_YN IS NULL
+        )
+    </select>
+
+    <insert id="insertCancelRequest"
+            useGeneratedKeys="true"
+            keyProperty="aucCnlReqSn"
+            keyColumn="AUC_CNL_REQ_SN">
+        INSERT INTO AUCTION_CANCEL_REQUEST (
+            AUC_SN,
+            PREV_AUC_STATUS_CD,
+            REQ_USR_SN,
+            AUC_CNL_REQ_RSN_CN,
+            AUC_CNL_REQ_REG_ID,
+            AUC_CNL_REQ_UPDT_ID
+        )
+        VALUES (
+            #{aucSn},
+            #{prevAucStatusCd},
+            #{requesterUsrSn},
+            #{reason},
+            #{actor},
+            #{actor}
+        )
+    </insert>
+
+    <select id="findProcessTargetForUpdate"
+            resultType="nct.auction.dto.AuctionCancelRequestProcessTarget">
+        SELECT
+            AUC_CNL_REQ_SN AS cancelRequestSn,
+            AUC_SN AS auctionId,
+            PREV_AUC_STATUS_CD AS previousAuctionStatusCode,
+            AUC_CNL_REQ_APRV_YN AS approvalYn
+        FROM AUCTION_CANCEL_REQUEST
+        WHERE AUC_CNL_REQ_SN = #{cancelRequestSn}
+        FOR UPDATE
+    </select>
+
+    <update id="processPendingRequest">
+        UPDATE AUCTION_CANCEL_REQUEST
+        SET AUC_CNL_REQ_APRV_YN = #{approvalYn},
+            PROC_USR_SN = #{adminUserId},
+            AUC_CNL_REQ_PROC_RSN_CN = #{processReason},
+            AUC_CNL_REQ_PROC_DT = NOW(),
+            AUC_CNL_REQ_UPDT_ID = #{actor},
+            AUC_CNL_REQ_UPDT_DT = NOW()
+        WHERE AUC_CNL_REQ_SN = #{cancelRequestSn}
+          AND AUC_CNL_REQ_APRV_YN IS NULL
+    </update>
+
+</mapper>

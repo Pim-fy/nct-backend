@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -23,13 +24,18 @@ import nct.member.service.MemberService;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
+import nct.ops.operation.port.SellerCancellationDecision;
+import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.ops.operation.port.SellerCancellationDecisionPort;
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.TradeAutoCompletionTarget;
+import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
@@ -47,7 +53,7 @@ import nct.setting.mapper.SystemSettingAdminMapper;
  */
 @Service
 @RequiredArgsConstructor
-public class TradeService {
+public class TradeService implements SellerCancellationDecisionPort {
 
     private static final String MATERIAL_TRADE = "TRDC0001";
     private static final String DELIVERY_METHOD = "TRDC0009";
@@ -56,6 +62,7 @@ public class TradeService {
     private static final String DELIVERING = "TRDC0004";
     private static final String WAITING_CONFIRMATION = "TRDC0005";
     private static final String COMPLETED = "TRDC0006";
+    private static final String CANCELED = "TRDC0008";
     private static final String SCHEDULER_UPDATER = "SYSTEM";
 
     private final TradeMapper tradeMapper;
@@ -68,6 +75,22 @@ public class TradeService {
     @Transactional
     public long createMaterialTrade(MaterialTradeCreateCommand command) {
         return createOrGetMaterialTrade(command).getTradeId();
+    }
+
+    /**
+     * 경매 취소·환불 흐름이 상품 번호만으로 거래와 보관금 원본 입찰을 확인하는 공개 계약이다.
+     * 거래가 없으면 empty를 반환하고, 기존 거래의 null bidSn은 호출자가 자동 환불 대상에서 제외한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AuctionTradeEscrowInfo> findAuctionTradeEscrowInfoByProductId(
+            long productId) {
+        if (productId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "상품 번호가 올바르지 않습니다.");
+        }
+
+        return Optional.ofNullable(
+                tradeMapper.findAuctionTradeEscrowInfoByProductId(productId));
     }
 
     /**
@@ -85,7 +108,8 @@ public class TradeService {
                         command.getBuyerUserId(),
                         command.getProductId(),
                         command.getTradeAmount()),
-                command.getSource().getStatusHistoryReason());
+                command.getSource().getStatusHistoryReason(),
+                command.getWinningBidId());
 
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
@@ -102,12 +126,14 @@ public class TradeService {
             MaterialTradeCreateCommand command) {
         return createOrGetMaterialTrade(
                 command,
-                "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
+                "낙찰 또는 즉시구매로 거래가 생성되었습니다.",
+                null);
     }
 
     private MaterialTradeCreateResult createOrGetMaterialTrade(
             MaterialTradeCreateCommand command,
-            String creationReason) {
+            String creationReason,
+            Long bidId) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -128,6 +154,7 @@ public class TradeService {
         trade.setSellerUserId(command.getSellerUserId());
         trade.setBuyerUserId(command.getBuyerUserId());
         trade.setProductId(command.getProductId());
+        trade.setBidId(bidId);
         trade.setTradeTypeCode(MATERIAL_TRADE);
         trade.setTradeStatusCode(IN_PROGRESS);
         trade.setTradeAmount(command.getTradeAmount());
@@ -388,6 +415,45 @@ public class TradeService {
         return true;
     }
 
+    /**
+     * F-OPS-004 관리자 판단 계약이다. 승인된 판매자 취소만 거래 상태와 이력을 변경한다.
+     * 반려 결과의 저장·감사 처리는 운영 도메인이 소유하므로 이 거래 서비스에서는 변경하지 않는다.
+     */
+    @Override
+    @Transactional
+    public void decide(SellerCancellationDecisionCommand command) {
+        validateSellerCancellationDecision(command);
+
+        if (command.decision() == SellerCancellationDecision.REJECTED) {
+            return;
+        }
+
+        TradeCancellationTarget target = tradeMapper.findMaterialTradeForCancellationForUpdate(
+                command.tradeSn());
+
+        if (target == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "존재하지 않는 물건 거래입니다.");
+        }
+
+        if (!isCancellableTradeStatus(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "현재 거래 상태에서는 취소 승인 처리할 수 없습니다.");
+        }
+
+        if (tradeMapper.cancelMaterialTrade(
+                target.getTradeId(),
+                command.adminId()) == 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "거래 상태가 변경되어 취소 승인 처리할 수 없습니다.");
+        }
+
+        tradeMapper.insertStatusHistory(
+                target.getTradeId(),
+                CANCELED,
+                command.reason().trim());
+    }
+
     // 진행·발송 상태에서만 요청을 시작한다. 이미 대기/완료/보류/취소 상태의 중복 요청은 막는다.
     private void validateCompletionRequestStatus(String tradeStatus) {
         if (IN_PROGRESS.equals(tradeStatus) || DELIVERING.equals(tradeStatus)) {
@@ -396,6 +462,32 @@ public class TradeService {
 
         throw new CustomException(ErrorCode.ALREADY_PROCESSED,
                 "현재 거래 상태에서는 완료 확인을 요청할 수 없습니다.");
+    }
+
+    // 배송·직거래 진행 및 완료 확인 대기 거래만 관리자의 판매자 취소 승인 대상으로 허용한다.
+    private boolean isCancellableTradeStatus(String tradeStatus) {
+        return IN_PROGRESS.equals(tradeStatus)
+                || DELIVERING.equals(tradeStatus)
+                || WAITING_CONFIRMATION.equals(tradeStatus);
+    }
+
+    // 내부 포트 호출도 입력값을 검증해 잘못된 관리자 판단이 거래 상태에 반영되지 않게 한다.
+    private void validateSellerCancellationDecision(
+            SellerCancellationDecisionCommand command) {
+        if (command == null
+                || command.tradeSn() == null
+                || command.tradeSn() <= 0
+                || command.decision() == null
+                || command.reason() == null
+                || command.reason().isBlank()
+                || command.reason().trim().length() > 1000
+                || command.adminId() == null
+                || command.adminId().isBlank()
+                || command.requestId() == null
+                || command.requestId().isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "판매자 취소 판단 정보가 올바르지 않습니다.");
+        }
     }
 
     // 잠금 조회 결과에도 상태·기한을 재검증해 조기 완료와 경합 상황을 모두 안전하게 무시한다.

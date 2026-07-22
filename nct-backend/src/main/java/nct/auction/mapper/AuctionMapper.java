@@ -12,6 +12,7 @@ import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionBidCreateCommand;
 import nct.auction.dto.AuctionBidItem;
 import nct.auction.dto.AuctionBidTarget;
+import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionImageItem;
 import nct.auction.dto.AuctionStatusResponse;
@@ -38,6 +39,8 @@ public interface AuctionMapper {
 
     AuctionBidTarget findAuctionBidTargetForUpdate(@Param("auctionId") Long auctionId);
 
+    AuctionCancellationTarget findAuctionCancellationTargetForUpdate(@Param("auctionId") Long auctionId);
+
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
     int insertAuction(
@@ -49,6 +52,11 @@ public interface AuctionMapper {
             @Param("actor") String actor);
 
     int updateCurrentHighestBids(@Param("auctionId") Long auctionId);
+
+    int exceptionCancelHighestBid(
+            @Param("auctionId") Long auctionId,
+            @Param("bidId") Long bidId,
+            @Param("actor") String actor);
 
     int insertBid(AuctionBidCreateCommand command);
 
@@ -71,5 +79,11 @@ public interface AuctionMapper {
     int updateExpiredAuctionStatus(
             @Param("auctionId") Long auctionId,
             @Param("statusCode") String statusCode,
+            @Param("actor") String actor);
+
+    int updateAuctionStatusForCancellation(
+            @Param("auctionId") Long auctionId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("newStatusCode") String newStatusCode,
             @Param("actor") String actor);
 }

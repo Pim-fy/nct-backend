@@ -7,7 +7,9 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.trade.domain.Trade;
+import nct.trade.dto.AuctionTradeEscrowInfo;
 import nct.trade.dto.TradeAutoCompletionTarget;
+import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofFile;
 import nct.trade.dto.TradeDeliverySubmitTarget;
@@ -25,6 +27,10 @@ public interface TradeMapper {
             @Param("sellerUserId") long sellerUserId);
 
     Long findMaterialTradeIdByProductId(@Param("productId") long productId);
+
+    /** 경매 취소·환불 흐름이 거래와 원본 입찰 보관금의 연결을 직접 확인한다. */
+    AuctionTradeEscrowInfo findAuctionTradeEscrowInfoByProductId(
+            @Param("productId") long productId);
 
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);
@@ -120,5 +126,14 @@ public interface TradeMapper {
     int completeExpiredConfirmation(
             @Param("tradeId") long tradeId,
             @Param("now") LocalDateTime now,
+            @Param("updaterId") String updaterId);
+
+    /** 관리자 취소 승인 전에 거래 행을 잠가 상태 전이와 중복 판단이 경합하지 않게 한다. */
+    TradeCancellationTarget findMaterialTradeForCancellationForUpdate(
+            @Param("tradeId") long tradeId);
+
+    /** 취소 가능한 상태만 취소로 바꿔, 잠금 해제 전 상태 변경에도 안전하게 대응한다. */
+    int cancelMaterialTrade(
+            @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
 }

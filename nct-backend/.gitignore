@@ -37,6 +37,9 @@ out/
 .vscode/
 
 application.properties
+
+### 업로드 파일 (nct.common.file.FileStorageService 로컬 저장 경로) ###
+/uploads/
 application-mail-local.properties
 
 # 로컬 검증 전용 프로파일 - 로컬 MySQL 접속정보라 저장소에 올리지 않음 (BJN, 2026-07-20)

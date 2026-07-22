@@ -16,6 +16,8 @@ public class Trade {
     private Long sellerUserId;
     private Long buyerUserId;
     private Long productId;
+    /** 경매 낙찰·즉시구매로 생성된 물건 거래의 원본 입찰 번호다. */
+    private Long bidId;
     private String tradeTypeCode;
     private String tradeStatusCode;
     private BigDecimal tradeAmount;

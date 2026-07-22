@@ -10,5 +10,8 @@ import lombok.Data;
 public class TradeCancellationTarget {
 
     private long tradeId;
+    private long buyerUserId;
+    /** 경매 보관금 환불 시 RefType.BID의 참조값으로 사용한다. */
+    private Long bidSn;
     private String tradeStatus;
 }

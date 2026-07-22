@@ -199,9 +199,14 @@ public class PointService {
     }
 
     /**
-     * 환전 신청 차감 (F-PAY-012, D-026 — 신청 즉시 차감 정책).
-     * 정산가능(=환전 가능) 버킷에서 -금액 원장을 기록한다. 잔액 검증→차감이 회원 행 잠금
-     * 안에서 직렬화되므로, 동시에 두 번 신청해도 같은 돈이 두 번 빠져나갈 수 없다.
+     * 환전 신청 차감 (F-PAY-012 — 신청 즉시 차감 정책, 대상 버킷은 2026-07-22 사용자 결정).
+     * 사용가능 + 정산가능 합산 잔액을 검증하고, **사용가능 버킷을 먼저 소진한 뒤** 부족분만
+     * 정산가능에서 사용가능으로 전환(F-PAY-010과 같은 복식 기록)해서 채운다 — 분쟁 게이트가
+     * 걸리는 정산가능 버킷은 꼭 필요할 때만 건드린다. 신청 금액 전체는 항상 사용가능 버킷에서
+     * 마지막 1행으로 차감되므로, 환전 주문에는 그 1행만 연결하면 되고 스키마 변경이 필요 없다.
+     *
+     * 잔액 검증→차감이 회원 행 잠금 안에서 직렬화되므로, 동시에 두 번 신청해도 같은 돈이
+     * 두 번 빠져나갈 수 없다.
      *
      * @return 생성된 포인트원장일련번호 (환전 주문이 차감 원장으로 연결해 둔다)
      */
@@ -211,17 +216,40 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        if (bal.getSettleableAmt() < amt) {
+        long total = bal.getAvailableAmt() + bal.getSettleableAmt();
+        if (total < amt) {
             throw new PointException(ErrorCode.POINT_INSUFFICIENT,
-                    "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + bal.getSettleableAmt() + "P");
+                    "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + total + "P");
         }
-        return insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.EXCHANGE_OUT, -amt,
-                bal.getSettleableAmt() - amt, null, null, reason);
+
+        long fromAvailable = Math.min(amt, bal.getAvailableAmt());
+        long fromSettleable = amt - fromAvailable;
+        long availableAmt = bal.getAvailableAmt();
+        if (fromSettleable > 0) {
+            // 정산가능 포인트는 분쟁 조정 재원이 될 수 있어, 전환 기능(F-PAY-010)과 같은
+            // 게이트를 통과해야 한다. 사용가능만으로 충분한 신청(fromSettleable == 0)은 이
+            // 검사 자체를 타지 않는다 — 분쟁 있어도 사용가능 포인트만의 환전은 막을 이유가 없다.
+            int activeDisputes = pointMapper.countActiveDisputes(usrSn);
+            if (activeDisputes > 0) {
+                throw new PointException(ErrorCode.POINT_CONVERT_BLOCKED_BY_DISPUTE,
+                        "진행 중인 거래 문제가 " + activeDisputes + "건 있어 정산가능 포인트를 환전할 수 없습니다.");
+            }
+            insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.CONVERT, -fromSettleable,
+                    bal.getSettleableAmt() - fromSettleable, null, null, "환전 신청을 위한 정산가능→사용가능 전환");
+            availableAmt += fromSettleable;
+            insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CONVERT, fromSettleable,
+                    availableAmt, null, null, "환전 신청을 위한 정산가능→사용가능 전환");
+        }
+
+        return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_OUT, -amt,
+                availableAmt - amt, null, null, reason);
     }
 
     /**
      * 환전 반려 복원 (F-PAY-012).
-     * 신청 즉시 차감했던 금액을 정산가능 버킷에 +원장으로 되돌린다 — 차감 원장과 짝(합계 0).
+     * 신청 즉시 차감했던 금액을 사용가능 버킷에 +원장으로 되돌린다 — 차감이 항상 사용가능
+     * 버킷에서 이루어지므로(위 debitExchange 참조) 복원도 항상 사용가능으로 간다. 반려된
+     * 돈이 정산가능이 아니라 사용가능으로 남아도 여전히 환전 대상이라 문제 없다.
      *
      * @return 생성된 포인트원장일련번호 (환전 주문이 복원 원장으로 연결해 둔다)
      */
@@ -231,8 +259,8 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        return insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.EXCHANGE_RESTORE, amt,
-                bal.getSettleableAmt() + amt, null, null, reason);
+        return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_RESTORE, amt,
+                bal.getAvailableAmt() + amt, null, null, reason);
     }
 
     /**

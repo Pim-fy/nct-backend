@@ -13,6 +13,7 @@ import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationEmailStatus;
 import nct.notification.domain.NotificationType;
 import nct.notification.domain.UserNotificationSetting;
+import nct.notification.dto.NotificationResponse;
 import nct.notification.mapper.NotificationMapper;
 import nct.notification.mapper.UserNotificationSettingMapper;
 import nct.setting.mapper.SystemSettingAdminMapper;
@@ -39,6 +40,7 @@ public class NotificationService {
     private final UserNotificationSettingMapper settingMapper;
     private final SystemSettingAdminMapper systemSettingMapper;
     private final NotificationMailSender mailSender;
+    private final NotificationEventPublisher eventPublisher;
 
     /**
      * 범용 알림 생성 (모든 알림의 단일 진입점).
@@ -65,6 +67,7 @@ public class NotificationService {
         Notification n = build(usrSn, type, domain, audience, title, content, refType, refSn);
         n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
         notificationMapper.insert(n);
+        eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
     }
 
     /**
@@ -82,6 +85,7 @@ public class NotificationService {
         if (!emailEligible(usrSn, domain)) {
             n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
             notificationMapper.insert(n);
+            eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
             return;
         }
 
@@ -89,6 +93,7 @@ public class NotificationService {
         // 발송기(mailSender)는 예외를 던지지 않는 계약이라 이 흐름이 본 트랜잭션을 깨뜨릴 수 없다
         n.setNtfEmailStatusCd(NotificationEmailStatus.PENDING.getCode());
         notificationMapper.insert(n);
+        eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
 
         String email = notificationMapper.selectUserEmail(usrSn);
         boolean sent = email != null

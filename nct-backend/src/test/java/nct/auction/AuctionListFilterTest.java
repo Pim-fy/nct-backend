@@ -97,6 +97,50 @@ class AuctionListFilterTest {
                 .containsExactly("t_iby_price_match");
     }
 
+    @Test
+    @DisplayName("공통코드 상태와 거래방식 값으로 경매 목록을 필터링한다")
+    void findAuctionsWithReferenceCodeFilters() {
+        long sellerSn = insertUser("t_reference_filter_seller");
+        insertAuction(
+                sellerSn,
+                "t_reference_ready_delivery",
+                null,
+                BigDecimal.valueOf(10000),
+                AuctionStatusCode.READY,
+                "TRDC0009");
+        insertAuction(
+                sellerSn,
+                "t_reference_active_direct",
+                null,
+                BigDecimal.valueOf(12000),
+                AuctionStatusCode.ACTIVE,
+                "TRDC0010");
+        insertAuction(
+                sellerSn,
+                "t_reference_active_both",
+                null,
+                BigDecimal.valueOf(14000),
+                AuctionStatusCode.ACTIVE,
+                "TRDC0020");
+
+        AuctionListRequest request = keywordRequest("t_reference");
+        request.setStatus(List.of(AuctionStatusCode.READY));
+        request.setTradeMethod("TRDC0009");
+
+        AuctionListResponse response = auctionService.findAuctions(request);
+
+        assertThat(response.getItems()).extracting("title")
+                .containsExactly("t_reference_ready_delivery");
+
+        AuctionListRequest bothRequest = keywordRequest("t_reference");
+        bothRequest.setStatus(List.of(AuctionStatusCode.ACTIVE));
+        bothRequest.setTradeMethod("TRDC0020");
+
+        assertThat(auctionService.findAuctions(bothRequest).getItems())
+                .extracting("title")
+                .containsExactly("t_reference_active_both");
+    }
+
     private AuctionListRequest keywordRequest(String keyword) {
         AuctionListRequest request = new AuctionListRequest();
         request.setKeyword(keyword);
@@ -117,7 +161,23 @@ class AuctionListFilterTest {
     }
 
     private long insertAuction(long sellerSn, String productName, BigDecimal instantBuyPrice, BigDecimal currentAmount) {
-        long prdSn = insertProduct(sellerSn, productName, instantBuyPrice);
+        return insertAuction(
+                sellerSn,
+                productName,
+                instantBuyPrice,
+                currentAmount,
+                AuctionStatusCode.ACTIVE,
+                "TRDC0009");
+    }
+
+    private long insertAuction(
+            long sellerSn,
+            String productName,
+            BigDecimal instantBuyPrice,
+            BigDecimal currentAmount,
+            String auctionStatusCode,
+            String tradeMethodCode) {
+        long prdSn = insertProduct(sellerSn, productName, instantBuyPrice, tradeMethodCode);
         jdbc.update("""
                 INSERT INTO AUCTION (
                     PRD_SN,
@@ -131,7 +191,7 @@ class AuctionListFilterTest {
                 VALUES (?, ?, ?, 1000, ?, ?, 0)
                 """,
                 prdSn,
-                AuctionStatusCode.ACTIVE,
+                auctionStatusCode,
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
                 LocalDateTime.now().plusHours(1));
@@ -141,13 +201,18 @@ class AuctionListFilterTest {
     }
 
     private long insertProduct(long sellerSn, String productName, BigDecimal instantBuyPrice) {
+        return insertProduct(sellerSn, productName, instantBuyPrice, "TRDC0009");
+    }
+
+    private long insertProduct(
+            long sellerSn,
+            String productName,
+            BigDecimal instantBuyPrice,
+            String tradeMethodCode) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD)
-                VALUES (?, 2, ?, 'PRDC0002', 10000, ?,
-                        (SELECT C.CMM_CD FROM CMM_CODE C
-                         JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
-                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
-                """, sellerSn, productName, instantBuyPrice);
+                VALUES (?, 2, ?, 'PRDC0002', 10000, ?, ?)
+                """, sellerSn, productName, instantBuyPrice, tradeMethodCode);
         long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         productIds.add(prdSn);
         return prdSn;

@@ -68,6 +68,7 @@
     </select>
 
     <!-- ── 내 판매 목록 (최신순) ─────────────────────────── -->
+    <!-- filterType: DRAFT(임시저장) | ACTIVE(진행중) | WON(낙찰) | TRADING(거래중) | DONE(완료) | CANCELED(취소) | ENDED(종료/유찰) | null(전체) -->
     <select id="findMyProducts" resultMap="ProductResponseMap">
         /* ProductMapper.findMyProducts */
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
@@ -79,14 +80,54 @@
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
           LEFT JOIN PRODUCT_IMAGE pi ON pi.PRD_SN = p.PRD_SN AND pi.PRD_IMG_RPRS_YN = 'Y'
           LEFT JOIN FILES f ON f.FL_SN = pi.FL_SN
+          LEFT JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
+          LEFT JOIN TRADE t ON t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'
          WHERE p.USR_SN = #{usrSn}
            AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'
-           <if test="prdStatusCd != null and prdStatusCd != ''">
-           AND p.PRD_STATUS_CD = #{prdStatusCd}
-           </if>
+           <choose>
+               <when test="filterType == 'DRAFT'">
+                   AND p.PRD_STATUS_CD = 'PRDC0001'
+               </when>
+               <when test="filterType == 'ACTIVE'">
+                   AND p.PRD_STATUS_CD = 'PRDC0002'
+               </when>
+               <when test="filterType == 'WON'">
+                   AND a.AUC_STATUS_CD = 'AUCC0003'
+                   AND t.TRD_SN IS NULL
+               </when>
+               <when test="filterType == 'TRADING'">
+                   AND t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+               </when>
+               <when test="filterType == 'DONE'">
+                   AND t.TRD_STATUS_CD = 'TRDC0006'
+               </when>
+               <when test="filterType == 'CANCELED'">
+                   AND a.AUC_STATUS_CD IN ('AUCC0005', 'AUCC0006')
+               </when>
+               <when test="filterType == 'ENDED'">
+                   AND a.AUC_STATUS_CD = 'AUCC0004'
+               </when>
+           </choose>
          ORDER BY p.PRD_REG_DT DESC
     </select>
+
+    <!-- ── 상품 수정 (임시저장 → 등록 전환 포함) ──────────────── -->
+    <update id="updateProduct">
+        /* ProductMapper.updateProduct */
+        UPDATE PRODUCT
+           SET CAT_SN            = #{catSn},
+               PRD_NM            = #{prdNm},
+               PRD_CN            = #{prdCn},
+               PRD_STATUS_CD     = #{prdStatusCd},
+               PRD_START_AMT     = #{prdStartAmt},
+               PRD_IBY_AMT       = #{prdIbyAmt},
+               PRD_TRD_METHOD_CD = #{prdTrdMethodCd},
+               PRD_UPDT_ID       = #{prdUpdtId}
+         WHERE PRD_SN    = #{prdSn}
+           AND USR_SN    = #{usrSn}
+           AND PRD_USE_YN = 'Y'
+    </update>
 
     <!-- ── 소유자 확인용 엔티티 조회 ──────────────────────── -->
     <select id="findProductEntityById" resultMap="ProductEntityMap">

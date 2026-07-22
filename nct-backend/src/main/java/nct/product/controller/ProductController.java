@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,6 +30,7 @@ import nct.product.service.ProductService;
  * [상품 API]
  *
  *  POST   /api/products                        상품 등록         (authenticated)
+ *  PUT    /api/products/{prdSn}                임시저장 수정·등록 전환 (authenticated, 본인만)
  *  GET    /api/products/me                     내 판매 목록       (authenticated)
  *  GET    /api/products/{prdSn}                상품 상세 조회     (permit-all)
  *  DELETE /api/products/{prdSn}                상품 삭제          (authenticated, 본인만)
@@ -54,16 +56,28 @@ public class ProductController {
         return ResponseEntity.status(201).body(ApiResponse.created(response));
     }
 
+    /** 임시저장 상품 수정 및 등록 전환 */
+    @PutMapping("/{prdSn}")
+    public ResponseEntity<ApiResponse<ProductResponse>> updateProduct(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "prdSn") Long prdSn,
+            @Valid @RequestBody ProductRegisterRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        ProductResponse response = productService.updateProduct(prdSn, usrSn, request);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     /** 내 판매 목록 */
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PagedResponse<ProductResponse>>> getMyProducts(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestParam(defaultValue = "1")  int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false)    String prdStatusCd) {
+            @RequestParam(required = false)    String filterType) {
 
         Long usrSn = userDetails.getMember().getId();
-        PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size, prdStatusCd);
+        PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size, filterType);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

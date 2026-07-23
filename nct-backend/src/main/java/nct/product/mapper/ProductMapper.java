@@ -16,9 +16,11 @@ public interface ProductMapper {
 
     Optional<ProductResponse> findProductById(@Param("prdSn") Long prdSn);
 
-    List<ProductResponse> findMyProducts(@Param("usrSn") Long usrSn, @Param("prdStatusCd") String prdStatusCd);
+    List<ProductResponse> findMyProducts(@Param("usrSn") Long usrSn, @Param("filterType") String filterType);
 
     Optional<Product> findProductEntityById(@Param("prdSn") Long prdSn);
+
+    void updateProduct(Product product);
 
     void deleteProduct(@Param("prdSn") Long prdSn, @Param("usrSn") Long usrSn);
 

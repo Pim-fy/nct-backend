@@ -20,6 +20,7 @@ import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
@@ -52,6 +53,7 @@ public class AuctionService {
     private final PointService pointService;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
+    private final AuctionEventPublisher auctionEventPublisher;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -145,6 +147,7 @@ public class AuctionService {
                     target.getCurrentPrice(),
                     AuctionTradeSource.AUCTION_WIN);
         }
+        publishAuctionChanged(auctionId, "AUCTION_FINALIZED");
         return true;
     }
 
@@ -236,7 +239,9 @@ public class AuctionService {
                 policy.getAucExtMaxCnt(),
                 userId.toString());
 
-        return loadAuctionDetail(auctionId, userId);
+        AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        publishAuctionChanged(auctionId, "BID_PLACED");
+        return detail;
     }
 
     @Transactional
@@ -268,7 +273,9 @@ public class AuctionService {
                 instantBuyPrice,
                 AuctionTradeSource.BUY_NOW);
 
-        return loadAuctionDetail(auctionId, userId);
+        AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        publishAuctionChanged(auctionId, "BUY_NOW");
+        return detail;
     }
 
     private void createAuctionTrade(
@@ -286,6 +293,10 @@ public class AuctionService {
                         buyerUserId,
                         tradeAmount,
                         source));
+    }
+
+    private void publishAuctionChanged(Long auctionId, String eventType) {
+        auctionEventPublisher.publishAfterCommit(new AuctionRealtimeEvent(auctionId, eventType));
     }
 
     private AuctionBidTarget findBidTarget(Long auctionId) {

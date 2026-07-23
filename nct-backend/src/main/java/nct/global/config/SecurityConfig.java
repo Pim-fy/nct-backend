@@ -104,8 +104,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(auth -> auth
                 // 에러 페이지 포워딩 시 인증 블락(403) 방지
-                .dispatcherTypeMatchers(DispatcherType.ERROR)
-                    .permitAll()
+                .dispatcherTypeMatchers(
+                    DispatcherType.ERROR,
+                    DispatcherType.ASYNC)
+                        .permitAll()
                 // 관리자 API
                 .requestMatchers("/api/admin/**")
                     .hasAuthority("ROLE_ADMIN")

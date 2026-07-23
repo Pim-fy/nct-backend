@@ -4,6 +4,24 @@
 
 <mapper namespace="nct.abuse.mapper.AbuseReportMapper">
 
+    <sql id="adminReportColumns">
+        ABR_SN AS reportSn,
+        RSK_EVT_SN AS riskEventSn,
+        RPRT_USR_SN AS reporterUserSn,
+        RPTD_USR_SN AS reportedUserSn,
+        ABR_TYPE_CD AS reportTypeCode,
+        ABR_STATUS_CD AS statusCode,
+        ABR_CN AS content,
+        ABR_REF_TYPE_CD AS referenceTypeCode,
+        ABR_REF_SN AS referenceSn,
+        ABR_PROC_RSN_CN AS processReason,
+        ABR_REG_DT AS registeredAt,
+        CASE
+            WHEN ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008') THEN ABR_UPDT_DT
+            ELSE NULL
+        END AS processedAt
+    </sql>
+
     <insert id="insertAutomaticReport"
             parameterType="nct.abuse.domain.AbuseReport"
             useGeneratedKeys="true"
@@ -58,6 +76,21 @@
           FROM ABUSE_REPORT
          WHERE ABR_SN = #{reportSn}
          FOR UPDATE
+    </select>
+
+    <select id="findPendingReports" resultType="nct.abuse.dto.AdminAbuseReportResponse">
+        SELECT
+            <include refid="adminReportColumns"/>
+        FROM ABUSE_REPORT
+        WHERE ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+        ORDER BY ABR_REG_DT ASC, ABR_SN ASC
+    </select>
+
+    <select id="findReportDetailById" resultType="nct.abuse.dto.AdminAbuseReportResponse">
+        SELECT
+            <include refid="adminReportColumns"/>
+        FROM ABUSE_REPORT
+        WHERE ABR_SN = #{reportSn}
     </select>
 
     <update id="updateDecision">

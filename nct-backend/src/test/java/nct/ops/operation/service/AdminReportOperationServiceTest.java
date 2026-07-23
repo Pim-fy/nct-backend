@@ -11,17 +11,21 @@ import org.mockito.ArgumentCaptor;
 import nct.ops.operation.port.AdminReportDecision;
 import nct.ops.operation.port.AdminReportDecisionCommand;
 import nct.ops.operation.port.AdminReportDecisionPort;
+import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.service.AbuseReportService;
 
 /** 담당자 7 · F-OPS-007: 신고 처리 계약에 관리자·사유·결정값을 전달하는지 검증합니다. */
 class AdminReportOperationServiceTest {
 
     private AdminReportDecisionPort adminReportDecisionPort;
+    private AbuseReportService abuseReportService;
     private AdminReportOperationService service;
 
     @BeforeEach
     void setUp() {
         adminReportDecisionPort = mock(AdminReportDecisionPort.class);
-        service = new AdminReportOperationService(adminReportDecisionPort);
+        abuseReportService = mock(AbuseReportService.class);
+        service = new AdminReportOperationService(adminReportDecisionPort, abuseReportService);
     }
 
     @Test
@@ -38,5 +42,19 @@ class AdminReportOperationServiceTest {
         assertThat(command.reason()).isEqualTo("confirmed by admin");
         assertThat(command.adminId()).isEqualTo("7");
         assertThat(command.requestId()).startsWith("admin-report:");
+    }
+
+    @Test
+    void delegatesPendingReportsToAbuseReportService() {
+        service.getPendingReports();
+
+        verify(abuseReportService).getPendingReports();
+    }
+
+    @Test
+    void delegatesReportDetailToAbuseReportService() {
+        service.getReportDetail(91L);
+
+        verify(abuseReportService).getReportDetail(91L);
     }
 }

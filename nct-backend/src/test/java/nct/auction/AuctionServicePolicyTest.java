@@ -3,7 +3,6 @@ package nct.auction;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,9 +28,10 @@ import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.mapper.AuctionMapper;
+import nct.auction.service.AuctionEventPublisher;
 import nct.auction.service.AuctionService;
-import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
@@ -42,7 +42,6 @@ import nct.point.service.PointService;
 import nct.product.service.ProductService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
-import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,7 +63,7 @@ class AuctionServicePolicyTest {
     private TradeService tradeService;
 
     @Mock
-    private ChatService chatService;
+    private AuctionEventPublisher auctionEventPublisher;
 
     @InjectMocks
     private AuctionService auctionService;
@@ -118,6 +117,7 @@ class AuctionServicePolicyTest {
         AuctionDetailResponse response = auctionService.placeBid(10L, 40L, bidRequest(12000));
 
         verify(auctionMapper).extendAuctionTime(10L, 3, 2, "40");
+        verifyRealtimeEvent("BID_PLACED");
         assertThat(response.isFavorite()).isTrue();
     }
 
@@ -145,7 +145,7 @@ class AuctionServicePolicyTest {
     }
 
     @Test
-    void buyNowCreatesAuctionTradeAndOfflineChatRoom() {
+    void buyNowCreatesAuctionTradeWithoutCreatingChatRoom() {
         target.setInstantBuyPrice(BigDecimal.valueOf(30000));
         when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
             AuctionBidCreateCommand command = invocation.getArgument(0);
@@ -153,8 +153,6 @@ class AuctionServicePolicyTest {
             return 1;
         });
         when(auctionMapper.closeAuctionByInstantBuy(10L, BigDecimal.valueOf(30000), "40")).thenReturn(1);
-        when(tradeService.createAuctionTrade(any(AuctionTradeCreateCommand.class)))
-                .thenReturn(new AuctionTradeCreateResult(60L, "TRDC0003", true));
         stubAuctionDetail();
 
         auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest());
@@ -170,25 +168,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getBuyerUserId()).isEqualTo(40L);
         assertThat(command.getTradeAmount()).isEqualByComparingTo("30000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.BUY_NOW);
-        verify(chatService).createOrGetOfflineTradeChatRoom(60L);
-    }
-
-    @Test
-    void buyNowDoesNotCreateChatRoomForExistingTrade() {
-        target.setInstantBuyPrice(BigDecimal.valueOf(30000));
-        when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
-            AuctionBidCreateCommand command = invocation.getArgument(0);
-            ReflectionTestUtils.setField(command, "bidId", 50L);
-            return 1;
-        });
-        when(auctionMapper.closeAuctionByInstantBuy(10L, BigDecimal.valueOf(30000), "40")).thenReturn(1);
-        when(tradeService.createAuctionTrade(any(AuctionTradeCreateCommand.class)))
-                .thenReturn(new AuctionTradeCreateResult(60L, "TRDC0003", false));
-        stubAuctionDetail();
-
-        auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest());
-
-        verify(chatService, never()).createOrGetOfflineTradeChatRoom(anyLong());
+        verifyRealtimeEvent("BUY_NOW");
     }
 
     @Test
@@ -208,41 +188,16 @@ class AuctionServicePolicyTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(chatService, never()).createOrGetOfflineTradeChatRoom(anyLong());
         verify(auctionMapper, never()).findAuctionDetail(10L);
     }
 
     @Test
-    void buyNowPropagatesOfflineChatRoomCreationFailure() {
-        target.setInstantBuyPrice(BigDecimal.valueOf(30000));
-        when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
-            AuctionBidCreateCommand command = invocation.getArgument(0);
-            ReflectionTestUtils.setField(command, "bidId", 50L);
-            return 1;
-        });
-        when(auctionMapper.closeAuctionByInstantBuy(10L, BigDecimal.valueOf(30000), "40")).thenReturn(1);
-        when(tradeService.createAuctionTrade(any(AuctionTradeCreateCommand.class)))
-                .thenReturn(new AuctionTradeCreateResult(60L, "TRDC0003", true));
-        when(chatService.createOrGetOfflineTradeChatRoom(60L))
-                .thenThrow(new CustomException(ErrorCode.CONFLICT));
-
-        assertThatThrownBy(() -> auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest()))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONFLICT);
-
-        verify(auctionMapper, never()).findAuctionDetail(10L);
-    }
-
-    @Test
-    void finalizeExpiredAuctionCreatesWinningTradeAndOfflineChatRoom() {
+    void finalizeExpiredAuctionCreatesWinningTradeWithoutCreatingChatRoom() {
         target.setEndDateTime(LocalDateTime.now().minusMinutes(1));
         target.setCurrentHighestBidId(50L);
         target.setCurrentHighestBidderId(40L);
         when(auctionMapper.updateExpiredAuctionStatus(10L, AuctionStatusCode.ENDED, "SYSTEM"))
                 .thenReturn(1);
-        when(tradeService.createAuctionTrade(any(AuctionTradeCreateCommand.class)))
-                .thenReturn(new AuctionTradeCreateResult(60L, "TRDC0003", true));
 
         assertThat(auctionService.finalizeExpiredAuction(10L)).isTrue();
 
@@ -257,7 +212,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getBuyerUserId()).isEqualTo(40L);
         assertThat(command.getTradeAmount()).isEqualByComparingTo("10000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.AUCTION_WIN);
-        verify(chatService).createOrGetOfflineTradeChatRoom(60L);
+        verifyRealtimeEvent("AUCTION_FINALIZED");
     }
 
     @Test
@@ -269,7 +224,15 @@ class AuctionServicePolicyTest {
         assertThat(auctionService.finalizeExpiredAuction(10L)).isTrue();
 
         verify(tradeService, never()).createAuctionTrade(any(AuctionTradeCreateCommand.class));
-        verify(chatService, never()).createOrGetOfflineTradeChatRoom(anyLong());
+        verifyRealtimeEvent("AUCTION_FINALIZED");
+    }
+
+    private void verifyRealtimeEvent(String eventType) {
+        ArgumentCaptor<AuctionRealtimeEvent> eventCaptor =
+                ArgumentCaptor.forClass(AuctionRealtimeEvent.class);
+        verify(auctionEventPublisher).publishAfterCommit(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getAuctionId()).isEqualTo(10L);
+        assertThat(eventCaptor.getValue().getEventType()).isEqualTo(eventType);
     }
 
     private void stubAuctionDetail() {

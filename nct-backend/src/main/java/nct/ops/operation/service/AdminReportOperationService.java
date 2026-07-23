@@ -4,11 +4,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.service.AbuseReportService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.operation.port.AdminReportDecision;
@@ -21,6 +24,17 @@ import nct.ops.operation.port.AdminReportDecisionPort;
 public class AdminReportOperationService {
 
     private final AdminReportDecisionPort adminReportDecisionPort;
+    private final AbuseReportService abuseReportService;
+
+    @Transactional(readOnly = true)
+    public List<AdminAbuseReportResponse> getPendingReports() {
+        return abuseReportService.getPendingReports();
+    }
+
+    @Transactional(readOnly = true)
+    public AdminAbuseReportResponse getReportDetail(Long reportSn) {
+        return abuseReportService.getReportDetail(reportSn);
+    }
 
     @Transactional
     public void decide(

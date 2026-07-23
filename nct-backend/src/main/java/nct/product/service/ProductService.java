@@ -81,6 +81,57 @@ public class ProductService {
                 .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
     }
 
+    @Transactional
+    public ProductResponse updateProduct(Long prdSn, Long usrSn, ProductRegisterRequest req) {
+        Product existing = productMapper.findProductEntityById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!existing.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (!"PRDC0001".equals(existing.getPrdStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "임시저장 상태의 상품만 수정할 수 있습니다.");
+        }
+        if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        validateNoBannedKeyword(req.getPrdNm());
+
+        String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
+        Product updated = Product.builder()
+                .prdSn(prdSn)
+                .usrSn(usrSn)
+                .catSn(req.getCatSn())
+                .prdNm(req.getPrdNm())
+                .prdCn(req.getPrdCn())
+                .prdStatusCd(statusCd)
+                .prdStartAmt(req.getPrdStartAmt())
+                .prdIbyAmt(req.getPrdIbyAmt())
+                .prdTrdMethodCd(req.getPrdTrdMethodCd())
+                .prdUpdtId(String.valueOf(usrSn))
+                .build();
+
+        productMapper.updateProduct(updated);
+
+        if (req.getFlSnList() != null && !req.getFlSnList().isEmpty()) {
+            productImageMapper.deleteByPrdSn(prdSn);
+            saveImages(prdSn, req.getFlSnList());
+        }
+
+        if ("PRDC0002".equals(statusCd) && req.getAucEndDt() != null) {
+            auctionService.createAuctionForProduct(
+                    prdSn,
+                    req.getPrdStartAmt(),
+                    req.getBidUnit(),
+                    req.getAucEndDt(),
+                    true,
+                    usrSn);
+        }
+
+        return productMapper.findProductById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
     @Transactional(readOnly = true)
     public List<String> getBannedKeywords() {
         return bannedKeywordMapper.findActiveBannedKeywords();
@@ -121,9 +172,9 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public PagedResponse<ProductResponse> getMyProducts(Long usrSn, int page, int size, String prdStatusCd) {
+    public PagedResponse<ProductResponse> getMyProducts(Long usrSn, int page, int size, String filterType) {
         PageHelper.startPage(page, size);
-        List<ProductResponse> list = productMapper.findMyProducts(usrSn, prdStatusCd);
+        List<ProductResponse> list = productMapper.findMyProducts(usrSn, filterType);
         PagedResponse<ProductResponse> result = PagedResponse.of(new PageInfo<>(list));
 
         List<Long> prdSns = result.getList().stream()

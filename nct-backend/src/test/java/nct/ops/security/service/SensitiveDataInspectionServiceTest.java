@@ -40,7 +40,8 @@ class SensitiveDataInspectionServiceTest {
         when(riskEventService.recordOnce(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new RiskEventResult(10L, true));
         when(reportPort.requestReport(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(SensitiveDetectionReportResult.deferred());
+                .thenReturn(new SensitiveDetectionReportResult(
+                        SensitiveDetectionReportResult.Status.CREATED, 31L));
 
         SensitiveDataInspectionResult result = service.inspect(
                 "contact me at user@example.com", REQUEST_ID,
@@ -60,7 +61,7 @@ class SensitiveDataInspectionServiceTest {
         assertThat(reportCaptor.getValue().riskEventSn()).isEqualTo(10L);
         assertThat(reportCaptor.getValue().toString()).doesNotContain("user@example.com", REQUEST_ID);
         assertThat(result.report().status())
-                .isEqualTo(SensitiveDetectionReportResult.Status.DEFERRED);
+                .isEqualTo(SensitiveDetectionReportResult.Status.CREATED);
     }
 
     @Test
@@ -90,7 +91,8 @@ class SensitiveDataInspectionServiceTest {
         when(riskEventService.recordOnce(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new RiskEventResult(10L, false));
         when(reportPort.requestReport(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(SensitiveDetectionReportResult.deferred());
+                .thenReturn(new SensitiveDetectionReportResult(
+                        SensitiveDetectionReportResult.Status.REUSED, 31L));
 
         SensitiveDataInspectionResult result = service.inspect(
                 "contact me at user@example.com", REQUEST_ID,
@@ -98,7 +100,7 @@ class SensitiveDataInspectionServiceTest {
 
         assertThat(result.riskEvent().created()).isFalse();
         assertThat(result.report().status())
-                .isEqualTo(SensitiveDetectionReportResult.Status.DEFERRED);
+                .isEqualTo(SensitiveDetectionReportResult.Status.REUSED);
         var reportCaptor = forClass(SensitiveDetectionReportCommand.class);
         verify(reportPort).requestReport(reportCaptor.capture());
         assertThat(reportCaptor.getValue().riskEventSn()).isEqualTo(10L);

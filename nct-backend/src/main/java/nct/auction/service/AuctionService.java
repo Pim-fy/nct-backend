@@ -23,7 +23,6 @@ import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
-import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
@@ -33,7 +32,6 @@ import nct.point.service.PointService;
 import nct.product.service.ProductService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
-import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @Service
@@ -54,7 +52,6 @@ public class AuctionService {
     private final PointService pointService;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
-    private final ChatService chatService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -280,7 +277,7 @@ public class AuctionService {
             Long buyerUserId,
             BigDecimal tradeAmount,
             AuctionTradeSource source) {
-        AuctionTradeCreateResult result = tradeService.createAuctionTrade(
+        tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
                         target.getProductId(),
@@ -289,10 +286,6 @@ public class AuctionService {
                         buyerUserId,
                         tradeAmount,
                         source));
-
-        if (result.isCreated() && OFFLINE_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
-            chatService.createOrGetOfflineTradeChatRoom(result.getTradeSn());
-        }
     }
 
     private AuctionBidTarget findBidTarget(Long auctionId) {

@@ -61,6 +61,9 @@
         <if test="typeCode != null and typeCode != ''">
           AND notice.NTC_TYPE_CD = #{typeCode}
         </if>
+        <if test="typeCode == null or typeCode == ''">
+          AND notice.NTC_TYPE_CD != 'NTCC0008'
+        </if>
         <if test="keyword != null and keyword != ''">
           AND (notice.NTC_TTL LIKE CONCAT('%', #{keyword}, '%')
                OR notice.NTC_CN LIKE CONCAT('%', #{keyword}, '%'))
@@ -89,6 +92,9 @@
         <include refid="publicNoticeBaseWhere"/>
         <if test="typeCode != null and typeCode != ''">
           AND notice.NTC_TYPE_CD = #{typeCode}
+        </if>
+        <if test="typeCode == null or typeCode == ''">
+          AND notice.NTC_TYPE_CD != 'NTCC0008'
         </if>
         <if test="keyword != null and keyword != ''">
           AND (notice.NTC_TTL LIKE CONCAT('%', #{keyword}, '%')

@@ -20,10 +20,10 @@ import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
-import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
@@ -33,7 +33,6 @@ import nct.point.service.PointService;
 import nct.product.service.ProductService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
-import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @Service
@@ -54,7 +53,7 @@ public class AuctionService {
     private final PointService pointService;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
-    private final ChatService chatService;
+    private final AuctionEventPublisher auctionEventPublisher;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -74,14 +73,14 @@ public class AuctionService {
                 .build();
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
-        return findAuctionDetailAndIncreaseView(auctionId, null);
+        return findAuctionDetailWithProductValidation(auctionId, null);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId, Long userId) {
-        return findAuctionDetailAndIncreaseView(auctionId, userId);
+        return findAuctionDetailWithProductValidation(auctionId, userId);
     }
 
     @Transactional(readOnly = true)
@@ -148,6 +147,7 @@ public class AuctionService {
                     target.getCurrentPrice(),
                     AuctionTradeSource.AUCTION_WIN);
         }
+        publishAuctionChanged(auctionId, "AUCTION_FINALIZED");
         return true;
     }
 
@@ -182,7 +182,7 @@ public class AuctionService {
         }
     }
 
-    private AuctionDetailResponse findAuctionDetailAndIncreaseView(Long auctionId, Long userId) {
+    private AuctionDetailResponse findAuctionDetailWithProductValidation(Long auctionId, Long userId) {
         Long productId = auctionMapper.findProductIdByAuctionId(auctionId);
         if (productId == null) {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
@@ -190,7 +190,6 @@ public class AuctionService {
 
         ProductService productService = productServiceProvider.getObject();
         productService.getProduct(productId);
-        productService.increaseViewCount(productId);
         return loadAuctionDetail(auctionId, userId);
     }
 
@@ -239,7 +238,9 @@ public class AuctionService {
                 policy.getAucExtMaxCnt(),
                 userId.toString());
 
-        return loadAuctionDetail(auctionId, userId);
+        AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        publishAuctionChanged(auctionId, "BID_PLACED");
+        return detail;
     }
 
     @Transactional
@@ -271,7 +272,9 @@ public class AuctionService {
                 instantBuyPrice,
                 AuctionTradeSource.BUY_NOW);
 
-        return loadAuctionDetail(auctionId, userId);
+        AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        publishAuctionChanged(auctionId, "BUY_NOW");
+        return detail;
     }
 
     private void createAuctionTrade(
@@ -280,7 +283,7 @@ public class AuctionService {
             Long buyerUserId,
             BigDecimal tradeAmount,
             AuctionTradeSource source) {
-        AuctionTradeCreateResult result = tradeService.createAuctionTrade(
+        tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
                         target.getProductId(),
@@ -289,10 +292,10 @@ public class AuctionService {
                         buyerUserId,
                         tradeAmount,
                         source));
+    }
 
-        if (result.isCreated() && OFFLINE_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
-            chatService.createOrGetOfflineTradeChatRoom(result.getTradeSn());
-        }
+    private void publishAuctionChanged(Long auctionId, String eventType) {
+        auctionEventPublisher.publishAfterCommit(new AuctionRealtimeEvent(auctionId, eventType));
     }
 
     private AuctionBidTarget findBidTarget(Long auctionId) {

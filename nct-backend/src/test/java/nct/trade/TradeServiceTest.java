@@ -23,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.chat.service.ChatService;
 import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
 import nct.member.dto.BuyerAddressSnapshot;
@@ -60,6 +61,7 @@ class TradeServiceTest {
     private FileStorageService fileStorageService;
     private MemberService memberService;
     private SettlementService settlementService;
+    private ChatService chatService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -70,13 +72,15 @@ class TradeServiceTest {
         fileStorageService = mock(FileStorageService.class);
         memberService = mock(MemberService.class);
         settlementService = mock(SettlementService.class);
+        chatService = mock(ChatService.class);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
                 systemSettingMapper,
                 fileStorageService,
                 memberService,
-                settlementService);
+                settlementService,
+                chatService);
     }
 
     @Test
@@ -479,6 +483,7 @@ class TradeServiceTest {
                 LocalDateTime.of(request.getMeetingDate(), request.getMeetingTime()),
                 "합정역 8번 출구 앞",
                 "서울 마포구 양화로 45");
+        verify(chatService).createOrGetOfflineTradeChatRoom(91L);
         assertThat(result).isSameAs(detail);
     }
 

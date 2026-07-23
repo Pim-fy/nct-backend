@@ -104,8 +104,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(auth -> auth
                 // 에러 페이지 포워딩 시 인증 블락(403) 방지
-                .dispatcherTypeMatchers(DispatcherType.ERROR)
-                    .permitAll()
+                .dispatcherTypeMatchers(
+                    DispatcherType.ERROR,
+                    DispatcherType.ASYNC)
+                        .permitAll()
                 // 관리자 API
                 .requestMatchers("/api/admin/**")
                     .hasAuthority("ROLE_ADMIN")
@@ -122,6 +124,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/guides", "/api/guides/**")
                     .permitAll()
                 // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
+                .requestMatchers(HttpMethod.GET, "/api/auctions/*/stream")
+                    .permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
                     .permitAll()
                 // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지·리뷰 사진은 비로그인 탐색에서도 보여야 한다.

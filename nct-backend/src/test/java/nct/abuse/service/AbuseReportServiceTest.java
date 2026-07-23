@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
 
 import nct.abuse.domain.AbuseReport;
+import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -56,6 +58,67 @@ class AbuseReportServiceTest {
                 abuseReportMapper,
                 referenceDataService,
                 auditLogPort);
+    }
+
+    @Test
+    void returnsPendingAutomaticAndManualReportsForAdminQuery() {
+        AdminAbuseReportResponse automaticReport = adminReport(
+                101L,
+                77L,
+                null,
+                AbuseReportService.RECEIVED_STATUS);
+        AdminAbuseReportResponse manualReport = adminReport(
+                102L,
+                null,
+                10L,
+                AbuseReportService.PROCESSING_STATUS);
+        when(abuseReportMapper.findPendingReports(
+                AbuseReportService.RECEIVED_STATUS,
+                AbuseReportService.PROCESSING_STATUS))
+                .thenReturn(List.of(automaticReport, manualReport));
+
+        List<AdminAbuseReportResponse> result = service.getPendingReports();
+
+        assertThat(result).containsExactly(automaticReport, manualReport);
+        assertThat(result.get(0).getRiskEventSn()).isEqualTo(77L);
+        assertThat(result.get(0).getReporterUserSn()).isNull();
+        assertThat(result.get(1).getRiskEventSn()).isNull();
+        assertThat(result.get(1).getReporterUserSn()).isEqualTo(10L);
+        verify(abuseReportMapper).findPendingReports(
+                AbuseReportService.RECEIVED_STATUS,
+                AbuseReportService.PROCESSING_STATUS);
+    }
+
+    @Test
+    void returnsReportDetailForAdminQuery() {
+        AdminAbuseReportResponse report = adminReport(
+                101L,
+                77L,
+                null,
+                AbuseReportService.PROCESSED_STATUS);
+        when(abuseReportMapper.findReportDetailById(101L)).thenReturn(report);
+
+        AdminAbuseReportResponse result = service.getReportDetail(101L);
+
+        assertThat(result).isSameAs(report);
+        verify(abuseReportMapper).findReportDetailById(101L);
+    }
+
+    @Test
+    void rejectsInvalidOrMissingReportDetail() {
+        assertThatThrownBy(() -> service.getReportDetail(null))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+        assertThatThrownBy(() -> service.getReportDetail(0L))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+        verify(abuseReportMapper, never()).findReportDetailById(any());
+
+        when(abuseReportMapper.findReportDetailById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.getReportDetail(404L))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ABUSE_REPORT_NOT_FOUND));
     }
 
     @Test
@@ -303,6 +366,28 @@ class AbuseReportServiceTest {
                 .referenceTypeCode("REFC0005")
                 .referenceSn(31L)
                 .build();
+    }
+
+    private AdminAbuseReportResponse adminReport(
+            Long reportSn,
+            Long riskEventSn,
+            Long reporterUserSn,
+            String statusCode) {
+        return new AdminAbuseReportResponse(
+                reportSn,
+                riskEventSn,
+                reporterUserSn,
+                20L,
+                AbuseReportService.CONTENT_REPORT_TYPE,
+                statusCode,
+                "신고 내용",
+                "REFC0005",
+                31L,
+                AbuseReportService.PROCESSED_STATUS.equals(statusCode) ? "처리 완료" : null,
+                LocalDateTime.of(2026, 7, 23, 9, 0),
+                AbuseReportService.PROCESSED_STATUS.equals(statusCode)
+                        ? LocalDateTime.of(2026, 7, 23, 10, 0)
+                        : null);
     }
 
     private AdminReportDecisionCommand decisionCommand(Long reportSn) {

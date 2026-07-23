@@ -41,8 +41,8 @@ class AuctionServiceTest {
     @Autowired DataSource dataSource;
 
     @Test
-    @DisplayName("경매 상세 조회는 상품 서비스 계약으로 조회수를 증가시킨다")
-    void findAuctionDetailIncreasesProductViewCount() {
+    @DisplayName("경매 상세 조회는 상품 조회수를 증가시키지 않는다")
+    void findAuctionDetailDoesNotIncreaseProductViewCount() {
         long sellerSn = insertUser("t_auc_seller");
         long prdSn = insertProduct(sellerSn);
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
@@ -50,8 +50,8 @@ class AuctionServiceTest {
         AuctionDetailResponse response = auctionService.findAuctionDetail(aucSn);
 
         assertThat(response.getProductId()).isEqualTo(prdSn);
-        assertThat(response.getViewCount()).isEqualTo(1);
-        assertThat(productViewCount(prdSn)).isEqualTo(1);
+        assertThat(response.getViewCount()).isZero();
+        assertThat(productViewCount(prdSn)).isZero();
     }
 
     @Test

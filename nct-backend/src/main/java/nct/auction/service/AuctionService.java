@@ -73,14 +73,14 @@ public class AuctionService {
                 .build();
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
-        return findAuctionDetailAndIncreaseView(auctionId, null);
+        return findAuctionDetailWithProductValidation(auctionId, null);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId, Long userId) {
-        return findAuctionDetailAndIncreaseView(auctionId, userId);
+        return findAuctionDetailWithProductValidation(auctionId, userId);
     }
 
     @Transactional(readOnly = true)
@@ -182,7 +182,7 @@ public class AuctionService {
         }
     }
 
-    private AuctionDetailResponse findAuctionDetailAndIncreaseView(Long auctionId, Long userId) {
+    private AuctionDetailResponse findAuctionDetailWithProductValidation(Long auctionId, Long userId) {
         Long productId = auctionMapper.findProductIdByAuctionId(auctionId);
         if (productId == null) {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
@@ -190,7 +190,6 @@ public class AuctionService {
 
         ProductService productService = productServiceProvider.getObject();
         productService.getProduct(productId);
-        productService.increaseViewCount(productId);
         return loadAuctionDetail(auctionId, userId);
     }
 

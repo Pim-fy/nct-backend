@@ -167,8 +167,10 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long prdSn) {
-        return productMapper.findProductById(prdSn)
+        ProductResponse product = productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
+        return product;
     }
 
     @Transactional(readOnly = true)

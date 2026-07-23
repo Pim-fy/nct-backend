@@ -23,12 +23,14 @@ import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.chat.service.ChatService;
 import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
 import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
@@ -58,6 +60,8 @@ class TradeServiceTest {
     private SystemSettingAdminMapper systemSettingMapper;
     private FileStorageService fileStorageService;
     private MemberService memberService;
+    private SettlementService settlementService;
+    private ChatService chatService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -67,12 +71,16 @@ class TradeServiceTest {
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
         fileStorageService = mock(FileStorageService.class);
         memberService = mock(MemberService.class);
+        settlementService = mock(SettlementService.class);
+        chatService = mock(ChatService.class);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
                 systemSettingMapper,
                 fileStorageService,
-                memberService);
+                memberService,
+                settlementService,
+                chatService);
     }
 
     @Test
@@ -475,6 +483,7 @@ class TradeServiceTest {
                 LocalDateTime.of(request.getMeetingDate(), request.getMeetingTime()),
                 "합정역 8번 출구 앞",
                 "서울 마포구 양화로 45");
+        verify(chatService).createOrGetOfflineTradeChatRoom(91L);
         assertThat(result).isSameAs(detail);
     }
 
@@ -547,6 +556,7 @@ class TradeServiceTest {
         target.setTradeId(91L);
         target.setSellerUserId(10L);
         target.setBuyerUserId(20L);
+        target.setTradeAmount(BigDecimal.valueOf(30000L));
         target.setTradeStatus("TRDC0005");
         target.setAutoCompleteAt(now.minusSeconds(1));
         when(tradeMapper.findAutoCompletionTargetForUpdate(91L)).thenReturn(target);
@@ -559,6 +569,7 @@ class TradeServiceTest {
                 91L,
                 "TRDC0006",
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
+        verify(settlementService).createPending(91L, 10L, 30000L);
         verify(notificationService).notify(
                 20L,
                 nct.notification.domain.NotificationType.TRADE,

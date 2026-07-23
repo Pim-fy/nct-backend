@@ -2,6 +2,12 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="nct.product.mapper.ProductImageMapper">
 
+    <!-- 상품 이미지 전체 삭제 — 수정 시 재삽입 전 호출 -->
+    <delete id="deleteByPrdSn">
+        /* ProductImageMapper.deleteByPrdSn */
+        DELETE FROM PRODUCT_IMAGE WHERE PRD_SN = #{prdSn}
+    </delete>
+
     <!-- 상품 이미지 목록 일괄 추가. SORT_NO·REG_DT 등은 DB DEFAULT/파라미터로 채움 -->
     <insert id="insertAll">
         /* ProductImageMapper.insertAll */

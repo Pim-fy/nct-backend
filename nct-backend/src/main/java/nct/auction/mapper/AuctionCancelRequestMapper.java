@@ -5,11 +5,15 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.auction.dto.AuctionCancelRequestCreateCommand;
 import nct.auction.dto.AuctionCancelRequestProcessTarget;
+import nct.auction.dto.AuctionPendingCancelRequestResponse;
 
 @Mapper
 public interface AuctionCancelRequestMapper {
 
     boolean existsPendingByAuctionId(@Param("auctionId") Long auctionId);
+
+    AuctionPendingCancelRequestResponse findPendingByAuctionId(
+            @Param("auctionId") Long auctionId);
 
     int insertCancelRequest(AuctionCancelRequestCreateCommand command);
 

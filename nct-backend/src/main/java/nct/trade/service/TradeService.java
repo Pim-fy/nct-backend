@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
+import nct.chat.service.ChatService;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
@@ -27,6 +28,7 @@ import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.operation.port.SellerCancellationDecisionPort;
+import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
@@ -70,6 +72,8 @@ public class TradeService implements SellerCancellationDecisionPort {
     private final SystemSettingAdminMapper systemSettingMapper;
     private final FileStorageService fileStorageService;
     private final MemberService memberService;
+    private final SettlementService settlementService;
+    private final ChatService chatService;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -341,6 +345,10 @@ public class TradeService implements SellerCancellationDecisionPort {
                 request.getMeetingPlace().trim(),
                 normalizeOptional(request.getMeetingAddress()));
 
+        // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
+        // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
+        chatService.createOrGetOfflineTradeChatRoom(tradeId);
+
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
 
@@ -404,6 +412,12 @@ public class TradeService implements SellerCancellationDecisionPort {
             return false;
         }
 
+        // 거래 완료와 정산 대기 생성은 같은 트랜잭션으로 처리해 반쪽 완료 상태를 막는다.
+        settlementService.createPending(
+                target.getTradeId(),
+                target.getSellerUserId(),
+                resolveSettlementAmount(target));
+
         tradeMapper.insertStatusHistory(
                 tradeId,
                 COMPLETED,
@@ -413,6 +427,23 @@ public class TradeService implements SellerCancellationDecisionPort {
 
         // 정산·포인트 원장 처리는 담당자5·6의 확정 계약을 받은 뒤 같은 완료 이벤트에 연결한다.
         return true;
+    }
+
+    /** 정산은 원 단위 양수 금액만 허용하므로 자동 완료 잠금 조회값을 다시 검증한다. */
+    private long resolveSettlementAmount(TradeAutoCompletionTarget target) {
+        if (target.getSellerUserId() <= 0
+                || target.getTradeAmount() == null
+                || target.getTradeAmount().signum() <= 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "자동 완료 거래의 정산 정보를 확인할 수 없습니다.");
+        }
+
+        try {
+            return target.getTradeAmount().longValueExact();
+        } catch (ArithmeticException exception) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "자동 완료 거래의 정산 금액이 올바르지 않습니다.");
+        }
     }
 
     /**

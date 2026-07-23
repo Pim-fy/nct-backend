@@ -23,7 +23,6 @@ import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.mapper.AuctionMapper;
-import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
@@ -33,7 +32,6 @@ import nct.point.service.PointService;
 import nct.product.service.ProductService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
-import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @Service
@@ -45,14 +43,15 @@ public class AuctionService {
     private static final int MAX_SIZE = 60;
     private static final int MAX_FINALIZATION_BATCH_SIZE = 500;
     private static final String SYSTEM_ACTOR = "SYSTEM";
+    private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
+    private static final String BOTH_TRADE_METHOD_CODE = "TRDC0020";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
-    private final ChatService chatService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -278,7 +277,7 @@ public class AuctionService {
             Long buyerUserId,
             BigDecimal tradeAmount,
             AuctionTradeSource source) {
-        AuctionTradeCreateResult result = tradeService.createAuctionTrade(
+        tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
                         target.getProductId(),
@@ -287,10 +286,6 @@ public class AuctionService {
                         buyerUserId,
                         tradeAmount,
                         source));
-
-        if (result.isCreated() && OFFLINE_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
-            chatService.createOrGetOfflineTradeChatRoom(result.getTradeSn());
-        }
     }
 
     private AuctionBidTarget findBidTarget(Long auctionId) {
@@ -414,15 +409,20 @@ public class AuctionService {
         List<String> statuses = request.getStatus();
         boolean hasStatusFilter = statuses != null && !statuses.isEmpty();
         request.setHasStatusFilter(hasStatusFilter);
-        request.setStatusReady(!hasStatusFilter || statuses.contains("ready"));
-        request.setStatusActive(!hasStatusFilter || statuses.contains("active"));
+        request.setStatusReady(!hasStatusFilter
+                || statuses.contains("ready")
+                || statuses.contains(AuctionStatusCode.READY));
+        request.setStatusActive(!hasStatusFilter
+                || statuses.contains("active")
+                || statuses.contains(AuctionStatusCode.ACTIVE));
         request.setStatusEndingSoon(hasStatusFilter && statuses.contains("endingSoon"));
     }
 
     private String resolveTradeMethodCode(String tradeMethod) {
         return switch (tradeMethod) {
-            case "delivery" -> "TRDC0009";
-            case "direct" -> "TRDC0010";
+            case "delivery", DELIVERY_TRADE_METHOD_CODE -> DELIVERY_TRADE_METHOD_CODE;
+            case "direct", OFFLINE_TRADE_METHOD_CODE -> OFFLINE_TRADE_METHOD_CODE;
+            case BOTH_TRADE_METHOD_CODE -> BOTH_TRADE_METHOD_CODE;
             default -> null;
         };
     }

@@ -104,8 +104,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(auth -> auth
                 // 에러 페이지 포워딩 시 인증 블락(403) 방지
-                .dispatcherTypeMatchers(DispatcherType.ERROR)
-                    .permitAll()
+                .dispatcherTypeMatchers(
+                    DispatcherType.ERROR,
+                    DispatcherType.ASYNC)
+                        .permitAll()
                 // 관리자 API
                 .requestMatchers("/api/admin/**")
                     .hasAuthority("ROLE_ADMIN")
@@ -118,6 +120,8 @@ public class SecurityConfig {
                 // 담당자 7 · F-COM-013: 방문자도 게시 중인 공지 목록·상세를 조회할 수 있다.
                 // 쓰기 API는 /api/admin/** 아래에 분리되어 있어 이 규칙으로 공개되지 않는다.
                 .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/**")
+                    .permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/guides", "/api/guides/**")
                     .permitAll()
                 // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")

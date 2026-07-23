@@ -28,7 +28,9 @@ import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.mapper.AuctionMapper;
+import nct.auction.service.AuctionEventPublisher;
 import nct.auction.service.AuctionService;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
@@ -59,6 +61,9 @@ class AuctionServicePolicyTest {
 
     @Mock
     private TradeService tradeService;
+
+    @Mock
+    private AuctionEventPublisher auctionEventPublisher;
 
     @InjectMocks
     private AuctionService auctionService;
@@ -112,6 +117,7 @@ class AuctionServicePolicyTest {
         AuctionDetailResponse response = auctionService.placeBid(10L, 40L, bidRequest(12000));
 
         verify(auctionMapper).extendAuctionTime(10L, 3, 2, "40");
+        verifyRealtimeEvent("BID_PLACED");
         assertThat(response.isFavorite()).isTrue();
     }
 
@@ -162,6 +168,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getBuyerUserId()).isEqualTo(40L);
         assertThat(command.getTradeAmount()).isEqualByComparingTo("30000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.BUY_NOW);
+        verifyRealtimeEvent("BUY_NOW");
     }
 
     @Test
@@ -205,6 +212,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getBuyerUserId()).isEqualTo(40L);
         assertThat(command.getTradeAmount()).isEqualByComparingTo("10000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.AUCTION_WIN);
+        verifyRealtimeEvent("AUCTION_FINALIZED");
     }
 
     @Test
@@ -216,6 +224,15 @@ class AuctionServicePolicyTest {
         assertThat(auctionService.finalizeExpiredAuction(10L)).isTrue();
 
         verify(tradeService, never()).createAuctionTrade(any(AuctionTradeCreateCommand.class));
+        verifyRealtimeEvent("AUCTION_FINALIZED");
+    }
+
+    private void verifyRealtimeEvent(String eventType) {
+        ArgumentCaptor<AuctionRealtimeEvent> eventCaptor =
+                ArgumentCaptor.forClass(AuctionRealtimeEvent.class);
+        verify(auctionEventPublisher).publishAfterCommit(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getAuctionId()).isEqualTo(10L);
+        assertThat(eventCaptor.getValue().getEventType()).isEqualTo(eventType);
     }
 
     private void stubAuctionDetail() {

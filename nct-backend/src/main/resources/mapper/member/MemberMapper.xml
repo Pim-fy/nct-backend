@@ -112,14 +112,15 @@
         /* 인증 완료 회원 가입 */
         INSERT INTO USERS (
             USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_EML_CERT_YN,
-            USR_TELNO, USR_STATUS_CD, USR_ROLE_CD
+            USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP, USR_BANK_NM, USR_ACNT_NO,
+            USR_STATUS_CD, USR_ROLE_CD
         ) VALUES (
             #{usrLoginId}, #{usrPswdHash}, #{usrNm}, #{usrEml}, #{usrEmlCertYn},
-            #{usrTelno}, #{usrStatusCd}, #{usrRoleCd}
+            #{usrTelno}, #{usrAddr}, #{usrDaddr}, #{usrZip}, #{usrBankNm}, #{usrAcntNo},
+            #{usrStatusCd}, #{usrRoleCd}
         )
         <!-- 생략 컬럼 (USERS DDL 기준):
-             · nullable(DEFAULT NULL): USR_REFRESH_TOKEN_HASH, USR_ADDR, USR_DADDR, USR_ZIP,
-               USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_ADULT_CERT_DT (가입 미입력 -> 생략)
+             · nullable(DEFAULT NULL): USR_REFRESH_TOKEN_HASH, USR_PRFL_FL_SN, USR_ADULT_CERT_DT
              · DB DEFAULT 보유: USR_ADULT_CERT_YN('N'),
                USR_USE_YN('Y'), USR_REG_DT/USR_UPDT_DT(CURRENT_TIMESTAMP), USR_REG_ID/USR_UPDT_ID('SYSTEM')
              · USR_STATUS_CD 는 NOT NULL & DEFAULT 없음 -> 필수 지정 (어댑터에서 세팅) -->

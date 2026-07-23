@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
+import nct.chat.service.ChatService;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
@@ -72,6 +73,7 @@ public class TradeService implements SellerCancellationDecisionPort {
     private final FileStorageService fileStorageService;
     private final MemberService memberService;
     private final SettlementService settlementService;
+    private final ChatService chatService;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -342,6 +344,10 @@ public class TradeService implements SellerCancellationDecisionPort {
                 request.toMeetingDateTime(),
                 request.getMeetingPlace().trim(),
                 normalizeOptional(request.getMeetingAddress()));
+
+        // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
+        // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
+        chatService.createOrGetOfflineTradeChatRoom(tradeId);
 
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }

@@ -2,7 +2,9 @@ package nct.notification.controller;
 
 import java.util.List;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -19,7 +21,9 @@ import nct.notification.dto.NotificationResponse;
 import nct.notification.dto.NotificationSettingRequest;
 import nct.notification.dto.NotificationSettingResponse;
 import nct.notification.dto.UnreadCountResponse;
+import nct.notification.service.NotificationEventBroker;
 import nct.notification.service.NotificationService;
+import reactor.core.publisher.Flux;
 
 /**
  * [알림 - REST 컨트롤러] (담당자6)
@@ -27,6 +31,7 @@ import nct.notification.service.NotificationService;
  * 엔드포인트 (모두 로그인 필요):
  *   GET   /api/notification               내 알림 목록 (최신순 100건)
  *   GET   /api/notification/unread-count  미읽음 개수 (헤더 배지용)
+ *   GET   /api/notification/stream        실시간 push 구독 (SSE, F-COM-XXX)
  *   PATCH /api/notification/{id}/read     개별 읽음 처리
  *   PATCH /api/notification/read-all      전체 읽음 처리
  *   GET   /api/notification/settings      내 알림 수신 설정 조회 — F-COM-012
@@ -42,6 +47,7 @@ import nct.notification.service.NotificationService;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationEventBroker eventBroker;
 
     /** 내 알림 목록 조회 */
     @GetMapping
@@ -65,6 +71,21 @@ public class NotificationController {
                 .count(notificationService.getUnreadCount(usrSn))
                 .build();
         return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    /**
+     * 실시간 알림 스트림 구독 (SSE). 새로고침 없이 알림·배지가 즉시 갱신되도록 클라이언트가
+     * 로그인 상태 동안 계속 열어두는 연결이다 — X-Accel-Buffering 헤더는 리버스 프록시가
+     * 스트림을 버퍼링하지 않도록 하는 방어용.
+     */
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<Flux<ServerSentEvent<NotificationResponse>>> stream(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok()
+                .header("X-Accel-Buffering", "no")
+                .body(eventBroker.subscribe(usrSn));
     }
 
     /** 개별 읽음 처리 — id가 남의 알림이면 usrSn 가드로 아무 일도 일어나지 않음 */

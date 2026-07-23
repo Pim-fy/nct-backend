@@ -17,4 +17,7 @@ public interface ProductImageMapper {
 
     /** 상품 등록 시 이미지 목록 일괄 추가 (첫 번째가 대표) */
     void insertAll(@Param("images") List<ProductImage> images);
+
+    /** 상품 이미지 전체 삭제 — 수정 시 재삽입 전 호출 */
+    void deleteByPrdSn(@Param("prdSn") Long prdSn);
 }

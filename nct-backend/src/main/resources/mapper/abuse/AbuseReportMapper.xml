@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.abuse.mapper.AbuseReportMapper">
+
+    <insert id="insertAutomaticReport"
+            parameterType="nct.abuse.domain.AbuseReport"
+            useGeneratedKeys="true"
+            keyProperty="reportSn"
+            keyColumn="ABR_SN">
+        INSERT INTO ABUSE_REPORT (
+            RSK_EVT_SN,
+            RPRT_USR_SN,
+            RPTD_USR_SN,
+            ABR_TYPE_CD,
+            ABR_STATUS_CD,
+            ABR_REF_TYPE_CD,
+            ABR_REF_SN,
+            ABR_CN,
+            ABR_REG_ID,
+            ABR_UPDT_ID
+        ) VALUES (
+            #{riskEventSn},
+            #{reporterUserSn},
+            #{reportedUserSn},
+            #{reportTypeCode},
+            #{statusCode},
+            #{referenceTypeCode},
+            #{referenceSn},
+            #{content},
+            #{registeredBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <!-- 중복 INSERT가 선행 트랜잭션을 기다린 뒤 실패해도 최신 커밋 행을 읽는 current read다. -->
+    <select id="findReportIdByRiskEventIdForUpdate" resultType="long">
+        SELECT ABR_SN
+          FROM ABUSE_REPORT
+         WHERE RSK_EVT_SN = #{riskEventSn}
+         FOR UPDATE
+    </select>
+
+    <select id="findReportByIdForUpdate" resultType="nct.abuse.domain.AbuseReport">
+        SELECT ABR_SN AS reportSn,
+               RSK_EVT_SN AS riskEventSn,
+               RPRT_USR_SN AS reporterUserSn,
+               RPTD_USR_SN AS reportedUserSn,
+               ABR_TYPE_CD AS reportTypeCode,
+               ABR_STATUS_CD AS statusCode,
+               ABR_REF_TYPE_CD AS referenceTypeCode,
+               ABR_REF_SN AS referenceSn,
+               ABR_CN AS content,
+               ABR_PROC_RSN_CN AS processReason,
+               ABR_REG_ID AS registeredBy,
+               ABR_UPDT_ID AS updatedBy
+          FROM ABUSE_REPORT
+         WHERE ABR_SN = #{reportSn}
+         FOR UPDATE
+    </select>
+
+    <update id="updateDecision">
+        UPDATE ABUSE_REPORT
+           SET ABR_STATUS_CD = #{newStatusCode},
+               ABR_PROC_RSN_CN = #{processReason},
+               ABR_UPDT_ID = #{actorId},
+               ABR_UPDT_DT = NOW()
+         WHERE ABR_SN = #{reportSn}
+           AND ABR_STATUS_CD = #{expectedStatusCode}
+    </update>
+
+</mapper>

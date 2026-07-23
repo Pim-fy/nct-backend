@@ -96,6 +96,12 @@ public class MemberAuthAdapter implements AuthMemberPort {
             .usrEml(profile.getEmail())
             .usrEmlCertYn('Y')
             .usrTelno(profile.getTelno())
+            // @ai_generated: 추가 정보는 이미 AuthService에서 공백 정규화·묶음 검증된 값만 저장한다.
+            .usrAddr(profile.getAddress())
+            .usrDaddr(profile.getDetailAddress())
+            .usrZip(profile.getZip())
+            .usrBankNm(profile.getBankName())
+            .usrAcntNo(profile.getAccountNo())
             .usrStatusCd("USRC0001")          // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)
             .usrRoleCd("ROLE_USER")           // 신규가입 기본 역할 (DB DEFAULT 와 동일값 - 반환 객체에도 채워 응답 role 누락 방지)
             .build();

@@ -66,6 +66,17 @@ public class AuthService {
         String loginId = normalizeLoginId(request.getLoginId());
         String nickname = requireText(request.getNickname(), ErrorCode.INVALID_INPUT_VALUE);
         String email = normalizeEmail(request.getEmail());
+        String telno = normalizeOptionalText(request.getTelno());
+        String address = normalizeOptionalText(request.getAddress());
+        String detailAddress = normalizeOptionalText(request.getDetailAddress());
+        String zip = normalizeOptionalText(request.getZip());
+        String bankName = normalizeOptionalText(request.getBankName());
+        String accountNo = normalizeOptionalText(request.getAccountNo());
+        requireCompletePair(address, zip);
+        requireCompletePair(bankName, accountNo);
+        if (detailAddress != null && address == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
 
         AgreementValidator.validateAgreementSet(request.getAgreements());
         ensureSignupIdentifiersAvailable(loginId, nickname, email);
@@ -78,7 +89,12 @@ public class AuthService {
                                       .email(email)
                                       .encodedPassword(passwordEncoder.encode(request.getPassword()))
                                       .nickname(nickname)
-                                      .telno(request.getTelno())
+                                      .telno(telno)
+                                      .address(address)
+                                      .detailAddress(detailAddress)
+                                      .zip(zip)
+                                      .bankName(bankName)
+                                      .accountNo(accountNo)
                                       .build());
 
             userAgreementMapper.insertAll(AgreementValidator.toUserAgreements(member.getId(), request.getAgreements()));
@@ -340,6 +356,17 @@ public class AuthService {
             throw new CustomException(errorCode);
         }
         return value.trim();
+    }
+
+    // @ai_generated: 선택 입력의 공백은 DB NULL로 통일하고, 주소·계좌 필드는 반쪽 저장을 차단한다.
+    private String normalizeOptionalText(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void requireCompletePair(String firstValue, String secondValue) {
+        if ((firstValue == null) != (secondValue == null)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
     }
 
     private CustomException duplicateException(DataIntegrityViolationException ex) {

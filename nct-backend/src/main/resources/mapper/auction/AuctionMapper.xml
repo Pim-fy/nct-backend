@@ -102,6 +102,10 @@
               AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
             </otherwise>
         </choose>
+        <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">
+          AND a.AUC_STATUS_CD = 'AUCC0002'
+          AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+        </if>
     </sql>
 
     <select id="findAuctions" resultType="nct.auction.dto.AuctionListItem">

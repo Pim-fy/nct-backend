@@ -68,6 +68,7 @@ public enum ErrorCode {
     REVIEW_TRADE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "리뷰를 작성할 수 없는 거래입니다."),
     REVIEW_INVALID_RATING(HttpStatus.BAD_REQUEST, "평점은 1~5점 사이여야 합니다."),
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
+    REVIEW_TOO_MANY_PHOTOS(HttpStatus.BAD_REQUEST, "리뷰 사진은 최대 5장까지 등록할 수 있습니다."),
 
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
@@ -123,7 +124,7 @@ public enum ErrorCode {
     FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드할 파일이 비어 있습니다."),
     // 허용 확장자는 서비스 구분별로 다름(FileStorageService.SERVICE_EXTENSIONS) — 특정 목록을 박지 않는 중립 문구 (2026-07-20)
     FILE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일 형식입니다."),
-    FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 크기는 10MB를 초과할 수 없습니다."),
+    FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "파일 용량 제한을 초과했습니다. (파일당 최대 10MB, 요청당 최대 50MB)"),
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장 중 오류가 발생했습니다."),
     FILE_INVALID_SERVICE(HttpStatus.BAD_REQUEST, "허용되지 않은 첨부 서비스 구분입니다."),
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),

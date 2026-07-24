@@ -22,6 +22,7 @@ import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
+import nct.review.exception.TooManyReviewPhotosException;
 import nct.review.exception.TradeNotReviewableException;
 import nct.review.mapper.ReviewImageMapper;
 import nct.review.mapper.ReviewMapper;
@@ -35,6 +36,9 @@ import nct.review.mapper.ReviewMapper;
 @Service
 @RequiredArgsConstructor
 public class ReviewService {
+
+    /** 리뷰 사진 최대 장수 (2026-07-22 확정) — 신규 등록·수정 추가 합산 기준 */
+    private static final int MAX_REVIEW_PHOTOS = 5;
 
     private final ReviewMapper reviewMapper;
     private final FileStorageService fileStorageService;
@@ -70,6 +74,7 @@ public class ReviewService {
         if (rating < 1 || rating > 5) {
             throw new InvalidRatingException(rating);
         }
+        validatePhotoCount(0, photos);
 
         // 서버 측 재검증 - 클라이언트가 보낸 tradeId를 그대로 믿지 않는다
         // (BidService의 "서버 측 재검증" 원칙과 동일: 완료 여부·참여자 여부·중복 작성 여부를 다시 확인).
@@ -112,6 +117,9 @@ public class ReviewService {
         if (rating < 1 || rating > 5) {
             throw new InvalidRatingException(rating);
         }
+        // 수정은 새 사진이 기존 첨부에 "추가"되는 구조라, 기존 개수까지 합산해서 검사한다
+        int existingPhotoCount = reviewImageMapper.selectUrlsByReviewSn(rvwSn).size();
+        validatePhotoCount(existingPhotoCount, photos);
 
         int updated = reviewMapper.updateReview(rvwSn, usrSn, rating, content);
         if (updated == 0) {
@@ -176,6 +184,15 @@ public class ReviewService {
                 .usrSn(usrSn)
                 .hasReviews(raw.getTotalCount() > 0)
                 .build();
+    }
+
+    /** 기존 개수 + 이번에 새로 올리는 개수(빈 파일 제외)가 MAX_REVIEW_PHOTOS를 넘으면 거부 */
+    private void validatePhotoCount(int existingCount, List<MultipartFile> photos) {
+        int newCount = photos == null ? 0
+                : (int) photos.stream().filter(p -> p != null && !p.isEmpty()).count();
+        if (existingCount + newCount > MAX_REVIEW_PHOTOS) {
+            throw new TooManyReviewPhotosException(existingCount, newCount, MAX_REVIEW_PHOTOS);
+        }
     }
 
     /** 사진 목록을 FILES에 저장하고 REVIEW_IMAGE에 연결한다. 저장된 건수를 반환한다. */

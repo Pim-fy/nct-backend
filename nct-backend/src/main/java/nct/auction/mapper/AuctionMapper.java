@@ -27,7 +27,9 @@ public interface AuctionMapper {
 
     Long findProductIdByAuctionId(@Param("auctionId") Long auctionId);
 
-    AuctionDetailResponse findAuctionDetail(@Param("auctionId") Long auctionId);
+    AuctionDetailResponse findAuctionDetail(
+            @Param("auctionId") Long auctionId,
+            @Param("userId") Long userId);
 
     AuctionStatusResponse findAuctionStatusByProduct(@Param("prdSn") Long prdSn);
 

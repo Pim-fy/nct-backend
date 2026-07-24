@@ -194,14 +194,12 @@ public class AuctionService {
     }
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId, Long userId) {
-        AuctionDetailResponse detail = auctionMapper.findAuctionDetail(auctionId);
+        AuctionDetailResponse detail = auctionMapper.findAuctionDetail(auctionId, userId);
         if (detail == null) {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
         detail.setFavorite(userId != null
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
-        detail.setCurrentHighestBidder(userId != null
-                && userId.equals(detail.getCurrentHighestBidderId()));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
         return detail;

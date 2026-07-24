@@ -108,7 +108,7 @@ class AuctionServicePolicyTest {
 
         AuctionDetailResponse detail = new AuctionDetailResponse();
         detail.setProductId(20L);
-        when(auctionMapper.findAuctionDetail(10L)).thenReturn(detail);
+        when(auctionMapper.findAuctionDetail(10L, 40L)).thenReturn(detail);
         when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
         when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
 
@@ -188,7 +188,7 @@ class AuctionServicePolicyTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(auctionMapper, never()).findAuctionDetail(10L);
+        verify(auctionMapper, never()).findAuctionDetail(10L, 40L);
     }
 
     @Test
@@ -238,7 +238,7 @@ class AuctionServicePolicyTest {
     private void stubAuctionDetail() {
         AuctionDetailResponse detail = new AuctionDetailResponse();
         detail.setProductId(20L);
-        when(auctionMapper.findAuctionDetail(10L)).thenReturn(detail);
+        when(auctionMapper.findAuctionDetail(10L, 40L)).thenReturn(detail);
         when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
         when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
     }

@@ -27,4 +27,15 @@ public class LocalSignUpProfile {
     private final String nickname;
 
     private final String telno;
+
+    // @ai_generated: 가입 시 선택 입력된 배송지·정산 정보를 회원 저장 어댑터로 전달한다.
+    private final String address;
+
+    private final String detailAddress;
+
+    private final String zip;
+
+    private final String bankName;
+
+    private final String accountNo;
 }

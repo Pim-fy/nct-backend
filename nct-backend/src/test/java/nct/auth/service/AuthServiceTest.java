@@ -100,6 +100,12 @@ class AuthServiceTest {
     @Test
     void 인증과_필수약관이_완료되면_회원과_약관3건을_저장하고_인증을_사용완료한다() {
         SignUpRequest request = validRequest();
+        request.setTelno(" 010-1234-5678 ");
+        request.setAddress(" 서울특별시 종로구 세종대로 1 ");
+        request.setDetailAddress(" 101동 1001호 ");
+        request.setZip(" 03154 ");
+        request.setBankName(" 에누리은행 ");
+        request.setAccountNo(" 123-456-789 ");
         AuthMember savedMember = AuthMember.builder()
                 .id(101L)
                 .email("user@example.com")
@@ -120,6 +126,12 @@ class AuthServiceTest {
         verify(authMemberPort).registerLocalMember(profileCaptor.capture());
         assertThat(profileCaptor.getValue().getLoginId()).isEqualTo("buyer01");
         assertThat(profileCaptor.getValue().getNickname()).isEqualTo("구매자");
+        assertThat(profileCaptor.getValue().getTelno()).isEqualTo("010-1234-5678");
+        assertThat(profileCaptor.getValue().getAddress()).isEqualTo("서울특별시 종로구 세종대로 1");
+        assertThat(profileCaptor.getValue().getDetailAddress()).isEqualTo("101동 1001호");
+        assertThat(profileCaptor.getValue().getZip()).isEqualTo("03154");
+        assertThat(profileCaptor.getValue().getBankName()).isEqualTo("에누리은행");
+        assertThat(profileCaptor.getValue().getAccountNo()).isEqualTo("123-456-789");
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<UserAgreement>> agreementCaptor = ArgumentCaptor.forClass(List.class);
@@ -127,6 +139,29 @@ class AuthServiceTest {
         assertThat(agreementCaptor.getValue()).hasSize(3);
         assertThat(agreementCaptor.getValue()).allMatch(agreement -> agreement.getUsrSn().equals(101L));
         verify(emailVerificationService).markSignupUsed(77L);
+    }
+
+    // @ai_generated: 선택 입력도 주소·우편번호와 은행명·계좌번호는 각각 함께 저장되어야 한다.
+    @Test
+    void 추가정보의_묶음값이_한쪽만_입력되면_회원가입을_차단한다() {
+        SignUpRequest addressOnlyRequest = validRequest();
+        addressOnlyRequest.setAddress("서울특별시 종로구 세종대로 1");
+
+        assertThatThrownBy(() -> authService.signUp(addressOnlyRequest))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        SignUpRequest accountOnlyRequest = validRequest();
+        accountOnlyRequest.setAccountNo("123-456-789");
+
+        assertThatThrownBy(() -> authService.signUp(accountOnlyRequest))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(authMemberPort, never()).registerLocalMember(any());
+        verify(emailVerificationService, never()).requireVerifiedSignup(any(), any());
     }
 
     @Test

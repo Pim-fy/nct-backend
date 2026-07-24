@@ -7,6 +7,7 @@
         INSERT INTO PRODUCT_COMMENT (
             PRD_SN,
             USR_SN,
+            PRD_CMT_TYPE_CD,
             PRD_CMT_TTL,
             PRD_CMT_CN,
             PRD_CMT_REG_ID,
@@ -14,6 +15,7 @@
         ) VALUES (
             #{prdSn},
             #{usrSn},
+            #{prdCmtTypeCd},
             #{prdCmtTtl},
             #{prdCmtCn},
             #{prdCmtRegId},
@@ -29,8 +31,78 @@
                PRD_CMT_UPDT_DT AS prdCmtUpdtDt
           FROM PRODUCT_COMMENT
          WHERE PRD_SN = #{prdSn}
+           AND PRD_CMT_TYPE_CD = 'PRDC0005'
          ORDER BY PRD_CMT_SN DESC
          LIMIT #{limit}
+    </select>
+
+    <!-- 구매자 문의 등록 (PRDC0006) -->
+    <insert id="insertInquiry" useGeneratedKeys="true" keyProperty="prdCmtSn">
+        INSERT INTO PRODUCT_COMMENT (
+            PRD_SN,
+            USR_SN,
+            PRD_CMT_TYPE_CD,
+            PRD_CMT_CN,
+            PRD_CMT_REG_ID,
+            PRD_CMT_UPDT_ID
+        ) VALUES (
+            #{prdSn},
+            #{usrSn},
+            'PRDC0006',
+            #{prdCmtCn},
+            #{prdCmtRegId},
+            #{prdCmtUpdtId}
+        )
+    </insert>
+
+    <!-- 판매자 답변 등록 (PRDC0007) -->
+    <insert id="insertReply" useGeneratedKeys="true" keyProperty="prdCmtSn">
+        INSERT INTO PRODUCT_COMMENT (
+            PRD_SN,
+            USR_SN,
+            PRD_CMT_TYPE_CD,
+            PRD_CMT_PARENT_SN,
+            PRD_CMT_CN,
+            PRD_CMT_REG_ID,
+            PRD_CMT_UPDT_ID
+        ) VALUES (
+            #{prdSn},
+            #{usrSn},
+            'PRDC0007',
+            #{prdCmtParentSn},
+            #{prdCmtCn},
+            #{prdCmtRegId},
+            #{prdCmtUpdtId}
+        )
+    </insert>
+
+    <!-- 구매자 문의 목록 조회 (문의 + 답변 flat 조회, 프론트에서 그룹핑) -->
+    <select id="findInquiries" resultType="nct.product.dto.ProductInquiryResponse">
+        SELECT c.PRD_CMT_SN       AS prdCmtSn,
+               c.USR_SN           AS usrSn,
+               u.USR_NM           AS usrNm,
+               c.PRD_CMT_TYPE_CD  AS prdCmtTypeCd,
+               c.PRD_CMT_PARENT_SN AS prdCmtParentSn,
+               c.PRD_CMT_CN       AS prdCmtCn,
+               c.PRD_CMT_REG_DT   AS prdCmtRegDt
+          FROM PRODUCT_COMMENT c
+          JOIN USERS u ON u.USR_SN = c.USR_SN
+         WHERE c.PRD_SN = #{prdSn}
+           AND c.PRD_CMT_TYPE_CD IN ('PRDC0006', 'PRDC0007')
+         ORDER BY COALESCE(c.PRD_CMT_PARENT_SN, c.PRD_CMT_SN), c.PRD_CMT_TYPE_CD
+    </select>
+
+    <!-- 문의 단건 조회 (답변 등록 전 소유권 확인용) -->
+    <select id="findInquiryById" resultType="nct.product.domain.ProductComment">
+        SELECT PRD_CMT_SN       AS prdCmtSn,
+               PRD_SN           AS prdSn,
+               USR_SN           AS usrSn,
+               PRD_CMT_TYPE_CD  AS prdCmtTypeCd,
+               PRD_CMT_PARENT_SN AS prdCmtParentSn,
+               PRD_CMT_CN       AS prdCmtCn
+          FROM PRODUCT_COMMENT
+         WHERE PRD_CMT_SN = #{inquirySn}
+           AND PRD_CMT_TYPE_CD = 'PRDC0006'
     </select>
 
 </mapper>

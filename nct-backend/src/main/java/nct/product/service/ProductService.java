@@ -24,6 +24,8 @@ import nct.product.dto.ProductResponse;
 import nct.product.domain.ProductComment;
 import nct.product.dto.ProductCommentRequest;
 import nct.product.dto.ProductCommentResponse;
+import nct.product.dto.ProductInquiryRequest;
+import nct.product.dto.ProductInquiryResponse;
 import nct.product.mapper.BannedKeywordMapper;
 import nct.product.mapper.ProductCommentMapper;
 import nct.product.mapper.ProductImageMapper;
@@ -167,8 +169,10 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long prdSn) {
-        return productMapper.findProductById(prdSn)
+        ProductResponse product = productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
+        return product;
     }
 
     @Transactional(readOnly = true)
@@ -223,6 +227,7 @@ public class ProductService {
         ProductComment comment = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
+                .prdCmtTypeCd("PRDC0005")
                 .prdCmtTtl(req.getTtl())
                 .prdCmtCn(req.getCn())
                 .prdCmtRegId(String.valueOf(usrSn))
@@ -256,5 +261,65 @@ public class ProductService {
         }
 
         productMapper.deleteProduct(prdSn, usrSn);
+    }
+
+    /** 구매자 문의 등록 (F-AUC-012) */
+    @Transactional
+    public ProductInquiryResponse addInquiry(Long prdSn, Long usrSn, ProductInquiryRequest req) {
+        productMapper.findProductById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        ProductComment inquiry = ProductComment.builder()
+                .prdSn(prdSn)
+                .usrSn(usrSn)
+                .prdCmtCn(req.getCn())
+                .prdCmtRegId(String.valueOf(usrSn))
+                .prdCmtUpdtId(String.valueOf(usrSn))
+                .build();
+
+        productCommentMapper.insertInquiry(inquiry);
+
+        return productCommentMapper.findInquiries(prdSn).stream()
+                .filter(r -> r.getPrdCmtSn().equals(inquiry.getPrdCmtSn()))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    /** 구매자 문의 목록 조회 (F-AUC-012) */
+    @Transactional(readOnly = true)
+    public List<ProductInquiryResponse> getInquiries(Long prdSn) {
+        productMapper.findProductById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        return productCommentMapper.findInquiries(prdSn);
+    }
+
+    /** 판매자 답변 등록 (F-AUC-012) */
+    @Transactional
+    public ProductInquiryResponse addReply(Long prdSn, Long inquirySn, Long usrSn, ProductInquiryRequest req) {
+        Product product = productMapper.findProductEntityById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!product.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        productCommentMapper.findInquiryById(inquirySn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        ProductComment reply = ProductComment.builder()
+                .prdSn(prdSn)
+                .usrSn(usrSn)
+                .prdCmtParentSn(inquirySn)
+                .prdCmtCn(req.getCn())
+                .prdCmtRegId(String.valueOf(usrSn))
+                .prdCmtUpdtId(String.valueOf(usrSn))
+                .build();
+
+        productCommentMapper.insertReply(reply);
+
+        return productCommentMapper.findInquiries(prdSn).stream()
+                .filter(r -> r.getPrdCmtSn().equals(reply.getPrdCmtSn()))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 }

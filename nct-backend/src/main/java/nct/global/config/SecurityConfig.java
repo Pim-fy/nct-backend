@@ -126,6 +126,9 @@ public class SecurityConfig {
                 // 조회수 증가 — 비로그인 경매 상세에서도 호출된다.
                 .requestMatchers(HttpMethod.POST, "/api/products/*/view")
                     .permitAll()
+                // 구매자 문의 목록 — 비로그인 조회 허용 (F-AUC-012)
+                .requestMatchers(HttpMethod.GET, "/api/products/*/inquiries")
+                    .permitAll()
                 // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/auctions/*/stream")
                     .permitAll()

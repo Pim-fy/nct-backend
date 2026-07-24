@@ -24,6 +24,7 @@ import nct.product.dto.ProductResponse;
 import nct.product.domain.ProductComment;
 import nct.product.dto.ProductCommentRequest;
 import nct.product.dto.ProductCommentResponse;
+import nct.product.dto.InquiryReportTarget;
 import nct.product.dto.ProductInquiryRequest;
 import nct.product.dto.ProductInquiryResponse;
 import nct.product.mapper.BannedKeywordMapper;
@@ -261,6 +262,13 @@ public class ProductService {
         }
 
         productMapper.deleteProduct(prdSn, usrSn);
+    }
+
+    /** 신고 검증용 문의 단건 조회 — 타 도메인 공개 계약 (F-AUC-013) */
+    @Transactional(readOnly = true)
+    public InquiryReportTarget getInquiryReportTarget(Long prdCmtSn) {
+        return productCommentMapper.findInquiryReportTarget(prdCmtSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
     /** 구매자 문의 등록 (F-AUC-012) */

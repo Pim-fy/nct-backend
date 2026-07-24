@@ -8,6 +8,18 @@
         DELETE FROM PRODUCT_IMAGE WHERE PRD_SN = #{prdSn}
     </delete>
 
+    <!-- 상품 이미지 목록 조회 — FILES JOIN으로 URL 반환. 정렬순 -->
+    <select id="findImagesByPrdSn" resultType="nct.product.dto.ProductImageItem">
+        /* ProductImageMapper.findImagesByPrdSn */
+        SELECT
+            pi.FL_SN  AS flSn,
+            CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS url
+        FROM PRODUCT_IMAGE pi
+        JOIN FILES f ON f.FL_SN = pi.FL_SN
+        WHERE pi.PRD_SN = #{prdSn}
+        ORDER BY pi.PRD_IMG_SORT_NO ASC
+    </select>
+
     <!-- 상품 이미지 목록 일괄 추가. SORT_NO·REG_DT 등은 DB DEFAULT/파라미터로 채움 -->
     <insert id="insertAll">
         /* ProductImageMapper.insertAll */

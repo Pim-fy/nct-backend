@@ -22,6 +22,8 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.product.dto.ProductCommentRequest;
 import nct.product.dto.ProductCommentResponse;
+import nct.product.dto.ProductInquiryRequest;
+import nct.product.dto.ProductInquiryResponse;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
 import nct.product.service.ProductService;
@@ -35,8 +37,11 @@ import nct.product.service.ProductService;
  *  GET    /api/products/{prdSn}                상품 상세 조회     (permit-all)
  *  DELETE /api/products/{prdSn}                상품 삭제          (authenticated, 본인만)
  *  GET    /api/products/banned-keywords        금지 키워드 목록   (permit-all)
- *  POST   /api/products/{prdSn}/comments       추가 공지 등록     (authenticated, 판매자만)
- *  GET    /api/products/{prdSn}/comments       추가 공지 조회     (permit-all)
+ *  POST   /api/products/{prdSn}/comments                          추가 공지 등록     (authenticated, 판매자만)
+ *  GET    /api/products/{prdSn}/comments                          추가 공지 조회     (permit-all)
+ *  POST   /api/products/{prdSn}/inquiries                         구매자 문의 등록   (authenticated)
+ *  GET    /api/products/{prdSn}/inquiries                         구매자 문의 목록   (permit-all)
+ *  POST   /api/products/{prdSn}/inquiries/{inquirySn}/reply       판매자 답변 등록   (authenticated, 판매자만)
  */
 @RestController
 @RequestMapping("/api/products")
@@ -118,9 +123,42 @@ public class ProductController {
 
     /** 상품 조회수 증가 — 옥동민(5) 경매 상세 조회 시 호출 */
     @PostMapping("/{prdSn}/view")
-    public ResponseEntity<ApiResponse<Void>> increaseViewCount(@PathVariable Long prdSn) {
+    public ResponseEntity<ApiResponse<Void>> increaseViewCount(@PathVariable(name = "prdSn") Long prdSn) {
         productService.increaseViewCount(prdSn);
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** 구매자 문의 등록 (F-AUC-012) */
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/{prdSn}/inquiries")
+    public ResponseEntity<ApiResponse<ProductInquiryResponse>> addInquiry(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long prdSn,
+            @Valid @RequestBody ProductInquiryRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.status(201).body(ApiResponse.created(productService.addInquiry(prdSn, usrSn, request)));
+    }
+
+    /** 구매자 문의 목록 조회 (F-AUC-012) */
+    @GetMapping("/{prdSn}/inquiries")
+    public ResponseEntity<ApiResponse<List<ProductInquiryResponse>>> getInquiries(
+            @PathVariable Long prdSn) {
+
+        return ResponseEntity.ok(ApiResponse.success(productService.getInquiries(prdSn)));
+    }
+
+    /** 판매자 답변 등록 (F-AUC-012) */
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/{prdSn}/inquiries/{inquirySn}/reply")
+    public ResponseEntity<ApiResponse<ProductInquiryResponse>> addReply(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long prdSn,
+            @PathVariable Long inquirySn,
+            @Valid @RequestBody ProductInquiryRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.status(201).body(ApiResponse.created(productService.addReply(prdSn, inquirySn, usrSn, request)));
     }
 
     /** 상품 삭제 (논리 삭제) */

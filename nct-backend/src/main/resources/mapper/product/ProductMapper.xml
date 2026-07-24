@@ -108,6 +108,10 @@
                <when test="filterType == 'ENDED'">
                    AND a.AUC_STATUS_CD = 'AUCC0004'
                </when>
+               <when test="filterType == 'CLOSED'">
+                   AND (t.TRD_STATUS_CD = 'TRDC0006'
+                     OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006'))
+               </when>
            </choose>
          ORDER BY p.PRD_REG_DT DESC
     </select>

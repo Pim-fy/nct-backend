@@ -58,7 +58,7 @@ class AuctionServiceDetailTest {
 
         when(auctionMapper.findProductIdByAuctionId(10L)).thenReturn(20L);
         when(productServiceProvider.getObject()).thenReturn(productService);
-        when(auctionMapper.findAuctionDetail(10L)).thenReturn(detail);
+        when(auctionMapper.findAuctionDetail(10L, null)).thenReturn(detail);
         when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
         when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
 
@@ -67,5 +67,23 @@ class AuctionServiceDetailTest {
         assertThat(response).isSameAs(detail);
         verify(productService).getProduct(20L);
         verify(productService, never()).increaseViewCount(anyLong());
+    }
+
+    @Test
+    void findAuctionDetailKeepsMapperHighestBidderResultForCurrentUser() {
+        AuctionDetailResponse detail = new AuctionDetailResponse();
+        detail.setProductId(20L);
+        detail.setCurrentHighestBidder(true);
+
+        when(auctionMapper.findProductIdByAuctionId(10L)).thenReturn(20L);
+        when(productServiceProvider.getObject()).thenReturn(productService);
+        when(auctionMapper.findAuctionDetail(10L, 30L)).thenReturn(detail);
+        when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
+        when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
+
+        AuctionDetailResponse response = auctionService.findAuctionDetail(10L, 30L);
+
+        assertThat(response.isCurrentHighestBidder()).isTrue();
+        verify(auctionMapper).findAuctionDetail(10L, 30L);
     }
 }

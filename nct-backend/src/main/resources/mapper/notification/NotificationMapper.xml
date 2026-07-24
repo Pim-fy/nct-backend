@@ -2,7 +2,11 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="nct.notification.mapper.NotificationMapper">
 
-    <!-- 알림 행 추가. READ_YN(기본 'N')·REG_DT 등은 DB DEFAULT에 맡기고 생략 -->
+    <!-- 알림 행 추가. READ_YN(기본 'N')·REG_DT 등은 DB DEFAULT에 맡기고 생략.
+         NTF_EVT_CD는 notifyForEvent() 경로만 채우고 기존 notify()/notifyImportant()는 null로 남는다.
+         ⚠️ NTF_EVT_CD 컬럼은 아직 공유 DB(NCTDB)에 없어서(변경사항/NOTIFICATION_NTF_EVT_CD_추가분_260724.sql
+         적용 대기) 값이 있을 때만 SQL에 포함시킨다 — 이렇게 해야 기존 notify() 경로가
+         컬럼 없는 현재 DB에서도 예전과 똑같은 SQL로 동작한다. 컬럼 적용 후에도 이 형태 그대로 무해함 -->
     <insert id="insert" parameterType="nct.notification.domain.Notification"
             useGeneratedKeys="true" keyProperty="ntfSn">
         /* 알림: 행 추가 */
@@ -10,14 +14,27 @@
             USR_SN, NTF_TYPE_CD, NTF_DOMAIN_CD, NTF_AUDIENCE_CD,
             NTF_TTL, NTF_CN,
             NTF_REF_TYPE_CD, NTF_REF_SN,
+            <if test="ntfEvtCd != null">NTF_EVT_CD,</if>
             NTF_EMAIL_STATUS_CD
         ) VALUES (
             #{usrSn}, #{ntfTypeCd}, #{ntfDomainCd}, #{ntfAudienceCd},
             #{ntfTtl}, #{ntfCn},
             #{ntfRefTypeCd}, #{ntfRefSn},
+            <if test="ntfEvtCd != null">#{ntfEvtCd},</if>
             #{ntfEmailStatusCd}
         )
     </insert>
+
+    <!-- notifyForEvent() 멱등 체크 — 같은 회원·같은 이벤트·같은 참조로 이미 보낸 적 있는지 -->
+    <select id="existsByUserEventRef" resultType="boolean">
+        /* 알림: 이벤트 중복 발행 여부 확인 */
+        SELECT EXISTS (
+            SELECT 1 FROM NOTIFICATION
+            WHERE USR_SN = #{usrSn}
+              AND NTF_EVT_CD = #{ntfEvtCd}
+              AND NTF_REF_SN = #{refSn}
+        )
+    </select>
 
     <!-- 알림 목록: 유형·도메인 코드의 한글명을 CMM_CODE 조인으로 함께 가져온다
          (프론트가 코드값 하드코딩 없이 한글 배지를 그대로 쓸 수 있게) -->

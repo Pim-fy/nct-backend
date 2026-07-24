@@ -34,4 +34,8 @@ public interface NotificationMapper {
 
     /** 수신자 이메일 주소 (F-COM-006) — USERS는 타 담당자 소유, 읽기 전용 조회만 */
     String selectUserEmail(@Param("usrSn") long usrSn);
+
+    /** 같은 회원·같은 이벤트·같은 참조로 이미 발행한 적 있는지 (notifyForEvent 멱등 체크) */
+    boolean existsByUserEventRef(@Param("usrSn") long usrSn, @Param("ntfEvtCd") String ntfEvtCd,
+                                 @Param("refSn") long refSn);
 }

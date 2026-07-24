@@ -205,10 +205,17 @@ public class NotificationService {
     @Transactional
     public void notifyForEvent(long usrSn, NotificationEvent event, NotificationAudience audience,
                                String title, String content, RefType refType, Long refSn) {
+        // 멱등 체크 — 같은 회원·같은 이벤트·같은 참조 건으로 이미 발행했으면 조용히 스킵.
+        // 마감임박 알림처럼 매분 도는 스케줄러가 같은 경매를 반복 호출해도 알림이 한 번만 가게 하기 위함.
+        // refSn이 없는 알림(참조 건 없음)은 중복 판단 기준이 없으므로 체크하지 않는다.
+        if (refSn != null && notificationMapper.existsByUserEventRef(usrSn, event.getCode(), refSn)) {
+            return;
+        }
         if (!eventInappEnabled(usrSn, event)) {
             return;
         }
         Notification n = build(usrSn, event.getType(), event.getDomain(), audience, title, content, refType, refSn);
+        n.setNtfEvtCd(event.getCode()); // 멱등 체크 키 — notifyForEvent 경로만 채운다 (기존 notify()는 null 유지)
 
         boolean emailEligible = mailSender.isAvailable()
                 && "Y".equals(systemSettingMapper.selectOne().getEmailYn())
@@ -256,6 +263,18 @@ public class NotificationService {
         notifyForEvent(usrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
                 won ? "낙찰되었습니다" : "유찰되었습니다",
                 won ? "축하합니다! 입찰하신 경매에 낙찰되었습니다." : "입찰하신 경매가 유찰되었습니다.",
+                RefType.AUCTION, auctionId);
+    }
+
+    /**
+     * 무입찰 유찰 — 판매자에게. 경매 담당(5)이 입찰자 0명으로 마감됐을 때 호출.
+     * 위 notifyAuctionResult(입찰자 대상)와 같은 AUCTION_RESULT 이벤트를 재사용 — 신규 코드 불필요.
+     * 멱등 키가 (회원, 이벤트, 참조)라서 같은 경매여도 판매자·입찰자는 회원이 달라 충돌하지 않는다.
+     */
+    public void notifyAuctionFailed(long sellerUsrSn, long auctionId) {
+        notifyForEvent(sellerUsrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
+                "경매가 유찰되었습니다",
+                "입찰자가 없어 경매가 종료되었습니다.",
                 RefType.AUCTION, auctionId);
     }
 

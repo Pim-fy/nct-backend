@@ -33,6 +33,7 @@ import nct.review.dto.ReviewUpdateResult;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
+import nct.review.exception.TooManyReviewPhotosException;
 import nct.review.exception.TradeNotReviewableException;
 import nct.review.mapper.ReviewImageMapper;
 import nct.review.mapper.ReviewMapper;
@@ -167,6 +168,17 @@ class ReviewServiceTest {
     }
 
     @Test
+    void 등록시_사진이_5장을_넘으면_거래_조회_없이_바로_거부된다() {
+        setUp();
+
+        assertThatThrownBy(() -> reviewService.createReview(
+                USR_SN, TRADE_ID, 5, "내용", mockPhotos(6)))
+                .isInstanceOf(TooManyReviewPhotosException.class);
+
+        verify(reviewMapper, never()).selectWritableTrade(any(Long.class), any(Long.class));
+    }
+
+    @Test
     void 내가_작성한_리뷰_목록은_각_리뷰마다_사진_URL을_채워서_반환한다() {
         setUp();
         MyReviewItem item = MyReviewItem.builder()
@@ -238,6 +250,44 @@ class ReviewServiceTest {
         verify(reviewImageMapper).insertAll(captor.capture());
         assertThat(captor.getValue().get(0).getRvwSn()).isEqualTo(900L);
         assertThat(captor.getValue().get(0).getFlSn()).isEqualTo(20L);
+    }
+
+    @Test
+    void 수정시_기존_사진과_새_사진을_합쳐_5장을_넘으면_거부된다() {
+        setUp();
+        when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(
+                List.of("a.jpg", "b.jpg", "c.jpg", "d.jpg")); // 기존 4장
+
+        assertThatThrownBy(() -> reviewService.updateReview(
+                USR_SN, 900L, 4, "수정된 내용", mockPhotos(2))) // 4 + 2 = 6장
+                .isInstanceOf(TooManyReviewPhotosException.class);
+
+        verify(reviewMapper, never()).updateReview(any(Long.class), any(Long.class), any(Integer.class), any());
+    }
+
+    @Test
+    void 수정시_기존_사진과_새_사진을_합쳐_정확히_5장이면_허용된다() {
+        setUp();
+        when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(
+                List.of("a.jpg", "b.jpg", "c.jpg")); // 기존 3장
+        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
+                .thenReturn(FileMeta.builder().flSn(30L).build())
+                .thenReturn(FileMeta.builder().flSn(31L).build());
+
+        ReviewUpdateResult result = reviewService.updateReview(
+                USR_SN, 900L, 4, "수정된 내용", mockPhotos(2)); // 3 + 2 = 5장
+
+        assertThat(result.getAddedPhotoCount()).isEqualTo(2);
+    }
+
+    /** 개수 검증 테스트 전용 — 내용은 안 쓰고 개수만 필요한 목업 파일 목록 */
+    private List<MultipartFile> mockPhotos(int count) {
+        List<MultipartFile> photos = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            photos.add(new MockMultipartFile("photos", i + ".jpg", "image/jpeg", "data".getBytes()));
+        }
+        return photos;
     }
 
     @Test

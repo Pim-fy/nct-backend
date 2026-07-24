@@ -27,6 +27,7 @@ import nct.ops.reference.service.ReferenceDataService;
 public class PublicNoticeService {
 
     private static final String NOTICE_TYPE_GROUP = "NTCG01";
+    private static final String FAQ_TYPE_CODE = "NTCC0008";
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_KEYWORD_LENGTH = 100;
     private static final int SUMMARY_LENGTH = 120;
@@ -38,6 +39,8 @@ public class PublicNoticeService {
     @Transactional(readOnly = true)
     public List<PublicNoticeTypeResponse> getPublicNoticeTypes() {
         return referenceDataService.getActiveCodes(NOTICE_TYPE_GROUP).stream()
+                // 담당자 7 | FAQ는 공지 목록의 유형 필터가 아니라 전용 FAQ 화면에서만 제공한다.
+                .filter(code -> !FAQ_TYPE_CODE.equals(code.getCode()))
                 .map(code -> PublicNoticeTypeResponse.builder()
                         .code(code.getCode())
                         .name(code.getName())

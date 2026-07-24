@@ -1,5 +1,6 @@
 package nct.abuse.service;
 
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.abuse.domain.AbuseReport;
+import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -120,6 +122,26 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                 statusSummary(report.getReportSn(), report.getStatusCode()),
                 statusSummary(report.getReportSn(), values.newStatusCode()),
                 values.requestId()));
+    }
+
+    /** 접수·처리중 상태의 신고를 자동·일반 신고 구분 없이 오래된 순서로 조회한다. */
+    @Transactional(readOnly = true)
+    public List<AdminAbuseReportResponse> getPendingReports() {
+        return abuseReportMapper.findPendingReports(RECEIVED_STATUS, PROCESSING_STATUS);
+    }
+
+    /** 관리자 화면에서 처리 전후의 신고 상세를 조회한다. */
+    @Transactional(readOnly = true)
+    public AdminAbuseReportResponse getReportDetail(Long reportSn) {
+        if (reportSn == null || reportSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        AdminAbuseReportResponse report = abuseReportMapper.findReportDetailById(reportSn);
+        if (report == null) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
+        }
+        return report;
     }
 
     private void validateAutomaticReport(SensitiveDetectionReportCommand command) {

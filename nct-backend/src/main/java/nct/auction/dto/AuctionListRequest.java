@@ -17,6 +17,7 @@ public class AuctionListRequest {
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private Boolean instantBuyOnly;
+    private Boolean endingSoonOnly;
     private String tradeMethod = "all";
     private String sort = "deadline";
     private int page = 1;

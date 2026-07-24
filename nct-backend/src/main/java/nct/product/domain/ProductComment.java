@@ -16,6 +16,8 @@ public class ProductComment {
     private Long prdCmtSn;
     private Long prdSn;
     private Long usrSn;
+    private String prdCmtTypeCd;
+    private Long prdCmtParentSn;
     private String prdCmtTtl;
     private String prdCmtCn;
     private LocalDateTime prdCmtRegDt;

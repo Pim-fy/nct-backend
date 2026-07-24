@@ -42,6 +42,22 @@ public class SignUpRequest {
              message = "전화번호 형식이 올바르지 않습니다. (예: 010-1234-5678)")
     private String telno;
 
+    // @ai_generated: 회원가입 추가 정보는 모두 선택값이며, 서비스 계층에서 묶음 입력 규칙을 검증한다.
+    @Size(max = 200, message = "주소는 200자 이하여야 합니다.")
+    private String address;
+
+    @Size(max = 200, message = "상세주소는 200자 이하여야 합니다.")
+    private String detailAddress;
+
+    @Pattern(regexp = "^$|^\\d{5}$", message = "우편번호는 5자리 숫자여야 합니다.")
+    private String zip;
+
+    @Size(max = 100, message = "은행명은 100자 이하여야 합니다.")
+    private String bankName;
+
+    @Size(max = 50, message = "계좌번호는 50자 이하여야 합니다.")
+    private String accountNo;
+
     // @ai_generated: 약관 3종을 성공 가입 시에만 USER_AGREE로 저장한다.
     @NotEmpty(message = "약관 동의 결과는 필수입니다.")
     @Valid

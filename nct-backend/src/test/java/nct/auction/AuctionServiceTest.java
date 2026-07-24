@@ -41,8 +41,8 @@ class AuctionServiceTest {
     @Autowired DataSource dataSource;
 
     @Test
-    @DisplayName("경매 상세 조회는 상품 서비스 계약으로 조회수를 증가시킨다")
-    void findAuctionDetailIncreasesProductViewCount() {
+    @DisplayName("경매 상세 조회는 상품 조회수를 증가시키지 않는다")
+    void findAuctionDetailDoesNotIncreaseProductViewCount() {
         long sellerSn = insertUser("t_auc_seller");
         long prdSn = insertProduct(sellerSn);
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
@@ -50,8 +50,8 @@ class AuctionServiceTest {
         AuctionDetailResponse response = auctionService.findAuctionDetail(aucSn);
 
         assertThat(response.getProductId()).isEqualTo(prdSn);
-        assertThat(response.getViewCount()).isEqualTo(1);
-        assertThat(productViewCount(prdSn)).isEqualTo(1);
+        assertThat(response.getViewCount()).isZero();
+        assertThat(productViewCount(prdSn)).isZero();
     }
 
     @Test
@@ -323,8 +323,8 @@ class AuctionServiceTest {
     }
 
     @Test
-    @DisplayName("직거래 즉시구매는 거래와 채팅방을 함께 생성한다")
-    void buyNowCreatesOfflineTradeChatRoom() {
+    @DisplayName("직거래 즉시구매는 거래만 생성하고 일정 저장 전에는 채팅방을 생성하지 않는다")
+    void buyNowCreatesOfflineTradeWithoutChatRoom() {
         long sellerSn = insertUser("t_auc_seller");
         long buyerSn = insertUser("t_auc_buyer");
         long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000), "TRDC0010");
@@ -334,7 +334,7 @@ class AuctionServiceTest {
         auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest());
 
         assertThat(materialTradeCount(prdSn)).isEqualTo(1);
-        assertThat(chatRoomCount(prdSn)).isEqualTo(1);
+        assertThat(chatRoomCount(prdSn)).isZero();
         assertThat(deliverySnapshotCount(prdSn)).isZero();
     }
 

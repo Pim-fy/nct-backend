@@ -102,6 +102,10 @@
               AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
             </otherwise>
         </choose>
+        <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">
+          AND a.AUC_STATUS_CD = 'AUCC0002'
+          AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+        </if>
     </sql>
 
     <select id="findAuctions" resultType="nct.auction.dto.AuctionListItem">
@@ -185,7 +189,20 @@
                   AND highestBid.BID_STATUS_CD = 'BIDC0001'
                 ORDER BY highestBid.BID_AMT DESC, highestBid.BID_SN DESC
                 LIMIT 1
-            ) AS currentHighestBidderId
+            ) AS currentHighestBidderId,
+            CASE
+                WHEN #{userId} IS NOT NULL
+                 AND #{userId} = (
+                    SELECT highestBid.USR_SN
+                    FROM BID highestBid
+                    WHERE highestBid.AUC_SN = a.AUC_SN
+                      AND highestBid.BID_STATUS_CD = 'BIDC0001'
+                    ORDER BY highestBid.BID_AMT DESC, highestBid.BID_SN DESC
+                    LIMIT 1
+                 )
+                THEN TRUE
+                ELSE FALSE
+            END AS currentHighestBidder
         FROM AUCTION a
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN

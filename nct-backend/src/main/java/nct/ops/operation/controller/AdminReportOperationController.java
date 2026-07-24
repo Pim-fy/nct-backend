@@ -1,7 +1,10 @@
 package nct.ops.operation.controller;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -10,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
@@ -24,6 +28,17 @@ import nct.ops.operation.service.AdminReportOperationService;
 public class AdminReportOperationController {
 
     private final AdminReportOperationService adminReportOperationService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<AdminAbuseReportResponse>>> getPendingReports() {
+        return ResponseEntity.ok(ApiResponse.success(adminReportOperationService.getPendingReports()));
+    }
+
+    @GetMapping("/{reportSn}")
+    public ResponseEntity<ApiResponse<AdminAbuseReportResponse>> getReportDetail(
+            @PathVariable(name = "reportSn") Long reportSn) {
+        return ResponseEntity.ok(ApiResponse.success(adminReportOperationService.getReportDetail(reportSn)));
+    }
 
     @PostMapping("/{reportSn}/decision")
     public ResponseEntity<ApiResponse<Void>> decide(

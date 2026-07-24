@@ -107,25 +107,28 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    /** 내 알림 수신 설정 조회 — 저장한 적 없으면 기본값(전 채널 수신)이 내려간다 */
+    /**
+     * 내 알림 수신 설정 조회 — 이벤트 13개 전부(F-COM-012 세분화, 2026-07-24).
+     * 저장한 적 없는 이벤트는 기본값(전 채널 수신)이 내려간다
+     */
     @GetMapping("/settings")
     public ResponseEntity<ApiResponse<NotificationSettingResponse>> getSettings(
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long usrSn = userDetails.getMember().getId();
         NotificationSettingResponse body =
-                NotificationSettingResponse.from(notificationService.getSetting(usrSn));
+                NotificationSettingResponse.from(notificationService.getEventSettings(usrSn));
         return ResponseEntity.ok(ApiResponse.success(body));
     }
 
-    /** 내 알림 수신 설정 저장 — 화면이 6개 값을 전부 보내는 전체 덮어쓰기 계약 */
+    /** 내 알림 수신 설정 저장 — 화면이 이벤트 13개 값을 전부 보내는 전체 덮어쓰기 계약 */
     @PutMapping("/settings")
     public ResponseEntity<ApiResponse<Void>> saveSettings(
             @RequestBody NotificationSettingRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long usrSn = userDetails.getMember().getId();
-        notificationService.saveSetting(request.toDomain(usrSn));
+        notificationService.saveEventSettings(usrSn, request.toDomain(usrSn));
         return ResponseEntity.ok(ApiResponse.success());
     }
 }

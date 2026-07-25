@@ -106,4 +106,48 @@ class NotificationSettingTest {
                 .findFirst().orElseThrow();
         assertThat(saved.getUsrNtfEvtStgEmailYn()).isEqualTo("N");
     }
+
+    @Test
+    @DisplayName("멱등: 같은 이벤트·같은 참조로 두 번 발행해도 알림 행은 1개만 생긴다 (NTF_EVT_CD)")
+    void notifyForEventIsIdempotent() {
+        // 매분 도는 마감임박 스케줄러가 같은 경매를 반복 호출하는 상황 재현.
+        // 경매 행을 실제로 만들 필요는 없음 — NTF_REF_SN은 FK가 아니라 단순 참조번호라서
+        // 임의의 유니크한 값이면 충분하다 (팀원 데이터와 충돌하지 않게 nanoTime 사용).
+        long auctionId = System.nanoTime();
+        notificationService.notifyAuctionClosingSoon(usrSn, auctionId);
+        notificationService.notifyAuctionClosingSoon(usrSn, auctionId);
+
+        Integer rowCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM NOTIFICATION WHERE USR_SN = ? AND NTF_REF_SN = ?",
+                Integer.class, usrSn, auctionId);
+        assertThat(rowCount).isEqualTo(1);
+
+        // 발행된 행에 이벤트 코드가 실제로 기록됐는지 (이게 없으면 멱등 체크 자체가 무력화됨)
+        String evtCd = jdbc.queryForObject(
+                "SELECT NTF_EVT_CD FROM NOTIFICATION WHERE USR_SN = ? AND NTF_REF_SN = ?",
+                String.class, usrSn, auctionId);
+        assertThat(evtCd).isEqualTo(NotificationEvent.AUCTION_CLOSING_SOON.getCode());
+    }
+
+    @Test
+    @DisplayName("멱등: 같은 경매라도 회원이 다르면(판매자 유찰 vs 입찰자 결과) 각각 발행된다")
+    void differentUsersDoNotCollide() {
+        // 동민씨 질문 3번 답변 검증 — 유찰 시 판매자(notifyAuctionFailed)와 입찰자(notifyAuctionResult)가
+        // 같은 AUCTION_RESULT 이벤트·같은 경매 참조를 써도, 멱등 키에 회원이 포함되어 서로 막지 않는다.
+        String otherLoginId = "t_ntfstg2_" + System.nanoTime();
+        jdbc.update("""
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
+                """, otherLoginId, otherLoginId, otherLoginId + "@test.local");
+        long sellerSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        long auctionId = System.nanoTime();
+        notificationService.notifyAuctionFailed(sellerSn, auctionId);   // 판매자에게 유찰
+        notificationService.notifyAuctionResult(usrSn, auctionId, false); // 입찰자에게 유찰
+
+        Integer rowCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM NOTIFICATION WHERE NTF_REF_SN = ? AND USR_SN IN (?, ?)",
+                Integer.class, auctionId, usrSn, sellerSn);
+        assertThat(rowCount).isEqualTo(2);
+    }
 }

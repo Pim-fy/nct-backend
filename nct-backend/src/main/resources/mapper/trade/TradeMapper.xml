@@ -75,9 +75,9 @@
     <insert id="insertDeliverySnapshot">
         INSERT INTO TRADE_DELIVERY (
             TRD_SN,
-            TRD_DLVR_ADDR,
-            TRD_DLVR_DADDR,
-            TRD_DLVR_ZIP
+            TRD_DLVR_ADDR_ENC,
+            TRD_DLVR_DADDR_ENC,
+            TRD_DLVR_ZIP_ENC
         )
         VALUES (
             #{tradeId},
@@ -208,12 +208,13 @@
             END AS tradeMethod,
             t.TRD_REG_DT AS createdAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
-            CONCAT_WS(' ', d.TRD_DLVR_ADDR, d.TRD_DLVR_DADDR) AS deliveryAddress,
+            d.TRD_DLVR_ADDR_ENC AS deliveryAddress,
+            d.TRD_DLVR_DADDR_ENC AS deliveryDetailAddress,
             d.TRD_DLVR_MEMO_CN AS deliveryMessage,
             d.TRD_DLVR_SN AS deliveryId,
             o.TRD_OFL_DT AS meetingDateTime,
             o.TRD_OFL_PLC_NM AS meetingPlace,
-            o.TRD_OFL_ADDR AS meetingAddress
+            o.TRD_OFL_ADDR_ENC AS meetingAddress
         FROM TRADE t
         JOIN PRODUCT p
           ON p.PRD_SN = t.PRD_SN
@@ -318,7 +319,7 @@
         INSERT INTO TRADE_OFFLINE (
             TRD_SN,
             TRD_OFL_PLC_NM,
-            TRD_OFL_ADDR,
+            TRD_OFL_ADDR_ENC,
             TRD_OFL_DT
         )
         VALUES (
@@ -329,7 +330,7 @@
         )
         ON DUPLICATE KEY UPDATE
             TRD_OFL_PLC_NM = VALUES(TRD_OFL_PLC_NM),
-            TRD_OFL_ADDR = VALUES(TRD_OFL_ADDR),
+            TRD_OFL_ADDR_ENC = VALUES(TRD_OFL_ADDR_ENC),
             TRD_OFL_DT = VALUES(TRD_OFL_DT)
     </insert>
 

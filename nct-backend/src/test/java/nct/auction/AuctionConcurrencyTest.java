@@ -27,6 +27,7 @@ import nct.auction.service.AuctionCancellationService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.point.domain.PointBalance;
 import nct.point.service.PointService;
 
@@ -37,6 +38,7 @@ class AuctionConcurrencyTest {
     @Autowired AuctionCancellationService cancellationService;
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     private final List<Long> auctionIds = new ArrayList<>();
     private final List<Long> productIds = new ArrayList<>();
@@ -192,7 +194,7 @@ class AuctionConcurrencyTest {
     void buyNowRollsBackWhenTradeCreationFails() {
         long sellerSn = insertUser("t_auc_tx_seller");
         long buyerSn = insertUser("t_auc_tx_buyer");
-        jdbc.update("UPDATE USERS SET USR_ADDR = NULL, USR_DADDR = NULL, USR_ZIP = NULL WHERE USR_SN = ?", buyerSn);
+        jdbc.update("UPDATE USERS SET USR_ADDR_ENC = NULL, USR_DADDR_ENC = NULL, USR_ZIP_ENC = NULL WHERE USR_SN = ?", buyerSn);
         long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000));
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(buyerSn, 50000);
@@ -215,7 +217,7 @@ class AuctionConcurrencyTest {
     void finalizationRollsBackWhenTradeCreationFails() {
         long sellerSn = insertUser("t_auc_tx_seller");
         long bidderSn = insertUser("t_auc_tx_bidder");
-        jdbc.update("UPDATE USERS SET USR_ADDR = NULL, USR_DADDR = NULL, USR_ZIP = NULL WHERE USR_SN = ?", bidderSn);
+        jdbc.update("UPDATE USERS SET USR_ADDR_ENC = NULL, USR_DADDR_ENC = NULL, USR_ZIP_ENC = NULL WHERE USR_SN = ?", bidderSn);
         long prdSn = insertProduct(sellerSn, null);
         long aucSn = insertAuction(
                 prdSn,
@@ -264,20 +266,23 @@ class AuctionConcurrencyTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
                 INSERT INTO USERS (
                     USR_LOGIN_ID,
                     USR_PSWD_HASH,
                     USR_NM,
-                    USR_EML,
+                    USR_EML_ENC,
+                    USR_EML_HMAC,
                     USR_STATUS_CD,
                     USR_ROLE_CD,
-                    USR_ADDR,
-                    USR_DADDR,
-                    USR_ZIP
+                    USR_ADDR_ENC,
+                    USR_DADDR_ENC,
+                    USR_ZIP_ENC
                 )
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER', '테스트 주소', '101호', '12345')
-                """, loginId, prefix, loginId + "@test.local");
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?, ?)
+                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
+                fieldCryptoService.encrypt("테스트 주소"), fieldCryptoService.encrypt("101호"), fieldCryptoService.encrypt("12345"));
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);
         return id;

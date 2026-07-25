@@ -22,12 +22,14 @@ import nct.favorite.dto.FavoriteStatusResponse;
 import nct.favorite.service.ProductFavoriteService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.crypto.FieldCryptoService;
 
 @SpringBootTest
 class ProductFavoriteServiceTest {
 
     @Autowired ProductFavoriteService favoriteService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     final List<Long> userIds = new ArrayList<>();
     final List<Long> productIds = new ArrayList<>();
@@ -123,10 +125,11 @@ class ProductFavoriteServiceTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);
         return id;

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
+import nct.global.security.crypto.FieldCryptoService;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-20)
@@ -38,6 +39,7 @@ class TradeDeliveryFileTest {
 
     @Autowired FileStorageService fileStorageService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long sellerSn;   // 판매자 (사진을 올리는 쪽)
     long buyerSn;    // 구매자
@@ -137,10 +139,11 @@ class TradeDeliveryFileTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix + "_" + System.nanoTime(), loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix + "_" + System.nanoTime(), fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

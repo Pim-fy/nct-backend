@@ -10,6 +10,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.member.domain.Member;
 import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.dto.ProfileUpdateRequest;
@@ -31,6 +32,8 @@ public class MemberService {
     private final MemberMapper memberMapper;
     private final AuthMemberPort authMemberPort;
     private final PasswordEncoder passwordEncoder;
+    // @ai_generated: USERS 암호문은 이 서비스에서만 복호화해 응답 DTO 또는 도메인 계약으로 전달한다.
+    private final FieldCryptoService fieldCryptoService;
 
     /** F-AUTH-010: 닉네임이 기존과 다를 때만 중복 확인하고, DB 제약 위반도 최종 방어선으로 대비한다. */
     @Transactional
@@ -45,7 +48,10 @@ public class MemberService {
 
         try {
             memberMapper.updateProfile(usrSn, nickname, request.getProfileFileSn(),
-                    request.getEmail(), request.getBankName(), request.getAccountNo());
+                    fieldCryptoService.encrypt(request.getEmail()),
+                    fieldCryptoService.emailHmac(request.getEmail()),
+                    fieldCryptoService.encrypt(request.getBankName()),
+                    fieldCryptoService.encrypt(request.getAccountNo()));
         } catch (DataIntegrityViolationException ex) {
             throw duplicateException(ex);
         }
@@ -59,9 +65,9 @@ public class MemberService {
         return ProfileUpdateResponse.builder()
                                     .nickname(updated.getUsrNm())
                                     .profileFileSn(parseProfileFileSn(updated.getUsrPrflFlSn()))
-                                    .email(updated.getUsrEml())
-                                    .bankName(updated.getUsrBankNm())
-                                    .accountNo(updated.getUsrAcntNo())
+                                    .email(fieldCryptoService.decrypt(updated.getUsrEml()))
+                                    .bankName(fieldCryptoService.decrypt(updated.getUsrBankNm()))
+                                    .accountNo(fieldCryptoService.decrypt(updated.getUsrAcntNo()))
                                     .build();
     }
 
@@ -93,7 +99,9 @@ public class MemberService {
      */
     @Transactional
     public void withdraw(Long usrSn) {
-        memberMapper.withdraw(usrSn, anonymizedEmail(usrSn), anonymizedNickname(usrSn));
+        String anonymizedEmail = anonymizedEmail(usrSn);
+        memberMapper.withdraw(usrSn, fieldCryptoService.encrypt(anonymizedEmail),
+                fieldCryptoService.emailHmac(anonymizedEmail), anonymizedNickname(usrSn));
         // @ai_generated: 전 기기 로그아웃 - AuthService.logout과 동일 패턴(null 저장)
         authMemberPort.updateRefreshToken(usrSn, null);
     }
@@ -107,11 +115,14 @@ public class MemberService {
         Member member = memberMapper.findMemberById(buyerUsrSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        if (isBlank(member.getUsrZip()) || isBlank(member.getUsrAddr()) || isBlank(member.getUsrDaddr())) {
+        String zip = fieldCryptoService.decrypt(member.getUsrZip());
+        String address = fieldCryptoService.decrypt(member.getUsrAddr());
+        String detailAddress = fieldCryptoService.decrypt(member.getUsrDaddr());
+        if (isBlank(zip) || isBlank(address) || isBlank(detailAddress)) {
             throw new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
         }
 
-        return new BuyerAddressSnapshot(member.getUsrZip(), member.getUsrAddr(), member.getUsrDaddr());
+        return new BuyerAddressSnapshot(zip, address, detailAddress);
     }
 
     private boolean isBlank(String value) {
@@ -131,7 +142,7 @@ public class MemberService {
         if (message.contains("UK_USERS_NM")) {
             return new CustomException(ErrorCode.DUPLICATE_NICKNAME);
         }
-        if (message.contains("UK_USERS_EML")) {
+        if (message.contains("UK_USERS_EML_HMAC")) {
             return new CustomException(ErrorCode.DUPLICATE_EMAIL);
         }
         return new CustomException(ErrorCode.CONFLICT);

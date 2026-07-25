@@ -10,6 +10,7 @@ import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
 import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationService;
 import nct.point.domain.PointExchangeOrder;
 import nct.point.domain.PointExchangeOrderStatus;
@@ -36,6 +37,8 @@ public class PointExchangeService {
     private final PointService pointService;
     private final NotificationService notificationService;
     private final AuditLogService auditLogService;
+    // @ai_generated: USERS와 POINT_EXCHANGE_ORDER의 계좌 암호문은 이 서비스에서만 평문 계약으로 복원한다.
+    private final FieldCryptoService fieldCryptoService;
 
     /**
      * 환전 신청. 검증 → 즉시 차감(원장) → 신청 행 기록(계좌 스냅샷 포함) → 접수 알림.
@@ -52,6 +55,7 @@ public class PointExchangeService {
         // 계좌 미등록이면 신청 차단 — 관리자가 이체할 곳이 없으므로.
         // (계좌 등록 화면은 마이페이지(담당자3) 소유 — 여기서는 읽기만 한다)
         UserAccount account = exchangeMapper.selectUserAccount(usrSn);
+        decryptAccount(account);
         if (account == null || !account.isRegistered()) {
             throw new PointException(ErrorCode.EXCHANGE_ACCOUNT_NOT_REGISTERED,
                     "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요.");
@@ -66,8 +70,8 @@ public class PointExchangeService {
         order.setPtExcOrdStatusCd(PointExchangeOrderStatus.REQUESTED.getCode());
         order.setPtExcOrdDeductLdgSn(deductLdgSn);
         // 신청 시점 계좌 스냅샷 — 이후 회원이 계좌를 바꿔도 "신청 당시 계좌"가 남는다
-        order.setPtExcOrdBankNm(account.getBankNm());
-        order.setPtExcOrdAcntNo(account.getAcntNo());
+        order.setPtExcOrdBankNm(fieldCryptoService.encrypt(account.getBankNm()));
+        order.setPtExcOrdAcntNo(fieldCryptoService.encrypt(account.getAcntNo()));
         exchangeMapper.insert(order);
 
         // 같은 트랜잭션 안에서 접수 알림까지 기록 (충전 완료 알림과 같은 방침)
@@ -78,7 +82,9 @@ public class PointExchangeService {
     /** 내 환전 신청 목록 조회 (최신순 100건, 신청·완료·반려 포함) */
     @Transactional(readOnly = true)
     public List<PointExchangeOrder> getOrderList(long usrSn) {
-        return exchangeMapper.selectListByUser(usrSn);
+        List<PointExchangeOrder> orders = exchangeMapper.selectListByUser(usrSn);
+        orders.forEach(this::decryptOrderAccount);
+        return orders;
     }
 
     // ---------- 관리자 처리 (지급·승인 자동화 금지 — 관리자 수동 처리 계약) ----------
@@ -86,7 +92,9 @@ public class PointExchangeService {
     /** 관리자 처리 대기 목록 — 신청 상태 건만, 오래된 순(먼저 신청한 사람 먼저 지급) */
     @Transactional(readOnly = true)
     public List<PointExchangeOrder> getRequestedListForAdmin() {
-        return exchangeMapper.selectRequestedListForAdmin();
+        List<PointExchangeOrder> orders = exchangeMapper.selectRequestedListForAdmin();
+        orders.forEach(this::decryptOrderAccount);
+        return orders;
     }
 
     /**
@@ -132,5 +140,19 @@ public class PointExchangeService {
                     "이미 처리된 환전 신청입니다: " + ptExcOrdSn);
         }
         return order;
+    }
+
+    // @ai_generated: Mapper 객체의 계좌 필드는 DB 경계에서는 암호문, 서비스 이후에는 평문이라는 규칙을 명확히 한다.
+    private void decryptAccount(UserAccount account) {
+        if (account == null) {
+            return;
+        }
+        account.setBankNm(fieldCryptoService.decrypt(account.getBankNm()));
+        account.setAcntNo(fieldCryptoService.decrypt(account.getAcntNo()));
+    }
+
+    private void decryptOrderAccount(PointExchangeOrder order) {
+        order.setPtExcOrdBankNm(fieldCryptoService.decrypt(order.getPtExcOrdBankNm()));
+        order.setPtExcOrdAcntNo(fieldCryptoService.decrypt(order.getPtExcOrdAcntNo()));
     }
 }

@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import nct.common.domain.RefType;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationService;
 import nct.point.domain.PointBalance;
 import nct.point.exception.InsufficientPointException;
@@ -39,6 +40,7 @@ class PointEscrowTest {
     @Autowired PointService pointService;
     @Autowired NotificationService notificationService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long requesterSn; // 서비스 의뢰자 (보관금을 내는 쪽)
     long providerSn;  // 서비스 제공자 (정산대금을 받는 쪽)
@@ -215,10 +217,11 @@ class PointEscrowTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

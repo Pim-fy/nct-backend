@@ -13,11 +13,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.domain.NotificationEvent;
 import nct.notification.domain.UserNotificationEventSetting;
-import nct.global.security.crypto.FieldCryptoService;
-import nct.notification.domain.UserNotificationSetting;
-
 import nct.notification.service.NotificationService;
 
 /**
@@ -140,10 +138,11 @@ class NotificationSettingTest {
         // 동민씨 질문 3번 답변 검증 — 유찰 시 판매자(notifyAuctionFailed)와 입찰자(notifyAuctionResult)가
         // 같은 AUCTION_RESULT 이벤트·같은 경매 참조를 써도, 멱등 키에 회원이 포함되어 서로 막지 않는다.
         String otherLoginId = "t_ntfstg2_" + System.nanoTime();
+        String otherEmail = otherLoginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, otherLoginId, otherLoginId, otherLoginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, otherLoginId, otherLoginId, fieldCryptoService.encrypt(otherEmail), fieldCryptoService.emailHmac(otherEmail));
         long sellerSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         long auctionId = System.nanoTime();

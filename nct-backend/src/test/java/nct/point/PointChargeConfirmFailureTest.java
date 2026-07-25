@@ -21,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationService;
 import nct.point.client.TossConfirmResult;
 import nct.point.client.TossPaymentsClient;
@@ -48,6 +49,7 @@ class PointChargeConfirmFailureTest {
     @Autowired PointChargeService pointChargeService;
     @Autowired JdbcTemplate jdbc;
     @Autowired DataSource dataSource;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     /** 실제 토스 API 대신 정해진 응답을 돌려주는 가짜 클라이언트 */
     @MockitoBean TossPaymentsClient tossPaymentsClient;
@@ -60,10 +62,11 @@ class PointChargeConfirmFailureTest {
     @BeforeEach
     void setUpUser() {
         String loginId = "t_cfail_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, loginId, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

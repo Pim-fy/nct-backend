@@ -9,14 +9,14 @@
         SELECT USR_SN
         FROM USER_OAUTH
         WHERE USR_OAT_PROVIDER_CD = #{providerCd}
-          AND USR_OAT_PROVIDER_KEY = #{providerKey}
+          AND USR_OAT_PROVIDER_KEY_HMAC = #{providerKeyHmac}
     </select>
 
     <insert id="insert">
         INSERT INTO USER_OAUTH (
-            USR_SN, USR_OAT_PROVIDER_CD, USR_OAT_PROVIDER_KEY
+            USR_SN, USR_OAT_PROVIDER_CD, USR_OAT_PROVIDER_KEY_HMAC
         ) VALUES (
-            #{usrSn}, #{providerCd}, #{providerKey}
+            #{usrSn}, #{providerCd}, #{providerKeyHmac}
         )
     </insert>
 

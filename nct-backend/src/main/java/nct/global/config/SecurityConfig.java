@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.filter.JwtAuthenticationFilter;
+import nct.global.security.crypto.CryptoProperties;
 import nct.global.security.handler.OAuth2FailureHandler;
 import nct.global.security.handler.OAuth2LinkFailureHandler;
 import nct.global.security.handler.OAuth2LinkSuccessHandler;
@@ -43,7 +44,7 @@ import nct.ops.security.service.SensitiveDataMasker;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(SecurityProperties.class)
+@EnableConfigurationProperties({SecurityProperties.class, CryptoProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 

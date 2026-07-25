@@ -95,7 +95,7 @@
     <!-- 수신자 이메일 (F-COM-006). ⚠️ USERS는 담당자1 소유 — 읽기 전용 SELECT만, 변경 금지 -->
     <select id="selectUserEmail" resultType="string">
         /* 알림: 수신자 이메일 조회 (읽기 전용) */
-        SELECT USR_EML
+        SELECT USR_EML_ENC
         FROM USERS
         WHERE USR_SN = #{usrSn}
     </select>

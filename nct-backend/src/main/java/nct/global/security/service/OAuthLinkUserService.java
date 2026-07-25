@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import nct.auth.domain.UserOauthLinkRow;
 import nct.auth.mapper.UserOauthMapper;
 import nct.global.exception.CustomException;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.handler.OAuth2ErrorCode;
 import nct.global.security.port.AuthMember;
@@ -44,6 +45,7 @@ public class OAuthLinkUserService extends DefaultOAuth2UserService {
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthMemberPort authMemberPort;
     private final UserOauthMapper userOauthMapper;
+    private final FieldCryptoService fieldCryptoService;
 
     @Override
     @Transactional
@@ -76,7 +78,8 @@ public class OAuthLinkUserService extends DefaultOAuth2UserService {
         // 전파되므로(작업 1의 CustomOAuth2UserService.registerNewOAuthMember와 동일 패턴으로) 잡아
         // 변환한다.
         try {
-            userOauthMapper.insert(currentUsrSn, parsed.providerCd(), parsed.providerKey());
+            userOauthMapper.insert(currentUsrSn, parsed.providerCd(),
+                    fieldCryptoService.providerKeyHmac(parsed.providerCd(), parsed.providerKey()));
         } catch (DataIntegrityViolationException ex) {
             throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCode.ALREADY_LINKED_SELF));
         }

@@ -47,6 +47,9 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// @ai_generated: 테스트 전용 키. 운영·개발 키와 분리하며 실제 개인정보 암호화에 사용하지 않는다.
+	systemProperty 'app.crypto.aes-key-base64', 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='
+	systemProperty 'app.crypto.hmac-key-base64', 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8='
 	// 포인트 대사 배치 2종은 컨텍스트 기동 즉시 실행되는 스케줄러라, application.properties의
 	// 기본값(true)을 테스트에서는 꺼서 실DB에 자동으로 손대지 않게 한다(2026-07-21 사고 재발 방지).
 	// 이 배치를 직접 검증하는 두 테스트 클래스는 @TestPropertySource로 자기 안에서만 다시 켠다.

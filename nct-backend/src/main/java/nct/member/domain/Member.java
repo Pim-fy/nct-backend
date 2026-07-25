@@ -25,7 +25,9 @@ public class Member {
     private String usrPswdHash;         // 비밀번호 해시
     private String usrRefreshTokenHash; // 리프래시토큰 해시
     private String usrNm;               // 이름/닉네임
-    private String usrEml;              // 이메일
+    private String usrEml;              // 이메일 암호문(서비스 경계에서 복호화)
+    // @ai_generated: USERS.USR_EML_HMAC 저장용 조회 키. API 응답에는 절대 노출하지 않는다.
+    private String usrEmlHmac;
     private Character usrEmlCertYn;     // 이메일 인증 여부
     private String usrTelno;            // 전화번호
     private String usrAddr;             // 주소

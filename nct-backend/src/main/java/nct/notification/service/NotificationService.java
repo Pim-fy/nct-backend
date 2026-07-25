@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.domain.Notification;
 import nct.notification.domain.NotificationAudience;
 import nct.notification.domain.NotificationDomain;
@@ -41,6 +42,8 @@ public class NotificationService {
     private final SystemSettingAdminMapper systemSettingMapper;
     private final NotificationMailSender mailSender;
     private final NotificationEventPublisher eventPublisher;
+    // @ai_generated: USERS 이메일 암호문은 실제 이메일 발송 직전에만 복호화한다.
+    private final FieldCryptoService fieldCryptoService;
 
     /**
      * 범용 알림 생성 (모든 알림의 단일 진입점).
@@ -95,7 +98,7 @@ public class NotificationService {
         notificationMapper.insert(n);
         eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
 
-        String email = notificationMapper.selectUserEmail(usrSn);
+        String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
         boolean sent = email != null
                 && mailSender.send(email, "[에누리컷] " + title, content
                         + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");

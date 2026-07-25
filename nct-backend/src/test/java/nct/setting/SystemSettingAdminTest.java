@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
 import nct.global.exception.CustomException;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.setting.domain.SystemSettingDetail;
 import nct.setting.service.SystemSettingAdminService;
 
@@ -32,16 +33,18 @@ class SystemSettingAdminTest {
     @Autowired SystemSettingAdminService settingService;
     @Autowired AuditLogService auditLogService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long adminSn;
 
     @BeforeEach
     void setUpAdmin() {
         String loginId = "t_setting_admin_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', 't_setting_admin', ?, 'USRC0001', 'ROLE_ADMIN')
-                """, loginId, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', 't_setting_admin', ?, ?, 'USRC0001', 'ROLE_ADMIN')
+                """, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         adminSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

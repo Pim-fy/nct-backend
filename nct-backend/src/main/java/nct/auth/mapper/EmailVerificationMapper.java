@@ -13,14 +13,14 @@ import nct.auth.domain.EmailVerification;
 @Mapper
 public interface EmailVerificationMapper {
 
-    Optional<EmailVerification> findLatestSignupByEmailForUpdate(@Param("email") String email);
+    Optional<EmailVerification> findLatestSignupByEmailForUpdate(@Param("emailHmac") String emailHmac);
 
     Optional<EmailVerification> findSignupByIdForUpdate(@Param("verificationId") Long verificationId);
 
     void insertSignup(EmailVerification verification);
 
     // @ai_generated: F-AUTH-007 - PASSWORD_RESET(EMVC0002) 전용. SIGNUP 메서드와 분리해 재사용한다.
-    Optional<EmailVerification> findLatestPasswordResetByEmailForUpdate(@Param("email") String email);
+    Optional<EmailVerification> findLatestPasswordResetByEmailForUpdate(@Param("emailHmac") String emailHmac);
 
     void insertPasswordReset(EmailVerification verification);
 
@@ -28,7 +28,7 @@ public interface EmailVerificationMapper {
     Optional<EmailVerification> findPasswordResetByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
     // @ai_generated: F-AUTH-011 - WITHDRAWAL(EMVC0008) 전용. PASSWORD_RESET과 동일 구조, 목적코드만 다르다.
-    Optional<EmailVerification> findLatestWithdrawalByEmailForUpdate(@Param("email") String email);
+    Optional<EmailVerification> findLatestWithdrawalByEmailForUpdate(@Param("emailHmac") String emailHmac);
 
     void insertWithdrawal(EmailVerification verification);
 

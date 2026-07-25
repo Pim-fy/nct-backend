@@ -13,14 +13,14 @@ import nct.auth.domain.UserOauthLinkRow;
 @Mapper
 public interface UserOauthMapper {
 
-    /** provider+providerKey(UK_USER_OAUTH_PROVIDER_KEY) 기준 연동 회원 USR_SN 조회 */
+    /** provider+providerKeyHmac(UK_USER_OAUTH_PROVIDER_KEY_HMAC) 기준 연동 회원 USR_SN 조회 */
     Optional<Long> findUsrSnByProviderAndKey(@Param("providerCd") String providerCd,
-                                             @Param("providerKey") String providerKey);
+                                             @Param("providerKeyHmac") String providerKeyHmac);
 
     /** 신규 연동 저장 (일련번호·등록/갱신 일시·ID는 DDL DEFAULT로 채워짐) */
     void insert(@Param("usrSn") Long usrSn,
                @Param("providerCd") String providerCd,
-               @Param("providerKey") String providerKey);
+               @Param("providerKeyHmac") String providerKeyHmac);
 
     // @ai_generated: 작업단위5 작업 2 - 마이페이지 연동 목록 조회용(읽기 전용, 잠금 없음)
     /** 특정 회원의 연동 목록 전체 조회 */

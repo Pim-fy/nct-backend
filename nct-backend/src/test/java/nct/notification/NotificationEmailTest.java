@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationMailSender;
 import nct.notification.service.NotificationService;
 
@@ -38,6 +39,7 @@ class NotificationEmailTest {
 
     @Autowired NotificationService notificationService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     @MockitoBean NotificationMailSender mailSender;
 
@@ -49,9 +51,9 @@ class NotificationEmailTest {
         String loginId = "t_mail_" + System.nanoTime();
         userEmail = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', 't_mail', ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, userEmail);
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', 't_mail', ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, fieldCryptoService.encrypt(userEmail), fieldCryptoService.emailHmac(userEmail));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         // 기본: 메일 설정이 있는 환경 + 발송 성공 가정 (케이스별로 덮어씀)
         when(mailSender.isAvailable()).thenReturn(true);

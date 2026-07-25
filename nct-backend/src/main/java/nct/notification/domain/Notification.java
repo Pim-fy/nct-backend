@@ -34,6 +34,13 @@ public class Notification {
     private String ntfRefTypeCd;
     private Long ntfRefSn;
 
+    /**
+     * 알림이벤트공통코드(NTFG05, 정본 반영 대기) — notifyForEvent() 경로로 발행된 알림에만 채워진다.
+     * 기존 notify()/notifyImportant() 경로는 계속 null(2026-07-24 추가, 기존 알림에 영향 없음).
+     * (usrSn, ntfEvtCd, ntfRefSn) 조합으로 같은 이벤트 재발행을 막는 멱등 체크에 쓰인다.
+     */
+    private String ntfEvtCd;
+
     /** 읽음여부 Y/N */
     private String ntfReadYn;
     private LocalDateTime ntfReadDt;

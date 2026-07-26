@@ -59,6 +59,12 @@ public class OauthOnboardingService {
         AgreementValidator.validateAgreementSet(request.getAgreements());
 
         String nickname = request.getNickname().trim();
+        String telno = normalizeTelno(request.getTelno());
+        String address = normalizeOptionalText(request.getAddress());
+        String detailAddress = normalizeOptionalText(request.getDetailAddress());
+        String bankName = normalizeOptionalText(request.getBankName());
+        String accountNo = normalizeOptionalText(request.getAccountNo());
+        requireCompletePair(bankName, accountNo);
 
         AuthMember member;
         try {
@@ -68,6 +74,11 @@ public class OauthOnboardingService {
                                 .providerKey(claims.providerKey())
                                 .email(claims.email())
                                 .nickname(nickname)
+                                .telno(telno)
+                                .address(address)
+                                .detailAddress(detailAddress)
+                                .bankName(bankName)
+                                .accountNo(accountNo)
                                 .build());
         } catch (DataIntegrityViolationException ex) {
             throw duplicateException(ex);
@@ -97,6 +108,23 @@ public class OauthOnboardingService {
             return new CustomException(ErrorCode.DUPLICATE_NICKNAME);
         }
         return new CustomException(ErrorCode.CONFLICT);
+    }
+
+    // @ai_generated: 선택 입력 공백을 null로 통일해 암호화 저장과 쌍 검증을 일관되게 한다.
+    private String normalizeOptionalText(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.trim();
+    }
+
+    private String normalizeTelno(String value) {
+        String normalized = normalizeOptionalText(value);
+        return normalized == null ? null : normalized.replaceAll("\\D", "");
+    }
+
+    private void requireCompletePair(String first, String second) {
+        if ((first == null) != (second == null)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
     }
 
     private LoginResponse toLoginResponse(AuthMember member) {

@@ -15,6 +15,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.global.utils.TokenHashUtil;
 import nct.member.domain.Member;
 import nct.member.dto.WithdrawalConfirmRequest;
@@ -48,6 +49,8 @@ public class MemberWithdrawalRequestService {
     private final MemberService memberService;
     private final EmailSender emailSender;
     private final TokenHashUtil tokenHashUtil;
+    // @ai_generated: 탈퇴 링크 대상 이메일도 EMAIL_VERIFICATION 암호문 + HMAC 정책을 따른다.
+    private final FieldCryptoService fieldCryptoService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.frontend.url:http://localhost:5173}")
@@ -70,7 +73,7 @@ public class MemberWithdrawalRequestService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        EmailVerification latest = emailVerificationMapper.findLatestWithdrawalByEmailForUpdate(email)
+        EmailVerification latest = emailVerificationMapper.findLatestWithdrawalByEmailForUpdate(fieldCryptoService.emailHmac(email))
                                                             .orElse(null);
         LocalDateTime expiresAt = now.plusHours(1);
 
@@ -116,7 +119,7 @@ public class MemberWithdrawalRequestService {
         // 바뀔 수 있는 TOCTOU 창이 남는다. 공유 withdraw()의 UPDATE에 상태조건을 넣으면 활성 탈퇴 경로가
         // 깨지므로(같은 UPDATE를 공유), 이 확정 경로 전용으로 SELECT ... FOR UPDATE 잠금 조회를 써서
         // 조회 시점부터 withdraw() 완료(트랜잭션 커밋)까지 해당 회원 행을 잠근다.
-        Member member = memberMapper.findMemberByEmailForUpdate(verification.getEmlVrfEmail())
+        Member member = memberMapper.findMemberByEmailForUpdate(verification.getEmlVrfEmailHmac())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         if (!STATUS_SUSPENDED.equals(member.getUsrStatusCd())) {
@@ -146,7 +149,8 @@ public class MemberWithdrawalRequestService {
     private void createAndSend(String email, LocalDateTime sentAt, LocalDateTime expiresAt) {
         String token = createToken();
         EmailVerification verification = EmailVerification.builder()
-                .emlVrfEmail(email)
+                .emlVrfEmail(fieldCryptoService.encrypt(email))
+                .emlVrfEmailHmac(fieldCryptoService.emailHmac(email))
                 .emlVrfPurposeCd(WITHDRAWAL_PURPOSE)
                 .emlVrfCodeHash(tokenHashUtil.hash(token))
                 .emlVrfStatusCd(PENDING)

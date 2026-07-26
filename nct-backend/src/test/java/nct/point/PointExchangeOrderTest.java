@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import nct.common.domain.RefType;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationService;
 import nct.point.domain.PointExchangeOrderStatus;
 import nct.point.dto.PointExchangeOrderResponse;
@@ -38,17 +39,20 @@ class PointExchangeOrderTest {
     @Autowired PointService pointService;
     @Autowired NotificationService notificationService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long usrSn;
 
     @BeforeEach
     void setUpUser() {
         String loginId = "t_exc_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD,
-                                   USR_BANK_NM, USR_ACNT_NO)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER', '국민은행', '123-45-6789')
-                """, loginId, loginId, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD,
+                                   USR_BANK_NM_ENC, USR_ACNT_NO_ENC)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?)
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
+                fieldCryptoService.encrypt("국민은행"), fieldCryptoService.encrypt("123-45-6789"));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
@@ -104,7 +108,7 @@ class PointExchangeOrderTest {
     void applyWithoutAccount() {
         pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
         // 계좌를 비운다 (마이페이지에서 아직 등록 안 한 회원 상황)
-        jdbc.update("UPDATE USERS SET USR_BANK_NM = NULL, USR_ACNT_NO = NULL WHERE USR_SN = ?", usrSn);
+        jdbc.update("UPDATE USERS SET USR_BANK_NM_ENC = NULL, USR_ACNT_NO_ENC = NULL WHERE USR_SN = ?", usrSn);
 
         assertThatThrownBy(() -> pointExchangeService.apply(usrSn, 30_000))
                 .isInstanceOf(PointException.class)
@@ -280,10 +284,11 @@ class PointExchangeOrderTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 }

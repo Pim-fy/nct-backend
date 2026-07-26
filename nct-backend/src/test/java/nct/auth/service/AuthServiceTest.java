@@ -98,6 +98,21 @@ class AuthServiceTest {
     }
 
     @Test
+    void 전화번호는_숫자_열한자리만_검증을_통과한다() {
+        var validator = Validation.buildDefaultValidatorFactory().getValidator();
+        SignUpRequest valid = validRequest();
+        valid.setTelno("01012345678");
+        SignUpRequest hyphenated = validRequest();
+        hyphenated.setTelno("010-1234-5678");
+        SignUpRequest shortNumber = validRequest();
+        shortNumber.setTelno("0212345678");
+
+        assertThat(validator.validate(valid)).noneMatch(v -> v.getPropertyPath().toString().equals("telno"));
+        assertThat(validator.validate(hyphenated)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
+        assertThat(validator.validate(shortNumber)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
+    }
+
+    @Test
     void 인증과_필수약관이_완료되면_회원과_약관3건을_저장하고_인증을_사용완료한다() {
         SignUpRequest request = validRequest();
         request.setTelno(" 010-1234-5678 ");
@@ -126,7 +141,7 @@ class AuthServiceTest {
         verify(authMemberPort).registerLocalMember(profileCaptor.capture());
         assertThat(profileCaptor.getValue().getLoginId()).isEqualTo("buyer01");
         assertThat(profileCaptor.getValue().getNickname()).isEqualTo("구매자");
-        assertThat(profileCaptor.getValue().getTelno()).isEqualTo("010-1234-5678");
+        assertThat(profileCaptor.getValue().getTelno()).isEqualTo("01012345678");
         assertThat(profileCaptor.getValue().getAddress()).isEqualTo("서울특별시 종로구 세종대로 1");
         assertThat(profileCaptor.getValue().getDetailAddress()).isEqualTo("101동 1001호");
         assertThat(profileCaptor.getValue().getZip()).isEqualTo("03154");

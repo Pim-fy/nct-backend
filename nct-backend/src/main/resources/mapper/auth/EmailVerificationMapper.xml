@@ -7,7 +7,8 @@
 
     <resultMap id="emailVerificationMap" type="nct.auth.domain.EmailVerification">
         <id column="EML_VRF_SN" property="emlVrfSn"/>
-        <result column="EML_VRF_EMAIL" property="emlVrfEmail"/>
+        <result column="EML_VRF_EMAIL_ENC" property="emlVrfEmail"/>
+        <result column="EML_VRF_EMAIL_HMAC" property="emlVrfEmailHmac"/>
         <result column="EML_VRF_PURPOSE_CD" property="emlVrfPurposeCd"/>
         <result column="EML_VRF_CODE_HASH" property="emlVrfCodeHash"/>
         <result column="EML_VRF_STATUS_CD" property="emlVrfStatusCd"/>
@@ -21,12 +22,12 @@
     </resultMap>
 
     <select id="findLatestSignupByEmailForUpdate" resultMap="emailVerificationMap">
-        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
                EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
                EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
                EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
         FROM EMAIL_VERIFICATION
-        WHERE EML_VRF_EMAIL = #{email}
+        WHERE EML_VRF_EMAIL_HMAC = #{emailHmac}
           AND EML_VRF_PURPOSE_CD = 'EMVC0001'
         ORDER BY EML_VRF_SN DESC
         LIMIT 1
@@ -34,7 +35,7 @@
     </select>
 
     <select id="findSignupByIdForUpdate" resultMap="emailVerificationMap">
-        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
                EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
                EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
                EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
@@ -47,22 +48,22 @@
     <insert id="insertSignup" parameterType="nct.auth.domain.EmailVerification"
             useGeneratedKeys="true" keyProperty="emlVrfSn">
         INSERT INTO EMAIL_VERIFICATION (
-            EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
+            EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
             EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT, EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT
         ) VALUES (
-            #{emlVrfEmail}, 'EMVC0001', #{emlVrfCodeHash}, 'EMVC0003',
+            #{emlVrfEmail}, #{emlVrfEmailHmac}, 'EMVC0001', #{emlVrfCodeHash}, 'EMVC0003',
             #{emlVrfExpiresAt}, #{emlVrfLastSentAt}, 0, 0
         )
     </insert>
 
     <!-- @ai_generated: F-AUTH-007 - PASSWORD_RESET(EMVC0002) 전용 조회·저장. SIGNUP 쿼리와 목적코드만 다르다. -->
     <select id="findLatestPasswordResetByEmailForUpdate" resultMap="emailVerificationMap">
-        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
                EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
                EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
                EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
         FROM EMAIL_VERIFICATION
-        WHERE EML_VRF_EMAIL = #{email}
+        WHERE EML_VRF_EMAIL_HMAC = #{emailHmac}
           AND EML_VRF_PURPOSE_CD = 'EMVC0002'
         ORDER BY EML_VRF_SN DESC
         LIMIT 1
@@ -72,17 +73,17 @@
     <insert id="insertPasswordReset" parameterType="nct.auth.domain.EmailVerification"
             useGeneratedKeys="true" keyProperty="emlVrfSn">
         INSERT INTO EMAIL_VERIFICATION (
-            EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
+            EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
             EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT, EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT
         ) VALUES (
-            #{emlVrfEmail}, 'EMVC0002', #{emlVrfCodeHash}, 'EMVC0003',
+            #{emlVrfEmail}, #{emlVrfEmailHmac}, 'EMVC0002', #{emlVrfCodeHash}, 'EMVC0003',
             #{emlVrfExpiresAt}, #{emlVrfLastSentAt}, 0, 0
         )
     </insert>
 
     <!-- @ai_generated: 링크 토큰은 URL에 verificationId를 노출하지 않으므로 해시값으로 직접 조회한다. -->
     <select id="findPasswordResetByTokenHashForUpdate" resultMap="emailVerificationMap">
-        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
                EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
                EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
                EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
@@ -96,12 +97,12 @@
 
     <!-- @ai_generated: F-AUTH-011 - WITHDRAWAL(EMVC0008) 전용 조회·저장. PASSWORD_RESET 쿼리와 목적코드만 다르다. -->
     <select id="findLatestWithdrawalByEmailForUpdate" resultMap="emailVerificationMap">
-        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
                EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
                EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
                EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
         FROM EMAIL_VERIFICATION
-        WHERE EML_VRF_EMAIL = #{email}
+        WHERE EML_VRF_EMAIL_HMAC = #{emailHmac}
           AND EML_VRF_PURPOSE_CD = 'EMVC0008'
         ORDER BY EML_VRF_SN DESC
         LIMIT 1
@@ -111,16 +112,16 @@
     <insert id="insertWithdrawal" parameterType="nct.auth.domain.EmailVerification"
             useGeneratedKeys="true" keyProperty="emlVrfSn">
         INSERT INTO EMAIL_VERIFICATION (
-            EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
+            EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
             EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT, EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT
         ) VALUES (
-            #{emlVrfEmail}, 'EMVC0008', #{emlVrfCodeHash}, 'EMVC0003',
+            #{emlVrfEmail}, #{emlVrfEmailHmac}, 'EMVC0008', #{emlVrfCodeHash}, 'EMVC0003',
             #{emlVrfExpiresAt}, #{emlVrfLastSentAt}, 0, 0
         )
     </insert>
 
     <select id="findWithdrawalByTokenHashForUpdate" resultMap="emailVerificationMap">
-        SELECT EML_VRF_SN, EML_VRF_EMAIL, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
                EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
                EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
                EML_VRF_VERIFIED_AT, EML_VRF_USED_AT

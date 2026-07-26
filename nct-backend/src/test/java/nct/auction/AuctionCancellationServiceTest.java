@@ -23,6 +23,7 @@ import nct.auction.service.AuctionService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.crypto.FieldCryptoService;
 
 @SpringBootTest
 @Transactional
@@ -31,6 +32,7 @@ class AuctionCancellationServiceTest {
     @Autowired AuctionCancellationService cancellationService;
     @Autowired AuctionService auctionService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     @Test
     @DisplayName("진행 중 경매의 판매자 취소 요청은 이전 상태를 저장하고 취소요청 상태로 변경한다")
@@ -290,20 +292,23 @@ class AuctionCancellationServiceTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
                 INSERT INTO USERS (
                     USR_LOGIN_ID,
                     USR_PSWD_HASH,
                     USR_NM,
-                    USR_EML,
+                    USR_EML_ENC,
+                    USR_EML_HMAC,
                     USR_STATUS_CD,
                     USR_ROLE_CD,
-                    USR_ADDR,
-                    USR_DADDR,
-                    USR_ZIP
+                    USR_ADDR_ENC,
+                    USR_DADDR_ENC,
+                    USR_ZIP_ENC
                 )
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER', '테스트 주소', '101호', '12345')
-                """, loginId, prefix, loginId + "@test.local");
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?, ?)
+                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
+                fieldCryptoService.encrypt("테스트 주소"), fieldCryptoService.encrypt("101호"), fieldCryptoService.encrypt("12345"));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

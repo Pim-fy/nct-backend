@@ -19,6 +19,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
+import nct.global.security.crypto.FieldCryptoService;
 import nct.ops.risk.service.RiskEventCommand;
 import nct.ops.risk.service.RiskEventResult;
 import nct.ops.risk.service.RiskEventService;
@@ -51,6 +52,7 @@ class PointChargeReconciliationSchedulerTest {
     @Autowired PointChargeReconciliationScheduler scheduler;
     @Autowired PointChargeService pointChargeService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     @MockitoBean TossPaymentsClient tossPaymentsClient;
 
@@ -65,10 +67,11 @@ class PointChargeReconciliationSchedulerTest {
     @BeforeEach
     void setUpUser() {
         String loginId = "t_recon_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, loginId, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         // 공유 DB에 이 테스트가 만들지 않은 다른 오래된 PENDING 주문이 이미 있을 수 있다 —

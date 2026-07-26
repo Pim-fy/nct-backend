@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import nct.auth.domain.EmailVerification;
 import nct.auth.mapper.EmailVerificationMapper;
@@ -27,6 +29,7 @@ import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.utils.TokenHashUtil;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.member.domain.Member;
 import nct.member.dto.WithdrawalConfirmRequest;
 import nct.member.dto.WithdrawalLinkRequestDto;
@@ -36,6 +39,7 @@ import nct.member.mapper.MemberMapper;
 /** F-AUTH-011: 정지 계정 전용 탈퇴 링크의 계정 상태 비노출(정지만 실제 대상), 재발송 제한,
  *  링크 확정의 PENDING->VERIFIED->USED 상태 전이·공통 탈퇴 위임을 단위 검증한다. */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class MemberWithdrawalRequestServiceTest {
 
     @Mock
@@ -48,6 +52,8 @@ class MemberWithdrawalRequestServiceTest {
     private MemberService memberService;
     @Mock
     private EmailSender emailSender;
+    @Mock
+    private FieldCryptoService fieldCryptoService;
 
     private TokenHashUtil tokenHashUtil;
     private MemberWithdrawalRequestService withdrawalRequestService;
@@ -55,8 +61,11 @@ class MemberWithdrawalRequestServiceTest {
     @BeforeEach
     void setUp() {
         tokenHashUtil = new TokenHashUtil();
+        when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.emailHmac(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         withdrawalRequestService = new MemberWithdrawalRequestService(
-                emailVerificationMapper, authMemberPort, memberMapper, memberService, emailSender, tokenHashUtil);
+                emailVerificationMapper, authMemberPort, memberMapper, memberService, emailSender, tokenHashUtil, fieldCryptoService);
     }
 
     @Test
@@ -206,6 +215,7 @@ class MemberWithdrawalRequestServiceTest {
         return EmailVerification.builder()
                 .emlVrfSn(1L)
                 .emlVrfEmail("user@example.com")
+                .emlVrfEmailHmac("user@example.com")
                 .emlVrfStatusCd("EMVC0003")
                 .emlVrfExpiresAt(expiresAt)
                 .build();

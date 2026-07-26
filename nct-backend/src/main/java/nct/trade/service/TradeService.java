@@ -20,6 +20,7 @@ import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.notification.domain.NotificationDomain;
@@ -74,6 +75,8 @@ public class TradeService implements SellerCancellationDecisionPort {
     private final MemberService memberService;
     private final SettlementService settlementService;
     private final ChatService chatService;
+    // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
+    private final FieldCryptoService fieldCryptoService;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -171,9 +174,9 @@ public class TradeService implements SellerCancellationDecisionPort {
                     command.getBuyerUserId());
             tradeMapper.insertDeliverySnapshot(
                     trade.getTrdSn(),
-                    address.zip(),
-                    address.addr(),
-                    address.daddr());
+                    fieldCryptoService.encrypt(address.zip()),
+                    fieldCryptoService.encrypt(address.addr()),
+                    fieldCryptoService.encrypt(address.daddr()));
         }
 
         tradeMapper.insertStatusHistory(
@@ -247,6 +250,8 @@ public class TradeService implements SellerCancellationDecisionPort {
             detail.setDeliveryProofFiles(
                     tradeMapper.findTradeDeliveryProofFiles(detail.getDeliveryId()));
         }
+
+        decryptDetailAddresses(detail);
 
         return detail;
     }
@@ -343,7 +348,7 @@ public class TradeService implements SellerCancellationDecisionPort {
                 tradeId,
                 request.toMeetingDateTime(),
                 request.getMeetingPlace().trim(),
-                normalizeOptional(request.getMeetingAddress()));
+                fieldCryptoService.encrypt(normalizeOptional(request.getMeetingAddress())));
 
         // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
         // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
@@ -633,6 +638,21 @@ public class TradeService implements SellerCancellationDecisionPort {
         }
 
         return value.trim();
+    }
+
+    // @ai_generated: SQL에서 암호문 주소를 조합하지 않고, 권한 확인이 끝난 서비스 경계에서만 복호화한다.
+    private void decryptDetailAddresses(TradeDetailResponse detail) {
+        String deliveryAddress = fieldCryptoService.decrypt(detail.getDeliveryAddress());
+        String deliveryDetailAddress = fieldCryptoService.decrypt(detail.getDeliveryDetailAddress());
+        if (deliveryAddress == null) {
+            detail.setDeliveryAddress(null);
+        } else if (deliveryDetailAddress == null || deliveryDetailAddress.isBlank()) {
+            detail.setDeliveryAddress(deliveryAddress);
+        } else {
+            detail.setDeliveryAddress(deliveryAddress + " " + deliveryDetailAddress);
+        }
+        detail.setDeliveryDetailAddress(null);
+        detail.setMeetingAddress(fieldCryptoService.decrypt(detail.getMeetingAddress()));
     }
 
     // 화면의 역할 탭 값과 DB 조회 조건을 같은 의미로 유지한다.

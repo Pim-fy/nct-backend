@@ -127,6 +127,12 @@ public class MemberAuthAdapter implements AuthMemberPort {
             .usrEml(fieldCryptoService.encrypt(profile.getEmail()))
             .usrEmlHmac(fieldCryptoService.emailHmac(profile.getEmail()))
             .usrEmlCertYn('Y')          // 제공자가 이미 검증한 이메일로 간주 (자체 EMAIL_VERIFICATION 재검증 없음)
+            // @ai_generated: OAuth 선택정보도 평문 컬럼 없이 기존 *_ENC 매핑으로 저장한다.
+            .usrTelno(fieldCryptoService.encrypt(profile.getTelno()))
+            .usrAddr(fieldCryptoService.encrypt(profile.getAddress()))
+            .usrDaddr(fieldCryptoService.encrypt(profile.getDetailAddress()))
+            .usrBankNm(fieldCryptoService.encrypt(profile.getBankName()))
+            .usrAcntNo(fieldCryptoService.encrypt(profile.getAccountNo()))
             .usrStatusCd("USRC0001")    // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)
             .usrRoleCd("ROLE_USER")     // 신규가입 기본 역할
             .build();

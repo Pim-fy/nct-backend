@@ -38,8 +38,9 @@ public class SignUpRequest {
     @Email(message = "이메일 형식이 올바르지 않습니다.")
     private String email;
 
-    @Pattern(regexp = "^$|^01[016789]-\\d{3,4}-\\d{4}$",
-             message = "전화번호 형식이 올바르지 않습니다. (예: 010-1234-5678)")
+    // @ai_generated: 화면 포맷과 분리해 API/암호화 평문은 숫자 11자리만 받는다.
+    @Pattern(regexp = "^$|^0\\d{10}$",
+             message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
     private String telno;
 
     // @ai_generated: 회원가입 추가 정보는 모두 선택값이며, 서비스 계층에서 묶음 입력 규칙을 검증한다.

@@ -5,6 +5,7 @@ import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -18,6 +19,22 @@ public class OauthOnboardingRequest {
     @NotBlank(message = "닉네임은 필수입니다.")
     @Size(max = 100, message = "닉네임은 100자 이하여야 합니다.")
     private String nickname;
+
+    // @ai_generated: OAuth 온보딩도 로컬 가입과 같은 선택 개인정보 제약을 적용한다.
+    @Pattern(regexp = "^$|^0\\d{10}$", message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
+    private String telno;
+
+    @Size(max = 200, message = "주소는 200자 이하여야 합니다.")
+    private String address;
+
+    @Size(max = 200, message = "상세주소는 200자 이하여야 합니다.")
+    private String detailAddress;
+
+    @Size(max = 100, message = "은행명은 100자 이하여야 합니다.")
+    private String bankName;
+
+    @Size(max = 50, message = "계좌번호는 50자 이하여야 합니다.")
+    private String accountNo;
 
     @NotEmpty(message = "약관 동의 결과는 필수입니다.")
     @Valid

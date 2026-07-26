@@ -22,6 +22,13 @@ public class OAuthProfile {
     /** 닉네임 */
     private final String nickname;
 
+    // @ai_generated: 온보딩에서 확정한 선택 개인정보를 저장 어댑터까지 전달한다.
+    private final String telno;
+    private final String address;
+    private final String detailAddress;
+    private final String bankName;
+    private final String accountNo;
+
     // @ai_generated: 작업단위5 - USER_OAUTH.USR_OAT_PROVIDER_KEY 저장·조회용 제공자 사용자 식별값
     /** 제공자가 부여한 사용자 식별값 (카카오: id, 네이버: response.id, 구글: sub) */
     private final String providerKey;

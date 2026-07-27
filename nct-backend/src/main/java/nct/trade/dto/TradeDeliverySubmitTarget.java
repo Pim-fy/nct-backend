@@ -8,5 +8,6 @@ public class TradeDeliverySubmitTarget {
 
     private Long tradeId;
     private Long deliveryId;
+    private Long buyerUserId;
     private String tradeStatus;
 }

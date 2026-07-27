@@ -247,6 +247,7 @@
         SELECT
             t.TRD_SN AS tradeId,
             d.TRD_DLVR_SN AS deliveryId,
+            t.BYPR_USR_SN AS buyerUserId,
             t.TRD_STATUS_CD AS tradeStatus
         FROM TRADE t
         JOIN PRODUCT p
@@ -341,12 +342,26 @@
             t.TRD_SN AS tradeId,
             t.SLLR_USR_SN AS sellerUserId,
             t.BYPR_USR_SN AS buyerUserId,
-            t.TRD_STATUS_CD AS tradeStatus
+            t.TRD_STATUS_CD AS tradeStatus,
+            p.PRD_TRD_METHOD_CD AS tradeMethod
         FROM TRADE t
+        JOIN PRODUCT p ON p.PRD_SN = t.PRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
           AND t.BYPR_USR_SN = #{buyerUserId}
         FOR UPDATE
+    </select>
+
+    <!-- 일정 행뿐 아니라 거래 일시·장소까지 채워진 경우만 완료 확인을 허용한다. -->
+    <select id="hasOfflineSchedule" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM TRADE_OFFLINE
+            WHERE TRD_SN = #{tradeId}
+              AND TRD_OFL_DT IS NOT NULL
+              AND TRD_OFL_PLC_NM IS NOT NULL
+              AND TRIM(TRD_OFL_PLC_NM) &lt;&gt; ''
+        )
     </select>
 
     <!-- 요청 시점의 시스템 설정 일수를 계산한 완료 시각을 저장한다. -->

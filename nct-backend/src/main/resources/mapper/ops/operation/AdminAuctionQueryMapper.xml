@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.operation.mapper.AdminAuctionQueryMapper">
+    <sql id="fromWhere">
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        JOIN USERS seller ON seller.USR_SN = p.USR_SN
+        LEFT JOIN CMM_CODE product_status ON product_status.CMM_CD = p.PRD_STATUS_CD
+        LEFT JOIN CMM_CODE auction_status ON auction_status.CMM_CD = a.AUC_STATUS_CD
+        LEFT JOIN (
+            SELECT AUC_SN, COUNT(*) AS BID_COUNT FROM BID GROUP BY AUC_SN
+        ) bid ON bid.AUC_SN = a.AUC_SN
+        LEFT JOIN TRADE trade ON trade.TRD_SN = (
+            SELECT t.TRD_SN FROM TRADE t
+             WHERE t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'
+             ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC LIMIT 1
+        )
+        LEFT JOIN CMM_CODE trade_status ON trade_status.CMM_CD = trade.TRD_STATUS_CD
+        LEFT JOIN AUCTION_CANCEL_REQUEST cancel_request ON cancel_request.AUC_CNL_REQ_SN = (
+            SELECT r.AUC_CNL_REQ_SN FROM AUCTION_CANCEL_REQUEST r
+             WHERE r.AUC_SN = a.AUC_SN AND r.AUC_CNL_REQ_APRV_YN IS NULL
+             ORDER BY r.AUC_CNL_REQ_SN DESC LIMIT 1
+        )
+        WHERE p.PRD_USE_YN = 'Y'
+        <if test="condition.keyword != null">
+            AND (p.PRD_NM LIKE CONCAT('%', #{condition.keyword}, '%')
+              OR seller.USR_NM LIKE CONCAT('%', #{condition.keyword}, '%')
+              OR CAST(a.AUC_SN AS CHAR) LIKE CONCAT('%', #{condition.keyword}, '%'))
+        </if>
+        <if test="condition.auctionStatusCode != null">
+            AND a.AUC_STATUS_CD = #{condition.auctionStatusCode}
+        </if>
+        <if test="condition.tradeStatusCode != null">
+            AND trade.TRD_STATUS_CD = #{condition.tradeStatusCode}
+        </if>
+        <if test="condition.cancellationPending != null">
+            <choose>
+                <when test="condition.cancellationPending">
+                    AND cancel_request.AUC_CNL_REQ_SN IS NOT NULL
+                </when>
+                <otherwise>
+                    AND cancel_request.AUC_CNL_REQ_SN IS NULL
+                </otherwise>
+            </choose>
+        </if>
+        <if test="condition.registeredFrom != null">
+            AND a.AUC_REG_DT &gt;= #{condition.registeredFrom}
+        </if>
+        <if test="condition.registeredTo != null">
+            AND a.AUC_REG_DT &lt; DATE_ADD(#{condition.registeredTo}, INTERVAL 1 DAY)
+        </if>
+    </sql>
+    <select id="count" resultType="long">
+        SELECT COUNT(*) <include refid="fromWhere"/>
+    </select>
+    <select id="findPage" resultType="nct.ops.operation.dto.AdminAuctionListItemResponse">
+        SELECT a.AUC_SN AS auctionId, p.PRD_SN AS productId, p.PRD_NM AS productName,
+               seller.USR_NM AS sellerName, p.PRD_STATUS_CD AS productStatusCode,
+               product_status.CMM_NM AS productStatusName, a.AUC_STATUS_CD AS auctionStatusCode,
+               auction_status.CMM_NM AS auctionStatusName, COALESCE(bid.BID_COUNT, 0) AS bidCount,
+               trade.TRD_SN AS tradeId, trade.TRD_STATUS_CD AS tradeStatusCode,
+               trade_status.CMM_NM AS tradeStatusName, a.AUC_REG_DT AS registeredAt,
+               cancel_request.AUC_CNL_REQ_SN AS cancelRequestId,
+               cancel_request.AUC_CNL_REQ_RSN_CN AS cancelReason,
+               cancel_request.AUC_CNL_REQ_REG_DT AS cancelRequestedAt,
+               cancel_request.PREV_AUC_STATUS_CD AS previousAuctionStatusCode
+        <include refid="fromWhere"/>
+        ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC
+        LIMIT #{condition.size} OFFSET #{condition.offset}
+    </select>
+</mapper>

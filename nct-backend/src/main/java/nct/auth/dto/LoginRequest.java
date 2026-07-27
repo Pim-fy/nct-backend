@@ -20,6 +20,6 @@ public class LoginRequest {
     @NotBlank(message = "비밀번호는 필수입니다.")
     private String password;
 
-    /** 로그인 유지 여부 (true: Refresh 쿠키 14일, false: 세션 쿠키) */
+    /** 로그인 유지 여부 (true: Refresh 쿠키·토큰 모두 1일(영속 쿠키, 브라우저 재시작에도 유지), false: 세션 쿠키) */
     private boolean rememberMe;
 }

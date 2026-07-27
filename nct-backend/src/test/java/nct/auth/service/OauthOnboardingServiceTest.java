@@ -62,7 +62,7 @@ class OauthOnboardingServiceTest {
         when(onboardingTokenProvider.parseToken("onboarding-token")).thenReturn(claims());
         when(authMemberPort.registerOAuthMember(any(OAuthProfile.class))).thenReturn(savedMember);
         when(jwtTokenProvider.createAccessToken(501L)).thenReturn("access-token");
-        when(jwtTokenProvider.createRefreshToken(501L)).thenReturn("refresh-token");
+        when(jwtTokenProvider.createRefreshToken(501L, true)).thenReturn("refresh-token");
 
         AuthSessionResult result = onboardingService.complete("onboarding-token", request);
 

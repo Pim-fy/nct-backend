@@ -292,7 +292,7 @@ class AuthServiceTest {
         when(authMemberPort.findByLoginId("buyer01")).thenReturn(java.util.Optional.of(member));
         when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
         when(jwtTokenProvider.createAccessToken(101L)).thenReturn("access-token");
-        when(jwtTokenProvider.createRefreshToken(101L)).thenReturn("refresh-token-raw");
+        when(jwtTokenProvider.createRefreshToken(101L, false)).thenReturn("refresh-token-raw");
 
         AuthSessionResult result = authService.login(loginRequest("buyer01", "Password1!"));
 
@@ -310,7 +310,7 @@ class AuthServiceTest {
         when(authMemberPort.findByLoginId("four")).thenReturn(java.util.Optional.of(member));
         when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
         when(jwtTokenProvider.createAccessToken(101L)).thenReturn("access-token");
-        when(jwtTokenProvider.createRefreshToken(101L)).thenReturn("refresh-token-raw");
+        when(jwtTokenProvider.createRefreshToken(101L, false)).thenReturn("refresh-token-raw");
 
         AuthSessionResult result = authService.login(loginRequest("four", "Password1!"));
 

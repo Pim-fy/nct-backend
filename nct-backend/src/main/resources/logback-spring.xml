@@ -23,7 +23,7 @@
 	</appender>
 
 	<!-- 파일 롤링 : 일자별 + 10MB 단위 분할, 30일 보관 -->
-	<!-- <appender name="ROLLING_FILE"
+	<appender name="ROLLING_FILE"
 		class="ch.qos.logback.core.rolling.RollingFileAppender">
 		<file>${LOG_PATH_NAME}</file>
 		<encoder
@@ -40,7 +40,7 @@
 			</timeBasedFileNamingAndTriggeringPolicy>
 			<maxHistory>30</maxHistory>
 		</rollingPolicy>
-	</appender> -->
+	</appender>
 
 	<!-- 프로젝트 패키지 로그 -->
 	<logger name="nct" level="INFO" additivity="false">

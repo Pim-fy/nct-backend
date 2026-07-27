@@ -19,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,6 +29,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.member.domain.Member;
 import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.dto.ProfileUpdateRequest;
@@ -36,12 +39,15 @@ import nct.member.mapper.MemberMapper;
 /** F-AUTH-010: 닉네임 변경시에만 중복 확인·DB 제약 위반 변환. F-AUTH-011: 비밀번호 재확인 후
  *  탈퇴 처리와 리프레시 토큰 무효화를 단위 검증한다. */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class MemberServiceTest {
 
     @Mock
     private MemberMapper memberMapper;
     @Mock
     private AuthMemberPort authMemberPort;
+    @Mock
+    private FieldCryptoService fieldCryptoService;
 
     private PasswordEncoder passwordEncoder;
     private MemberService memberService;
@@ -49,7 +55,10 @@ class MemberServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        memberService = new MemberService(memberMapper, authMemberPort, passwordEncoder);
+        when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.emailHmac(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        memberService = new MemberService(memberMapper, authMemberPort, passwordEncoder, fieldCryptoService);
     }
 
     @Test
@@ -59,7 +68,7 @@ class MemberServiceTest {
         memberService.updateProfile(101L, profileRequest("구매자"));
 
         verify(memberMapper, never()).existsByNickname(anyString());
-        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), any(), any());
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -72,7 +81,7 @@ class MemberServiceTest {
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.DUPLICATE_NICKNAME);
 
-        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), any(), any());
+        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -80,7 +89,7 @@ class MemberServiceTest {
         when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
         when(memberMapper.existsByNickname("새닉네임")).thenReturn(false);
         doThrow(new DataIntegrityViolationException("Duplicate entry for key 'UK_USERS_NM'"))
-                .when(memberMapper).updateProfile(eq(101L), eq("새닉네임"), any(), anyString(), any(), any());
+                .when(memberMapper).updateProfile(eq(101L), eq("새닉네임"), any(), anyString(), anyString(), any(), any());
 
         assertThatThrownBy(() -> memberService.updateProfile(101L, profileRequest("새닉네임")))
                 .isInstanceOf(CustomException.class)
@@ -95,7 +104,7 @@ class MemberServiceTest {
 
         memberService.withdrawActive(101L, "Password1!");
 
-        verify(memberMapper).withdraw(eq(101L), anyString(), anyString());
+        verify(memberMapper).withdraw(eq(101L), anyString(), anyString(), anyString());
         verify(authMemberPort).updateRefreshToken(101L, null);
     }
 
@@ -109,7 +118,7 @@ class MemberServiceTest {
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
 
-        verify(memberMapper, never()).withdraw(anyLong(), anyString(), anyString());
+        verify(memberMapper, never()).withdraw(anyLong(), anyString(), anyString(), anyString());
         verify(authMemberPort, never()).updateRefreshToken(anyLong(), isNull());
     }
 
@@ -117,7 +126,8 @@ class MemberServiceTest {
     void 공통_탈퇴_처리는_익명값으로_치환하고_리프레시토큰을_무효화한다() {
         memberService.withdraw(101L);
 
-        verify(memberMapper).withdraw(eq(101L), eq("withdrawn_101@withdrawn.local"), eq("탈퇴한 사용자_101"));
+        verify(memberMapper).withdraw(eq(101L), eq("withdrawn_101@withdrawn.local"),
+                eq("withdrawn_101@withdrawn.local"), eq("탈퇴한 사용자_101"));
         verify(authMemberPort).updateRefreshToken(101L, null);
     }
 

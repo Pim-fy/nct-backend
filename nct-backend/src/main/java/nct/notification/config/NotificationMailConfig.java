@@ -78,7 +78,8 @@ public class NotificationMailConfig {
                     return true;
                 } catch (Exception ex) {
                     // 이메일은 보조 채널 — 실패는 상태 기록용 false로만 알리고 본 처리를 막지 않는다
-                    log.warn("[알림 이메일] 발송 실패 to={} subject={} cause={}", toEmail, subject, ex.getMessage());
+                    // @ai_generated: 수신 이메일 원문은 로그에 남기지 않는다.
+                    log.warn("[알림 이메일] 발송 실패 subject={} cause={}", subject, ex.getMessage());
                     return false;
                 }
             }

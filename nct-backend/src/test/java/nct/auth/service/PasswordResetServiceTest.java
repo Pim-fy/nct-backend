@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -29,11 +31,13 @@ import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.utils.TokenHashUtil;
+import nct.global.security.crypto.FieldCryptoService;
 
 // @ai_generated
 /** F-AUTH-007: 계정 상태 비노출(정지·탈퇴·불일치는 조용히 무시), 재발송 제한, 링크 확정의
  *  PENDING->VERIFIED->USED 상태 전이·세션 무효화를 단위 검증한다. */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class PasswordResetServiceTest {
 
     @Mock
@@ -42,6 +46,8 @@ class PasswordResetServiceTest {
     private AuthMemberPort authMemberPort;
     @Mock
     private EmailSender emailSender;
+    @Mock
+    private FieldCryptoService fieldCryptoService;
 
     private PasswordEncoder passwordEncoder;
     private TokenHashUtil tokenHashUtil;
@@ -51,8 +57,11 @@ class PasswordResetServiceTest {
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
         tokenHashUtil = new TokenHashUtil();
+        when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.emailHmac(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         passwordResetService = new PasswordResetService(
-                emailVerificationMapper, authMemberPort, passwordEncoder, emailSender, tokenHashUtil);
+                emailVerificationMapper, authMemberPort, passwordEncoder, emailSender, tokenHashUtil, fieldCryptoService);
     }
 
     @Test

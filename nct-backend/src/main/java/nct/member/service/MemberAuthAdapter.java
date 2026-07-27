@@ -13,6 +13,7 @@ import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
 import nct.global.security.port.OAuthProfile;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.global.utils.TokenHashUtil;
 import nct.member.domain.Member;
 import nct.member.mapper.MemberMapper;
@@ -41,12 +42,14 @@ public class MemberAuthAdapter implements AuthMemberPort {
     private final TokenHashUtil tokenHashUtil;
     private final PasswordEncoder passwordEncoder;
     private final UserOauthMapper userOauthMapper;
+    // @ai_generated: 개인정보는 Mapper 호출 전에 암호화하고, 조회 결과는 서비스 경계에서만 복호화한다.
+    private final FieldCryptoService fieldCryptoService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Override
     @Transactional(readOnly = true)
     public Optional<AuthMember> findByEmail(String email) {
-        return memberMapper.findMemberByEmail(email)
+        return memberMapper.findMemberByEmail(fieldCryptoService.emailHmac(email))
                            .map(this::toAuthMember);
     }
 
@@ -82,7 +85,7 @@ public class MemberAuthAdapter implements AuthMemberPort {
     @Override
     @Transactional(readOnly = true)
     public boolean existsByEmail(String email) {
-        return memberMapper.existsByEmail(email);
+        return memberMapper.existsByEmail(fieldCryptoService.emailHmac(email));
     }
 
     @Override
@@ -93,15 +96,16 @@ public class MemberAuthAdapter implements AuthMemberPort {
             .usrLoginId(profile.getLoginId())
             .usrPswdHash(profile.getEncodedPassword())
             .usrNm(profile.getNickname())
-            .usrEml(profile.getEmail())
+            .usrEml(fieldCryptoService.encrypt(profile.getEmail()))
+            .usrEmlHmac(fieldCryptoService.emailHmac(profile.getEmail()))
             .usrEmlCertYn('Y')
-            .usrTelno(profile.getTelno())
+            .usrTelno(fieldCryptoService.encrypt(profile.getTelno()))
             // @ai_generated: 추가 정보는 이미 AuthService에서 공백 정규화·묶음 검증된 값만 저장한다.
-            .usrAddr(profile.getAddress())
-            .usrDaddr(profile.getDetailAddress())
-            .usrZip(profile.getZip())
-            .usrBankNm(profile.getBankName())
-            .usrAcntNo(profile.getAccountNo())
+            .usrAddr(fieldCryptoService.encrypt(profile.getAddress()))
+            .usrDaddr(fieldCryptoService.encrypt(profile.getDetailAddress()))
+            .usrZip(fieldCryptoService.encrypt(profile.getZip()))
+            .usrBankNm(fieldCryptoService.encrypt(profile.getBankName()))
+            .usrAcntNo(fieldCryptoService.encrypt(profile.getAccountNo()))
             .usrStatusCd("USRC0001")          // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)
             .usrRoleCd("ROLE_USER")           // 신규가입 기본 역할 (DB DEFAULT 와 동일값 - 반환 객체에도 채워 응답 role 누락 방지)
             .build();
@@ -120,13 +124,21 @@ public class MemberAuthAdapter implements AuthMemberPort {
             .usrLoginId("OAUTH_" + generateUlid())
             .usrPswdHash(passwordEncoder.encode(generateSystemPassword()))
             .usrNm(profile.getNickname())
-            .usrEml(profile.getEmail())
+            .usrEml(fieldCryptoService.encrypt(profile.getEmail()))
+            .usrEmlHmac(fieldCryptoService.emailHmac(profile.getEmail()))
             .usrEmlCertYn('Y')          // 제공자가 이미 검증한 이메일로 간주 (자체 EMAIL_VERIFICATION 재검증 없음)
+            // @ai_generated: OAuth 선택정보도 평문 컬럼 없이 기존 *_ENC 매핑으로 저장한다.
+            .usrTelno(fieldCryptoService.encrypt(profile.getTelno()))
+            .usrAddr(fieldCryptoService.encrypt(profile.getAddress()))
+            .usrDaddr(fieldCryptoService.encrypt(profile.getDetailAddress()))
+            .usrBankNm(fieldCryptoService.encrypt(profile.getBankName()))
+            .usrAcntNo(fieldCryptoService.encrypt(profile.getAccountNo()))
             .usrStatusCd("USRC0001")    // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)
             .usrRoleCd("ROLE_USER")     // 신규가입 기본 역할
             .build();
         memberMapper.saveCertifiedMember(member);   // useGeneratedKeys 로 usrSn 채워짐
-        userOauthMapper.insert(member.getUsrSn(), profile.getProvider(), profile.getProviderKey());
+        userOauthMapper.insert(member.getUsrSn(), profile.getProvider(),
+                fieldCryptoService.providerKeyHmac(profile.getProvider(), profile.getProviderKey()));
         return toAuthMember(member);
     }
 
@@ -135,7 +147,8 @@ public class MemberAuthAdapter implements AuthMemberPort {
     @Override
     @Transactional(readOnly = true)
     public Optional<AuthMember> findByOauthProviderKey(String providerCd, String providerKey) {
-        return userOauthMapper.findUsrSnByProviderAndKey(providerCd, providerKey)
+        return userOauthMapper.findUsrSnByProviderAndKey(providerCd,
+                                  fieldCryptoService.providerKeyHmac(providerCd, providerKey))
                               .flatMap(memberMapper::findMemberById)
                               .map(this::toAuthMember);
     }
@@ -215,7 +228,7 @@ public class MemberAuthAdapter implements AuthMemberPort {
         return AuthMember.builder()
                          .id(member.getUsrSn())
                          .loginId(member.getUsrLoginId())
-                         .email(member.getUsrEml())
+                         .email(fieldCryptoService.decrypt(member.getUsrEml()))
                          .password(member.getUsrPswdHash())
                          .name(member.getUsrNm())
                          .nickname(member.getUsrNm())

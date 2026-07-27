@@ -30,4 +30,10 @@ public class Product {
     private LocalDateTime prdUpdtDt;
     private String prdRegId;
     private String prdUpdtId;
+
+    // 임시저장(PRDC0001) 시점에 입력해둔 경매설정 보존값 — 실제 등록 전 AUCTION row가 없어 여기 보관.
+    // 공개 등록(PRDC0002) 시 정식 AUCTION 값으로 이관되고 여기는 비워짐
+    private BigDecimal prdDraftBidUnit;
+    private LocalDateTime prdDraftStartDt;
+    private LocalDateTime prdDraftEndDt;
 }

@@ -24,6 +24,7 @@ import nct.product.dto.ProductResponse;
 import nct.product.domain.ProductComment;
 import nct.product.dto.ProductCommentRequest;
 import nct.product.dto.ProductCommentResponse;
+import nct.product.dto.InquiryReportTarget;
 import nct.product.dto.ProductInquiryRequest;
 import nct.product.dto.ProductInquiryResponse;
 import nct.product.mapper.BannedKeywordMapper;
@@ -53,6 +54,7 @@ public class ProductService {
         }
         validateNoBannedKeyword(req.getPrdNm());
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
+        boolean isDraft = "PRDC0001".equals(statusCd);
         Product product = Product.builder()
                 .usrSn(usrSn)
                 .catSn(req.getCatSn())
@@ -64,6 +66,11 @@ public class ProductService {
                 .prdTrdMethodCd(req.getPrdTrdMethodCd())
                 .prdRegId(String.valueOf(usrSn))
                 .prdUpdtId(String.valueOf(usrSn))
+                // 임시저장 시점에는 아직 AUCTION row가 없어 입찰단위·경매기간을 PRODUCT에 보존해뒀다가
+                // 재개 시 폼 복원용으로 돌려준다. 공개 등록 전환 시에는 비워 정식 AUCTION 값만 남긴다.
+                .prdDraftBidUnit(isDraft ? req.getBidUnit() : null)
+                .prdDraftStartDt(isDraft ? req.getAucStartDt() : null)
+                .prdDraftEndDt(isDraft ? req.getAucEndDt() : null)
                 .build();
 
         productMapper.saveProduct(product);
@@ -100,6 +107,7 @@ public class ProductService {
         validateNoBannedKeyword(req.getPrdNm());
 
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
+        boolean isDraft = "PRDC0001".equals(statusCd);
         Product updated = Product.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -111,6 +119,9 @@ public class ProductService {
                 .prdIbyAmt(req.getPrdIbyAmt())
                 .prdTrdMethodCd(req.getPrdTrdMethodCd())
                 .prdUpdtId(String.valueOf(usrSn))
+                .prdDraftBidUnit(isDraft ? req.getBidUnit() : null)
+                .prdDraftStartDt(isDraft ? req.getAucStartDt() : null)
+                .prdDraftEndDt(isDraft ? req.getAucEndDt() : null)
                 .build();
 
         productMapper.updateProduct(updated);
@@ -261,6 +272,13 @@ public class ProductService {
         }
 
         productMapper.deleteProduct(prdSn, usrSn);
+    }
+
+    /** 신고 검증용 문의 단건 조회 — 타 도메인 공개 계약 (F-AUC-013) */
+    @Transactional(readOnly = true)
+    public InquiryReportTarget getInquiryReportTarget(Long prdCmtSn) {
+        return productCommentMapper.findInquiryReportTarget(prdCmtSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
     /** 구매자 문의 등록 (F-AUC-012) */

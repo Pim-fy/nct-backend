@@ -97,6 +97,18 @@ class AuctionServicePolicyTest {
     }
 
     @Test
+    void placeBidRejectsAmountNotAlignedWithBidUnit() {
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        AuctionBidRequest request = bidRequest(11500);
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("입찰 금액은 입찰 단위의 배수여야 합니다.");
+
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
+    }
+
+    @Test
     void placeBidPassesPolicyExtensionValuesToMapper() {
         when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
         when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);

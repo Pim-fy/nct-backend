@@ -29,7 +29,7 @@
         LEFT JOIN (
             SELECT
                 pi.PRD_SN,
-                CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS THUMBNAIL_PATH
+                f.FL_PATH AS THUMBNAIL_PATH
             FROM PRODUCT_IMAGE pi
             JOIN FILES f
               ON f.FL_SN = pi.FL_SN

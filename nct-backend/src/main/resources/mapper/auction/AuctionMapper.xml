@@ -19,7 +19,7 @@
         LEFT JOIN (
             SELECT
                 pi.PRD_SN,
-                CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS THUMBNAIL_PATH
+                f.FL_PATH AS THUMBNAIL_PATH
             FROM PRODUCT_IMAGE pi
             JOIN FILES f
               ON f.FL_SN = pi.FL_SN
@@ -275,7 +275,7 @@
             pi.PRD_IMG_SN AS imageId,
             f.FL_SN AS fileId,
             f.FL_ORG_NM AS originalName,
-            CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS path,
+            f.FL_PATH AS path,
             pi.PRD_IMG_RPRS_YN AS representative,
             pi.PRD_IMG_SORT_NO AS sortNo
         FROM PRODUCT_IMAGE pi
@@ -365,6 +365,43 @@
           AND AUC_END_DT &lt;= NOW()
         ORDER BY AUC_END_DT, AUC_SN
         LIMIT #{limit}
+    </select>
+
+    <select id="findClosingSoonActiveAuctionIds" resultType="long">
+        SELECT AUC_SN
+        FROM AUCTION
+        WHERE AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT &gt; NOW()
+          AND AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL 10 MINUTE)
+        ORDER BY AUC_END_DT, AUC_SN
+        LIMIT #{limit}
+    </select>
+
+    <select id="findClosingSoonRecipientUserIds" resultType="long">
+        SELECT favorite.USR_SN
+        FROM AUCTION auction
+        JOIN PRODUCT product
+          ON product.PRD_SN = auction.PRD_SN
+        JOIN PRODUCT_FAVORITE favorite
+          ON favorite.PRD_SN = product.PRD_SN
+         AND favorite.PRD_FAV_USE_YN = 'Y'
+        WHERE auction.AUC_SN = #{auctionId}
+          AND auction.AUC_STATUS_CD = 'AUCC0002'
+          AND auction.AUC_END_DT &gt; NOW()
+          AND auction.AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL 10 MINUTE)
+          AND favorite.USR_SN != product.USR_SN
+        UNION
+        SELECT bid.USR_SN
+        FROM AUCTION auction
+        JOIN PRODUCT product
+          ON product.PRD_SN = auction.PRD_SN
+        JOIN BID bid
+          ON bid.AUC_SN = auction.AUC_SN
+        WHERE auction.AUC_SN = #{auctionId}
+          AND auction.AUC_STATUS_CD = 'AUCC0002'
+          AND auction.AUC_END_DT &gt; NOW()
+          AND auction.AUC_END_DT &lt;= DATE_ADD(NOW(), INTERVAL 10 MINUTE)
+          AND bid.USR_SN != product.USR_SN
     </select>
 
     <insert id="insertAuction">

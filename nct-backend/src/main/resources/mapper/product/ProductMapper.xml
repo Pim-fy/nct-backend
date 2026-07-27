@@ -18,6 +18,9 @@
         <result property="prdRegDt"       column="PRD_REG_DT"       />
         <result property="prdUpdtDt"      column="PRD_UPDT_DT"      />
         <result property="prdImgUrl"      column="PRD_IMG_URL"      /><!-- 담당자6, F-AUC-002 -->
+        <result property="prdDraftBidUnit" column="PRD_DRAFT_BID_UNIT" />
+        <result property="prdDraftStartDt" column="PRD_DRAFT_START_DT" />
+        <result property="prdDraftEndDt"   column="PRD_DRAFT_END_DT"   />
     </resultMap>
 
     <resultMap id="ProductEntityMap" type="nct.product.domain.Product">
@@ -35,6 +38,9 @@
         <result property="prdUpdtDt"      column="PRD_UPDT_DT"      />
         <result property="prdRegId"       column="PRD_REG_ID"       />
         <result property="prdUpdtId"      column="PRD_UPDT_ID"      />
+        <result property="prdDraftBidUnit" column="PRD_DRAFT_BID_UNIT" />
+        <result property="prdDraftStartDt" column="PRD_DRAFT_START_DT" />
+        <result property="prdDraftEndDt"   column="PRD_DRAFT_END_DT"   />
     </resultMap>
 
     <!-- ── 상품 등록 ─────────────────────────────────────── -->
@@ -43,11 +49,13 @@
         INSERT INTO PRODUCT
             (USR_SN, CAT_SN, PRD_NM, PRD_CN, PRD_STATUS_CD,
              PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD, PRD_USE_YN,
-             PRD_REG_ID, PRD_UPDT_ID)
+             PRD_REG_ID, PRD_UPDT_ID,
+             PRD_DRAFT_BID_UNIT, PRD_DRAFT_START_DT, PRD_DRAFT_END_DT)
         VALUES
             (#{usrSn}, #{catSn}, #{prdNm}, #{prdCn}, #{prdStatusCd},
              #{prdStartAmt}, #{prdIbyAmt}, #{prdTrdMethodCd}, 'Y',
-             #{prdRegId}, #{prdUpdtId})
+             #{prdRegId}, #{prdUpdtId},
+             #{prdDraftBidUnit}, #{prdDraftStartDt}, #{prdDraftEndDt})
     </insert>
 
     <!-- ── 상품 단건 조회 (카테고리명·대표이미지 JOIN) ──── -->
@@ -57,6 +65,7 @@
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
                p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
                p.PRD_REG_DT, p.PRD_UPDT_DT,
+               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT,
                f.FL_PATH AS PRD_IMG_URL
           FROM PRODUCT p
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
@@ -127,7 +136,10 @@
                PRD_START_AMT     = #{prdStartAmt},
                PRD_IBY_AMT       = #{prdIbyAmt},
                PRD_TRD_METHOD_CD = #{prdTrdMethodCd},
-               PRD_UPDT_ID       = #{prdUpdtId}
+               PRD_UPDT_ID       = #{prdUpdtId},
+               PRD_DRAFT_BID_UNIT = #{prdDraftBidUnit},
+               PRD_DRAFT_START_DT = #{prdDraftStartDt},
+               PRD_DRAFT_END_DT   = #{prdDraftEndDt}
          WHERE PRD_SN    = #{prdSn}
            AND USR_SN    = #{usrSn}
            AND PRD_USE_YN = 'Y'

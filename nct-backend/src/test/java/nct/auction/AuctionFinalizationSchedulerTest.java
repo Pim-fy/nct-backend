@@ -28,6 +28,19 @@ class AuctionFinalizationSchedulerTest {
     private AuctionFinalizationScheduler scheduler;
 
     @Test
+    void continuesWithNextClosingNotificationWhenOneAuctionFails() {
+        when(auctionService.findClosingSoonActiveAuctionIds(100)).thenReturn(List.of(10L, 20L));
+        doThrow(new CustomException(ErrorCode.INTERNAL_SERVER_ERROR))
+                .when(auctionService)
+                .notifyClosingSoonAuction(10L);
+
+        scheduler.notifyClosingSoonAuctions();
+
+        verify(auctionService).notifyClosingSoonAuction(10L);
+        verify(auctionService).notifyClosingSoonAuction(20L);
+    }
+
+    @Test
     void continuesWithNextAuctionWhenOneFinalizationFails() {
         when(auctionService.findExpiredActiveAuctionIds(100)).thenReturn(List.of(10L, 20L));
         doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))

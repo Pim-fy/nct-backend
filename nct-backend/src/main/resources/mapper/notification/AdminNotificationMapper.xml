@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- Claude Code 작성 (BJN, 2026-07-19) -->
+<mapper namespace="nct.notification.mapper.AdminNotificationMapper">
+
+    <!-- ⚠️ 아래 6개 쿼리는 전부 타 담당자 소유 테이블에 대한 읽기 전용 SELECT다. 절대 UPDATE/DELETE 추가 금지. -->
+
+    <select id="countNewSignupsToday" resultType="int">
+        /* 관리자 알림: 오늘 신규가입 수 (읽기 전용) */
+        SELECT COUNT(*) FROM USERS WHERE DATE(USR_REG_DT) = CURDATE()
+    </select>
+
+    <select id="countWithdrawalsToday" resultType="int">
+        /* 관리자 알림: 오늘 탈퇴 수 (읽기 전용) */
+        SELECT COUNT(*) FROM USERS
+        WHERE USR_STATUS_CD = 'USRC0003' AND DATE(USR_UPDT_DT) = CURDATE()
+    </select>
+
+    <select id="countPendingProviderApply" resultType="int">
+        /* 관리자 알림: 제공자 심사 대기 수 (읽기 전용) */
+        SELECT COUNT(*) FROM PROVIDER_APPLY WHERE PRV_APLY_STATUS_CD = 'PRVC0002'
+    </select>
+
+    <select id="countPendingReports" resultType="int">
+        /* 관리자 알림: 신고 접수 대기 수 (읽기 전용) */
+        SELECT COUNT(*) FROM ABUSE_REPORT WHERE ABR_STATUS_CD = 'ABRC0005'
+    </select>
+
+    <select id="countAuctionsEndingSoon" resultType="int">
+        /* 관리자 알림: 마감임박 경매 수 (읽기 전용) */
+        SELECT COUNT(*) FROM AUCTION
+        WHERE AUC_STATUS_CD = 'AUCC0002'
+          AND AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL #{hours} HOUR)
+    </select>
+
+    <select id="countNewServiceRequestsToday" resultType="int">
+        /* 관리자 알림: 오늘 신규 서비스 요청 수 (읽기 전용) */
+        SELECT COUNT(*) FROM SERVICE_REQUEST WHERE DATE(SVC_REQ_REG_DT) = CURDATE()
+    </select>
+
+</mapper>

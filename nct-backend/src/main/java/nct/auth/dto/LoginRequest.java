@@ -1,7 +1,7 @@
 package nct.auth.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -12,9 +12,10 @@ import lombok.Setter;
 @Setter
 public class LoginRequest {
 
-    @NotBlank(message = "이메일은 필수입니다.")
-    @Email(message = "이메일 형식이 올바르지 않습니다.")
-    private String email;
+    // @ai_generated: 기존 프론트의 email payload는 전환 기간에만 loginId 별칭으로 수용한다.
+    @NotBlank(message = "로그인 아이디는 필수입니다.")
+    @JsonAlias("email")
+    private String loginId;
 
     @NotBlank(message = "비밀번호는 필수입니다.")
     private String password;

@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.file.mapper.FileMapper">
+
+    <!-- FILES 행 추가. FL_USE_YN(기본 'Y')·REG_DT·UPDT_DT·UPDT_ID 등은 DB DEFAULT에 맡기고 생략 -->
+    <insert id="insert" parameterType="nct.file.domain.FileMeta"
+            useGeneratedKeys="true" keyProperty="flSn">
+        /* 파일: 행 추가 */
+        INSERT INTO FILES (
+            FL_ORG_NM, FL_SAVE_NM, FL_PATH, FL_EXT, FL_SIZE_AMT, FL_TYPE_CD, FL_REG_ID
+        ) VALUES (
+            #{flOrgNm}, #{flSaveNm}, #{flPath}, #{flExt}, #{flSizeAmt}, #{flTypeCd}, #{flRegId}
+        )
+    </insert>
+
+    <!-- 단건 조회. 소프트 삭제된(FL_USE_YN='N') 행은 없는 것으로 취급 -->
+    <select id="findById" resultType="nct.file.domain.FileMeta">
+        /* 파일: 단건 조회 */
+        SELECT FL_SN       AS flSn,
+               FL_ORG_NM   AS flOrgNm,
+               FL_SAVE_NM  AS flSaveNm,
+               FL_PATH     AS flPath,
+               FL_EXT      AS flExt,
+               FL_SIZE_AMT AS flSizeAmt,
+               FL_TYPE_CD  AS flTypeCd,
+               FL_USE_YN   AS flUseYn,
+               FL_REG_ID   AS flRegId,
+               FL_REG_DT   AS flRegDt,
+               FL_UPDT_ID  AS flUpdtId,
+               FL_UPDT_DT  AS flUpdtDt
+          FROM FILES
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+    </select>
+
+    <!-- 파일 교체: 같은 행(FL_SN 유지)의 파일 메타만 새 파일 것으로 갱신.
+         FL_SN이 안 바뀌므로 PRODUCT_IMAGE 등의 참조는 그대로 유효하다 -->
+    <update id="updateMeta" parameterType="nct.file.domain.FileMeta">
+        /* 파일: 교체 메타 갱신 */
+        UPDATE FILES
+           SET FL_ORG_NM   = #{flOrgNm},
+               FL_SAVE_NM  = #{flSaveNm},
+               FL_PATH     = #{flPath},
+               FL_EXT      = #{flExt},
+               FL_SIZE_AMT = #{flSizeAmt},
+               FL_TYPE_CD  = #{flTypeCd},
+               FL_UPDT_ID  = #{flUpdtId},
+               FL_UPDT_DT  = NOW()
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+    </update>
+
+    <!-- 소프트 삭제: 행은 이력 추적용으로 남기고 사용여부만 'N'. 누가 지웠는지 FL_UPDT_ID에 기록 -->
+    <update id="softDelete">
+        /* 파일: 소프트 삭제 */
+        UPDATE FILES
+           SET FL_USE_YN  = 'N',
+               FL_UPDT_ID = #{updtId},
+               FL_UPDT_DT = NOW()
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+    </update>
+
+    <!-- 삭제 가드: 상품 이미지로 연결된 파일인지 확인 (연결돼 있으면 삭제 거부 409)
+         리뷰 등 새 도메인이 FILES를 참조하게 되면 여기에 카운트를 합산할 것 -->
+    <select id="countProductImageRefs" resultType="int">
+        /* 파일: 상품이미지 참조 수 */
+        SELECT COUNT(*)
+          FROM PRODUCT_IMAGE
+         WHERE FL_SN = #{flSn}
+    </select>
+
+    <!-- 관리자 서류 열람 가드: 해당 제공자 신청 건에 실제로 연결된 파일인지 확인.
+         flSn만 알아내서 다른 파일을 열람하는 시도를 차단한다 (담당자7 요청 근거).
+         ⚠️ PROVIDER_APPLY_FILE(담당자7 소유)은 읽기 전용 SELECT만 — 변경 금지 -->
+    <select id="countProviderApplyFileLink" resultType="int">
+        /* 파일: 제공자 신청-파일 연결 확인 (관리자 열람 가드, 읽기 전용) */
+        SELECT COUNT(*)
+          FROM PROVIDER_APPLY_FILE
+         WHERE PRV_APLY_SN = #{prvAplySn}
+           AND FL_SN = #{flSn}
+    </select>
+
+    <!-- 당사자 열람 가드 1: 해당 배송 건에 실제 연결된 파일인지 (F-AUC-009).
+         TRADE_DELIVERY_FILE은 담당자6 제안 신규 테이블 — 정본 CHG 승인 전까지 로컬 DB에만 존재 -->
+    <select id="countTradeDeliveryFileLink" resultType="int">
+        /* 파일: 배송-파일 연결 확인 (당사자 열람 가드) */
+        SELECT COUNT(*)
+          FROM TRADE_DELIVERY_FILE
+         WHERE TRD_DLVR_SN = #{trdDlvrSn}
+           AND FL_SN = #{flSn}
+    </select>
+
+    <!-- 당사자 열람 가드 2: 요청자가 이 배송 건이 속한 거래의 구매자/판매자인지.
+         ⚠️ TRADE_DELIVERY·TRADE(담당자4)는 타 담당자 소유 — 읽기 전용 SELECT만, 변경 금지
+         (PointMapper의 TRADE JOIN 당사자 비교 선례와 같은 방식) -->
+    <select id="countTradePartyMatch" resultType="int">
+        /* 파일: 배송 건 거래 당사자 확인 (읽기 전용) */
+        SELECT COUNT(*)
+          FROM TRADE_DELIVERY D
+          JOIN TRADE T ON T.TRD_SN = D.TRD_SN
+         WHERE D.TRD_DLVR_SN = #{trdDlvrSn}
+           AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn})
+    </select>
+
+    <!-- 삭제 가드: 배송 인증사진으로 연결된 파일인지 (상품 이미지 카운트와 OR 합산) -->
+    <select id="countTradeDeliveryFileRefs" resultType="int">
+        /* 파일: 배송인증사진 참조 수 */
+        SELECT COUNT(*)
+          FROM TRADE_DELIVERY_FILE
+         WHERE FL_SN = #{flSn}
+    </select>
+
+    <!-- 삭제 가드: 리뷰 사진으로 연결된 파일인지 (CHG-021, REVIEW_IMAGE는 담당자3 소유 — 읽기 전용) -->
+    <select id="countReviewImageRefs" resultType="int">
+        /* 파일: 리뷰이미지 참조 수 */
+        SELECT COUNT(*)
+          FROM REVIEW_IMAGE
+         WHERE FL_SN = #{flSn}
+    </select>
+
+</mapper>

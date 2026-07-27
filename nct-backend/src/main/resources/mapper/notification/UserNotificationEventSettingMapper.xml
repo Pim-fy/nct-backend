@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Claude Code 작성 (BJN, 2026-07-24) -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.notification.mapper.UserNotificationEventSettingMapper">
+
+    <!-- 알림 이벤트별 설정: 내 설정 전체 조회 (저장한 이벤트만 행이 있음) -->
+    <select id="selectByUser" resultType="nct.notification.domain.UserNotificationEventSetting">
+        /* 알림 이벤트별 설정: 내 설정 전체 조회 */
+        SELECT USR_NTF_EVT_STG_SN AS usrNtfEvtStgSn, USR_SN AS usrSn, NTF_EVT_CD AS ntfEvtCd,
+               USR_NTF_EVT_STG_INAPP_YN AS usrNtfEvtStgInappYn, USR_NTF_EVT_STG_EMAIL_YN AS usrNtfEvtStgEmailYn,
+               USR_NTF_EVT_STG_REG_DT AS usrNtfEvtStgRegDt, USR_NTF_EVT_STG_UPDT_DT AS usrNtfEvtStgUpdtDt
+        FROM USER_NOTIFICATION_EVENT_SETTING
+        WHERE USR_SN = #{usrSn}
+    </select>
+
+    <!-- 알림 이벤트별 설정: 특정 이벤트 1건 조회 (notify 발행 시 게이팅용) -->
+    <select id="selectByUserAndEvent" resultType="nct.notification.domain.UserNotificationEventSetting">
+        /* 알림 이벤트별 설정: 이벤트 1건 조회 */
+        SELECT USR_NTF_EVT_STG_SN AS usrNtfEvtStgSn, USR_SN AS usrSn, NTF_EVT_CD AS ntfEvtCd,
+               USR_NTF_EVT_STG_INAPP_YN AS usrNtfEvtStgInappYn, USR_NTF_EVT_STG_EMAIL_YN AS usrNtfEvtStgEmailYn,
+               USR_NTF_EVT_STG_REG_DT AS usrNtfEvtStgRegDt, USR_NTF_EVT_STG_UPDT_DT AS usrNtfEvtStgUpdtDt
+        FROM USER_NOTIFICATION_EVENT_SETTING
+        WHERE USR_SN = #{usrSn} AND NTF_EVT_CD = #{ntfEvtCd}
+    </select>
+
+    <!-- 저장(업서트): 회원×이벤트 1행 UNIQUE(USR_SN, NTF_EVT_CD) 제약을 이용해
+         없으면 INSERT, 있으면 인앱·이메일 수신여부만 UPDATE 한다 -->
+    <insert id="upsert" parameterType="nct.notification.domain.UserNotificationEventSetting">
+        /* 알림 이벤트별 설정: 저장 (없으면 생성, 있으면 갱신) */
+        INSERT INTO USER_NOTIFICATION_EVENT_SETTING
+            (USR_SN, NTF_EVT_CD, USR_NTF_EVT_STG_INAPP_YN, USR_NTF_EVT_STG_EMAIL_YN)
+        VALUES
+            (#{usrSn}, #{ntfEvtCd}, #{usrNtfEvtStgInappYn}, #{usrNtfEvtStgEmailYn})
+        ON DUPLICATE KEY UPDATE
+            USR_NTF_EVT_STG_INAPP_YN = #{usrNtfEvtStgInappYn},
+            USR_NTF_EVT_STG_EMAIL_YN = #{usrNtfEvtStgEmailYn}
+    </insert>
+
+</mapper>

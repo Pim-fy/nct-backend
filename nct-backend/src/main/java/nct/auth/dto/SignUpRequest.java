@@ -1,7 +1,12 @@
 package nct.auth.dto;
 
+import java.util.List;
+
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -15,21 +20,50 @@ import lombok.Setter;
 @Setter
 public class SignUpRequest {
 
-    @NotBlank(message = "이메일은 필수입니다.")
-    @Email(message = "이메일 형식이 올바르지 않습니다.")
-    private String email;
+    // @ai_generated: 이메일과 분리된 로컬 로그인 ID
+    @NotBlank(message = "로그인 아이디는 필수입니다.")
+    @Size(min = 4, max = 50, message = "로그인 아이디는 4~50자여야 합니다.")
+    @Pattern(regexp = "^[A-Za-z0-9._-]+$", message = "로그인 아이디는 영문, 숫자, . _ - 만 사용할 수 있습니다.")
+    private String loginId;
 
     @NotBlank(message = "비밀번호는 필수입니다.")
     @Size(min = 8, max = 20, message = "비밀번호는 8~20자여야 합니다.")
     private String password;
 
-    @NotBlank(message = "이름은 필수입니다.")
-    private String name;
-
     @NotBlank(message = "닉네임은 필수입니다.")
+    @Size(max = 100, message = "닉네임은 100자 이하여야 합니다.")
     private String nickname;
 
-    @Pattern(regexp = "^$|^01[016789]-\\d{3,4}-\\d{4}$",
-             message = "전화번호 형식이 올바르지 않습니다. (예: 010-1234-5678)")
+    @NotBlank(message = "이메일은 필수입니다.")
+    @Email(message = "이메일 형식이 올바르지 않습니다.")
+    private String email;
+
+    // @ai_generated: 화면 포맷과 분리해 API/암호화 평문은 숫자 11자리만 받는다.
+    @Pattern(regexp = "^$|^0\\d{10}$",
+             message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
     private String telno;
+
+    // @ai_generated: 회원가입 추가 정보는 모두 선택값이며, 서비스 계층에서 묶음 입력 규칙을 검증한다.
+    @Size(max = 200, message = "주소는 200자 이하여야 합니다.")
+    private String address;
+
+    @Size(max = 200, message = "상세주소는 200자 이하여야 합니다.")
+    private String detailAddress;
+
+    @Pattern(regexp = "^$|^\\d{5}$", message = "우편번호는 5자리 숫자여야 합니다.")
+    private String zip;
+
+    @Size(max = 100, message = "은행명은 100자 이하여야 합니다.")
+    private String bankName;
+
+    @Size(max = 50, message = "계좌번호는 50자 이하여야 합니다.")
+    private String accountNo;
+
+    // @ai_generated: 약관 3종을 성공 가입 시에만 USER_AGREE로 저장한다.
+    @NotEmpty(message = "약관 동의 결과는 필수입니다.")
+    @Valid
+    private List<AgreementRequest> agreements;
+
+    @NotNull(message = "이메일 인증 식별자는 필수입니다.")
+    private Long verificationId;
 }

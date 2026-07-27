@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.review.mapper.ReviewImageMapper">
+
+    <!-- 리뷰 이미지 목록 일괄 추가. SORT_NO·REG_DT는 파라미터/DB DEFAULT로 채움 -->
+    <insert id="insertAll">
+        /* ReviewImageMapper.insertAll */
+        INSERT INTO REVIEW_IMAGE (RVW_SN, FL_SN, RVW_IMG_SORT_NO)
+        VALUES
+        <foreach collection="images" item="img" separator=",">
+            (#{img.rvwSn}, #{img.flSn}, #{img.rvwImgSortNo})
+        </foreach>
+    </insert>
+
+    <!-- 리뷰에 붙은 사진 URL 목록. 소프트 삭제된 파일은 제외, 정렬순서 기준 -->
+    <select id="selectUrlsByReviewSn" resultType="string">
+        /* ReviewImageMapper.selectUrlsByReviewSn */
+        SELECT F.FL_PATH
+          FROM REVIEW_IMAGE RI
+          JOIN FILES F ON F.FL_SN = RI.FL_SN
+         WHERE RI.RVW_SN = #{rvwSn}
+           AND F.FL_USE_YN = 'Y'
+         ORDER BY RI.RVW_IMG_SORT_NO
+    </select>
+
+</mapper>

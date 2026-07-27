@@ -16,7 +16,9 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import nct.ops.security.service.SensitiveDataMasker;
 
 /**
  * [로깅 2계층 - 인터셉터]
@@ -27,10 +29,14 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class LogInterceptor implements HandlerInterceptor {
 
     /** 로그에 남길 본문 최대 길이 */
     private static final int MAX_BODY_LEN = 1000;
+
+    // F-OPS-012 공통 도구: 요청 본문·파라미터·URI·사용자 ID의 개인정보가 로그에 남는 것을 막는다.
+    private final SensitiveDataMasker sensitiveDataMasker;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
@@ -47,10 +53,12 @@ public class LogInterceptor implements HandlerInterceptor {
         StringBuilder sb = new StringBuilder();
         sb.append("\n======================= Access Log Start ==========================");
         sb.append("\nHTTP METHOD ::::    ").append(request.getMethod());
-        sb.append("\nURI         ::::    ").append(request.getRequestURI());
+        sb.append("\nURI         ::::    ")
+          .append(sensitiveDataMasker.maskUri(request.getRequestURI()));
         sb.append("\nCLIENT IP   ::::    ").append(MdcUtils.get(MdcUtils.CLIENT_IP));
         sb.append("\nTRACE ID    ::::    ").append(MdcUtils.get(MdcUtils.TRACE_ID));
-        sb.append("\nUSER        ::::    ").append(extractUserId());
+        sb.append("\nUSER        ::::    ")
+          .append(sensitiveDataMasker.maskText(extractUserId()));
 
         if (!queryParam.isEmpty()) {
             sb.append("\nPARAMETER   ::::    ").append(queryParam);
@@ -96,12 +104,12 @@ public class LogInterceptor implements HandlerInterceptor {
 
         if (ex != null) {
             log.error("\n[응답] {} {} | status={} | {}ms{} | EXCEPTION={} : {}",
-                      request.getMethod(), request.getRequestURI(),
+                      request.getMethod(), sensitiveDataMasker.maskUri(request.getRequestURI()),
                       response.getStatus(), elapsed, bodyLog,
-                      ex.getClass().getSimpleName(), ex.getMessage());
+                      ex.getClass().getSimpleName(), sensitiveDataMasker.maskText(ex.getMessage()));
         } else {
             log.info("\n[응답] {} {} | status={} | {}ms{}",
-                     request.getMethod(), request.getRequestURI(),
+                     request.getMethod(), sensitiveDataMasker.maskUri(request.getRequestURI()),
                      response.getStatus(), elapsed, bodyLog);
         }
     }
@@ -134,6 +142,7 @@ public class LogInterceptor implements HandlerInterceptor {
         body = body.replaceAll(
                 "(\"[^\"]*(?:password|pw)[^\"]*\"\\s*:\\s*)\"[^\"]*\"",
                 "$1\"***\"");
+        body = sensitiveDataMasker.maskText(body);
         return body.length() > MAX_BODY_LEN
                 ? body.substring(0, MAX_BODY_LEN) + "...(truncated)"
                 : body;
@@ -172,6 +181,8 @@ public class LogInterceptor implements HandlerInterceptor {
     /** password / pw 포함 파라미터 값 마스킹 */
     private String maskIfSensitive(String key, String value) {
         String lower = key.toLowerCase();
-        return (lower.contains("password") || lower.contains("pw")) ? "***" : value;
+        return (lower.contains("password") || lower.contains("pw"))
+                ? "***"
+                : sensitiveDataMasker.maskText(value);
     }
 }

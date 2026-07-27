@@ -1,7 +1,7 @@
 package nct.global.security.filter;
 
 import java.io.IOException;
-
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -9,10 +9,15 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
+import nct.global.response.ApiResponse;
 import nct.global.security.provider.JwtTokenProvider;
 import nct.global.security.service.CustomUserDetailsService;
 import nct.global.utils.CookieUtil;
@@ -25,6 +30,9 @@ import lombok.RequiredArgsConstructor;
  *   : 이후 @AuthenticationPrincipal 로 사용자 정보 접근 가능
  * - 토큰이 없거나 무효면 "미인증 상태"로 통과
  *   : 최종 허용/거부는 SecurityConfig 의 인가 규칙이 결정
+ * - @ai_generated: 정지/탈퇴 계정(F-AUTH-009)은 "미인증 통과"가 아니라 필터가 즉시 403/410을
+ *   직접 응답하고 체인을 끊는다 - 컨트롤러까지 도달시키지 않는다(GlobalExceptionHandler는
+ *   서블릿 필터 예외를 잡지 못하므로 여기서 직접 처리해야 한다).
  */
 
 @RequiredArgsConstructor
@@ -33,6 +41,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private final CookieUtil cookieUtil;
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -60,11 +69,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 토큰에서 이메일 추출 -> DB 에서 사용자 조회
-        String email = jwtTokenProvider.getEmail(accessToken);
-        UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
+        // @ai_generated: CHG-032 - subject 파싱 실패(구버전 토큰)·회원 조회 실패
+        //   (F-AUTH-009 정지/탈퇴 포함)를 하나의 catch로 묶어 500 대신
+        //   일관된 ApiResponse JSON(401/403/410)으로 응답한다.
+        UserDetails userDetails;
+        try {
+            Long usrSn = jwtTokenProvider.getUsrSn(accessToken);
+            userDetails = customUserDetailsService.loadUserByUsername(String.valueOf(usrSn));
+        } catch (CustomException ex) {
+            writeErrorResponse(response, ex.getErrorCode(), requestURI);
+            return;
+        }
 
-        // 인증 객체 생성 (credentials 는 JWT 방식에서 불필요 -> null)
+        // @ai_generated: CHG-032 - 토큰은 회원 식별·서명 검증에만 사용하고,
+        // 현재 접근 권한은 방금 DB에서 읽은 USR_ROLE_CD 하나(userDetails authorities)로 구성한다.
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                         userDetails,
@@ -77,5 +95,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
+    }
+
+    // @ai_generated: SecurityConfig.writeErrorResponse와 동일한 ApiResponse JSON 포맷 + code 필드 포함
+    private void writeErrorResponse(HttpServletResponse response, ErrorCode errorCode, String path)
+            throws IOException {
+        response.setStatus(errorCode.status().value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter()
+                .write(objectMapper.writeValueAsString(
+                        ApiResponse.error(errorCode.code(), errorCode.message(), path, errorCode.name())));
     }
 }

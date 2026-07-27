@@ -19,6 +19,8 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	// 알림 실시간 push(SSE)에서 Flux/Sinks/ServerSentEvent 타입만 사용 — 서블릿(Tomcat) 스택은 유지된다
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -31,17 +33,38 @@ dependencies {
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-	// 메일 발송(임시 비밀번호 등)이 필요하면 주석 해제
-	// implementation 'org.springframework.boot:spring-boot-starter-mail'
+	// @ai_generated: 가입 이메일 인증번호를 실제 SMTP로 발송한다.
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'io.projectreactor:reactor-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// @ai_generated: 테스트 전용 키. 운영·개발 키와 분리하며 실제 개인정보 암호화에 사용하지 않는다.
+	systemProperty 'app.crypto.aes-key-base64', 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='
+	systemProperty 'app.crypto.hmac-key-base64', 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8='
+	// 포인트 대사 배치 2종은 컨텍스트 기동 즉시 실행되는 스케줄러라, application.properties의
+	// 기본값(true)을 테스트에서는 꺼서 실DB에 자동으로 손대지 않게 한다(2026-07-21 사고 재발 방지).
+	// 이 배치를 직접 검증하는 두 테스트 클래스는 @TestPropertySource로 자기 안에서만 다시 켠다.
+	systemProperty 'point.reconciliation.scheduler.enabled', 'false'
+
+	// 공유 DB(NCTDB)에 직접 붙는 @SpringBootTest가 여러 개라, 테스트 프로세스를 안 끄고
+	// 방치하면 커넥션이 기본값(풀 10개, 최대수명 30분)만큼 계속 쌓인다 (2026-07-23,
+	// SHOW PROCESSLIST에서 한 접속원에 50개 넘게 쌓여있는 것 확인 — src/test/resources
+	// 쪽 설정 파일은 application.properties라는 이름 때문에 .gitignore에 걸려 팀 전체에
+	// 안 퍼지므로 여기 build.gradle에 직접 둔다).
+	systemProperty 'spring.datasource.hikari.maximum-pool-size', '3'
+	systemProperty 'spring.datasource.hikari.minimum-idle', '1'
+	systemProperty 'spring.datasource.hikari.idle-timeout', '30000'
+	systemProperty 'spring.datasource.hikari.max-lifetime', '120000'
+	// 커넥션을 빌려간 채 이 시간(ms) 넘게 반납하지 않으면 WARN 로그로 어느 코드가
+	// 빌렸는지 스택트레이스를 남긴다 — 다음엔 IP 추적 없이 바로 잡힌다.
+	systemProperty 'spring.datasource.hikari.leak-detection-threshold', '30000'
 }

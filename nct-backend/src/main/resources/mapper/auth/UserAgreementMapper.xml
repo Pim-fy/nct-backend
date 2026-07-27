@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- @ai_generated: 성공 가입 시 고정 약관 3건 일괄 저장 -->
+<mapper namespace="nct.auth.mapper.UserAgreementMapper">
+
+    <insert id="insertAll">
+        INSERT INTO USER_AGREE (
+            USR_SN, USR_AGR_TYPE_CD, USR_AGR_YN
+        ) VALUES
+        <foreach collection="agreements" item="agreement" separator=",">
+            (#{agreement.usrSn}, #{agreement.usrAgrTypeCd}, #{agreement.usrAgrYn})
+        </foreach>
+    </insert>
+</mapper>

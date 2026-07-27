@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- Claude Code 작성 (BJN, 2026-07-18) -->
+<mapper namespace="nct.agree.mapper.AgreeHistoryMapper">
+
+    <!-- 동의 이력 행 추가. 참조 5종 중 정확히 1개만 non-null이어야 한다 (DB CHECK 제약 + 서비스 검증 이중 방어) -->
+    <insert id="insert" parameterType="nct.agree.domain.AgreeHistory"
+            useGeneratedKeys="true" keyProperty="agrHstSn">
+        /* 동의: 행위 시점 동의 이력 기록 */
+        INSERT INTO AGREE_HISTORY (USR_SN, BID_SN, AUC_SN, PT_LDG_SN, TRD_DSP_SN, TRD_SN,
+                                   AGR_TYPE_CD, AGR_ACT_TYPE_CD, AGR_HST_AGR_YN)
+        VALUES (#{usrSn}, #{bidSn}, #{aucSn}, #{ptLdgSn}, #{trdDspSn}, #{trdSn},
+                #{agrTypeCd}, #{agrActTypeCd}, #{agrHstAgrYn})
+    </insert>
+
+    <!-- 컬럼 별칭(AS)을 직접 명시하는 이유: 전역 map-underscore-to-camel-case 설정이
+         git에 안 올라가는 application.properties 소속이라 PC마다 있거나 없기 때문 (타 매퍼와 같은 방침) -->
+    <select id="selectListByUser" resultType="nct.agree.domain.AgreeHistory">
+        /* 동의: 회원별 이력 (최신순 100건) */
+        SELECT AGR_HST_SN      AS agrHstSn,
+               USR_SN          AS usrSn,
+               BID_SN          AS bidSn,
+               AUC_SN          AS aucSn,
+               PT_LDG_SN       AS ptLdgSn,
+               TRD_DSP_SN      AS trdDspSn,
+               TRD_SN          AS trdSn,
+               AGR_TYPE_CD     AS agrTypeCd,
+               AGR_ACT_TYPE_CD AS agrActTypeCd,
+               AGR_HST_AGR_YN  AS agrHstAgrYn,
+               AGR_HST_REG_DT  AS agrHstRegDt
+        FROM AGREE_HISTORY
+        WHERE USR_SN = #{usrSn}
+        ORDER BY AGR_HST_SN DESC
+        LIMIT 100
+    </select>
+
+</mapper>

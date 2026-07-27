@@ -13,4 +13,5 @@ public class TradeConfirmationTarget {
     private Long sellerUserId;
     private Long buyerUserId;
     private String tradeStatus;
+    private String tradeMethod;
 }

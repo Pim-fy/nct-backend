@@ -46,6 +46,8 @@ import nct.global.exception.ErrorCode;
  *     (TRADE_DELIVERY_FILE 연결 테이블 — 생성 백종남/소유 담당자4, 실DB 적용 2026-07-20, D-034)
  *   - review(리뷰 사진, CHG-021): 이미지만 — product와 동일하게 공개 서빙
  *     (REVIEW_IMAGE 연결 테이블 — 소유 담당자3, 2026-07-21)
+ *   - profile(회원 프로필 사진, F-AUTH-010/ISS-022): 이미지만 — 다른 사용자에게도 노출되므로
+ *     product와 동일하게 공개 서빙 (USERS.USR_PRFL_FL_SN 연결, 소유 담당자1, 2026-07-27)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -75,7 +77,8 @@ public class FileStorageService {
             "product",  Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "provider", Set.of("pdf", "jpg", "jpeg", "png", "webp"),
             "delivery", Set.of("jpg", "jpeg", "png", "webp"),
-            "review", Set.of("jpg", "jpeg", "png", "gif", "webp"));
+            "review", Set.of("jpg", "jpeg", "png", "gif", "webp"),
+            "profile", Set.of("jpg", "jpeg", "png", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -241,6 +244,18 @@ public class FileStorageService {
             throw new CustomException(ErrorCode.FILE_NOT_FOUND);
         }
         return resolved;
+    }
+
+    /**
+     * ISS-022: 다른 도메인이 보관 중인 flSn을 공개 URL로 표시해야 할 때(예: 회원 프로필 사진) 쓰는
+     * 조회 전용 헬퍼. FILES를 직접 조회하지 않고 이 서비스를 거치는 단일 패턴을 읽기에도 유지한다.
+     */
+    @Transactional(readOnly = true)
+    public String getUrl(Long flSn) {
+        if (flSn == null) {
+            return null;
+        }
+        return fileMapper.findById(flSn).map(FileMeta::getFlPath).orElse(null);
     }
 
     /** 담당자 7 제공자 신청 서류 연결용: 업로드된 파일이 현재 사용자 소유의 활성 파일인지 확인합니다. */

@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.member.dto.OauthLinkResponse;
+import nct.member.dto.PasswordChangeRequest;
 import nct.member.dto.ProfileUpdateRequest;
 import nct.member.dto.ProfileUpdateResponse;
 import nct.member.dto.WithdrawRequest;
@@ -30,7 +31,9 @@ import nct.member.service.MemberWithdrawalRequestService;
 /**
  * [회원 프로필·탈퇴·소셜 연동 API 목록]
  *
+ *  GET    /api/member/me                                   프로필 상세 조회                 (authenticated)
  *  PATCH  /api/member/me                                   프로필 수정                     (authenticated)
+ *  PATCH  /api/member/me/password                          비밀번호 변경                    (authenticated)
  *  POST   /api/member/me/withdraw                          회원 탈퇴(활성 계정)             (authenticated)
  *  POST   /api/member/withdrawal-links                     탈퇴 확인 링크 발송(정지 계정)    (permitAll)
  *  POST   /api/member/withdrawal-links/confirm             탈퇴 확정(정지 계정)              (permitAll)
@@ -46,6 +49,14 @@ public class MemberController {
     private final MemberWithdrawalRequestService withdrawalRequestService;
     private final MemberOauthLinkService memberOauthLinkService;
 
+    /** ISS-022: 마이페이지 프로필 수정 화면 초기값 조회 */
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<ProfileUpdateResponse>> getProfile(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        ProfileUpdateResponse response = memberService.getProfile(userDetails.getMember().getId());
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     /** F-AUTH-010: 프로필 기본 정보 수정 */
     @PatchMapping("/me")
     public ResponseEntity<ApiResponse<ProfileUpdateResponse>> updateProfile(
@@ -53,6 +64,15 @@ public class MemberController {
             @Valid @RequestBody ProfileUpdateRequest request) {
         ProfileUpdateResponse response = memberService.updateProfile(userDetails.getMember().getId(), request);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /** ISS-022: 로그인 상태 비밀번호 변경 - 현재 비밀번호 재확인 후 즉시 처리 */
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody PasswordChangeRequest request) {
+        memberService.changePassword(userDetails.getMember().getId(), request);
+        return ResponseEntity.ok(ApiResponse.success());
     }
 
     /** F-AUTH-011: 활성 계정 탈퇴 - 로그인 상태 + 비밀번호 재확인으로 즉시 처리 */

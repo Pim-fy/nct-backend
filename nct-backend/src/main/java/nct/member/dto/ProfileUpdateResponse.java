@@ -11,7 +11,14 @@ public class ProfileUpdateResponse {
 
     private String nickname;
     private Long profileFileSn;
+    private String profileImageUrl;
     private String email;
     private String bankName;
     private String accountNo;
+    private String phone;
+    private String zip;
+    private String address;
+    private String addressDetail;
+    // ISS-022: 소셜 로그인 전용(시스템 생성 로그인ID) 계정은 실제 비밀번호가 없어 변경 UI를 숨겨야 한다.
+    private boolean passwordChangeable;
 }

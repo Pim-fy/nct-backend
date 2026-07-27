@@ -164,7 +164,11 @@
                USR_EML_ENC = #{emailCiphertext},
                USR_EML_HMAC = #{emailHmac},
                USR_BANK_NM_ENC = COALESCE(#{bankNameCiphertext}, USR_BANK_NM_ENC),
-               USR_ACNT_NO_ENC = COALESCE(#{accountNoCiphertext}, USR_ACNT_NO_ENC)
+               USR_ACNT_NO_ENC = COALESCE(#{accountNoCiphertext}, USR_ACNT_NO_ENC),
+               USR_TELNO_ENC = COALESCE(#{telnoCiphertext}, USR_TELNO_ENC),
+               USR_ZIP_ENC = COALESCE(#{zipCiphertext}, USR_ZIP_ENC),
+               USR_ADDR_ENC = COALESCE(#{addressCiphertext}, USR_ADDR_ENC),
+               USR_DADDR_ENC = COALESCE(#{addressDetailCiphertext}, USR_DADDR_ENC)
         WHERE  USR_SN = #{usrSn}
     </update>
 

@@ -23,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.chat.service.ChatService;
 import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
@@ -62,6 +63,7 @@ class TradeServiceTest {
     private MemberService memberService;
     private SettlementService settlementService;
     private ChatService chatService;
+    private FieldCryptoService fieldCryptoService;
     private TradeService tradeService;
 
     @BeforeEach
@@ -73,6 +75,9 @@ class TradeServiceTest {
         memberService = mock(MemberService.class);
         settlementService = mock(SettlementService.class);
         chatService = mock(ChatService.class);
+        fieldCryptoService = mock(FieldCryptoService.class);
+        when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
@@ -80,7 +85,8 @@ class TradeServiceTest {
                 fileStorageService,
                 memberService,
                 settlementService,
-                chatService);
+                chatService,
+                fieldCryptoService);
     }
 
     @Test

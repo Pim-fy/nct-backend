@@ -10,13 +10,13 @@ import nct.member.domain.Member;
 @Mapper
 public interface MemberMapper {
 
-    Optional<Member> findMemberByEmail(String email);
+    Optional<Member> findMemberByEmail(String emailHmac);
 
     // @ai_generated: F-AUTH-011 TOCTOU 하드닝 - 정지 계정 탈퇴 확정 전용 잠금 조회.
     // SELECT ... FOR UPDATE로 해당 회원 행을 트랜잭션 종료까지 잠가, 상태 재검사(확인)와
     // withdraw() 실행(사용) 사이에 다른 트랜잭션이 상태를 바꿀 수 없게 한다. 활성 탈퇴 경로
     // (MemberService.withdrawActive)와 공유 withdraw()에는 영향 없음 - 이 경로에서만 사용.
-    Optional<Member> findMemberByEmailForUpdate(String email);
+    Optional<Member> findMemberByEmailForUpdate(String emailHmac);
 
     // @ai_generated: 로컬 로그인과 가입 중복 확인용 USERS 조회다.
     Optional<Member> findMemberByLoginId(String loginId);
@@ -28,7 +28,7 @@ public interface MemberMapper {
 
     boolean existsByNickname(String nickname);
 
-    boolean existsByEmail(String email);
+    boolean existsByEmail(String emailHmac);
 
     void saveCertifiedMember(Member member);
 
@@ -48,12 +48,14 @@ public interface MemberMapper {
     void updateProfile(@Param("usrSn") Long usrSn,
                        @Param("nickname") String nickname,
                        @Param("profileFileSn") Long profileFileSn,
-                       @Param("email") String email,
-                       @Param("bankName") String bankName,
-                       @Param("accountNo") String accountNo);
+                       @Param("emailCiphertext") String emailCiphertext,
+                       @Param("emailHmac") String emailHmac,
+                       @Param("bankNameCiphertext") String bankNameCiphertext,
+                       @Param("accountNoCiphertext") String accountNoCiphertext);
 
     // @ai_generated: F-AUTH-011 - POL-AUTH-013 컬럼별 보존 범위를 한 트랜잭션으로 반영한다.
     void withdraw(@Param("usrSn") Long usrSn,
-                 @Param("anonymizedEmail") String anonymizedEmail,
+                 @Param("anonymizedEmailCiphertext") String anonymizedEmailCiphertext,
+                 @Param("anonymizedEmailHmac") String anonymizedEmailHmac,
                  @Param("anonymizedNickname") String anonymizedNickname);
 }

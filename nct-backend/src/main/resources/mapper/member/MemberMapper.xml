@@ -16,14 +16,15 @@
         <result column="USR_PSWD_HASH"          property="usrPswdHash"/>
         <result column="USR_REFRESH_TOKEN_HASH" property="usrRefreshTokenHash"/>
         <result column="USR_NM"                 property="usrNm"/>
-        <result column="USR_EML"                property="usrEml"/>
+        <result column="USR_EML_ENC"            property="usrEml"/>
+        <result column="USR_EML_HMAC"           property="usrEmlHmac"/>
         <result column="USR_EML_CERT_YN"        property="usrEmlCertYn"/>
-        <result column="USR_TELNO"              property="usrTelno"/>
-        <result column="USR_ADDR"               property="usrAddr"/>
-        <result column="USR_DADDR"              property="usrDaddr"/>
-        <result column="USR_ZIP"                property="usrZip"/>
-        <result column="USR_BANK_NM"            property="usrBankNm"/>
-        <result column="USR_ACNT_NO"            property="usrAcntNo"/>
+        <result column="USR_TELNO_ENC"          property="usrTelno"/>
+        <result column="USR_ADDR_ENC"           property="usrAddr"/>
+        <result column="USR_DADDR_ENC"          property="usrDaddr"/>
+        <result column="USR_ZIP_ENC"            property="usrZip"/>
+        <result column="USR_BANK_NM_ENC"        property="usrBankNm"/>
+        <result column="USR_ACNT_NO_ENC"        property="usrAcntNo"/>
         <result column="USR_PRFL_FL_SN"         property="usrPrflFlSn"/>
         <result column="USR_STATUS_CD"          property="usrStatusCd"/>
         <result column="USR_ROLE_CD"            property="usrRoleCd"/>
@@ -46,35 +47,35 @@
     <select id="findMemberByEmail" parameterType="String" resultMap="memberMap">
         /* 이메일로 회원 조회 */
         SELECT
-            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML,
-            USR_EML_CERT_YN, USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP,
-            USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC,
+            USR_EML_CERT_YN, USR_TELNO_ENC, USR_ADDR_ENC, USR_DADDR_ENC, USR_ZIP_ENC,
+            USR_BANK_NM_ENC, USR_ACNT_NO_ENC, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
             USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
             USR_REG_ID, USR_UPDT_ID
         FROM   USERS
-        WHERE  USR_EML = #{email}
+        WHERE  USR_EML_HMAC = #{emailHmac}
     </select>
 
     <!-- @ai_generated: F-AUTH-011 TOCTOU 하드닝 - 정지 계정 탈퇴 확정 직전 잠금 조회 전용.
          일반 조회(findMemberByEmail)와 컬럼은 동일하고 FOR UPDATE만 추가한다. -->
     <select id="findMemberByEmailForUpdate" parameterType="String" resultMap="memberMap">
         SELECT
-            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML,
-            USR_EML_CERT_YN, USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP,
-            USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC,
+            USR_EML_CERT_YN, USR_TELNO_ENC, USR_ADDR_ENC, USR_DADDR_ENC, USR_ZIP_ENC,
+            USR_BANK_NM_ENC, USR_ACNT_NO_ENC, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
             USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
             USR_REG_ID, USR_UPDT_ID
         FROM   USERS
-        WHERE  USR_EML = #{email}
+        WHERE  USR_EML_HMAC = #{emailHmac}
         FOR UPDATE
     </select>
 
     <!-- @ai_generated: 로컬 로그인은 USR_LOGIN_ID로 조회하고 이메일은 JWT/인증용으로 유지한다. -->
     <select id="findMemberByLoginId" parameterType="String" resultMap="memberMap">
         SELECT
-            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML,
-            USR_EML_CERT_YN, USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP,
-            USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC,
+            USR_EML_CERT_YN, USR_TELNO_ENC, USR_ADDR_ENC, USR_DADDR_ENC, USR_ZIP_ENC,
+            USR_BANK_NM_ENC, USR_ACNT_NO_ENC, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
             USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
             USR_REG_ID, USR_UPDT_ID
         FROM USERS
@@ -84,9 +85,9 @@
     <!-- @ai_generated: JWT subject(usrSn) 기반 조회 - 로그인 필터·재발급 검증에 사용 (가변 필드인 email 대신 불변 PK 사용) -->
     <select id="findMemberById" parameterType="Long" resultMap="memberMap">
         SELECT
-            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML,
-            USR_EML_CERT_YN, USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP,
-            USR_BANK_NM, USR_ACNT_NO, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC,
+            USR_EML_CERT_YN, USR_TELNO_ENC, USR_ADDR_ENC, USR_DADDR_ENC, USR_ZIP_ENC,
+            USR_BANK_NM_ENC, USR_ACNT_NO_ENC, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
             USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
             USR_REG_ID, USR_UPDT_ID
         FROM USERS
@@ -103,7 +104,7 @@
     </select>
 
     <select id="existsByEmail" parameterType="String" resultType="boolean">
-        SELECT EXISTS(SELECT 1 FROM USERS WHERE USR_EML = #{email})
+        SELECT EXISTS(SELECT 1 FROM USERS WHERE USR_EML_HMAC = #{emailHmac})
     </select>
 
     <!-- @ai_generated: 인증 완료 가입만 USERS를 생성하고 이메일 인증 완료값을 함께 저장한다. -->
@@ -111,11 +112,11 @@
             useGeneratedKeys="true" keyProperty="usrSn">
         /* 인증 완료 회원 가입 */
         INSERT INTO USERS (
-            USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_EML_CERT_YN,
-            USR_TELNO, USR_ADDR, USR_DADDR, USR_ZIP, USR_BANK_NM, USR_ACNT_NO,
+            USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_EML_CERT_YN,
+            USR_TELNO_ENC, USR_ADDR_ENC, USR_DADDR_ENC, USR_ZIP_ENC, USR_BANK_NM_ENC, USR_ACNT_NO_ENC,
             USR_STATUS_CD, USR_ROLE_CD
         ) VALUES (
-            #{usrLoginId}, #{usrPswdHash}, #{usrNm}, #{usrEml}, #{usrEmlCertYn},
+            #{usrLoginId}, #{usrPswdHash}, #{usrNm}, #{usrEml}, #{usrEmlHmac}, #{usrEmlCertYn},
             #{usrTelno}, #{usrAddr}, #{usrDaddr}, #{usrZip}, #{usrBankNm}, #{usrAcntNo},
             #{usrStatusCd}, #{usrRoleCd}
         )
@@ -160,9 +161,10 @@
         UPDATE USERS
         SET    USR_NM = #{nickname},
                USR_PRFL_FL_SN = COALESCE(#{profileFileSn}, USR_PRFL_FL_SN),
-               USR_EML = #{email},
-               USR_BANK_NM = COALESCE(#{bankName}, USR_BANK_NM),
-               USR_ACNT_NO = COALESCE(#{accountNo}, USR_ACNT_NO)
+               USR_EML_ENC = #{emailCiphertext},
+               USR_EML_HMAC = #{emailHmac},
+               USR_BANK_NM_ENC = COALESCE(#{bankNameCiphertext}, USR_BANK_NM_ENC),
+               USR_ACNT_NO_ENC = COALESCE(#{accountNoCiphertext}, USR_ACNT_NO_ENC)
         WHERE  USR_SN = #{usrSn}
     </update>
 
@@ -172,13 +174,14 @@
         /* 회원 탈퇴 - 상태 전환 + 보존 데이터 컬럼별 처리 */
         UPDATE USERS
         SET    USR_STATUS_CD = 'USRC0003',
-               USR_TELNO = NULL,
-               USR_ADDR = NULL,
-               USR_DADDR = NULL,
-               USR_ZIP = NULL,
-               USR_BANK_NM = NULL,
-               USR_ACNT_NO = NULL,
-               USR_EML = #{anonymizedEmail},
+               USR_TELNO_ENC = NULL,
+               USR_ADDR_ENC = NULL,
+               USR_DADDR_ENC = NULL,
+               USR_ZIP_ENC = NULL,
+               USR_BANK_NM_ENC = NULL,
+               USR_ACNT_NO_ENC = NULL,
+               USR_EML_ENC = #{anonymizedEmailCiphertext},
+               USR_EML_HMAC = #{anonymizedEmailHmac},
                USR_NM = #{anonymizedNickname},
                USR_PRFL_FL_SN = NULL
         WHERE  USR_SN = #{usrSn}

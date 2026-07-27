@@ -17,6 +17,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.global.utils.TokenHashUtil;
 import lombok.RequiredArgsConstructor;
 
@@ -44,6 +45,8 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
     private final TokenHashUtil tokenHashUtil;
+    // @ai_generated: 비밀번호 재설정 이력의 대상 이메일을 암호문 + HMAC으로 저장한다.
+    private final FieldCryptoService fieldCryptoService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.frontend.url:http://localhost:5173}")
@@ -64,7 +67,7 @@ public class PasswordResetService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        EmailVerification latest = emailVerificationMapper.findLatestPasswordResetByEmailForUpdate(email)
+        EmailVerification latest = emailVerificationMapper.findLatestPasswordResetByEmailForUpdate(fieldCryptoService.emailHmac(email))
                                                             .orElse(null);
         LocalDateTime expiresAt = now.plusHours(1);
 
@@ -104,7 +107,7 @@ public class PasswordResetService {
         LocalDateTime now = LocalDateTime.now();
         ensureConfirmable(verification, now);
 
-        AuthMember member = authMemberPort.findByEmail(verification.getEmlVrfEmail())
+        AuthMember member = authMemberPort.findByEmail(fieldCryptoService.decrypt(verification.getEmlVrfEmail()))
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         // @ai_generated: 링크 방식은 별도 "검증" 단계 없이 클릭+제출이 한 번에 오므로,
@@ -132,7 +135,8 @@ public class PasswordResetService {
     private void createAndSend(String email, LocalDateTime sentAt, LocalDateTime expiresAt) {
         String token = createToken();
         EmailVerification verification = EmailVerification.builder()
-                .emlVrfEmail(email)
+                .emlVrfEmail(fieldCryptoService.encrypt(email))
+                .emlVrfEmailHmac(fieldCryptoService.emailHmac(email))
                 .emlVrfPurposeCd(PASSWORD_RESET_PURPOSE)
                 .emlVrfCodeHash(tokenHashUtil.hash(token))
                 .emlVrfStatusCd(PENDING)

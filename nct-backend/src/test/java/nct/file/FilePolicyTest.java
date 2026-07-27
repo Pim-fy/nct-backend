@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
+import nct.global.security.crypto.FieldCryptoService;
 
 /**
  * [테스트 - 파일 정책] (서비스별 확장자 + 관리자 전용 제공자 서류 열람 — 담당자7 요청 2026-07-20)
@@ -33,6 +34,7 @@ class FilePolicyTest {
 
     @Autowired FileStorageService fileStorageService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long ownerSn; // 서류를 올린 신청자
     long adminSn; // 열람하는 관리자 (감사로그 행위자)
@@ -176,10 +178,11 @@ class FilePolicyTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix + "_" + System.nanoTime(), loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix + "_" + System.nanoTime(), fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

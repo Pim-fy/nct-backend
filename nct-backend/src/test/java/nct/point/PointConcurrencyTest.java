@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import nct.common.domain.RefType;
+import nct.global.security.crypto.FieldCryptoService;
 import nct.point.domain.PointBalance;
 import nct.point.exception.InsufficientPointException;
 import nct.point.service.PointService;
@@ -35,16 +36,18 @@ class PointConcurrencyTest {
 
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long buyerSn;
 
     @BeforeEach
     void setUp() {
         String loginId = "t_concurrent_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', 'concurrent', ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', 'concurrent', ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         buyerSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         jdbc.update("""

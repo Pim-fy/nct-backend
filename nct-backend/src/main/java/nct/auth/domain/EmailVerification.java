@@ -16,7 +16,9 @@ import lombok.NoArgsConstructor;
 public class EmailVerification {
 
     private Long emlVrfSn;
-    private String emlVrfEmail;
+    private String emlVrfEmail;      // 이메일 암호문
+    // @ai_generated: EMAIL_VERIFICATION 조회용 HMAC. 이력 조회이므로 UNIQUE 제약은 두지 않는다.
+    private String emlVrfEmailHmac;
     private String emlVrfPurposeCd;
     private String emlVrfCodeHash;
     private String emlVrfStatusCd;

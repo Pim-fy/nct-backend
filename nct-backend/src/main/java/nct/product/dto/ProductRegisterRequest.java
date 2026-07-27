@@ -42,7 +42,10 @@ public class ProductRegisterRequest {
     @Size(max = 5, message = "이미지는 최대 5장까지 등록할 수 있습니다.")
     private List<Long> flSnList;
 
-    // 경매 종료일시 — 임시저장(PRDC0001)이면 null, 공개 등록(PRDC0002)이면 필수
+    // 경매 시작일시 — 임시저장(PRDC0001)에서는 draft 보존용으로만 쓰이고, 공개 등록 시 실제 경매 시작에는 아직 반영되지 않음(F-AUC-002 확장 예정)
+    private LocalDateTime aucStartDt;
+
+    // 경매 종료일시 — 임시저장(PRDC0001)이면 draft 보존용, 공개 등록(PRDC0002)이면 필수(실제 AUCTION 값)
     private LocalDateTime aucEndDt;
 
     // 입찰 단위 — null이면 AuctionService 기본값(1,000원) 적용

@@ -92,6 +92,18 @@
          ORDER BY COALESCE(c.PRD_CMT_PARENT_SN, c.PRD_CMT_SN), c.PRD_CMT_TYPE_CD
     </select>
 
+    <!-- 신고 검증용 문의 단건 조회 (prdCmtSn → 작성자·판매자·타입) -->
+    <select id="findInquiryReportTarget" resultType="nct.product.dto.InquiryReportTarget">
+        SELECT c.PRD_CMT_SN       AS prdCmtSn,
+               c.PRD_SN           AS prdSn,
+               c.USR_SN           AS writerUsrSn,
+               p.USR_SN           AS sellerUsrSn,
+               c.PRD_CMT_TYPE_CD  AS prdCmtTypeCd
+          FROM PRODUCT_COMMENT c
+          JOIN PRODUCT p ON p.PRD_SN = c.PRD_SN
+         WHERE c.PRD_CMT_SN = #{prdCmtSn}
+    </select>
+
     <!-- 문의 단건 조회 (답변 등록 전 소유권 확인용) -->
     <select id="findInquiryById" resultType="nct.product.domain.ProductComment">
         SELECT PRD_CMT_SN       AS prdCmtSn,

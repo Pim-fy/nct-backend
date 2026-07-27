@@ -28,6 +28,7 @@ import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
 import nct.product.service.ProductService;
@@ -43,6 +44,7 @@ public class AuctionService {
     private static final int DEFAULT_SIZE = 12;
     private static final int MAX_SIZE = 60;
     private static final int MAX_FINALIZATION_BATCH_SIZE = 500;
+    private static final int MAX_NOTIFICATION_BATCH_SIZE = 500;
     private static final String SYSTEM_ACTOR = "SYSTEM";
     private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
@@ -54,6 +56,7 @@ public class AuctionService {
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
     private final AuctionEventPublisher auctionEventPublisher;
+    private final NotificationService notificationService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -115,6 +118,28 @@ public class AuctionService {
         return auctionMapper.findExpiredActiveAuctionIds(batchSize);
     }
 
+    @Transactional(readOnly = true)
+    public List<Long> findClosingSoonActiveAuctionIds(int limit) {
+        int batchSize = Math.max(1, Math.min(limit, MAX_NOTIFICATION_BATCH_SIZE));
+        return auctionMapper.findClosingSoonActiveAuctionIds(batchSize);
+    }
+
+    @Transactional
+    public int notifyClosingSoonAuction(Long auctionId) {
+        List<Long> recipients = auctionMapper.findClosingSoonRecipientUserIds(auctionId);
+        if (recipients == null || recipients.isEmpty()) {
+            return 0;
+        }
+
+        List<Long> distinctRecipients = recipients.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        distinctRecipients.forEach(userId ->
+                notificationService.notifyAuctionClosingSoon(userId, auctionId));
+        return distinctRecipients.size();
+    }
+
     @Transactional
     public boolean finalizeExpiredAuction(Long auctionId) {
         AuctionBidTarget target = findBidTarget(auctionId);
@@ -146,6 +171,12 @@ public class AuctionService {
                     target.getCurrentHighestBidderId(),
                     target.getCurrentPrice(),
                     AuctionTradeSource.AUCTION_WIN);
+            notificationService.notifyAuctionResult(
+                    target.getCurrentHighestBidderId(),
+                    auctionId,
+                    true);
+        } else {
+            notificationService.notifyAuctionFailed(target.getSellerId(), auctionId);
         }
         publishAuctionChanged(auctionId, "AUCTION_FINALIZED");
         return true;
@@ -236,6 +267,7 @@ public class AuctionService {
                 policy.getAucExtMin(),
                 policy.getAucExtMaxCnt(),
                 userId.toString());
+        notifyOutbidBidder(previousHighestBidderId, userId, auctionId, bidAmount);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
         publishAuctionChanged(auctionId, "BID_PLACED");
@@ -270,6 +302,8 @@ public class AuctionService {
                 userId,
                 instantBuyPrice,
                 AuctionTradeSource.BUY_NOW);
+        notifyOutbidBidder(previousHighestBidderId, userId, auctionId, instantBuyPrice);
+        notificationService.notifyAuctionResult(userId, auctionId, true);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
         publishAuctionChanged(auctionId, "BUY_NOW");
@@ -384,6 +418,20 @@ public class AuctionService {
                 RefType.BID,
                 previousHighestBidId,
                 "상위 입찰 발생에 따른 기존 입찰 홀딩 반환");
+    }
+
+    private void notifyOutbidBidder(
+            Long previousHighestBidderId,
+            Long newHighestBidderId,
+            Long auctionId,
+            BigDecimal newPrice) {
+        if (previousHighestBidderId == null || previousHighestBidderId.equals(newHighestBidderId)) {
+            return;
+        }
+        notificationService.notifyBidUpdated(
+                previousHighestBidderId,
+                auctionId,
+                toPointAmount(newPrice));
     }
 
     private long toPointAmount(BigDecimal amount) {

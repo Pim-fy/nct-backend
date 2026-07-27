@@ -21,6 +21,17 @@ public class AuctionFinalizationScheduler {
     private final AuctionService auctionService;
 
     @Scheduled(fixedDelayString = "${auction.finalization.fixed-delay-ms:60000}")
+    public void notifyClosingSoonAuctions() {
+        for (Long auctionId : auctionService.findClosingSoonActiveAuctionIds(BATCH_SIZE)) {
+            try {
+                auctionService.notifyClosingSoonAuction(auctionId);
+            } catch (RuntimeException exception) {
+                log.error("Failed to notify closing auction. auctionId={}", auctionId, exception);
+            }
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${auction.finalization.fixed-delay-ms:60000}")
     public void finalizeExpiredAuctions() {
         for (Long auctionId : auctionService.findExpiredActiveAuctionIds(BATCH_SIZE)) {
             try {

@@ -368,6 +368,7 @@ class TradeServiceTest {
                 91L,
                 "TRDC0004",
                 "판매자가 발송 인증사진과 배송 메모를 등록했습니다.");
+        verify(notificationService).notifyDeliveryStart(20L, 91L);
         assertThat(result).isSameAs(detail);
     }
 
@@ -514,6 +515,7 @@ class TradeServiceTest {
         target.setBuyerUserId(20L);
         target.setSellerUserId(10L);
         target.setTradeStatus("TRDC0004");
+        target.setTradeMethod("TRDC0009");
         TradeDetailResponse detail = new TradeDetailResponse();
         detail.setTradeId(91L);
         SystemSettingDetail setting = new SystemSettingDetail();
@@ -539,6 +541,25 @@ class TradeServiceTest {
                 "구매자가 거래 완료 확인을 요청했습니다.");
         verify(notificationService).notifyTradeConfirmRequest(10L, 91L, 5);
         assertThat(result).isSameAs(detail);
+    }
+
+    @Test
+    void rejectsOfflineCompletionRequestBeforeScheduleIsSaved() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setTradeStatus("TRDC0003");
+        target.setTradeMethod("TRDC0010");
+        when(tradeMapper.findBuyerTradeForConfirmationForUpdate(91L, 20L))
+                .thenReturn(target);
+        when(tradeMapper.hasOfflineSchedule(91L)).thenReturn(false);
+
+        assertThatThrownBy(() -> tradeService.requestCompletionConfirmation(91L, 20L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(tradeMapper, never()).startCompletionConfirmation(
+                anyLong(), any(), org.mockito.ArgumentMatchers.anyString());
+        verifyNoInteractions(systemSettingMapper, notificationService);
     }
 
     @Test
@@ -576,22 +597,8 @@ class TradeServiceTest {
                 "TRDC0006",
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
         verify(settlementService).createPending(91L, 10L, 30000L);
-        verify(notificationService).notify(
-                20L,
-                nct.notification.domain.NotificationType.TRADE,
-                nct.notification.domain.NotificationDomain.TRADE,
-                "거래 자동 완료",
-                "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다.",
-                nct.common.domain.RefType.TRADE,
-                91L);
-        verify(notificationService).notify(
-                10L,
-                nct.notification.domain.NotificationType.TRADE,
-                nct.notification.domain.NotificationDomain.TRADE,
-                "거래 자동 완료",
-                "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다.",
-                nct.common.domain.RefType.TRADE,
-                91L);
+        verify(notificationService).notifyTradeComplete(20L, 91L, true);
+        verify(notificationService).notifyTradeComplete(10L, 91L, true);
     }
 
     @Test
@@ -670,6 +677,7 @@ class TradeServiceTest {
         TradeDeliverySubmitTarget target = new TradeDeliverySubmitTarget();
         target.setTradeId(91L);
         target.setDeliveryId(deliveryId);
+        target.setBuyerUserId(20L);
         target.setTradeStatus(tradeStatus);
         return target;
     }

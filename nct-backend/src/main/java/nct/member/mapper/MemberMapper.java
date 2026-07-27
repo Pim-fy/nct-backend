@@ -44,14 +44,18 @@ public interface MemberMapper {
     void updatePasswordById(@Param("usrSn") Long usrSn,
                             @Param("encodedPassword") String encodedPassword);
 
-    // @ai_generated: F-AUTH-010 - POL-AUTH-014로 확정된 4개 필드만 갱신한다.
+    // @ai_generated: F-AUTH-010 - POL-AUTH-014(ISS-022 개정)로 확정된 6개 필드를 갱신한다.
     void updateProfile(@Param("usrSn") Long usrSn,
                        @Param("nickname") String nickname,
                        @Param("profileFileSn") Long profileFileSn,
                        @Param("emailCiphertext") String emailCiphertext,
                        @Param("emailHmac") String emailHmac,
                        @Param("bankNameCiphertext") String bankNameCiphertext,
-                       @Param("accountNoCiphertext") String accountNoCiphertext);
+                       @Param("accountNoCiphertext") String accountNoCiphertext,
+                       @Param("telnoCiphertext") String telnoCiphertext,
+                       @Param("zipCiphertext") String zipCiphertext,
+                       @Param("addressCiphertext") String addressCiphertext,
+                       @Param("addressDetailCiphertext") String addressDetailCiphertext);
 
     // @ai_generated: F-AUTH-011 - POL-AUTH-013 컬럼별 보존 범위를 한 트랜잭션으로 반영한다.
     void withdraw(@Param("usrSn") Long usrSn,

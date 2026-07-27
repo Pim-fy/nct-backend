@@ -33,7 +33,7 @@ public class TossPaymentsClient {
 
     private final ObjectMapper objectMapper;
 
-    /** 결제위젯 방식 시크릿 키 (gsk) — 프로젝트 루트 .env 파일에서 읽는다 */
+    /** 결제위젯 방식 시크릿 키 (gsk) — application.properties에서 읽는다 */
     @Value("${toss.payments.widget.secret-key}")
     private String secretKey;
 

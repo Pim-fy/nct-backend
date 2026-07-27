@@ -29,10 +29,39 @@
         FOR UPDATE
     </select>
 
+    <select id="selectByTrade" resultType="nct.settlement.domain.Settlement">
+        /* 정산: 거래번호 기준 단건 조회 */
+        SELECT STLM_SN        AS stlmSn,
+               TRD_SN         AS trdSn,
+               USR_SN         AS usrSn,
+               STLM_AMT       AS stlmAmt,
+               STLM_STATUS_CD AS stlmStatusCd,
+               STLM_REG_DT    AS stlmRegDt,
+               STLM_UPDT_DT   AS stlmUpdtDt
+        FROM SETTLEMENT
+        WHERE TRD_SN = #{trdSn}
+    </select>
+
+    <select id="selectByTradeForUpdate" resultType="nct.settlement.domain.Settlement">
+        /* 정산: 거래번호 기준 잠금 조회 */
+        SELECT STLM_SN        AS stlmSn,
+               TRD_SN         AS trdSn,
+               USR_SN         AS usrSn,
+               STLM_AMT       AS stlmAmt,
+               STLM_STATUS_CD AS stlmStatusCd,
+               STLM_REG_DT    AS stlmRegDt,
+               STLM_UPDT_DT   AS stlmUpdtDt
+        FROM SETTLEMENT
+        WHERE TRD_SN = #{trdSn}
+        FOR UPDATE
+    </select>
+
     <update id="updateStatus">
         /* 정산: 상태코드 갱신 */
         UPDATE SETTLEMENT
-        SET STLM_STATUS_CD = #{statusCd}
+        SET STLM_STATUS_CD = #{statusCd},
+            STLM_UPDT_ID = #{actorId},
+            STLM_UPDT_DT = NOW()
         WHERE STLM_SN = #{stlmSn}
     </update>
 

@@ -45,6 +45,10 @@ public interface AuctionMapper {
 
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
+    List<Long> findClosingSoonActiveAuctionIds(@Param("limit") int limit);
+
+    List<Long> findClosingSoonRecipientUserIds(@Param("auctionId") Long auctionId);
+
     int insertAuction(
             @Param("productId") Long productId,
             @Param("statusCode") String statusCode,

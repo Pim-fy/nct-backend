@@ -43,16 +43,18 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
         AuthMember member = userDetails.getMember();
 
+        // 소셜 로그인은 별도 로그인 유지 체크박스가 없으므로 rememberMe 고정 (쿠키·토큰 만료 모두 동일 기준)
+        boolean rememberMe = true;
+
         // JWT 발급
         // @ai_generated: subject를 email(가변)에서 usrSn(불변 PK)으로 전환 - JwtTokenProvider 시그니처 변경에 따른 연쇄 수정
         String accessToken  = jwtTokenProvider.createAccessToken(member.getId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), rememberMe);
 
         // Refresh Token DB 저장
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
 
-        // httpOnly 쿠키 탑재 (소셜 로그인은 rememberMe 고정)
-        boolean rememberMe = true;
+        // httpOnly 쿠키 탑재
         response.addHeader(HttpHeaders.SET_COOKIE,
                 cookieUtil.createAccessTokenCookie(accessToken).toString());
         response.addHeader(HttpHeaders.SET_COOKIE,

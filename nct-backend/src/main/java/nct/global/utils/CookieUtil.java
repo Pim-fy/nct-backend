@@ -36,8 +36,11 @@ public class CookieUtil {
     @Value("${cookie.access-token-max-age:1800}")
     private int accessTokenMaxAge;
 
+    // @ai_generated: 로그인 유지(rememberMe) 버그 수정 - 프론트 문구("하루동안 로그인 유지")에 맞춰
+    // JwtTokenProvider.refreshTokenExpiryRememberMe(1일)와 동일 기준으로 정정. 이 값이 쿠키가
+    // 살아있는 기간(브라우저 재시작에도 유지)이고, 토큰 자체 만료도 같은 1일이라 두 기준이 일치한다.
     /** 로그인 유지 시 Refresh Token 쿠키 수명 (초) */
-    @Value("${cookie.refresh-token-max-age:1209600}")
+    @Value("${cookie.refresh-token-max-age:86400}")
     private long refreshTokenMaxAge;
 
     /** Access Token httpOnly 쿠키 생성 */
@@ -53,7 +56,7 @@ public class CookieUtil {
 
     /**
      * Refresh Token httpOnly 쿠키 생성
-     * @param rememberMe true  -> 설정된 수명(기본 14일)의 영속 쿠키
+     * @param rememberMe true  -> 설정된 수명(기본 1일)의 영속 쿠키(브라우저 재시작에도 유지)
      *                   false -> 세션 쿠키 (브라우저 종료 시 소멸)
      */
     public ResponseCookie createRefreshTokenCookie(String refreshToken, boolean rememberMe) {

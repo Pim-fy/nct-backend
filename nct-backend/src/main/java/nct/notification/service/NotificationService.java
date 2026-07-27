@@ -234,7 +234,7 @@ public class NotificationService {
         notificationMapper.insert(n);
         eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
 
-        String email = notificationMapper.selectUserEmail(usrSn);
+        String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
         boolean sent = email != null
                 && mailSender.send(email, "[에누리컷] " + title, content
                         + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");

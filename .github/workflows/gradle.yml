@@ -1,0 +1,89 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+# This workflow will build a Java project with Gradle and cache/restore any dependencies to improve the workflow execution time
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-gradle
+
+name: Java CI with Gradle
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Release 생성을 위해 write로 변경
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - run: touch ./nct-backend/src/main/resources/application.properties
+    - run: echo "${{ secrets.APP_PROPERTIES }}" > ./nct-backend/src/main/resources/application.properties
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582
+      with:
+        cache-read-only: false
+
+    - name: Grant Execute Permission For Gradlew
+      run: chmod +x gradlew
+      working-directory: ./nct-backend
+
+    - name: Build with Gradle
+      run: |
+        set -e
+        ./gradlew clean build -x test
+      working-directory: ./nct-backend
+
+    - name: Check built JAR file
+      run: ls -lh ./nct-backend/build/libs/*.jar
+
+    # JAR 파일명을 통일 (app.jar)
+    - name: Rename JAR
+      run: |
+        JAR_FILE=$(ls ./nct-backend/build/libs/*.jar | grep -v plain)
+        echo "JAR 파일: $JAR_FILE"
+        cp "$JAR_FILE" ./app.jar
+
+    # GitHub Release에 JAR 업로드
+    - name: Upload JAR to GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: deploy-latest
+        name: "Latest Deploy"
+        files: app.jar
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 서버에서 wget으로 직접 다운로드 후 재시작
+    - name: Deploy via SSH (wget)
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.OCI_HOST }}
+        username: ${{ secrets.OCI_USER }}
+        key: ${{ secrets.KSMARTDEV }}
+        envs: GH_PAT,REPO
+        script: |
+          # GitHub Release에서 직접 다운로드
+          wget -q \
+            --header="Authorization: token ${{ secrets.GH_PAT }}" \
+            --header="Accept: application/octet-stream" \
+            "https://github.com/${{ github.repository }}/releases/download/deploy-latest/app.jar" \
+            -O ${{ secrets.OCI_DEPLOY_PATH }}/app.jar
+
+          echo "다운로드 완료!"
+          ls -lh ${{ secrets.OCI_DEPLOY_PATH }}/app.jar
+
+          # 기존 release.sh 실행
+          cd ${{ secrets.OCI_RELEASE }}
+          sudo sh release.sh

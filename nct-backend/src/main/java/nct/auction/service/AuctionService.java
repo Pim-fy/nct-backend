@@ -20,6 +20,7 @@ import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionProductUpdateItem;
 import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
@@ -31,7 +32,10 @@ import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
+import nct.product.dto.ProductCommentResponse;
 import nct.product.service.ProductService;
+import nct.review.dto.TrustScoreResponse;
+import nct.review.service.ReviewService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.service.TradeService;
@@ -57,6 +61,7 @@ public class AuctionService {
     private final TradeService tradeService;
     private final AuctionEventPublisher auctionEventPublisher;
     private final NotificationService notificationService;
+    private final ReviewService reviewService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -116,6 +121,25 @@ public class AuctionService {
     public List<Long> findExpiredActiveAuctionIds(int limit) {
         int batchSize = Math.max(1, Math.min(limit, MAX_FINALIZATION_BATCH_SIZE));
         return auctionMapper.findExpiredActiveAuctionIds(batchSize);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Long> findReadyAuctionIds(int limit) {
+        int batchSize = Math.max(1, Math.min(limit, MAX_FINALIZATION_BATCH_SIZE));
+        return auctionMapper.findReadyAuctionIds(batchSize);
+    }
+
+    @Transactional
+    public boolean activateReadyAuction(Long auctionId) {
+        if (auctionId == null || auctionId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        if (auctionMapper.activateReadyAuction(auctionId, SYSTEM_ACTOR) == 0) {
+            return false;
+        }
+        publishAuctionChanged(auctionId, "AUCTION_ACTIVATED");
+        return true;
     }
 
     @Transactional(readOnly = true)
@@ -187,10 +211,18 @@ public class AuctionService {
             Long productId,
             BigDecimal startAmount,
             BigDecimal bidUnitAmount,
+            LocalDateTime startDateTime,
             LocalDateTime endDateTime,
-            boolean openImmediately,
             Long actorUserId) {
-        validateAuctionCreation(productId, startAmount, bidUnitAmount, endDateTime, actorUserId);
+        LocalDateTime now = LocalDateTime.now();
+        validateAuctionCreation(
+                productId,
+                startAmount,
+                bidUnitAmount,
+                startDateTime,
+                endDateTime,
+                actorUserId,
+                now);
 
         AuctionPolicy policy = pointService.getAuctionPolicy();
         BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
@@ -198,7 +230,9 @@ public class AuctionService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 단위는 시스템 최소 입찰 단위 이상이어야 합니다.");
         }
 
-        String statusCode = openImmediately ? AuctionStatusCode.ACTIVE : AuctionStatusCode.READY;
+        String statusCode = startDateTime.isAfter(now)
+                ? AuctionStatusCode.READY
+                : AuctionStatusCode.ACTIVE;
         BigDecimal actualBidUnit = bidUnitAmount == null ? minimumBidUnit : bidUnitAmount;
 
         int inserted = auctionMapper.insertAuction(
@@ -206,11 +240,38 @@ public class AuctionService {
                 statusCode,
                 startAmount,
                 actualBidUnit,
+                startDateTime,
                 endDateTime,
                 actorUserId.toString());
         if (inserted == 0) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+    }
+
+    /**
+     * 담당자2 호출부가 시작일시 계약으로 전환될 때까지 유지하는 즉시 시작 호환 계약이다.
+     * 예약 경매는 시작일시 없이는 올바르게 저장할 수 없으므로 새 시그니처를 사용해야 한다.
+     */
+    @Transactional
+    public void createAuctionForProduct(
+            Long productId,
+            BigDecimal startAmount,
+            BigDecimal bidUnitAmount,
+            LocalDateTime endDateTime,
+            boolean openImmediately,
+            Long actorUserId) {
+        if (!openImmediately) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "예약 경매는 시작일시가 필요합니다.");
+        }
+        createAuctionForProduct(
+                productId,
+                startAmount,
+                bidUnitAmount,
+                LocalDateTime.now(),
+                endDateTime,
+                actorUserId);
     }
 
     private AuctionDetailResponse findAuctionDetailWithProductValidation(Long auctionId, Long userId) {
@@ -233,7 +294,45 @@ public class AuctionService {
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
+        applySellerReviewSummary(detail);
+        detail.setProductUpdates(loadProductUpdates(detail.getProductId()));
         return detail;
+    }
+
+    private void applySellerReviewSummary(AuctionDetailResponse detail) {
+        if (detail.getSellerId() == null) {
+            return;
+        }
+
+        TrustScoreResponse trustScore = reviewService.getTrustScore(detail.getSellerId());
+        if (trustScore == null) {
+            return;
+        }
+
+        detail.setSellerRating(trustScore.getTotalScore());
+        detail.setSellerReviewCount(trustScore.getTotalCount());
+    }
+
+    private List<AuctionProductUpdateItem> loadProductUpdates(Long productId) {
+        ProductService productService = productServiceProvider.getIfAvailable();
+        if (productService == null) {
+            return List.of();
+        }
+
+        List<ProductCommentResponse> comments = productService.getComments(productId);
+        if (comments == null || comments.isEmpty()) {
+            return List.of();
+        }
+
+        return comments.stream()
+                .map(comment -> AuctionProductUpdateItem.builder()
+                        .updateId(comment.getPrdCmtSn())
+                        .title(comment.getPrdCmtTtl())
+                        .content(comment.getPrdCmtCn())
+                        .registeredAt(comment.getPrdCmtRegDt())
+                        .updatedAt(comment.getPrdCmtUpdtDt())
+                        .build())
+                .toList();
     }
 
     @Transactional
@@ -446,9 +545,15 @@ public class AuctionService {
             Long productId,
             BigDecimal startAmount,
             BigDecimal bidUnitAmount,
+            LocalDateTime startDateTime,
             LocalDateTime endDateTime,
-            Long actorUserId) {
-        if (productId == null || actorUserId == null || startAmount == null || endDateTime == null) {
+            Long actorUserId,
+            LocalDateTime now) {
+        if (productId == null
+                || actorUserId == null
+                || startAmount == null
+                || startDateTime == null
+                || endDateTime == null) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         if (startAmount.compareTo(BigDecimal.ZERO) < 0) {
@@ -457,7 +562,7 @@ public class AuctionService {
         if (bidUnitAmount != null && bidUnitAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        if (!endDateTime.isAfter(LocalDateTime.now())) {
+        if (!endDateTime.isAfter(now) || !endDateTime.isAfter(startDateTime)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
     }

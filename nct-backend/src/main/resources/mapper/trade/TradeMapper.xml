@@ -43,6 +43,17 @@
         LIMIT 1
     </select>
 
+    <!-- 정산 도메인은 이 공개 조회 결과만 소비하고 TRADE를 직접 조회하지 않는다. -->
+    <select id="findSettlementReferenceByTradeId"
+            resultType="nct.trade.dto.TradeSettlementReference">
+        SELECT
+            t.TRD_SN AS tradeSn,
+            t.TRD_TYPE_CD AS tradeTypeCode,
+            t.BID_SN AS bidSn
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+    </select>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT
@@ -118,7 +129,17 @@
             END AS counterpartNickname,
             t.TRD_AMT AS tradeAmount,
             t.TRD_REG_DT AS createdAt,
-            t.TRD_STATUS_CD AS tradeStatus,
+            CASE
+                WHEN p.PRD_TRD_METHOD_CD = 'TRDC0010'
+                    AND t.TRD_STATUS_CD = 'TRDC0003'
+                    AND o.TRD_OFL_DT IS NOT NULL
+                    AND o.TRD_OFL_PLC_NM IS NOT NULL
+                    AND TRIM(o.TRD_OFL_PLC_NM) &lt;&gt; ''
+                    THEN 'TRDC0004'
+                ELSE t.TRD_STATUS_CD
+            END AS tradeStatus,
+            o.TRD_OFL_DT AS meetingDateTime,
+            o.TRD_OFL_PLC_NM AS meetingPlace,
             CASE p.PRD_TRD_METHOD_CD
                 WHEN 'TRDC0009' THEN 'DELIVERY'
                 WHEN 'TRDC0010' THEN 'OFFLINE'
@@ -130,6 +151,8 @@
           ON seller.USR_SN = t.SLLR_USR_SN
         JOIN USERS buyer
           ON buyer.USR_SN = t.BYPR_USR_SN
+        LEFT JOIN TRADE_OFFLINE o
+          ON o.TRD_SN = t.TRD_SN
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
         <if test="role == 'BUYER'">
@@ -139,7 +162,18 @@
           AND t.SLLR_USR_SN = #{userId}
         </if>
         <if test="statusCode != null">
-          AND t.TRD_STATUS_CD = #{statusCode}
+          <!-- 일정이 존재하는 기존 직거래는 진행 상태 탭으로 보정해 구매자가 즉시 확인할 수 있게 한다. -->
+          AND (
+              CASE
+                  WHEN p.PRD_TRD_METHOD_CD = 'TRDC0010'
+                      AND t.TRD_STATUS_CD = 'TRDC0003'
+                      AND o.TRD_OFL_DT IS NOT NULL
+                      AND o.TRD_OFL_PLC_NM IS NOT NULL
+                      AND TRIM(o.TRD_OFL_PLC_NM) &lt;&gt; ''
+                      THEN 'TRDC0004'
+                  ELSE t.TRD_STATUS_CD
+              END
+          ) = #{statusCode}
         </if>
         <if test="keyword != null">
           AND (
@@ -202,6 +236,13 @@
             END AS counterpartNickname,
             t.TRD_AMT AS tradeAmount,
             t.TRD_STATUS_CD AS tradeStatus,
+            CASE
+                WHEN t.TRD_STATUS_CD = 'TRDC0005'
+                    AND t.TRD_UPDT_ID = CAST(t.BYPR_USR_SN AS CHAR) THEN 'BUYER'
+                WHEN t.TRD_STATUS_CD = 'TRDC0005'
+                    AND t.TRD_UPDT_ID = CAST(t.SLLR_USR_SN AS CHAR) THEN 'SELLER'
+                ELSE NULL
+            END AS completionRequestedBy,
             CASE p.PRD_TRD_METHOD_CD
                 WHEN 'TRDC0009' THEN 'DELIVERY'
                 WHEN 'TRDC0010' THEN 'OFFLINE'
@@ -302,6 +343,14 @@
           AND TRD_STATUS_CD = 'TRDC0003'
     </update>
 
+    <update id="startOfflineTrade">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0004',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
+
     <!-- 판매자 본인의 직거래만 잠가, 일정 수정과 조회 결과가 같은 거래를 기준으로 처리되게 한다. -->
     <select id="findMyOfflineTradeIdForUpdate" resultType="long">
         SELECT t.TRD_SN
@@ -335,20 +384,22 @@
             TRD_OFL_DT = VALUES(TRD_OFL_DT)
     </insert>
 
-    <!-- 구매자 조건과 FOR UPDATE를 함께 적용해 타인의 거래 요청과 중복 완료 요청을 모두 차단한다. -->
-    <select id="findBuyerTradeForConfirmationForUpdate"
+    <!-- 당사자 조건과 FOR UPDATE를 함께 적용해 타인의 거래 요청과 중복 완료 요청을 모두 차단한다. -->
+    <select id="findMyTradeForConfirmationForUpdate"
             resultType="nct.trade.dto.TradeConfirmationTarget">
         SELECT
             t.TRD_SN AS tradeId,
             t.SLLR_USR_SN AS sellerUserId,
             t.BYPR_USR_SN AS buyerUserId,
             t.TRD_STATUS_CD AS tradeStatus,
-            p.PRD_TRD_METHOD_CD AS tradeMethod
+            p.PRD_TRD_METHOD_CD AS tradeMethod,
+            t.TRD_UPDT_ID AS completionRequesterId,
+            t.TRD_AMT AS tradeAmount
         FROM TRADE t
         JOIN PRODUCT p ON p.PRD_SN = t.PRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
-          AND t.BYPR_USR_SN = #{buyerUserId}
+          AND (t.BYPR_USR_SN = #{userId} OR t.SLLR_USR_SN = #{userId})
         FOR UPDATE
     </select>
 
@@ -371,6 +422,16 @@
             TRD_AUTO_CMPL_DT = #{autoCompleteAt},
             TRD_UPDT_ID = #{updaterId}
         WHERE TRD_SN = #{tradeId}
+    </update>
+
+    <!-- 첫 확인자의 거래 상태를 기준으로 상대방의 확인 1회만 완료 처리한다. -->
+    <update id="completeConfirmationByCounterpart">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0006',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = 'TRDC0005'
+          AND TRD_UPDT_ID = #{completionRequesterId}
     </update>
 
     <!-- 한 번의 스케줄 실행이 과도한 행을 잡지 않도록 만료 거래를 배치 크기로 나눠 조회한다. -->

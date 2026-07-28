@@ -355,27 +355,30 @@ public class PointService {
     }
 
     /**
-     * 보관금 → 정산가능 전환 (F-SVC-015). 양측 완료 확인 또는 5일 자동 완료 시
-     * 서비스 거래 담당자(5)가 호출한다. 보관금으로 잡혀 있던 거래대금을 제공자의
-     * 정산가능 버킷에 적립한다 (분쟁 접수 건은 차단 — "분쟁 접수 시 정산 보류" 정본 규칙).
+     * 보관금 → 정산가능 전환 (F-SVC-015 / 물건 거래 공통, 옥동민 요청으로 tradeSn 분리 2026-07-28).
+     * 양측 완료 확인 또는 5일 자동 완료 시 정산 담당(4·5)이 호출한다. 보관금으로 잡혀 있던
+     * 거래대금을 판매자/제공자의 정산가능 버킷에 적립한다 (분쟁 접수 건은 차단 — "분쟁 접수 시
+     * 정산 보류" 정본 규칙).
      *
-     * @param providerSn 정산대금을 받을 제공자 회원번호
-     * @param refType    보관금을 만들 때 쓴 참조 유형 (서비스 거래면 TRADE)
-     * @param refSn      참조 일련번호 (거래일련번호)
+     * tradeSn과 보관금 참조(refType+refSn)를 분리한다 — 물건 거래는 보관금이 BID+bidSn으로
+     * 잡히지만 분쟁·정산은 거래(TRADE) 단위로 관리돼 값이 다르다 (서비스 거래는 TRADE+tradeSn이라
+     * 둘이 같은 값). 분쟁 조회는 항상 tradeSn 기준, 보관금·이중지급 대사는 항상 refType+refSn 기준.
+     *
+     * @param providerSn 정산대금을 받을 판매자/제공자 회원번호
+     * @param tradeSn    분쟁 조회 기준 거래일련번호
+     * @param refType    보관금을 만들 때 쓴 참조 유형 (물건 거래는 BID, 서비스 거래는 TRADE)
+     * @param refSn      참조 일련번호 (물건 거래는 bidSn, 서비스 거래는 tradeSn과 같은 값)
      * @return 적립된 금액 (보관금 전액 — 수수료 0원 정책)
      */
     @Transactional
-    public long creditEscrowToSettleable(long providerSn, RefType refType, long refSn, String reason) {
+    public long creditEscrowToSettleable(long providerSn, long tradeSn, RefType refType, long refSn, String reason) {
         lockUser(providerSn);
 
-        // 분쟁 접수 시 정산 보류 (F-SVC-015) — 해당 거래에 진행 중 거래 문제가 있으면 전환 자체를 차단.
-        // 참조가 거래(TRADE)일 때만 검사 가능 — 서비스 거래 호출은 항상 TRADE 참조를 쓴다
-        if (refType == RefType.TRADE) {
-            int activeDisputes = pointMapper.countActiveDisputesByTrade(refSn);
-            if (activeDisputes > 0) {
-                throw new PointException(ErrorCode.POINT_SETTLE_BLOCKED_BY_DISPUTE,
-                        "해당 거래에 진행 중인 거래 문제가 " + activeDisputes + "건 있어 정산 전환할 수 없습니다.");
-            }
+        // 분쟁 접수 시 정산 보류 — 물건·서비스 거래 공통, 항상 거래(tradeSn) 단위로 검사한다
+        int activeDisputes = pointMapper.countActiveDisputesByTrade(tradeSn);
+        if (activeDisputes > 0) {
+            throw new PointException(ErrorCode.POINT_SETTLE_BLOCKED_BY_DISPUTE,
+                    "해당 거래에 진행 중인 거래 문제가 " + activeDisputes + "건 있어 정산 전환할 수 없습니다.");
         }
 
         // 살아있는 보관금 확인 — 제공자 쪽 호출이라 지불자를 모르므로 참조 건만으로 찾는다 (음수 = 잔존)
@@ -410,12 +413,13 @@ public class PointService {
      * 원장은 수정·삭제하지 않으므로(기록 불변) 환불(+) 행을 짝으로 남기는 방식이다 —
      * 같은 참조의 보관금전환(−)과 합산이 0이 되어 이중 환불이 원장만으로 차단된다.
      *
-     * 정산 완료 여부는 항상 tradeSn 기준으로 확인한다 — SETTLEMENT은 거래 단위로만 기록되고
-     * (SettlementService.complete은 RefType.TRADE + tradeSn으로 정산을 남긴다), 물건 거래의
-     * 보관금 참조(BID + bidSn)와는 값이 다르기 때문에 둘을 분리했다.
+     * 정산 완료 여부는 항상 refType+refSn(보관금 참조) 기준으로 확인한다 — 물건 거래는
+     * 보관금·정산이 둘 다 BID+bidSn으로, 서비스 거래는 둘 다 TRADE+tradeSn으로 같은 참조를
+     * 쓰기 때문(옥동민 요청으로 tradeSn 기준에서 변경, 2026-07-28 — creditEscrowToSettleable도
+     * 같은 참조로 정산을 기록하므로 이중지급 대사가 항상 일치한다).
      *
      * @param usrSn 보관금을 냈던 구매자/의뢰자 회원번호 (다른 회원을 넘기면 보관금이 안 잡혀 실패한다)
-     * @param tradeSn 정산 완료 여부 확인용 거래일련번호 (서비스 거래는 refSn과 같은 값)
+     * @param tradeSn 소속 거래일련번호 (정산 지급 대사에는 쓰지 않고, 로그·예외 메시지의 거래 맥락 표기용)
      * @param refType 환불할 보관금을 찾는 참조 유형 (물건 거래는 BID, 서비스 거래는 TRADE)
      * @param refSn   환불할 보관금을 찾는 참조 일련번호 (물건 거래는 bidSn, 서비스 거래는 tradeSn)
      * @return 환불된 금액
@@ -431,9 +435,9 @@ public class PointService {
                     "환불할 보관금이 없습니다. 참조: " + refType + "-" + refSn);
         }
         // 이미 판매자/제공자에게 정산 지급된 돈은 여기서 되돌릴 수 없다 — 관리자 수동 보정 영역
-        if (pointMapper.selectSettledAmtByRef(RefType.TRADE.getCode(), tradeSn) > 0) {
+        if (pointMapper.selectSettledAmtByRef(refType.getCode(), refSn) > 0) {
             throw new PointException(ErrorCode.POINT_ESCROW_ALREADY_SETTLED,
-                    "이미 정산 지급이 끝나 환불할 수 없습니다. 거래: " + tradeSn);
+                    "이미 정산 지급이 끝나 환불할 수 없습니다. 참조: " + refType + "-" + refSn + " (거래 " + tradeSn + ")");
         }
 
         long amt = -escrowNet; // 보관금 잔존액 전액 환불

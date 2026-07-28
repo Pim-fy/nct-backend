@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.service.AuctionService;
+import nct.global.idempotency.RequestFingerprintMapper;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -25,6 +26,9 @@ class AuctionSecurityTest {
     @MockitoBean
     private AuctionService auctionService;
 
+    @MockitoBean
+    private RequestFingerprintMapper requestFingerprintMapper;
+
     @Test
     void allowsAnonymousAuctionDetailLookup() throws Exception {
         AuctionDetailResponse detail = new AuctionDetailResponse();
@@ -33,6 +37,8 @@ class AuctionSecurityTest {
         detail.setTitle("공개 경매");
         detail.setFavorite(false);
         detail.setFavoriteCount(3);
+        detail.setSellerRating(4.2);
+        detail.setSellerReviewCount(12);
         detail.setCurrentHighestBidderId(99L);
         detail.setCurrentHighestBidder(true);
 
@@ -42,7 +48,10 @@ class AuctionSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.favorite").value(false))
                 .andExpect(jsonPath("$.data.favoriteCount").value(3))
+                .andExpect(jsonPath("$.data.sellerRating").value(4.2))
+                .andExpect(jsonPath("$.data.sellerReviewCount").value(12))
                 .andExpect(jsonPath("$.data.currentHighestBidder").value(true))
+                .andExpect(jsonPath("$.data.hasBidHistory").value(false))
                 .andExpect(jsonPath("$.data.currentHighestBidderId").doesNotExist());
     }
 

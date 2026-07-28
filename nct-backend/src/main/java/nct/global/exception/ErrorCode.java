@@ -57,11 +57,15 @@ public enum ErrorCode {
     EMAIL_VERIFICATION_ALREADY_USED(HttpStatus.CONFLICT, "이미 사용된 이메일 인증입니다."),
     INVALID_VERIFICATION_CODE(HttpStatus.UNAUTHORIZED, "인증번호가 일치하지 않습니다."),
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 요청입니다."),
+    ABUSE_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신고한 항목입니다."),
     ABUSE_REPORT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 신고입니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
     // @ai_generated: 작업단위5 작업 2(F-AUTH-016) - 마이페이지 연동 관리 REST API 전용
     OAUTH_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "연동된 계정을 찾을 수 없습니다."),
     OAUTH_LINK_MINIMUM_REQUIRED(HttpStatus.CONFLICT, "최소 1개의 로그인 수단은 유지해야 합니다."),
+    // @ai_generated: ISS-022 - 소셜 전용 계정(MemberAuthAdapter의 시스템 생성 OAUTH_ 로그인ID)은
+    // 실제 아는 비밀번호가 없어 변경 자체가 불가능하다.
+    PASSWORD_CHANGE_NOT_SUPPORTED(HttpStatus.CONFLICT, "소셜 로그인 전용 계정은 비밀번호를 변경할 수 없습니다."),
     // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 온보딩 완료 API 전용
     ONBOARDING_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "온보딩 정보를 찾을 수 없습니다. 소셜 로그인을 다시 시도해주세요."),
 

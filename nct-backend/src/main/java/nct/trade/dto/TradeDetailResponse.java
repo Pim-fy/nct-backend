@@ -18,6 +18,8 @@ public class TradeDetailResponse {
     private BigDecimal tradeAmount;
     private String tradeStatus;
     private String tradeMethod;
+    // 확인 대기 상태에서 첫 완료 확인을 누른 당사자 역할(BUYER/SELLER)을 화면에 제공한다.
+    private String completionRequestedBy;
     private LocalDateTime createdAt;
     private LocalDateTime autoCompleteAt;
     private String deliveryAddress;

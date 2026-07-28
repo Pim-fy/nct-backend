@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.provider.mapper.ProviderProfileMapper">
+  <resultMap id="profile" type="nct.provider.dto.ProviderProfileResponse">
+    <result column="USR_SN" property="userSn"/>
+    <result column="PRV_PRF_INTRO_CN" property="introduction"/>
+    <result column="PRV_PRF_AREA_NM" property="availableArea"/>
+    <result column="PRV_PRF_RVW_AVG_SCR" property="reviewAverageScore"/>
+    <result column="PRV_PRF_RVW_CNT" property="reviewCount"/>
+  </resultMap>
+  <select id="findActiveByUserSn" resultMap="profile">
+    SELECT USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_RVW_AVG_SCR, PRV_PRF_RVW_CNT
+      FROM PROVIDER_PROFILE
+     WHERE USR_SN = #{userSn} AND PRV_PRF_USE_YN = 'Y'
+  </select>
+  <insert id="upsert">
+    INSERT INTO PROVIDER_PROFILE (USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_REG_ID, PRV_PRF_UPDT_ID)
+    VALUES (#{userSn}, #{introduction}, #{availableArea}, #{actorId}, #{actorId})
+    ON DUPLICATE KEY UPDATE PRV_PRF_INTRO_CN = VALUES(PRV_PRF_INTRO_CN),
+                            PRV_PRF_AREA_NM = VALUES(PRV_PRF_AREA_NM),
+                            PRV_PRF_USE_YN = 'Y', PRV_PRF_UPDT_ID = VALUES(PRV_PRF_UPDT_ID)
+  </insert>
+</mapper>

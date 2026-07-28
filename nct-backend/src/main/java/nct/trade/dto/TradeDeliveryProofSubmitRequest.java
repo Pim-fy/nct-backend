@@ -12,7 +12,7 @@ import lombok.Data;
 public class TradeDeliveryProofSubmitRequest {
 
     @NotBlank(message = "배송 메모를 작성해 주세요.")
-    @Size(max = 4000, message = "배송 메모는 4,000자 이내로 작성해 주세요.")
+    @Size(max = 500, message = "배송 메모는 500자 이내로 작성해 주세요.")
     private String deliveryMessage;
 
     @NotEmpty(message = "발송 인증 사진을 한 장 이상 등록해 주세요.")

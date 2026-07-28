@@ -180,7 +180,7 @@ public class AuthService {
         requireActiveStatus(member.getStatus());
 
         String accessToken  = jwtTokenProvider.createAccessToken(member.getId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), request.isRememberMe());
 
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
         return AuthSessionResult.builder()

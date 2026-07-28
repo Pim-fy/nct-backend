@@ -45,6 +45,8 @@ public interface AuctionMapper {
 
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
+    List<Long> findReadyAuctionIds(@Param("limit") int limit);
+
     List<Long> findClosingSoonActiveAuctionIds(@Param("limit") int limit);
 
     List<Long> findClosingSoonRecipientUserIds(@Param("auctionId") Long auctionId);
@@ -54,7 +56,12 @@ public interface AuctionMapper {
             @Param("statusCode") String statusCode,
             @Param("currentAmount") BigDecimal currentAmount,
             @Param("bidUnitAmount") BigDecimal bidUnitAmount,
+            @Param("startDateTime") LocalDateTime startDateTime,
             @Param("endDateTime") LocalDateTime endDateTime,
+            @Param("actor") String actor);
+
+    int activateReadyAuction(
+            @Param("auctionId") Long auctionId,
             @Param("actor") String actor);
 
     int updateCurrentHighestBids(@Param("auctionId") Long auctionId);

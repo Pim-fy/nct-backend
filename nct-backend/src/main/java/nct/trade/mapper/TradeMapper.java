@@ -107,6 +107,9 @@ public interface TradeMapper {
             @Param("tradeId") long tradeId,
             @Param("buyerUserId") long buyerUserId);
 
+    /** 직거래 일정이 실제로 저장됐는지 확인해 일정 전 완료 처리를 차단한다. */
+    boolean hasOfflineSchedule(@Param("tradeId") long tradeId);
+
     /** 확인 대기 상태와 자동완료 기준 시각을 한 트랜잭션 안에서 함께 저장한다. */
     int startCompletionConfirmation(
             @Param("tradeId") long tradeId,

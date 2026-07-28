@@ -87,7 +87,8 @@ public class OauthOnboardingService {
         userAgreementMapper.insertAll(AgreementValidator.toUserAgreements(member.getId(), request.getAgreements()));
 
         String accessToken = jwtTokenProvider.createAccessToken(member.getId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
+        // @ai_generated: 소셜 로그인은 별도 로그인 유지 체크박스가 없어 OAuth2SuccessHandler와 동일하게 rememberMe 고정.
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), true);
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
 
         return AuthSessionResult.builder()

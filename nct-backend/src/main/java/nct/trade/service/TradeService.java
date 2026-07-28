@@ -23,8 +23,6 @@ import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
 import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
-import nct.notification.domain.NotificationDomain;
-import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
@@ -327,6 +325,7 @@ public class TradeService implements SellerCancellationDecisionPort {
                 tradeId,
                 DELIVERING,
                 "판매자가 발송 인증사진과 배송 메모를 등록했습니다.");
+        notificationService.notifyDeliveryStart(target.getBuyerUserId(), tradeId);
 
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
@@ -373,6 +372,7 @@ public class TradeService implements SellerCancellationDecisionPort {
         }
 
         validateCompletionRequestStatus(target.getTradeStatus());
+        validateOfflineCompletionSchedule(target);
 
         int confirmDays = getConfirmDays();
         LocalDateTime autoCompleteAt = LocalDateTime.now().plusDays(confirmDays);
@@ -427,8 +427,8 @@ public class TradeService implements SellerCancellationDecisionPort {
                 tradeId,
                 COMPLETED,
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
-        notifyAutoCompletion(target.getBuyerUserId(), tradeId);
-        notifyAutoCompletion(target.getSellerUserId(), tradeId);
+        notificationService.notifyTradeComplete(target.getBuyerUserId(), tradeId, true);
+        notificationService.notifyTradeComplete(target.getSellerUserId(), tradeId, true);
 
         // 정산·포인트 원장 처리는 담당자5·6의 확정 계약을 받은 뒤 같은 완료 이벤트에 연결한다.
         return true;
@@ -500,6 +500,20 @@ public class TradeService implements SellerCancellationDecisionPort {
                 "현재 거래 상태에서는 완료 확인을 요청할 수 없습니다.");
     }
 
+    // 직거래는 약속한 일시·장소가 저장된 뒤에만 실제 거래 완료를 확인할 수 있다.
+    private void validateOfflineCompletionSchedule(TradeConfirmationTarget target) {
+        if (!OFFLINE_METHOD.equals(target.getTradeMethod())) {
+            return;
+        }
+
+        if (tradeMapper.hasOfflineSchedule(target.getTradeId())) {
+            return;
+        }
+
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                "직거래 일정이 저장된 후 완료 확인을 요청할 수 있습니다.");
+    }
+
     // 배송·직거래 진행 및 완료 확인 대기 거래만 관리자의 판매자 취소 승인 대상으로 허용한다.
     private boolean isCancellableTradeStatus(String tradeStatus) {
         return IN_PROGRESS.equals(tradeStatus)
@@ -534,18 +548,6 @@ public class TradeService implements SellerCancellationDecisionPort {
                 && WAITING_CONFIRMATION.equals(target.getTradeStatus())
                 && target.getAutoCompleteAt() != null
                 && !target.getAutoCompleteAt().isAfter(now);
-    }
-
-    // 자동 완료는 사용자 동작이 아니므로 양 당사자에게 같은 거래 참조 알림을 남긴다.
-    private void notifyAutoCompletion(long userId, long tradeId) {
-        notificationService.notify(
-                userId,
-                NotificationType.TRADE,
-                NotificationDomain.TRADE,
-                "거래 자동 완료",
-                "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다.",
-                RefType.TRADE,
-                tradeId);
     }
 
     // 관리자 시스템 설정을 사용하되 설정 행이 비정상이면 임의의 기간으로 처리하지 않고 요청을 중단한다.

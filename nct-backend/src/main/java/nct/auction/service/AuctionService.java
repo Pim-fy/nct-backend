@@ -20,6 +20,7 @@ import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.dto.AuctionDetailResponse;
+import nct.auction.dto.AuctionProductUpdateItem;
 import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
@@ -31,7 +32,10 @@ import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
+import nct.product.dto.ProductCommentResponse;
 import nct.product.service.ProductService;
+import nct.review.dto.TrustScoreResponse;
+import nct.review.service.ReviewService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.service.TradeService;
@@ -57,6 +61,7 @@ public class AuctionService {
     private final TradeService tradeService;
     private final AuctionEventPublisher auctionEventPublisher;
     private final NotificationService notificationService;
+    private final ReviewService reviewService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -233,7 +238,45 @@ public class AuctionService {
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
+        applySellerReviewSummary(detail);
+        detail.setProductUpdates(loadProductUpdates(detail.getProductId()));
         return detail;
+    }
+
+    private void applySellerReviewSummary(AuctionDetailResponse detail) {
+        if (detail.getSellerId() == null) {
+            return;
+        }
+
+        TrustScoreResponse trustScore = reviewService.getTrustScore(detail.getSellerId());
+        if (trustScore == null) {
+            return;
+        }
+
+        detail.setSellerRating(trustScore.getTotalScore());
+        detail.setSellerReviewCount(trustScore.getTotalCount());
+    }
+
+    private List<AuctionProductUpdateItem> loadProductUpdates(Long productId) {
+        ProductService productService = productServiceProvider.getIfAvailable();
+        if (productService == null) {
+            return List.of();
+        }
+
+        List<ProductCommentResponse> comments = productService.getComments(productId);
+        if (comments == null || comments.isEmpty()) {
+            return List.of();
+        }
+
+        return comments.stream()
+                .map(comment -> AuctionProductUpdateItem.builder()
+                        .updateId(comment.getPrdCmtSn())
+                        .title(comment.getPrdCmtTtl())
+                        .content(comment.getPrdCmtCn())
+                        .registeredAt(comment.getPrdCmtRegDt())
+                        .updatedAt(comment.getPrdCmtUpdtDt())
+                        .build())
+                .toList();
     }
 
     @Transactional

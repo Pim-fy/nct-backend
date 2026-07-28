@@ -349,6 +349,15 @@ public class TradeService implements SellerCancellationDecisionPort {
                 request.getMeetingPlace().trim(),
                 fieldCryptoService.encrypt(normalizeOptional(request.getMeetingAddress())));
 
+        // 일정이 처음 제안되면 구매자도 즉시 직거래 진행 상태를 확인할 수 있게 전이한다.
+        // 이후 일정 수정 때는 이미 진행 상태이므로 상태 이력을 중복해서 남기지 않는다.
+        if (tradeMapper.startOfflineTrade(tradeId, String.valueOf(sellerUserId)) == 1) {
+            tradeMapper.insertStatusHistory(
+                    tradeId,
+                    DELIVERING,
+                    "판매자가 직거래 일정을 제안했습니다.");
+        }
+
         // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
         // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
         chatService.createOrGetOfflineTradeChatRoom(tradeId);
@@ -699,9 +708,9 @@ public class TradeService implements SellerCancellationDecisionPort {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
-        if (request.getMeetingDate().isBefore(LocalDate.now())) {
+        if (!request.toMeetingDateTime().isAfter(LocalDateTime.now())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "거래 날짜는 오늘 이후로 선택해 주세요.");
+                    "거래 일시는 현재 시간 이후로 선택해 주세요.");
         }
     }
 

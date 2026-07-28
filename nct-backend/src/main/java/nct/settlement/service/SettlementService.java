@@ -2,6 +2,7 @@ package nct.settlement.service;
 
 import java.util.List;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,8 @@ import nct.settlement.mapper.SettlementMapper;
 @RequiredArgsConstructor
 public class SettlementService {
 
+    private static final String SYSTEM_ACTOR = "SYSTEM";
+
     private final SettlementMapper settlementMapper;
     private final PointService pointService;
     private final NotificationService notificationService;
@@ -38,6 +41,10 @@ public class SettlementService {
     /** 거래 완료 → 정산 대기 전환 (F-PAY-042). @return 생성된 정산 일련번호 */
     @Transactional
     public long createPending(long trdSn, long usrSn, long amt) {
+        if (trdSn <= 0 || usrSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호와 정산 대상 회원번호가 필요합니다.");
+        }
         if (amt <= 0) {
             throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_AMOUNT,
                     "정산 금액은 0보다 커야 합니다: " + amt);
@@ -47,7 +54,16 @@ public class SettlementService {
         s.setUsrSn(usrSn);
         s.setStlmAmt(amt);
         s.setStlmStatusCd(SettlementStatus.PENDING.getCode());
-        settlementMapper.insert(s);
+        try {
+            settlementMapper.insert(s);
+        } catch (DuplicateKeyException duplicateKeyException) {
+            Settlement existing = settlementMapper.selectByTradeForUpdate(trdSn);
+            if (existing == null) {
+                throw duplicateKeyException;
+            }
+            validateSameSettlement(existing, usrSn, amt);
+            return existing.getStlmSn();
+        }
 
         // 같은 트랜잭션 안에서 알림 — 정산 생성이 롤백되면 알림도 함께 사라진다
         notificationService.notifySettlement(usrSn, "정산 대기",
@@ -58,9 +74,23 @@ public class SettlementService {
     /** 정산 완료 처리 (F-PAY-043): 대기 → 완료, 판매자에게 정산가능 포인트 적립 */
     @Transactional
     public void complete(long stlmSn) {
+        completeInternal(stlmSn, SYSTEM_ACTOR);
+    }
+
+    /** 관리자 명시 정산 완료 처리. 관리자 번호는 감사 수정자로 기록한다. */
+    @Transactional
+    public void complete(long stlmSn, long adminUsrSn) {
+        if (adminUsrSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "처리 관리자 회원번호가 필요합니다.");
+        }
+        completeInternal(stlmSn, String.valueOf(adminUsrSn));
+    }
+
+    private void completeInternal(long stlmSn, String actorId) {
         Settlement s = requireStatus(stlmSn, SettlementStatus.PENDING, "완료");
 
-        settlementMapper.updateStatus(stlmSn, SettlementStatus.COMPLETED.getCode());
+        updateStatusOrThrow(stlmSn, SettlementStatus.COMPLETED, actorId, "완료");
         // 보관금전환으로 빠졌던 거래대금이 판매자의 정산가능 버킷에 도착하는 지점
         pointService.creditSettleable(s.getUsrSn(), s.getStlmAmt(),
                 RefType.TRADE, s.getTrdSn(), "정산 완료 (정산번호 " + stlmSn + ")");
@@ -74,7 +104,7 @@ public class SettlementService {
     public void holdUp(long stlmSn, String reason) {
         Settlement s = requireStatus(stlmSn, SettlementStatus.PENDING, "보류");
 
-        settlementMapper.updateStatus(stlmSn, SettlementStatus.ON_HOLD.getCode());
+        updateStatusOrThrow(stlmSn, SettlementStatus.ON_HOLD, SYSTEM_ACTOR, "보류");
         notificationService.notifySettlement(s.getUsrSn(), "정산 보류",
                 String.format("거래대금 %,dP의 정산이 보류되었습니다. 사유: %s", s.getStlmAmt(), reason), s.getTrdSn());
     }
@@ -84,7 +114,7 @@ public class SettlementService {
     public void resume(long stlmSn) {
         Settlement s = requireStatus(stlmSn, SettlementStatus.ON_HOLD, "보류 해제");
 
-        settlementMapper.updateStatus(stlmSn, SettlementStatus.PENDING.getCode());
+        updateStatusOrThrow(stlmSn, SettlementStatus.PENDING, SYSTEM_ACTOR, "보류 해제");
         notificationService.notifySettlement(s.getUsrSn(), "정산 보류 해제",
                 String.format("거래대금 %,dP의 정산 보류가 해제되어 대기 상태로 전환되었습니다.", s.getStlmAmt()), s.getTrdSn());
     }
@@ -92,6 +122,17 @@ public class SettlementService {
     /** 회원별 정산 목록 (제공자 정산 화면용 — 컨트롤러는 화면 구현 시 추가) */
     public List<Settlement> getListByUser(long usrSn) {
         return settlementMapper.selectListByUser(usrSn);
+    }
+
+    /** 거래번호 기준 정산 단건 공개 조회 계약 */
+    @Transactional(readOnly = true)
+    public Settlement getSettlementByTrade(long trdSn) {
+        Settlement settlement = settlementMapper.selectByTrade(trdSn);
+        if (settlement == null) {
+            throw new SettlementException(ErrorCode.SETTLEMENT_NOT_FOUND,
+                    "거래에 연결된 정산 건이 없습니다: " + trdSn);
+        }
+        return settlement;
     }
 
     /**
@@ -109,5 +150,26 @@ public class SettlementService {
                     action + " 처리할 수 없는 상태입니다. 정산번호: " + stlmSn + ", 현재 상태: " + s.getStlmStatusCd());
         }
         return s;
+    }
+
+    private void validateSameSettlement(Settlement existing, long usrSn, long amt) {
+        if (existing.getUsrSn() == null
+                || existing.getUsrSn() != usrSn
+                || existing.getStlmAmt() != amt) {
+            throw new SettlementException(ErrorCode.CONFLICT,
+                    "동일 거래의 기존 정산 정보와 정산 대상 또는 금액이 일치하지 않습니다: "
+                            + existing.getTrdSn());
+        }
+    }
+
+    private void updateStatusOrThrow(
+            long stlmSn,
+            SettlementStatus status,
+            String actorId,
+            String action) {
+        if (settlementMapper.updateStatus(stlmSn, status.getCode(), actorId) == 0) {
+            throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_STATUS,
+                    action + " 상태 변경에 실패했습니다. 정산번호: " + stlmSn);
+        }
     }
 }

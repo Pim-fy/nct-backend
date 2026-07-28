@@ -66,7 +66,8 @@ public class AuthService {
         String loginId = normalizeLoginId(request.getLoginId());
         String nickname = requireText(request.getNickname(), ErrorCode.INVALID_INPUT_VALUE);
         String email = normalizeEmail(request.getEmail());
-        String telno = normalizeOptionalText(request.getTelno());
+        // @ai_generated: 브라우저 표시용 하이픈이 서비스 경계 이후 암호화 평문에 남지 않게 한다.
+        String telno = normalizeTelno(request.getTelno());
         String address = normalizeOptionalText(request.getAddress());
         String detailAddress = normalizeOptionalText(request.getDetailAddress());
         String zip = normalizeOptionalText(request.getZip());
@@ -179,7 +180,7 @@ public class AuthService {
         requireActiveStatus(member.getStatus());
 
         String accessToken  = jwtTokenProvider.createAccessToken(member.getId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), request.isRememberMe());
 
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
         return AuthSessionResult.builder()
@@ -361,6 +362,11 @@ public class AuthService {
     // @ai_generated: 선택 입력의 공백은 DB NULL로 통일하고, 주소·계좌 필드는 반쪽 저장을 차단한다.
     private String normalizeOptionalText(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeTelno(String value) {
+        String normalized = normalizeOptionalText(value);
+        return normalized == null ? null : normalized.replaceAll("\\D", "");
     }
 
     private void requireCompletePair(String firstValue, String secondValue) {

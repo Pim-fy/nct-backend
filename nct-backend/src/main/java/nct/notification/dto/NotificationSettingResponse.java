@@ -1,41 +1,58 @@
 package nct.notification.dto;
 
+import java.util.List;
+
 import lombok.Builder;
 import lombok.Getter;
-import nct.notification.domain.UserNotificationSetting;
+import nct.notification.domain.NotificationEvent;
+import nct.notification.domain.UserNotificationEventSetting;
 
 /**
- * Claude Code 작성 (BJN, 2026-07-16)
+ * Claude Code 작성 (BJN, 2026-07-16, 이벤트 단위로 재작성 2026-07-24)
  *
- * [알림 설정 - 응답 DTO] (F-COM-012)
- * - GET /api/notification/settings 응답 본문
- * - DB의 'Y'/'N' 문자를 프론트가 체크박스에 바로 쓰도록 boolean으로 변환해 내려준다
+ * [알림 설정 - 응답 DTO] (F-COM-012 세분화, 목업 34_notification_settings.html)
+ * - GET /api/notification/settings 응답 본문 — 이벤트 13개를 도메인·라벨과 함께 내려준다
+ *   (프론트가 라벨을 다시 하드코딩하지 않도록 domain/label도 함께 전달)
  */
 @Getter
 @Builder
 public class NotificationSettingResponse {
 
-    /** 경매 도메인 인앱/이메일 수신 여부 */
-    private final boolean aucInapp;
-    private final boolean aucEmail;
+    private final List<Item> events;
 
-    /** 거래 도메인 인앱/이메일 수신 여부 */
-    private final boolean trdInapp;
-    private final boolean trdEmail;
+    @Getter
+    @Builder
+    public static class Item {
+        private final String eventCode;
+        private final String domain; // NotificationDomain.name() — AUCTION/TRADE/SERVICE/OPS
+        private final String label;
+        private final boolean inapp;
+        private final boolean email;
+    }
 
-    /** 서비스 도메인 인앱/이메일 수신 여부 */
-    private final boolean svcInapp;
-    private final boolean svcEmail;
+    public static NotificationSettingResponse from(List<UserNotificationEventSetting> settings) {
+        List<Item> items = settings.stream()
+                .map(s -> {
+                    NotificationEvent event = fromCode(s.getNtfEvtCd());
+                    return Item.builder()
+                            .eventCode(s.getNtfEvtCd())
+                            .domain(event.getDomain().name())
+                            .label(event.getLabel())
+                            .inapp("Y".equals(s.getUsrNtfEvtStgInappYn()))
+                            .email("Y".equals(s.getUsrNtfEvtStgEmailYn()))
+                            .build();
+                })
+                .toList();
+        return NotificationSettingResponse.builder().events(items).build();
+    }
 
-    /** 도메인 모델('Y'/'N') → 응답 DTO(boolean) 변환 */
-    public static NotificationSettingResponse from(UserNotificationSetting s) {
-        return NotificationSettingResponse.builder()
-                .aucInapp("Y".equals(s.getUsrNtfStgAucInappYn()))
-                .aucEmail("Y".equals(s.getUsrNtfStgAucEmailYn()))
-                .trdInapp("Y".equals(s.getUsrNtfStgTrdInappYn()))
-                .trdEmail("Y".equals(s.getUsrNtfStgTrdEmailYn()))
-                .svcInapp("Y".equals(s.getUsrNtfStgSvcInappYn()))
-                .svcEmail("Y".equals(s.getUsrNtfStgSvcEmailYn()))
-                .build();
+    /** NTF_EVT_CD(예: NTFC0017) → enum 역조회 — enum이 code를 필드로만 갖고 있어서 순회 조회 */
+    private static NotificationEvent fromCode(String code) {
+        for (NotificationEvent event : NotificationEvent.values()) {
+            if (event.getCode().equals(code)) {
+                return event;
+            }
+        }
+        throw new IllegalStateException("알 수 없는 알림 이벤트 코드: " + code);
     }
 }

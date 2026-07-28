@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -24,10 +26,12 @@ import nct.auth.mapper.EmailVerificationMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMemberPort;
+import nct.global.security.crypto.FieldCryptoService;
 
 // @ai_generated
 /** 인증번호 만료·재발송 대기·오입력 잠금의 핵심 상태 분기를 단위 검증한다. */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class EmailVerificationServiceTest {
 
     @Mock
@@ -36,6 +40,8 @@ class EmailVerificationServiceTest {
     private AuthMemberPort authMemberPort;
     @Mock
     private EmailSender emailSender;
+    @Mock
+    private FieldCryptoService fieldCryptoService;
 
     private PasswordEncoder passwordEncoder;
     private EmailVerificationService emailVerificationService;
@@ -43,8 +49,11 @@ class EmailVerificationServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
+        when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fieldCryptoService.emailHmac(org.mockito.ArgumentMatchers.anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         emailVerificationService = new EmailVerificationService(
-                emailVerificationMapper, authMemberPort, passwordEncoder, emailSender);
+                emailVerificationMapper, authMemberPort, passwordEncoder, emailSender, fieldCryptoService);
     }
 
     @Test

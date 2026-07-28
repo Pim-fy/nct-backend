@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,17 +19,29 @@ import nct.auction.constant.AuctionStatusCode;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.service.AuctionService;
+import nct.global.security.crypto.FieldCryptoService;
 
 @SpringBootTest
 class AuctionListFilterTest {
 
-    private static final long TEST_SELLER_USR_SN = 16395L;
-
     @Autowired AuctionService auctionService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     final List<Long> productIds = new ArrayList<>();
     final List<Long> auctionIds = new ArrayList<>();
+    long sellerSn;
+
+    @BeforeEach
+    void setUpSeller() {
+        String loginId = "t_auclist_" + System.nanoTime();
+        String email = loginId + "@test.local";
+        jdbc.update("""
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
+        sellerSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
 
     @AfterEach
     void cleanUp() {
@@ -40,12 +53,12 @@ class AuctionListFilterTest {
             jdbc.update("DELETE FROM PRODUCT_FAVORITE WHERE PRD_SN IN (" + joinIds(productIds) + ")");
             jdbc.update("DELETE FROM PRODUCT WHERE PRD_SN IN (" + joinIds(productIds) + ")");
         }
+        jdbc.update("DELETE FROM USERS WHERE USR_SN = ?", sellerSn);
     }
 
     @Test
     @DisplayName("즉시구매 필터가 없으면 즉시구매가 null, 0, 양수 상품을 모두 조회한다")
     void findAuctionsWithoutInstantBuyFilter() {
-        long sellerSn = TEST_SELLER_USR_SN;
         insertAuction(sellerSn, "t_iby_all_null", null, BigDecimal.valueOf(10000));
         insertAuction(sellerSn, "t_iby_all_zero", BigDecimal.ZERO, BigDecimal.valueOf(12000));
         insertAuction(sellerSn, "t_iby_all_positive", BigDecimal.valueOf(50000), BigDecimal.valueOf(14000));
@@ -61,7 +74,6 @@ class AuctionListFilterTest {
     @Test
     @DisplayName("즉시구매 필터는 즉시구매가가 있는 상품만 반환하고 null과 0원을 제외한다")
     void findAuctionsWithInstantBuyOnly() {
-        long sellerSn = TEST_SELLER_USR_SN;
         insertAuction(sellerSn, "t_iby_only_null", null, BigDecimal.valueOf(10000));
         insertAuction(sellerSn, "t_iby_only_zero", BigDecimal.ZERO, BigDecimal.valueOf(12000));
         insertAuction(sellerSn, "t_iby_only_positive", BigDecimal.valueOf(50000), BigDecimal.valueOf(14000));
@@ -78,7 +90,6 @@ class AuctionListFilterTest {
     @Test
     @DisplayName("즉시구매 필터와 가격 필터를 동시에 적용한다")
     void findAuctionsWithInstantBuyOnlyAndPriceFilter() {
-        long sellerSn = TEST_SELLER_USR_SN;
         insertAuction(sellerSn, "t_iby_price_low", BigDecimal.valueOf(30000), BigDecimal.valueOf(10000));
         insertAuction(sellerSn, "t_iby_price_match", BigDecimal.valueOf(60000), BigDecimal.valueOf(45000));
         insertAuction(sellerSn, "t_iby_price_no_instant", null, BigDecimal.valueOf(50000));
@@ -96,7 +107,6 @@ class AuctionListFilterTest {
     @Test
     @DisplayName("공통코드 상태와 거래방식 값으로 경매 목록을 필터링한다")
     void findAuctionsWithReferenceCodeFilters() {
-        long sellerSn = TEST_SELLER_USR_SN;
         insertAuction(
                 sellerSn,
                 "t_reference_ready_delivery",

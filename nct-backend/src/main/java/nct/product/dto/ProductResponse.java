@@ -29,6 +29,11 @@ public class ProductResponse {
     private LocalDateTime prdRegDt;
     private LocalDateTime prdUpdtDt;
 
+    // 임시저장 시점에 입력해둔 경매설정 보존값 — 상품 등록 재개 시 폼 복원용
+    private BigDecimal prdDraftBidUnit;
+    private LocalDateTime prdDraftStartDt;
+    private LocalDateTime prdDraftEndDt;
+
     // 대표이미지 URL (없으면 null — 화면에서 기본 placeholder 처리). 담당자6, F-AUC-002 이미지 연계
     private String prdImgUrl;
 

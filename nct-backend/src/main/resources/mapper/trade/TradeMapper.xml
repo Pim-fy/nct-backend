@@ -75,9 +75,9 @@
     <insert id="insertDeliverySnapshot">
         INSERT INTO TRADE_DELIVERY (
             TRD_SN,
-            TRD_DLVR_ADDR,
-            TRD_DLVR_DADDR,
-            TRD_DLVR_ZIP
+            TRD_DLVR_ADDR_ENC,
+            TRD_DLVR_DADDR_ENC,
+            TRD_DLVR_ZIP_ENC
         )
         VALUES (
             #{tradeId},
@@ -208,12 +208,13 @@
             END AS tradeMethod,
             t.TRD_REG_DT AS createdAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
-            CONCAT_WS(' ', d.TRD_DLVR_ADDR, d.TRD_DLVR_DADDR) AS deliveryAddress,
+            d.TRD_DLVR_ADDR_ENC AS deliveryAddress,
+            d.TRD_DLVR_DADDR_ENC AS deliveryDetailAddress,
             d.TRD_DLVR_MEMO_CN AS deliveryMessage,
             d.TRD_DLVR_SN AS deliveryId,
             o.TRD_OFL_DT AS meetingDateTime,
             o.TRD_OFL_PLC_NM AS meetingPlace,
-            o.TRD_OFL_ADDR AS meetingAddress
+            o.TRD_OFL_ADDR_ENC AS meetingAddress
         FROM TRADE t
         JOIN PRODUCT p
           ON p.PRD_SN = t.PRD_SN
@@ -246,6 +247,7 @@
         SELECT
             t.TRD_SN AS tradeId,
             d.TRD_DLVR_SN AS deliveryId,
+            t.BYPR_USR_SN AS buyerUserId,
             t.TRD_STATUS_CD AS tradeStatus
         FROM TRADE t
         JOIN PRODUCT p
@@ -318,7 +320,7 @@
         INSERT INTO TRADE_OFFLINE (
             TRD_SN,
             TRD_OFL_PLC_NM,
-            TRD_OFL_ADDR,
+            TRD_OFL_ADDR_ENC,
             TRD_OFL_DT
         )
         VALUES (
@@ -329,7 +331,7 @@
         )
         ON DUPLICATE KEY UPDATE
             TRD_OFL_PLC_NM = VALUES(TRD_OFL_PLC_NM),
-            TRD_OFL_ADDR = VALUES(TRD_OFL_ADDR),
+            TRD_OFL_ADDR_ENC = VALUES(TRD_OFL_ADDR_ENC),
             TRD_OFL_DT = VALUES(TRD_OFL_DT)
     </insert>
 
@@ -340,12 +342,26 @@
             t.TRD_SN AS tradeId,
             t.SLLR_USR_SN AS sellerUserId,
             t.BYPR_USR_SN AS buyerUserId,
-            t.TRD_STATUS_CD AS tradeStatus
+            t.TRD_STATUS_CD AS tradeStatus,
+            p.PRD_TRD_METHOD_CD AS tradeMethod
         FROM TRADE t
+        JOIN PRODUCT p ON p.PRD_SN = t.PRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
           AND t.BYPR_USR_SN = #{buyerUserId}
         FOR UPDATE
+    </select>
+
+    <!-- 일정 행뿐 아니라 거래 일시·장소까지 채워진 경우만 완료 확인을 허용한다. -->
+    <select id="hasOfflineSchedule" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM TRADE_OFFLINE
+            WHERE TRD_SN = #{tradeId}
+              AND TRD_OFL_DT IS NOT NULL
+              AND TRD_OFL_PLC_NM IS NOT NULL
+              AND TRIM(TRD_OFL_PLC_NM) &lt;&gt; ''
+        )
     </select>
 
     <!-- 요청 시점의 시스템 설정 일수를 계산한 완료 시각을 저장한다. -->

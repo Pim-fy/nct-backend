@@ -3,6 +3,7 @@ package nct.product.mapper;
 import java.util.List;
 import java.util.Optional;
 import nct.product.domain.ProductComment;
+import nct.product.dto.InquiryReportTarget;
 import nct.product.dto.ProductCommentResponse;
 import nct.product.dto.ProductInquiryResponse;
 import org.apache.ibatis.annotations.Mapper;
@@ -22,4 +23,6 @@ public interface ProductCommentMapper {
     List<ProductInquiryResponse> findInquiries(@Param("prdSn") Long prdSn);
 
     Optional<ProductComment> findInquiryById(@Param("inquirySn") Long inquirySn);
+
+    Optional<InquiryReportTarget> findInquiryReportTarget(@Param("prdCmtSn") Long prdCmtSn);
 }

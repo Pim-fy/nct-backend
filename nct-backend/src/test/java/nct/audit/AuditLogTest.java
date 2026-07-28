@@ -18,6 +18,7 @@ import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
+import nct.global.security.crypto.FieldCryptoService;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-18)
@@ -34,6 +35,7 @@ class AuditLogTest {
 
     @Autowired AuditLogService auditLogService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired FieldCryptoService fieldCryptoService;
 
     long adminSn;
     long targetSn;
@@ -110,10 +112,11 @@ class AuditLogTest {
 
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
+        String email = loginId + "@test.local";
         jdbc.update("""
-                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix, loginId + "@test.local");
+                INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

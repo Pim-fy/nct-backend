@@ -15,6 +15,7 @@ import nct.auth.mapper.EmailVerificationMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMemberPort;
+import nct.global.security.crypto.FieldCryptoService;
 import lombok.RequiredArgsConstructor;
 
 // @ai_generated
@@ -36,6 +37,8 @@ public class EmailVerificationService {
     private final AuthMemberPort authMemberPort;
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
+    // @ai_generated: 인증 이력도 원문 이메일 대신 암호문 + HMAC 조회 키를 저장한다.
+    private final FieldCryptoService fieldCryptoService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     /** 필수 약관 동의 뒤에만 SIGNUP 인증번호를 생성 또는 재발송한다. */
@@ -48,7 +51,7 @@ public class EmailVerificationService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        EmailVerification latest = emailVerificationMapper.findLatestSignupByEmailForUpdate(email)
+        EmailVerification latest = emailVerificationMapper.findLatestSignupByEmailForUpdate(fieldCryptoService.emailHmac(email))
                                                            .orElse(null);
         String code = createCode();
         LocalDateTime expiresAt = now.plusMinutes(3);
@@ -104,7 +107,7 @@ public class EmailVerificationService {
     @Transactional
     public void requireVerifiedSignup(Long verificationId, String email) {
         EmailVerification verification = findSignupForUpdate(verificationId);
-        if (!normalizeEmail(email).equals(normalizeEmail(verification.getEmlVrfEmail()))) {
+        if (!normalizeEmail(email).equals(normalizeEmail(fieldCryptoService.decrypt(verification.getEmlVrfEmail())))) {
             throw new CustomException(ErrorCode.EMAIL_VERIFICATION_NOT_VERIFIED);
         }
         ensureVerifiableForSignup(verification, LocalDateTime.now());
@@ -121,7 +124,8 @@ public class EmailVerificationService {
     private EmailVerificationSendResponse createAndSend(String email, String code,
                                                           LocalDateTime sentAt, LocalDateTime expiresAt) {
         EmailVerification verification = EmailVerification.builder()
-                .emlVrfEmail(email)
+                .emlVrfEmail(fieldCryptoService.encrypt(email))
+                .emlVrfEmailHmac(fieldCryptoService.emailHmac(email))
                 .emlVrfPurposeCd(SIGNUP_PURPOSE)
                 .emlVrfCodeHash(passwordEncoder.encode(code))
                 .emlVrfStatusCd(PENDING)

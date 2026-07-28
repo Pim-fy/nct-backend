@@ -133,7 +133,7 @@ public class ProductController {
     @PostMapping("/{prdSn}/inquiries")
     public ResponseEntity<ApiResponse<ProductInquiryResponse>> addInquiry(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long prdSn,
+            @PathVariable(name = "prdSn") Long prdSn,
             @Valid @RequestBody ProductInquiryRequest request) {
 
         Long usrSn = userDetails.getMember().getId();
@@ -143,7 +143,7 @@ public class ProductController {
     /** 구매자 문의 목록 조회 (F-AUC-012) */
     @GetMapping("/{prdSn}/inquiries")
     public ResponseEntity<ApiResponse<List<ProductInquiryResponse>>> getInquiries(
-            @PathVariable Long prdSn) {
+            @PathVariable(name = "prdSn") Long prdSn) {
 
         return ResponseEntity.ok(ApiResponse.success(productService.getInquiries(prdSn)));
     }
@@ -153,8 +153,8 @@ public class ProductController {
     @PostMapping("/{prdSn}/inquiries/{inquirySn}/reply")
     public ResponseEntity<ApiResponse<ProductInquiryResponse>> addReply(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long prdSn,
-            @PathVariable Long inquirySn,
+            @PathVariable(name = "prdSn") Long prdSn,
+            @PathVariable(name = "inquirySn") Long inquirySn,
             @Valid @RequestBody ProductInquiryRequest request) {
 
         Long usrSn = userDetails.getMember().getId();

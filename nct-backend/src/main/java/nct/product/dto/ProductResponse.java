@@ -33,6 +33,8 @@ public class ProductResponse {
     private BigDecimal prdDraftBidUnit;
     private LocalDateTime prdDraftStartDt;
     private LocalDateTime prdDraftEndDt;
+    // 임시저장 시점의 경매정책 동의 여부(Y/N) — 재개 시 등록확인 탭 바로 이동 판단용
+    private String prdDraftPolicyAgreedYn;
 
     // 대표이미지 URL (없으면 null — 화면에서 기본 placeholder 처리). 담당자6, F-AUC-002 이미지 연계
     private String prdImgUrl;

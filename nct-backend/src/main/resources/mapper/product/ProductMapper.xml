@@ -21,6 +21,7 @@
         <result property="prdDraftBidUnit" column="PRD_DRAFT_BID_UNIT" />
         <result property="prdDraftStartDt" column="PRD_DRAFT_START_DT" />
         <result property="prdDraftEndDt"   column="PRD_DRAFT_END_DT"   />
+        <result property="prdDraftPolicyAgreedYn" column="PRD_DRAFT_POLICY_AGREED_YN" />
     </resultMap>
 
     <resultMap id="ProductEntityMap" type="nct.product.domain.Product">
@@ -41,6 +42,7 @@
         <result property="prdDraftBidUnit" column="PRD_DRAFT_BID_UNIT" />
         <result property="prdDraftStartDt" column="PRD_DRAFT_START_DT" />
         <result property="prdDraftEndDt"   column="PRD_DRAFT_END_DT"   />
+        <result property="prdDraftPolicyAgreedYn" column="PRD_DRAFT_POLICY_AGREED_YN" />
     </resultMap>
 
     <!-- ── 상품 등록 ─────────────────────────────────────── -->
@@ -50,12 +52,12 @@
             (USR_SN, CAT_SN, PRD_NM, PRD_CN, PRD_STATUS_CD,
              PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD, PRD_USE_YN,
              PRD_REG_ID, PRD_UPDT_ID,
-             PRD_DRAFT_BID_UNIT, PRD_DRAFT_START_DT, PRD_DRAFT_END_DT)
+             PRD_DRAFT_BID_UNIT, PRD_DRAFT_START_DT, PRD_DRAFT_END_DT, PRD_DRAFT_POLICY_AGREED_YN)
         VALUES
             (#{usrSn}, #{catSn}, #{prdNm}, #{prdCn}, #{prdStatusCd},
              #{prdStartAmt}, #{prdIbyAmt}, #{prdTrdMethodCd}, 'Y',
              #{prdRegId}, #{prdUpdtId},
-             #{prdDraftBidUnit}, #{prdDraftStartDt}, #{prdDraftEndDt})
+             #{prdDraftBidUnit}, #{prdDraftStartDt}, #{prdDraftEndDt}, #{prdDraftPolicyAgreedYn})
     </insert>
 
     <!-- ── 상품 단건 조회 (카테고리명·대표이미지 JOIN) ──── -->
@@ -65,7 +67,7 @@
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
                p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
                p.PRD_REG_DT, p.PRD_UPDT_DT,
-               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT,
+               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT, p.PRD_DRAFT_POLICY_AGREED_YN,
                f.FL_PATH AS PRD_IMG_URL
           FROM PRODUCT p
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
@@ -139,7 +141,8 @@
                PRD_UPDT_ID       = #{prdUpdtId},
                PRD_DRAFT_BID_UNIT = #{prdDraftBidUnit},
                PRD_DRAFT_START_DT = #{prdDraftStartDt},
-               PRD_DRAFT_END_DT   = #{prdDraftEndDt}
+               PRD_DRAFT_END_DT   = #{prdDraftEndDt},
+               PRD_DRAFT_POLICY_AGREED_YN = #{prdDraftPolicyAgreedYn}
          WHERE PRD_SN    = #{prdSn}
            AND USR_SN    = #{usrSn}
            AND PRD_USE_YN = 'Y'
@@ -174,5 +177,39 @@
          WHERE PRD_SN = #{prdSn}
            AND USR_SN = #{usrSn}
     </update>
+
+    <!-- ── 취소 확정 1일 경과 상품 조회 (자동 삭제 스케줄러 전용) ──
+         AUCTION은 옥동민(5) 소유지만 조회(JOIN)는 기존에 합의된 방식 -->
+    <select id="findExpiredCancelledProductIds" resultType="java.lang.Long">
+        /* ProductMapper.findExpiredCancelledProductIds */
+        SELECT p.PRD_SN
+          FROM PRODUCT p
+          JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
+         WHERE p.PRD_USE_YN = 'Y'
+           AND a.AUC_STATUS_CD = 'AUCC0005'
+           AND a.AUC_UPDT_DT &lt;= #{cutoff}
+         ORDER BY a.AUC_UPDT_DT ASC
+         LIMIT #{limit}
+    </select>
+
+    <!-- ── 취소 확정 1일 경과 상품 자동 삭제 (시스템 주체, 소유자 확인 없음) ─ -->
+    <update id="deleteExpiredCancelledProduct">
+        /* ProductMapper.deleteExpiredCancelledProduct */
+        UPDATE PRODUCT
+           SET PRD_USE_YN    = 'N',
+               PRD_STATUS_CD = 'PRDC0004',
+               PRD_UPDT_ID   = 'SYSTEM'
+         WHERE PRD_SN = #{prdSn}
+           AND PRD_USE_YN = 'Y'
+    </update>
+
+    <!-- ── 상품 변경사항 알림 대상(입찰자 전원) 조회 — BID/AUCTION은 옥동민(5) 소유, 조회만(기존 합의된 방식) ─ -->
+    <select id="findAuctionBidderIds" resultType="java.lang.Long">
+        /* ProductMapper.findAuctionBidderIds */
+        SELECT DISTINCT b.USR_SN
+          FROM BID b
+          JOIN AUCTION a ON a.AUC_SN = b.AUC_SN
+         WHERE a.PRD_SN = #{prdSn}
+    </select>
 
 </mapper>

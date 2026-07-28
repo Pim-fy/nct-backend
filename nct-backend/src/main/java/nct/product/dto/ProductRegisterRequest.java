@@ -51,4 +51,8 @@ public class ProductRegisterRequest {
     // 입찰 단위 — null이면 AuctionService 기본값(1,000원) 적용
     @DecimalMin(value = "1", message = "입찰 단위는 1 이상이어야 합니다.")
     private BigDecimal bidUnit;
+
+    // 경매 정책 동의 체크 여부 — 임시저장(PRDC0001) 시점에만 draft 보존용으로 저장.
+    // true면 재개 시 상품입력 탭 필수값이 다 채워져 있다는 전제하에 등록확인 탭으로 바로 이동시킨다.
+    private Boolean policyAgreed;
 }

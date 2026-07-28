@@ -1,7 +1,9 @@
 package nct.auction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -19,6 +21,7 @@ import nct.auction.mapper.AuctionMapper;
 import nct.auction.service.AuctionEventPublisher;
 import nct.auction.service.AuctionService;
 import nct.favorite.mapper.ProductFavoriteMapper;
+import nct.global.exception.CustomException;
 import nct.point.service.PointService;
 import nct.product.service.ProductService;
 import nct.trade.service.TradeService;
@@ -60,5 +63,33 @@ class AuctionServiceListFilterTest {
         assertThat(request.isStatusActive()).isFalse();
         assertThat(request.isStatusEndingSoon()).isFalse();
         assertThat(request.getEndingSoonOnly()).isTrue();
+    }
+
+    @Test
+    void sellerHistoryRequiresSellerId() {
+        AuctionListRequest request = new AuctionListRequest();
+        request.setIncludeHistory(true);
+
+        assertThatThrownBy(() -> auctionService.findAuctions(request))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("판매자 번호");
+
+        verifyNoInteractions(auctionMapper);
+    }
+
+    @Test
+    void keepsSellerHistoryConditionForMapper() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setSellerId(77L);
+        request.setIncludeHistory(true);
+        request.setPage(1);
+        request.setSize(5);
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.getSellerId()).isEqualTo(77L);
+        assertThat(request.isIncludeHistory()).isTrue();
+        assertThat(request.getSize()).isEqualTo(5);
     }
 }

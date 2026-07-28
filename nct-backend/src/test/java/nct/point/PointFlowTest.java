@@ -35,6 +35,8 @@ import nct.settlement.service.SettlementService;
 @Transactional
 class PointFlowTest {
 
+    private static final long TEST_ADMIN_USR_SN = 700L;
+
     @Autowired PointService pointService;
     @Autowired SettlementService settlementService;
     @Autowired NotificationService notificationService;
@@ -141,19 +143,20 @@ class PointFlowTest {
     @Test
     @DisplayName("관리자 취소 승인 환불: 정산 완료된 물건 거래는 차단 (보관금·정산 모두 BID+bidSn 참조로 대사, 옥동민 요청 2026-07-28)")
     void refundEscrowAfterAdminCancellationBlockedWhenSettled() {
-        long bidSn = 101L; // 보관금·정산 공통 참조 — 거래일련번호(tradeSn)와 값이 겹치지 않음을 보이기 위해 임의로 고정
-        pointService.hold(buyerSn, 30000, RefType.BID, bidSn, "입찰 홀딩");
-        pointService.convertHoldToEscrow(buyerSn, RefType.BID, bidSn, "낙찰 확정");
+        MaterialTradeFixture trade = insertCompletedTrade(30000);
+        pointService.hold(buyerSn, 30000, RefType.BID, trade.bidSn(), "입찰 홀딩");
+        pointService.convertHoldToEscrow(buyerSn, RefType.BID, trade.bidSn(), "낙찰 확정");
 
-        long tradeSn = insertCompletedTrade(30000);
-        assertThat(tradeSn).isNotEqualTo(bidSn); // 두 참조가 실제로 다른 값임을 명시적으로 확인
-
-        // 물건 거래 정산 완료 — SettlementService가 아직 BID_SN을 읽어 연결하기 전이라(2단계 예정),
-        // PointService 계약을 직접 호출해 선검증한다. 보관금과 같은 참조(BID+bidSn)로 정산한다.
-        pointService.creditEscrowToSettleable(sellerSn, tradeSn, RefType.BID, bidSn, "정산 완료");
+        long stlmSn = settlementService.createPending(trade.tradeSn(), sellerSn, 30000);
+        settlementService.complete(stlmSn, TEST_ADMIN_USR_SN);
 
         assertThatThrownBy(() ->
-                pointService.refundEscrow(buyerSn, tradeSn, RefType.BID, bidSn, "관리자 취소 승인 환불"))
+                pointService.refundEscrow(
+                        buyerSn,
+                        trade.tradeSn(),
+                        RefType.BID,
+                        trade.bidSn(),
+                        "관리자 취소 승인 환불"))
                 .isInstanceOf(PointException.class)
                 .hasMessageContaining("정산 지급이 끝나");
     }
@@ -161,17 +164,18 @@ class PointFlowTest {
     @Test
     @DisplayName("낙찰 전체 흐름: 홀딩 → 보관금 전환 → 정산 대기 → 정산 완료 (ML-PAY-004, F-PAY-042/043)")
     void fullSettlementFlow() {
-        pointService.hold(buyerSn, 30000, RefType.BID, 1L, "입찰 홀딩");
-        long escrow = pointService.convertHoldToEscrow(buyerSn, RefType.BID, 1L, "낙찰 확정");
+        MaterialTradeFixture trade = insertCompletedTrade(30000);
+        pointService.hold(buyerSn, 30000, RefType.BID, trade.bidSn(), "입찰 홀딩");
+        long escrow = pointService.convertHoldToEscrow(
+                buyerSn, RefType.BID, trade.bidSn(), "낙찰 확정");
         assertThat(escrow).isEqualTo(30000);
 
         PointBalance buyerBal = pointService.getBalance(buyerSn);
         assertThat(buyerBal.getHoldAmt()).isZero();
         assertThat(buyerBal.getTotalAmt()).isEqualTo(70000);
 
-        long trdSn = insertCompletedTrade(escrow);
-        long stlmSn = settlementService.createPending(trdSn, sellerSn, escrow);
-        settlementService.complete(stlmSn);
+        long stlmSn = settlementService.createPending(trade.tradeSn(), sellerSn, escrow);
+        settlementService.complete(stlmSn, TEST_ADMIN_USR_SN);
 
         PointBalance sellerBal = pointService.getBalance(sellerSn);
         assertThat(sellerBal.getSettleableAmt()).isEqualTo(30000);
@@ -185,17 +189,17 @@ class PointFlowTest {
     @Test
     @DisplayName("정산 보류/해제: 대기→보류→대기, 보류 중 완료 차단 (F-PAY-044, F-OPS-079)")
     void settlementHoldAndResume() {
-        pointService.hold(buyerSn, 30000, RefType.BID, 1L, "입찰 홀딩");
-        pointService.convertHoldToEscrow(buyerSn, RefType.BID, 1L, "낙찰 확정");
-        long trdSn = insertCompletedTrade(30000);
-        long stlmSn = settlementService.createPending(trdSn, sellerSn, 30000);
+        MaterialTradeFixture trade = insertCompletedTrade(30000);
+        pointService.hold(buyerSn, 30000, RefType.BID, trade.bidSn(), "입찰 홀딩");
+        pointService.convertHoldToEscrow(buyerSn, RefType.BID, trade.bidSn(), "낙찰 확정");
+        long stlmSn = settlementService.createPending(trade.tradeSn(), sellerSn, 30000);
 
         settlementService.holdUp(stlmSn, "거래 분쟁 접수");
-        assertThatThrownBy(() -> settlementService.complete(stlmSn))
+        assertThatThrownBy(() -> settlementService.complete(stlmSn, TEST_ADMIN_USR_SN))
                 .isInstanceOf(SettlementException.class);
 
         settlementService.resume(stlmSn);
-        settlementService.complete(stlmSn);
+        settlementService.complete(stlmSn, TEST_ADMIN_USR_SN);
         assertThat(pointService.getBalance(sellerSn).getSettleableAmt()).isEqualTo(30000);
     }
 
@@ -211,8 +215,8 @@ class PointFlowTest {
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
-    /** 물건거래 완료 상태의 TRADE 픽스처 (판매자 상품 포함) */
-    private long insertCompletedTrade(long amt) {
+    /** 낙찰 BID 참조를 포함한 물건거래 완료 픽스처 */
+    private MaterialTradeFixture insertCompletedTrade(long amt) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
                 VALUES (?, 2, '테스트 상품', 'PRDC0003', ?,
@@ -223,9 +227,42 @@ class PointFlowTest {
         long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         jdbc.update("""
-                INSERT INTO TRADE (TRD_TYPE_CD, TRD_STATUS_CD, TRD_AMT, SLLR_USR_SN, BYPR_USR_SN, PRD_SN)
-                VALUES ('TRDC0001', 'TRDC0006', ?, ?, ?, ?)
-                """, amt, sellerSn, buyerSn, prdSn);
-        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+                INSERT INTO AUCTION (
+                    PRD_SN,
+                    AUC_STATUS_CD,
+                    AUC_CUR_AMT,
+                    AUC_BID_UNIT_AMT,
+                    AUC_START_DT,
+                    AUC_END_DT,
+                    AUC_EXT_CNT
+                )
+                VALUES (?, 'AUCC0003', ?, 1000, DATE_SUB(NOW(), INTERVAL 2 HOUR),
+                        DATE_SUB(NOW(), INTERVAL 1 HOUR), 0)
+                """, prdSn, amt);
+        long aucSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO BID (AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD)
+                VALUES (?, ?, ?, 'BIDC0001')
+                """, aucSn, buyerSn, amt);
+        long bidSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO TRADE (
+                    TRD_TYPE_CD,
+                    TRD_STATUS_CD,
+                    TRD_AMT,
+                    SLLR_USR_SN,
+                    BYPR_USR_SN,
+                    PRD_SN,
+                    BID_SN
+                )
+                VALUES ('TRDC0001', 'TRDC0006', ?, ?, ?, ?, ?)
+                """, amt, sellerSn, buyerSn, prdSn, bidSn);
+        long tradeSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        return new MaterialTradeFixture(tradeSn, bidSn);
+    }
+
+    private record MaterialTradeFixture(long tradeSn, long bidSn) {
     }
 }

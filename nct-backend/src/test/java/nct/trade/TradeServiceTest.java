@@ -493,6 +493,7 @@ class TradeServiceTest {
         TradeDetailResponse detail = new TradeDetailResponse();
         detail.setTradeId(91L);
         when(tradeMapper.findMyOfflineTradeIdForUpdate(91L, 10L)).thenReturn(91L);
+        when(tradeMapper.startOfflineTrade(91L, "10")).thenReturn(1);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.saveMyOfflineSchedule(91L, 10L, request);
@@ -502,6 +503,11 @@ class TradeServiceTest {
                 LocalDateTime.of(request.getMeetingDate(), request.getMeetingTime()),
                 "합정역 8번 출구 앞",
                 "서울 마포구 양화로 45");
+        verify(tradeMapper).startOfflineTrade(91L, "10");
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0004",
+                "판매자가 직거래 일정을 제안했습니다.");
         verify(chatService).createOrGetOfflineTradeChatRoom(91L);
         assertThat(result).isSameAs(detail);
     }
@@ -511,6 +517,20 @@ class TradeServiceTest {
         TradeOfflineScheduleRequest request = new TradeOfflineScheduleRequest();
         request.setMeetingDate(LocalDate.now().minusDays(1));
         request.setMeetingTime(LocalTime.NOON);
+        request.setMeetingPlace("합정역 8번 출구 앞");
+
+        assertThatThrownBy(() -> tradeService.saveMyOfflineSchedule(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void rejectsPastTimeOnTodayOfflineScheduleBeforeDatabaseAccess() {
+        TradeOfflineScheduleRequest request = new TradeOfflineScheduleRequest();
+        request.setMeetingDate(LocalDate.now());
+        request.setMeetingTime(LocalTime.MIDNIGHT);
         request.setMeetingPlace("합정역 8번 출구 앞");
 
         assertThatThrownBy(() -> tradeService.saveMyOfflineSchedule(91L, 10L, request))

@@ -17,4 +17,6 @@ public class TradeListItem {
     private LocalDateTime createdAt;
     private String tradeStatus;
     private String tradeMethod;
+    private LocalDateTime meetingDateTime;
+    private String meetingPlace;
 }

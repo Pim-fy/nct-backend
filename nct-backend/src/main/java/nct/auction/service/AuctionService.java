@@ -124,6 +124,25 @@ public class AuctionService {
     }
 
     @Transactional(readOnly = true)
+    public List<Long> findReadyAuctionIds(int limit) {
+        int batchSize = Math.max(1, Math.min(limit, MAX_FINALIZATION_BATCH_SIZE));
+        return auctionMapper.findReadyAuctionIds(batchSize);
+    }
+
+    @Transactional
+    public boolean activateReadyAuction(Long auctionId) {
+        if (auctionId == null || auctionId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        if (auctionMapper.activateReadyAuction(auctionId, SYSTEM_ACTOR) == 0) {
+            return false;
+        }
+        publishAuctionChanged(auctionId, "AUCTION_ACTIVATED");
+        return true;
+    }
+
+    @Transactional(readOnly = true)
     public List<Long> findClosingSoonActiveAuctionIds(int limit) {
         int batchSize = Math.max(1, Math.min(limit, MAX_NOTIFICATION_BATCH_SIZE));
         return auctionMapper.findClosingSoonActiveAuctionIds(batchSize);
@@ -192,10 +211,18 @@ public class AuctionService {
             Long productId,
             BigDecimal startAmount,
             BigDecimal bidUnitAmount,
+            LocalDateTime startDateTime,
             LocalDateTime endDateTime,
-            boolean openImmediately,
             Long actorUserId) {
-        validateAuctionCreation(productId, startAmount, bidUnitAmount, endDateTime, actorUserId);
+        LocalDateTime now = LocalDateTime.now();
+        validateAuctionCreation(
+                productId,
+                startAmount,
+                bidUnitAmount,
+                startDateTime,
+                endDateTime,
+                actorUserId,
+                now);
 
         AuctionPolicy policy = pointService.getAuctionPolicy();
         BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
@@ -203,7 +230,9 @@ public class AuctionService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 단위는 시스템 최소 입찰 단위 이상이어야 합니다.");
         }
 
-        String statusCode = openImmediately ? AuctionStatusCode.ACTIVE : AuctionStatusCode.READY;
+        String statusCode = startDateTime.isAfter(now)
+                ? AuctionStatusCode.READY
+                : AuctionStatusCode.ACTIVE;
         BigDecimal actualBidUnit = bidUnitAmount == null ? minimumBidUnit : bidUnitAmount;
 
         int inserted = auctionMapper.insertAuction(
@@ -211,11 +240,38 @@ public class AuctionService {
                 statusCode,
                 startAmount,
                 actualBidUnit,
+                startDateTime,
                 endDateTime,
                 actorUserId.toString());
         if (inserted == 0) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+    }
+
+    /**
+     * 담당자2 호출부가 시작일시 계약으로 전환될 때까지 유지하는 즉시 시작 호환 계약이다.
+     * 예약 경매는 시작일시 없이는 올바르게 저장할 수 없으므로 새 시그니처를 사용해야 한다.
+     */
+    @Transactional
+    public void createAuctionForProduct(
+            Long productId,
+            BigDecimal startAmount,
+            BigDecimal bidUnitAmount,
+            LocalDateTime endDateTime,
+            boolean openImmediately,
+            Long actorUserId) {
+        if (!openImmediately) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "예약 경매는 시작일시가 필요합니다.");
+        }
+        createAuctionForProduct(
+                productId,
+                startAmount,
+                bidUnitAmount,
+                LocalDateTime.now(),
+                endDateTime,
+                actorUserId);
     }
 
     private AuctionDetailResponse findAuctionDetailWithProductValidation(Long auctionId, Long userId) {
@@ -489,9 +545,15 @@ public class AuctionService {
             Long productId,
             BigDecimal startAmount,
             BigDecimal bidUnitAmount,
+            LocalDateTime startDateTime,
             LocalDateTime endDateTime,
-            Long actorUserId) {
-        if (productId == null || actorUserId == null || startAmount == null || endDateTime == null) {
+            Long actorUserId,
+            LocalDateTime now) {
+        if (productId == null
+                || actorUserId == null
+                || startAmount == null
+                || startDateTime == null
+                || endDateTime == null) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         if (startAmount.compareTo(BigDecimal.ZERO) < 0) {
@@ -500,12 +562,18 @@ public class AuctionService {
         if (bidUnitAmount != null && bidUnitAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        if (!endDateTime.isAfter(LocalDateTime.now())) {
+        if (!endDateTime.isAfter(now) || !endDateTime.isAfter(startDateTime)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
     }
 
     private void normalize(AuctionListRequest request) {
+        if (request.getSellerId() != null && request.getSellerId() <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "판매자 번호가 올바르지 않습니다.");
+        }
+        if (request.isIncludeHistory() && request.getSellerId() == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "판매자 히스토리 조회에는 판매자 번호가 필요합니다.");
+        }
         if (request.getPage() < DEFAULT_PAGE) {
             request.setPage(DEFAULT_PAGE);
         }

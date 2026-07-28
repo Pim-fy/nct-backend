@@ -20,7 +20,8 @@ import lombok.RequiredArgsConstructor;
  * - /api/attachment/** 정적 리소스 서빙 (담당자6, F-AUC-002 이미지 연계)
  *   app.upload.dir 디스크 경로({서비스}/{yyyyMMdd}/파일명 구조)를 URL로 노출.
  *   POST/DELETE/PUT /api/attachment 는 FileController(컨트롤러 매핑이 우선)가 담당하므로 충돌 없음.
- *   ⚠️ 공개 서빙은 product(상품 이미지)·review(리뷰 사진, CHG-021)·profile(회원 프로필 사진, ISS-022)만 —
+ *   ⚠️ 공개 서빙은 product(상품 이미지)·review(리뷰 사진, CHG-021)·profile(회원 프로필 사진, ISS-022)·
+ *   portfolio(제공자 포트폴리오 이미지, F-PROV-005)만 —
  *   provider(제공자 서류)는 민감정보라 정적 서빙에서 물리적으로 제외하고,
  *   관리자 전용 API(AdminProviderFileController)로만 열람한다 (2026-07-20)
  */
@@ -62,5 +63,8 @@ public class WebConfig implements WebMvcConfigurer {
         // 회원 프로필 사진(ISS-022)도 다른 사용자에게 노출되므로 product·review와 동일하게 공개 서빙.
         registry.addResourceHandler("/api/attachment/profile/**")
                 .addResourceLocations("file:" + uploadDir + "/profile/");
+        // 제공자 포트폴리오 이미지(F-PROV-005)도 공개 제공자 프로필에 노출되므로 동일하게 공개 서빙.
+        registry.addResourceHandler("/api/attachment/portfolio/**")
+                .addResourceLocations("file:" + uploadDir + "/portfolio/");
     }
 }

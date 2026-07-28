@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.servicerequest.mapper.SvcReqItemMapper">
+
+    <!-- 요청 항목 전체 삭제 — 수정 시 재삽입 전 호출 -->
+    <delete id="deleteBySvcReqSn">
+        /* SvcReqItemMapper.deleteBySvcReqSn */
+        DELETE FROM SVC_REQ_ITEM WHERE SVC_REQ_SN = #{svcReqSn}
+    </delete>
+
+    <!-- 요청 항목 내용 목록 조회 — 정렬순 -->
+    <select id="findItemContentsBySvcReqSn" resultType="java.lang.String">
+        /* SvcReqItemMapper.findItemContentsBySvcReqSn */
+        SELECT SVC_REQ_ITM_CN
+          FROM SVC_REQ_ITEM
+         WHERE SVC_REQ_SN = #{svcReqSn}
+         ORDER BY SVC_REQ_ITM_SORT_NO ASC
+    </select>
+
+    <!-- 요청 항목 일괄 추가 -->
+    <insert id="insertAll">
+        /* SvcReqItemMapper.insertAll */
+        INSERT INTO SVC_REQ_ITEM (SVC_REQ_SN, SVC_REQ_ITM_CN, SVC_REQ_ITM_SORT_NO)
+        VALUES
+        <foreach collection="items" item="it" separator=",">
+            (#{it.svcReqSn}, #{it.svcReqItmCn}, #{it.svcReqItmSortNo})
+        </foreach>
+    </insert>
+
+</mapper>

@@ -130,6 +130,9 @@ public class SecurityConfig {
                 // 구매자 문의 목록 — 비로그인 조회 허용 (F-AUC-012)
                 .requestMatchers(HttpMethod.GET, "/api/products/*/inquiries")
                     .permitAll()
+                // 신고 접수 상태 — 공개 문의 목록의 검토 중 표시용 읽기 계약
+                .requestMatchers(HttpMethod.GET, "/api/abuse-reports/references/statuses")
+                    .permitAll()
                 // 경매 목록·상세는 비로그인 사용자도 탐색할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/auctions/*/stream")
                     .permitAll()

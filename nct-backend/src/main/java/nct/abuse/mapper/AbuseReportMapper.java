@@ -7,11 +7,29 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.dto.ManualAbuseReportStatusResponse;
 
 @Mapper
 public interface AbuseReportMapper {
 
     int insertAutomaticReport(AbuseReport report);
+
+    int insertManualReport(AbuseReport report);
+
+    Long findManualReportId(
+            @Param("reporterUserSn") Long reporterUserSn,
+            @Param("referenceTypeCode") String referenceTypeCode,
+            @Param("referenceSn") Long referenceSn);
+
+    List<ManualAbuseReportStatusResponse> findManualReportsByReporterAndReferenceType(
+            @Param("reporterUserSn") Long reporterUserSn,
+            @Param("referenceTypeCode") String referenceTypeCode);
+
+    List<ManualAbuseReportStatusResponse> findActiveManualReportsByReferences(
+            @Param("referenceTypeCode") String referenceTypeCode,
+            @Param("referenceSns") List<Long> referenceSns,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
 
     Long findReportIdByRiskEventIdForUpdate(@Param("riskEventSn") Long riskEventSn);
 

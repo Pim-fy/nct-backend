@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.servicerequest.mapper.ServiceRequestMapper">
+
+    <!-- ── resultMap ───────────────────────────────────── -->
+    <resultMap id="ServiceRequestResponseMap" type="nct.servicerequest.dto.ServiceRequestResponse">
+        <id     property="svcReqSn"       column="SVC_REQ_SN"       />
+        <result property="usrSn"          column="USR_SN"           />
+        <result property="catSn"          column="CAT_SN"           />
+        <result property="catNm"          column="CAT_NM"           />
+        <result property="svcReqTtl"      column="SVC_REQ_TTL"      />
+        <result property="svcReqCn"       column="SVC_REQ_CN"       />
+        <result property="svcReqBdgtAmt"  column="SVC_REQ_BDGT_AMT" />
+        <result property="svcReqStatusCd" column="SVC_REQ_STATUS_CD"/>
+        <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
+        <result property="svcReqUpdtDt"   column="SVC_REQ_UPDT_DT"  />
+    </resultMap>
+
+    <resultMap id="ServiceRequestEntityMap" type="nct.servicerequest.domain.ServiceRequest">
+        <id     property="svcReqSn"       column="SVC_REQ_SN"       />
+        <result property="usrSn"          column="USR_SN"           />
+        <result property="catSn"          column="CAT_SN"           />
+        <result property="svcReqTtl"      column="SVC_REQ_TTL"      />
+        <result property="svcReqCn"       column="SVC_REQ_CN"       />
+        <result property="svcReqBdgtAmt"  column="SVC_REQ_BDGT_AMT" />
+        <result property="svcReqStatusCd" column="SVC_REQ_STATUS_CD"/>
+        <result property="svcReqUseYn"    column="SVC_REQ_USE_YN"   />
+        <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
+        <result property="svcReqUpdtDt"   column="SVC_REQ_UPDT_DT"  />
+        <result property="svcReqRegId"    column="SVC_REQ_REG_ID"   />
+        <result property="svcReqUpdtId"   column="SVC_REQ_UPDT_ID"  />
+    </resultMap>
+
+    <!-- ── 요청서 등록 ───────────────────────────────────── -->
+    <insert id="saveServiceRequest" useGeneratedKeys="true" keyProperty="svcReqSn">
+        /* ServiceRequestMapper.saveServiceRequest */
+        INSERT INTO SERVICE_REQUEST
+            (USR_SN, CAT_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
+             SVC_REQ_REG_ID, SVC_REQ_UPDT_ID)
+        VALUES
+            (#{usrSn}, #{catSn}, #{svcReqTtl}, #{svcReqCn}, #{svcReqBdgtAmt}, #{svcReqStatusCd},
+             #{svcReqRegId}, #{svcReqUpdtId})
+    </insert>
+
+    <!-- ── 요청서 단건 조회 (카테고리명 JOIN) ──── -->
+    <select id="findServiceRequestById" resultMap="ServiceRequestResponseMap">
+        /* ServiceRequestMapper.findServiceRequestById */
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, c.CAT_NM,
+               s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+         WHERE s.SVC_REQ_SN = #{svcReqSn}
+           AND s.SVC_REQ_USE_YN = 'Y'
+    </select>
+
+    <!-- ── 내 요청 목록 (최신순) ─────────────────────────── -->
+    <!-- filterType: DRAFT(임시저장) | OPEN(공개) | MATCHED(매칭완료) | CLOSED(종료) | null(전체) -->
+    <select id="findMyServiceRequests" resultMap="ServiceRequestResponseMap">
+        /* ServiceRequestMapper.findMyServiceRequests */
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, c.CAT_NM,
+               s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+         WHERE s.USR_SN = #{usrSn}
+           AND s.SVC_REQ_USE_YN = 'Y'
+           <choose>
+               <when test="filterType == 'DRAFT'">
+                   AND s.SVC_REQ_STATUS_CD = 'SVCC0001'
+               </when>
+               <when test="filterType == 'OPEN'">
+                   AND s.SVC_REQ_STATUS_CD = 'SVCC0002'
+               </when>
+               <when test="filterType == 'MATCHED'">
+                   AND s.SVC_REQ_STATUS_CD = 'SVCC0003'
+               </when>
+               <when test="filterType == 'CLOSED'">
+                   AND s.SVC_REQ_STATUS_CD = 'SVCC0004'
+               </when>
+           </choose>
+         ORDER BY s.SVC_REQ_REG_DT DESC
+    </select>
+
+    <!-- ── 요청서 수정 (임시저장 수정·공개 전환 포함) ──────────────── -->
+    <update id="updateServiceRequest">
+        /* ServiceRequestMapper.updateServiceRequest */
+        UPDATE SERVICE_REQUEST
+           SET CAT_SN            = #{catSn},
+               SVC_REQ_TTL       = #{svcReqTtl},
+               SVC_REQ_CN        = #{svcReqCn},
+               SVC_REQ_BDGT_AMT  = #{svcReqBdgtAmt},
+               SVC_REQ_STATUS_CD = #{svcReqStatusCd},
+               SVC_REQ_UPDT_ID   = #{svcReqUpdtId}
+         WHERE SVC_REQ_SN  = #{svcReqSn}
+           AND USR_SN      = #{usrSn}
+           AND SVC_REQ_USE_YN = 'Y'
+    </update>
+
+    <!-- ── 요청서 마감 (SVCC0002 → SVCC0004) ──────────────── -->
+    <update id="closeServiceRequest">
+        /* ServiceRequestMapper.closeServiceRequest */
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+               SVC_REQ_UPDT_ID   = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN     = #{usrSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0002'
+    </update>
+
+    <!-- ── 소유자 확인용 엔티티 조회 ──────────────────────── -->
+    <select id="findServiceRequestEntityById" resultMap="ServiceRequestEntityMap">
+        /* ServiceRequestMapper.findServiceRequestEntityById */
+        SELECT SVC_REQ_SN, USR_SN, CAT_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
+               SVC_REQ_USE_YN, SVC_REQ_REG_DT, SVC_REQ_UPDT_DT, SVC_REQ_REG_ID, SVC_REQ_UPDT_ID
+          FROM SERVICE_REQUEST
+         WHERE SVC_REQ_SN = #{svcReqSn}
+    </select>
+
+    <!-- ── 논리 삭제 ─────────────────────────────────────── -->
+    <update id="deleteServiceRequest">
+        /* ServiceRequestMapper.deleteServiceRequest */
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_USE_YN  = 'N',
+               SVC_REQ_UPDT_ID = CAST(#{usrSn} AS CHAR)
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN     = #{usrSn}
+    </update>
+
+</mapper>

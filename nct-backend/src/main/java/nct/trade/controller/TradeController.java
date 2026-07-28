@@ -90,14 +90,14 @@ public class TradeController {
                 tradeService.submitDeliveryProof(tradeId, sellerUserId, request)));
     }
 
-    /** 구매자가 거래 완료를 확인하고 상대방 확인·자동완료 기한을 시작한다. */
+    /** 구매자 또는 판매자가 거래 완료를 확인한다. 상대방 확인까지 끝나면 즉시 완료된다. */
     @PostMapping("/{tradeId}/completion-requests")
     public ResponseEntity<ApiResponse<TradeDetailResponse>> requestCompletionConfirmation(
             @PathVariable("tradeId") long tradeId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        long buyerUserId = userDetails.getMember().getId();
+        long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
-                tradeService.requestCompletionConfirmation(tradeId, buyerUserId)));
+                tradeService.requestCompletionConfirmation(tradeId, userId)));
     }
 }

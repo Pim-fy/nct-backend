@@ -22,6 +22,9 @@ public interface ChatMapper {
 
     int insertChatRoom(ChatRoom chatRoom);
 
+    /** 거래가 완료되면 직거래 채팅방을 읽기 전용 상태로 전환한다. */
+    int closeOfflineTradeChatRoom(@Param("tradeId") long tradeId);
+
     List<ChatRoomResponse> findMyChatRooms(
             @Param("userId") long userId,
             @Param("tradeId") Long tradeId);

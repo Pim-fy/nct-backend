@@ -102,10 +102,10 @@ public interface TradeMapper {
             @Param("meetingPlace") String meetingPlace,
             @Param("meetingAddress") String meetingAddress);
 
-    /** 구매자 본인의 물건 거래를 잠가 완료 확인 요청과 중복 요청이 경합하지 않게 한다. */
-    TradeConfirmationTarget findBuyerTradeForConfirmationForUpdate(
+    /** 거래 당사자 본인의 물건 거래를 잠가 완료 확인과 중복 요청이 경합하지 않게 한다. */
+    TradeConfirmationTarget findMyTradeForConfirmationForUpdate(
             @Param("tradeId") long tradeId,
-            @Param("buyerUserId") long buyerUserId);
+            @Param("userId") long userId);
 
     /** 직거래 일정이 실제로 저장됐는지 확인해 일정 전 완료 처리를 차단한다. */
     boolean hasOfflineSchedule(@Param("tradeId") long tradeId);
@@ -114,6 +114,12 @@ public interface TradeMapper {
     int startCompletionConfirmation(
             @Param("tradeId") long tradeId,
             @Param("autoCompleteAt") LocalDateTime autoCompleteAt,
+            @Param("updaterId") String updaterId);
+
+    /** 첫 확인자가 아닌 상대방만 확인 대기 거래를 완료로 바꾼다. */
+    int completeConfirmationByCounterpart(
+            @Param("tradeId") long tradeId,
+            @Param("completionRequesterId") String completionRequesterId,
             @Param("updaterId") String updaterId);
 
     /** 자동 완료 시각이 지난 확인 대기 거래를 배치 단위로 조회한다. */

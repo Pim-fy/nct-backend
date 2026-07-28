@@ -139,17 +139,18 @@ class PointFlowTest {
     }
 
     @Test
-    @DisplayName("관리자 취소 승인 환불: 정산 완료된 물건 거래는 차단 (보관금 참조 BID·정산 참조 TRADE가 달라도 tradeSn 기준으로 확인)")
+    @DisplayName("관리자 취소 승인 환불: 정산 완료된 물건 거래는 차단 (보관금·정산 모두 BID+bidSn 참조로 대사, 옥동민 요청 2026-07-28)")
     void refundEscrowAfterAdminCancellationBlockedWhenSettled() {
-        long bidSn = 101L; // 보관금 참조 — 정산 참조(tradeSn)와 값이 겹치지 않음을 보이기 위해 임의로 고정
+        long bidSn = 101L; // 보관금·정산 공통 참조 — 거래일련번호(tradeSn)와 값이 겹치지 않음을 보이기 위해 임의로 고정
         pointService.hold(buyerSn, 30000, RefType.BID, bidSn, "입찰 홀딩");
         pointService.convertHoldToEscrow(buyerSn, RefType.BID, bidSn, "낙찰 확정");
 
         long tradeSn = insertCompletedTrade(30000);
         assertThat(tradeSn).isNotEqualTo(bidSn); // 두 참조가 실제로 다른 값임을 명시적으로 확인
 
-        long stlmSn = settlementService.createPending(tradeSn, sellerSn, 30000);
-        settlementService.complete(stlmSn);
+        // 물건 거래 정산 완료 — SettlementService가 아직 BID_SN을 읽어 연결하기 전이라(2단계 예정),
+        // PointService 계약을 직접 호출해 선검증한다. 보관금과 같은 참조(BID+bidSn)로 정산한다.
+        pointService.creditEscrowToSettleable(sellerSn, tradeSn, RefType.BID, bidSn, "정산 완료");
 
         assertThatThrownBy(() ->
                 pointService.refundEscrow(buyerSn, tradeSn, RefType.BID, bidSn, "관리자 취소 승인 환불"))

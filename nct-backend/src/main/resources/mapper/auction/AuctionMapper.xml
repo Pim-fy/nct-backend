@@ -53,7 +53,9 @@
     <sql id="auctionListWhere">
         WHERE p.PRD_USE_YN = 'Y'
           AND p.PRD_STATUS_CD = 'PRDC0002'
-          AND a.AUC_STATUS_CD != 'AUCC0005'
+        <if test="condition.sellerId != null">
+          AND p.USR_SN = #{condition.sellerId}
+        </if>
         <if test="condition.keyword != null">
           AND (
               p.PRD_NM LIKE CONCAT('%', #{condition.keyword}, '%')
@@ -81,25 +83,36 @@
           AND p.PRD_TRD_METHOD_CD = #{condition.tradeMethodCode}
         </if>
         <choose>
-            <when test="condition.hasStatusFilter">
-              AND (
-                1 = 0
-                <if test="condition.statusReady">
-                  OR a.AUC_STATUS_CD = 'AUCC0001'
-                </if>
-                <if test="condition.statusActive">
-                  OR a.AUC_STATUS_CD = 'AUCC0002'
-                </if>
-                <if test="condition.statusEndingSoon">
-                  OR (
-                      a.AUC_STATUS_CD = 'AUCC0002'
-                      AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 HOUR)
-                  )
-                </if>
+            <when test="condition.sellerId != null and condition.includeHistory">
+              AND a.AUC_STATUS_CD IN (
+                  'AUCC0001', 'AUCC0002', 'AUCC0003',
+                  'AUCC0004', 'AUCC0005', 'AUCC0006'
               )
             </when>
             <otherwise>
-              AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+              AND a.AUC_STATUS_CD != 'AUCC0005'
+              <choose>
+                  <when test="condition.hasStatusFilter">
+                    AND (
+                      1 = 0
+                      <if test="condition.statusReady">
+                        OR a.AUC_STATUS_CD = 'AUCC0001'
+                      </if>
+                      <if test="condition.statusActive">
+                        OR a.AUC_STATUS_CD = 'AUCC0002'
+                      </if>
+                      <if test="condition.statusEndingSoon">
+                        OR (
+                            a.AUC_STATUS_CD = 'AUCC0002'
+                            AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 HOUR)
+                        )
+                      </if>
+                    )
+                  </when>
+                  <otherwise>
+                    AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+                  </otherwise>
+              </choose>
             </otherwise>
         </choose>
         <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">

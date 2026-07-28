@@ -568,6 +568,12 @@ public class AuctionService {
     }
 
     private void normalize(AuctionListRequest request) {
+        if (request.getSellerId() != null && request.getSellerId() <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "판매자 번호가 올바르지 않습니다.");
+        }
+        if (request.isIncludeHistory() && request.getSellerId() == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "판매자 히스토리 조회에는 판매자 번호가 필요합니다.");
+        }
         if (request.getPage() < DEFAULT_PAGE) {
             request.setPage(DEFAULT_PAGE);
         }

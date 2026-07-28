@@ -119,4 +119,12 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 삭제 가드: 제공자 포트폴리오로 연결된 파일인지 (F-PROV-005, PORTFOLIO_FILE은 담당자7 소유 — 읽기 전용) -->
+    <select id="countPortfolioFileRefs" resultType="int">
+        /* 파일: 포트폴리오 참조 수 */
+        SELECT COUNT(*)
+          FROM PORTFOLIO_FILE
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

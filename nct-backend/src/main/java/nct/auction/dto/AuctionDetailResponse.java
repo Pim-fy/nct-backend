@@ -34,9 +34,13 @@ public class AuctionDetailResponse {
     private Integer viewCount;
     private Long sellerId;
     private String sellerName;
+    private Double sellerRating;
+    private Integer sellerReviewCount;
     @JsonIgnore
     private Long currentHighestBidderId;
     private boolean currentHighestBidder;
+    private boolean hasBidHistory;
     private List<AuctionImageItem> images = List.of();
     private List<AuctionBidItem> bids = List.of();
+    private List<AuctionProductUpdateItem> productUpdates = List.of();
 }

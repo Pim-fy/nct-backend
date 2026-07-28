@@ -13,7 +13,7 @@
         /* ProductImageMapper.findImagesByPrdSn */
         SELECT
             pi.FL_SN  AS flSn,
-            CONCAT(f.FL_PATH, '/', f.FL_SAVE_NM) AS url
+            f.FL_PATH AS url
         FROM PRODUCT_IMAGE pi
         JOIN FILES f ON f.FL_SN = pi.FL_SN
         WHERE pi.PRD_SN = #{prdSn}

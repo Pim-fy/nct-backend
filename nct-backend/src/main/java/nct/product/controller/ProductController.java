@@ -105,7 +105,7 @@ public class ProductController {
     @PostMapping("/{prdSn}/comments")
     public ResponseEntity<ApiResponse<ProductCommentResponse>> addComment(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long prdSn,
+            @PathVariable(name = "prdSn") Long prdSn,
             @Valid @RequestBody ProductCommentRequest request) {
 
         Long usrSn = userDetails.getMember().getId();
@@ -116,7 +116,7 @@ public class ProductController {
     /** 추가 공지 목록 조회 — 최신 4개, 비로그인 포함 (F-AUC-007) */
     @GetMapping("/{prdSn}/comments")
     public ResponseEntity<ApiResponse<List<ProductCommentResponse>>> getComments(
-            @PathVariable Long prdSn) {
+            @PathVariable(name = "prdSn") Long prdSn) {
 
         return ResponseEntity.ok(ApiResponse.success(productService.getComments(prdSn)));
     }

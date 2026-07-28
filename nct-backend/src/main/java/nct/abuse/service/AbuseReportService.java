@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.dto.ManualAbuseReportRequest;
+import nct.abuse.dto.ManualAbuseReportResponse;
+import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -23,6 +27,8 @@ import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.security.port.SensitiveDetectionReportCommand;
 import nct.ops.security.port.SensitiveDetectionReportPort;
 import nct.ops.security.port.SensitiveDetectionReportResult;
+import nct.product.dto.InquiryReportTarget;
+import nct.product.service.ProductService;
 
 @Service
 @RequiredArgsConstructor
@@ -33,13 +39,17 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     static final String PROCESSING_STATUS = "ABRC0006";
     static final String PROCESSED_STATUS = "ABRC0007";
     static final String REJECTED_STATUS = "ABRC0008";
+    static final String PRODUCT_COMMENT_REFERENCE_TYPE = "REFC0012";
 
     private static final String REPORT_TYPE_GROUP = "ABRG01";
     private static final String REPORT_STATUS_GROUP = "ABRG02";
     private static final String REFERENCE_TYPE_GROUP = "REFG01";
     private static final String SYSTEM_ACTOR = "SYSTEM";
+    private static final String BUYER_INQUIRY_TYPE = "PRDC0006";
+    private static final String DEFAULT_MANUAL_REPORT_CONTENT = "상품 댓글·문의 신고";
     private static final int MAX_PROCESS_REASON_LENGTH = 4000;
     private static final int MAX_REQUEST_ID_LENGTH = 200;
+    private static final int MAX_PUBLIC_REFERENCE_LOOKUP_SIZE = 100;
     private static final Set<String> DECIDABLE_STATUSES = Set.of(
             RECEIVED_STATUS,
             PROCESSING_STATUS);
@@ -47,6 +57,84 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private final AbuseReportMapper abuseReportMapper;
     private final ReferenceDataService referenceDataService;
     private final AuditLogPort auditLogPort;
+    private final ObjectProvider<ProductService> productServiceProvider;
+
+    /** 판매자가 자기 상품에 등록된 구매자 문의를 수동 신고한다. */
+    @Transactional
+    public ManualAbuseReportResponse requestManualReport(
+            Long reporterUserSn,
+            ManualAbuseReportRequest request) {
+        ManualReportValues values = validateManualReport(reporterUserSn, request);
+        validateReferenceCodes(values.referenceTypeCode());
+        rejectDuplicateManualReport(values);
+
+        String actorId = String.valueOf(values.reporterUserSn());
+        AbuseReport report = AbuseReport.builder()
+                .riskEventSn(null)
+                .reporterUserSn(values.reporterUserSn())
+                .reportedUserSn(values.reportedUserSn())
+                .reportTypeCode(CONTENT_REPORT_TYPE)
+                .statusCode(RECEIVED_STATUS)
+                .referenceTypeCode(values.referenceTypeCode())
+                .referenceSn(values.referenceSn())
+                .content(values.content())
+                .registeredBy(actorId)
+                .updatedBy(actorId)
+                .build();
+
+        int inserted;
+        try {
+            inserted = abuseReportMapper.insertManualReport(report);
+        } catch (DuplicateKeyException duplicate) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
+        }
+        if (inserted != 1 || report.getReportSn() == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+        return new ManualAbuseReportResponse(report.getReportSn());
+    }
+
+    /** 로그인 사용자가 이미 신고한 참조 목록을 조회한다. */
+    @Transactional(readOnly = true)
+    public List<ManualAbuseReportStatusResponse> getMyManualReportReferences(
+            Long reporterUserSn,
+            String referenceTypeCode) {
+        String normalizedReferenceType = validateManualReferenceType(
+                reporterUserSn,
+                referenceTypeCode);
+        referenceDataService.requireActiveCode(
+                REFERENCE_TYPE_GROUP,
+                normalizedReferenceType);
+        return abuseReportMapper.findManualReportsByReporterAndReferenceType(
+                reporterUserSn,
+                normalizedReferenceType);
+    }
+
+    /** 공개 문의 목록에서 접수·처리중인 신고 표시를 위해 참조 상태만 조회한다. */
+    @Transactional(readOnly = true)
+    public List<ManualAbuseReportStatusResponse> getActiveManualReportReferences(
+            String referenceTypeCode,
+            List<Long> referenceSns) {
+        String normalizedReferenceType = normalizeManualReferenceType(referenceTypeCode);
+        if (referenceSns == null
+                || referenceSns.isEmpty()
+                || referenceSns.size() > MAX_PUBLIC_REFERENCE_LOOKUP_SIZE
+                || referenceSns.stream().anyMatch(referenceSn -> referenceSn == null || referenceSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        List<Long> normalizedReferenceSns = referenceSns.stream()
+                .distinct()
+                .toList();
+        referenceDataService.requireActiveCode(
+                REFERENCE_TYPE_GROUP,
+                normalizedReferenceType);
+        return abuseReportMapper.findActiveManualReportsByReferences(
+                normalizedReferenceType,
+                normalizedReferenceSns,
+                RECEIVED_STATUS,
+                PROCESSING_STATUS);
+    }
 
     /** 위험 이벤트 하나당 SYSTEM 자동 신고를 정확히 한 건 생성하거나 기존 신고를 재사용한다. */
     @Override
@@ -160,6 +248,52 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
         }
     }
 
+    private ManualReportValues validateManualReport(
+            Long reporterUserSn,
+            ManualAbuseReportRequest request) {
+        if (reporterUserSn == null
+                || reporterUserSn <= 0
+                || request == null
+                || request.reportedUserSn() == null
+                || request.reportedUserSn() <= 0
+                || request.referenceTypeCode() == null
+                || request.referenceTypeCode().isBlank()
+                || request.referenceTypeCode().trim().length() > 30
+                || request.referenceSn() == null
+                || request.referenceSn() <= 0
+                || (request.content() != null && request.content().trim().length() > 4000)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        String referenceTypeCode = request.referenceTypeCode().trim();
+        if (!PRODUCT_COMMENT_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        InquiryReportTarget target = productServiceProvider.getObject()
+                .getInquiryReportTarget(request.referenceSn());
+        if (target == null
+                || !request.referenceSn().equals(target.getPrdCmtSn())
+                || !BUYER_INQUIRY_TYPE.equals(target.getPrdCmtTypeCd())
+                || target.getWriterUsrSn() == null
+                || target.getSellerUsrSn() == null
+                || !request.reportedUserSn().equals(target.getWriterUsrSn())
+                || reporterUserSn.equals(target.getWriterUsrSn())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (!reporterUserSn.equals(target.getSellerUsrSn())) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        String content = trimToNull(request.content());
+        return new ManualReportValues(
+                reporterUserSn,
+                request.reportedUserSn(),
+                referenceTypeCode,
+                request.referenceSn(),
+                content == null ? DEFAULT_MANUAL_REPORT_CONTENT : content);
+    }
+
     private void validateReferenceCodes(String referenceTypeCode) {
         referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, CONTENT_REPORT_TYPE);
         referenceDataService.requireActiveCode(REPORT_STATUS_GROUP, RECEIVED_STATUS);
@@ -168,6 +302,39 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                     REFERENCE_TYPE_GROUP,
                     referenceTypeCode.trim());
         }
+    }
+
+    private void rejectDuplicateManualReport(ManualReportValues values) {
+        Long existingReportSn = abuseReportMapper.findManualReportId(
+                values.reporterUserSn(),
+                values.referenceTypeCode(),
+                values.referenceSn());
+        if (existingReportSn != null) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
+        }
+    }
+
+    private String validateManualReferenceType(
+            Long reporterUserSn,
+            String referenceTypeCode) {
+        if (reporterUserSn == null || reporterUserSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        return normalizeManualReferenceType(referenceTypeCode);
+    }
+
+    private String normalizeManualReferenceType(String referenceTypeCode) {
+        if (referenceTypeCode == null
+                || referenceTypeCode.isBlank()
+                || referenceTypeCode.trim().length() > 30) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        String normalized = referenceTypeCode.trim();
+        if (!PRODUCT_COMMENT_REFERENCE_TYPE.equals(normalized)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return normalized;
     }
 
     private DecisionValues validateDecision(AdminReportDecisionCommand command) {
@@ -226,6 +393,14 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
 
     private String trimToNull(String value) {
         return value == null ? null : value.trim();
+    }
+
+    private record ManualReportValues(
+            Long reporterUserSn,
+            Long reportedUserSn,
+            String referenceTypeCode,
+            Long referenceSn,
+            String content) {
     }
 
     private record DecisionValues(

@@ -26,10 +26,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.dto.ManualAbuseReportRequest;
+import nct.abuse.dto.ManualAbuseReportResponse;
+import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -41,12 +45,16 @@ import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.security.port.SensitiveDetectionReportCommand;
 import nct.ops.security.port.SensitiveDetectionReportResult;
 import nct.ops.security.service.SensitiveDataType;
+import nct.product.dto.InquiryReportTarget;
+import nct.product.service.ProductService;
 
 class AbuseReportServiceTest {
 
     private AbuseReportMapper abuseReportMapper;
     private ReferenceDataService referenceDataService;
     private AuditLogPort auditLogPort;
+    private ProductService productService;
+    private ObjectProvider<ProductService> productServiceProvider;
     private AbuseReportService service;
 
     @BeforeEach
@@ -54,10 +62,149 @@ class AbuseReportServiceTest {
         abuseReportMapper = mock(AbuseReportMapper.class);
         referenceDataService = mock(ReferenceDataService.class);
         auditLogPort = mock(AuditLogPort.class);
+        productService = mock(ProductService.class);
+        productServiceProvider = mock(ObjectProvider.class);
+        when(productServiceProvider.getObject()).thenReturn(productService);
+        when(abuseReportMapper.findManualReportId(any(), any(), any())).thenReturn(null);
         service = new AbuseReportService(
                 abuseReportMapper,
                 referenceDataService,
-                auditLogPort);
+                auditLogPort,
+                productServiceProvider);
+    }
+
+    @Test
+    void createsManualReportForBuyerInquiryOwnedBySeller() {
+        InquiryReportTarget target = inquiryTarget(55L, 20L, 10L, "PRDC0006");
+        when(productService.getInquiryReportTarget(55L)).thenReturn(target);
+        doAnswer(invocation -> {
+            AbuseReport report = invocation.getArgument(0);
+            report.setReportSn(501L);
+            return 1;
+        }).when(abuseReportMapper).insertManualReport(any(AbuseReport.class));
+
+        ManualAbuseReportResponse result = service.requestManualReport(
+                10L,
+                new ManualAbuseReportRequest(
+                        20L,
+                        AbuseReportService.PRODUCT_COMMENT_REFERENCE_TYPE,
+                        55L,
+                        "  부적절한 문의입니다.  "));
+
+        assertThat(result.reportSn()).isEqualTo(501L);
+        ArgumentCaptor<AbuseReport> reportCaptor = ArgumentCaptor.forClass(AbuseReport.class);
+        verify(abuseReportMapper).insertManualReport(reportCaptor.capture());
+        AbuseReport report = reportCaptor.getValue();
+        assertThat(report.getRiskEventSn()).isNull();
+        assertThat(report.getReporterUserSn()).isEqualTo(10L);
+        assertThat(report.getReportedUserSn()).isEqualTo(20L);
+        assertThat(report.getReportTypeCode()).isEqualTo(AbuseReportService.CONTENT_REPORT_TYPE);
+        assertThat(report.getStatusCode()).isEqualTo(AbuseReportService.RECEIVED_STATUS);
+        assertThat(report.getReferenceTypeCode())
+                .isEqualTo(AbuseReportService.PRODUCT_COMMENT_REFERENCE_TYPE);
+        assertThat(report.getReferenceSn()).isEqualTo(55L);
+        assertThat(report.getContent()).isEqualTo("부적절한 문의입니다.");
+        assertThat(report.getRegisteredBy()).isEqualTo("10");
+        assertThat(report.getUpdatedBy()).isEqualTo("10");
+        verify(referenceDataService).requireActiveCode("ABRG01", "ABRC0001");
+        verify(referenceDataService).requireActiveCode("ABRG02", "ABRC0005");
+        verify(referenceDataService).requireActiveCode("REFG01", "REFC0012");
+    }
+
+    @Test
+    void rejectsDuplicateManualReport() {
+        InquiryReportTarget target = inquiryTarget(55L, 20L, 10L, "PRDC0006");
+        when(productService.getInquiryReportTarget(55L)).thenReturn(target);
+        when(abuseReportMapper.findManualReportId(10L, "REFC0012", 55L))
+                .thenReturn(501L);
+
+        assertThatThrownBy(() -> service.requestManualReport(
+                10L,
+                new ManualAbuseReportRequest(20L, "REFC0012", 55L, "신고")))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS));
+
+        verify(abuseReportMapper, never()).insertManualReport(any(AbuseReport.class));
+    }
+
+    @Test
+    void mapsConcurrentDuplicateManualReportToConflict() {
+        InquiryReportTarget target = inquiryTarget(55L, 20L, 10L, "PRDC0006");
+        when(productService.getInquiryReportTarget(55L)).thenReturn(target);
+        when(abuseReportMapper.insertManualReport(any(AbuseReport.class)))
+                .thenThrow(new DuplicateKeyException("duplicate"));
+
+        assertThatThrownBy(() -> service.requestManualReport(
+                10L,
+                new ManualAbuseReportRequest(20L, "REFC0012", 55L, "신고")))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS));
+    }
+
+    @Test
+    void returnsManualReportReferencesForAuthenticatedReporter() {
+        List<ManualAbuseReportStatusResponse> reports = List.of(
+                new ManualAbuseReportStatusResponse(501L, 55L, "ABRC0005"));
+        when(abuseReportMapper.findManualReportsByReporterAndReferenceType(
+                10L,
+                "REFC0012"))
+                .thenReturn(reports);
+
+        List<ManualAbuseReportStatusResponse> result =
+                service.getMyManualReportReferences(10L, " REFC0012 ");
+
+        assertThat(result).containsExactlyElementsOf(reports);
+        verify(referenceDataService).requireActiveCode("REFG01", "REFC0012");
+        verify(abuseReportMapper).findManualReportsByReporterAndReferenceType(
+                10L,
+                "REFC0012");
+    }
+
+    @Test
+    void returnsActiveManualReportReferencesForPublicInquiryList() {
+        List<ManualAbuseReportStatusResponse> reports = List.of(
+                new ManualAbuseReportStatusResponse(501L, 55L, "ABRC0005"));
+        when(abuseReportMapper.findActiveManualReportsByReferences(
+                "REFC0012",
+                List.of(55L, 56L),
+                "ABRC0005",
+                "ABRC0006"))
+                .thenReturn(reports);
+
+        List<ManualAbuseReportStatusResponse> result =
+                service.getActiveManualReportReferences(
+                        " REFC0012 ",
+                        List.of(55L, 56L, 55L));
+
+        assertThat(result).containsExactlyElementsOf(reports);
+        verify(referenceDataService).requireActiveCode("REFG01", "REFC0012");
+        verify(abuseReportMapper).findActiveManualReportsByReferences(
+                "REFC0012",
+                List.of(55L, 56L),
+                "ABRC0005",
+                "ABRC0006");
+    }
+
+    @Test
+    void rejectsManualReportFromNonSellerOrWithManipulatedTargetUser() {
+        InquiryReportTarget target = inquiryTarget(55L, 20L, 10L, "PRDC0006");
+        when(productService.getInquiryReportTarget(55L)).thenReturn(target);
+
+        assertThatThrownBy(() -> service.requestManualReport(
+                11L,
+                new ManualAbuseReportRequest(20L, "REFC0012", 55L, "신고")))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+
+        assertThatThrownBy(() -> service.requestManualReport(
+                10L,
+                new ManualAbuseReportRequest(21L, "REFC0012", 55L, "신고")))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+
+        verify(abuseReportMapper, never()).insertManualReport(any(AbuseReport.class));
     }
 
     @Test
@@ -356,6 +503,19 @@ class AbuseReportServiceTest {
                 31L,
                 Set.of(SensitiveDataType.PHONE_NUMBER, SensitiveDataType.EMAIL),
                 "SYSTEM");
+    }
+
+    private InquiryReportTarget inquiryTarget(
+            Long inquirySn,
+            Long writerUserSn,
+            Long sellerUserSn,
+            String typeCode) {
+        InquiryReportTarget target = mock(InquiryReportTarget.class);
+        when(target.getPrdCmtSn()).thenReturn(inquirySn);
+        when(target.getWriterUsrSn()).thenReturn(writerUserSn);
+        when(target.getSellerUsrSn()).thenReturn(sellerUserSn);
+        when(target.getPrdCmtTypeCd()).thenReturn(typeCode);
+        return target;
     }
 
     private AbuseReport pendingReport(Long reportSn, String statusCode) {

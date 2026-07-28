@@ -93,7 +93,7 @@
                 <if test="condition.statusEndingSoon">
                   OR (
                       a.AUC_STATUS_CD = 'AUCC0002'
-                      AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+                      AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 HOUR)
                   )
                 </if>
               )
@@ -104,7 +104,7 @@
         </choose>
         <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">
           AND a.AUC_STATUS_CD = 'AUCC0002'
-          AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+          AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 HOUR)
         </if>
     </sql>
 
@@ -378,6 +378,15 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findReadyAuctionIds" resultType="long">
+        SELECT AUC_SN
+        FROM AUCTION
+        WHERE AUC_STATUS_CD = 'AUCC0001'
+          AND AUC_START_DT &lt;= NOW()
+        ORDER BY AUC_START_DT, AUC_SN
+        LIMIT #{limit}
+    </select>
+
     <select id="findClosingSoonActiveAuctionIds" resultType="long">
         SELECT AUC_SN
         FROM AUCTION
@@ -421,6 +430,7 @@
             AUC_STATUS_CD,
             AUC_CUR_AMT,
             AUC_BID_UNIT_AMT,
+            AUC_START_DT,
             AUC_END_DT,
             AUC_REG_ID,
             AUC_UPDT_ID
@@ -430,11 +440,22 @@
             #{statusCode},
             #{currentAmount},
             #{bidUnitAmount},
+            #{startDateTime},
             #{endDateTime},
             #{actor},
             #{actor}
         )
     </insert>
+
+    <update id="activateReadyAuction">
+        UPDATE AUCTION
+        SET AUC_STATUS_CD = 'AUCC0002',
+            AUC_UPDT_ID = #{actor},
+            AUC_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND AUC_STATUS_CD = 'AUCC0001'
+          AND AUC_START_DT &lt;= NOW()
+    </update>
 
     <update id="updateCurrentHighestBids">
         UPDATE BID

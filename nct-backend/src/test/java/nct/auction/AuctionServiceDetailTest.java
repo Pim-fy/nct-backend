@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,9 @@ import nct.auction.service.AuctionService;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.point.service.PointService;
 import nct.product.service.ProductService;
+import nct.product.dto.ProductCommentResponse;
+import nct.review.dto.TrustScoreResponse;
+import nct.review.service.ReviewService;
 import nct.trade.service.TradeService;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +51,9 @@ class AuctionServiceDetailTest {
 
     @Mock
     private AuctionEventPublisher auctionEventPublisher;
+
+    @Mock
+    private ReviewService reviewService;
 
     @InjectMocks
     private AuctionService auctionService;
@@ -74,6 +81,7 @@ class AuctionServiceDetailTest {
         AuctionDetailResponse detail = new AuctionDetailResponse();
         detail.setProductId(20L);
         detail.setCurrentHighestBidder(true);
+        detail.setHasBidHistory(true);
 
         when(auctionMapper.findProductIdByAuctionId(10L)).thenReturn(20L);
         when(productServiceProvider.getObject()).thenReturn(productService);
@@ -84,6 +92,62 @@ class AuctionServiceDetailTest {
         AuctionDetailResponse response = auctionService.findAuctionDetail(10L, 30L);
 
         assertThat(response.isCurrentHighestBidder()).isTrue();
+        assertThat(response.isHasBidHistory()).isTrue();
         verify(auctionMapper).findAuctionDetail(10L, 30L);
+    }
+
+    @Test
+    void findAuctionDetailIncludesSellerReviewSummary() {
+        AuctionDetailResponse detail = new AuctionDetailResponse();
+        detail.setProductId(20L);
+        detail.setSellerId(30L);
+
+        when(auctionMapper.findProductIdByAuctionId(10L)).thenReturn(20L);
+        when(productServiceProvider.getObject()).thenReturn(productService);
+        when(auctionMapper.findAuctionDetail(10L, null)).thenReturn(detail);
+        when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
+        when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
+        when(reviewService.getTrustScore(30L)).thenReturn(TrustScoreResponse.builder()
+                .usrSn(30L)
+                .totalScore(4.2)
+                .totalCount(12)
+                .hasReviews(true)
+                .build());
+
+        AuctionDetailResponse response = auctionService.findAuctionDetail(10L);
+
+        assertThat(response.getSellerRating()).isEqualTo(4.2);
+        assertThat(response.getSellerReviewCount()).isEqualTo(12);
+        verify(reviewService).getTrustScore(30L);
+    }
+
+    @Test
+    void findAuctionDetailIncludesProductUpdateHistory() {
+        AuctionDetailResponse detail = new AuctionDetailResponse();
+        detail.setProductId(20L);
+        ProductCommentResponse comment = org.mockito.Mockito.mock(ProductCommentResponse.class);
+        LocalDateTime registeredAt = LocalDateTime.of(2026, 7, 27, 14, 30);
+
+        when(auctionMapper.findProductIdByAuctionId(10L)).thenReturn(20L);
+        when(productServiceProvider.getObject()).thenReturn(productService);
+        when(productServiceProvider.getIfAvailable()).thenReturn(productService);
+        when(auctionMapper.findAuctionDetail(10L, null)).thenReturn(detail);
+        when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
+        when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
+        when(comment.getPrdCmtSn()).thenReturn(101L);
+        when(comment.getPrdCmtTtl()).thenReturn("상품 상태 안내");
+        when(comment.getPrdCmtCn()).thenReturn("외관 상태 설명을 보완했습니다.");
+        when(comment.getPrdCmtRegDt()).thenReturn(registeredAt);
+        when(productService.getComments(20L)).thenReturn(List.of(comment));
+
+        AuctionDetailResponse response = auctionService.findAuctionDetail(10L);
+
+        assertThat(response.getProductUpdates()).hasSize(1);
+        assertThat(response.getProductUpdates().get(0).getUpdateId()).isEqualTo(101L);
+        assertThat(response.getProductUpdates().get(0).getTitle()).isEqualTo("상품 상태 안내");
+        assertThat(response.getProductUpdates().get(0).getContent())
+                .isEqualTo("외관 상태 설명을 보완했습니다.");
+        assertThat(response.getProductUpdates().get(0).getRegisteredAt()).isEqualTo(registeredAt);
+        verify(productService).getComments(20L);
     }
 }

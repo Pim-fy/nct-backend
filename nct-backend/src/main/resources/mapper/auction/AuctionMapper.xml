@@ -202,7 +202,18 @@
                  )
                 THEN TRUE
                 ELSE FALSE
-            END AS currentHighestBidder
+            END AS currentHighestBidder,
+            CASE
+                WHEN #{userId} IS NOT NULL
+                 AND EXISTS (
+                    SELECT 1
+                    FROM BID userBid
+                    WHERE userBid.AUC_SN = a.AUC_SN
+                      AND userBid.USR_SN = #{userId}
+                 )
+                THEN TRUE
+                ELSE FALSE
+            END AS hasBidHistory
         FROM AUCTION a
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN

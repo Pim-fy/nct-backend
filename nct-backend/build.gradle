@@ -19,6 +19,8 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	// 직거래 채팅의 방 단위 실시간 메시지 수신(WebSocket) 지원
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	// 알림 실시간 push(SSE)에서 Flux/Sinks/ServerSentEvent 타입만 사용 — 서블릿(Tomcat) 스택은 유지된다
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 	implementation 'org.springframework.boot:spring-boot-starter-security'

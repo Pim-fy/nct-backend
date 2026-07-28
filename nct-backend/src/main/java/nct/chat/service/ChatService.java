@@ -54,6 +54,17 @@ public class ChatService {
         return new OfflineTradeChatRoomCreateResult(chatRoom.getRoomId(), true);
     }
 
+    /** 거래 완료 트랜잭션에 합류해 직거래 채팅방을 읽기 전용으로 닫는다. */
+    @Transactional
+    public void closeOfflineTradeChatRoom(long tradeId) {
+        if (tradeId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 번호가 올바르지 않습니다.");
+        }
+
+        chatMapper.closeOfflineTradeChatRoom(tradeId);
+    }
+
     /** 로그인 사용자가 참여하는 대면 거래 채팅방만 조회한다. */
     @Transactional(readOnly = true)
     public List<ChatRoomResponse> getMyChatRooms(long userId, Long tradeId) {
@@ -70,6 +81,34 @@ public class ChatService {
         return messages;
     }
 
+    /**
+     * WebSocket 구독·전송 전에 현재 사용자가 해당 채팅방 당사자인지 확인한다.
+     * REST와 같은 권한 검사를 재사용해 방 번호만 추측한 구독을 차단한다.
+     */
+    @Transactional(readOnly = true)
+    public ChatRoomAccess requireMyActiveChatRoom(long roomId, long userId) {
+        return requireMyChatRoom(roomId, userId);
+    }
+
+    /**
+     * 방을 구독한 사용자 기준으로 저장된 메시지를 다시 조회한다.
+     * senderType(ME/COUNTERPART)을 수신자별로 정확히 만들기 위해 사용한다.
+     */
+    @Transactional(readOnly = true)
+    public ChatMessageResponse getMyChatMessage(
+            long roomId,
+            long messageId,
+            long userId) {
+        requireMyChatRoom(roomId, userId);
+
+        ChatMessageResponse message = chatMapper.findMyChatMessageById(messageId, userId);
+        if (message == null) {
+            throw new CustomException(ErrorCode.CHAT_MESSAGE_NOT_FOUND);
+        }
+
+        return message;
+    }
+
     /** 활성 채팅방에 마스킹된 메시지만 저장하고, 저장 결과를 화면에 반환한다. */
     @Transactional
     public ChatMessageResponse sendMessage(
@@ -77,11 +116,13 @@ public class ChatService {
             long userId,
             String actorId,
             ChatMessageSendRequest request) {
+        validateMessageRequest(request);
         ChatRoomAccess chatRoom = requireMyChatRoom(roomId, userId);
 
-        if (CLOSED_ROOM.equals(chatRoom.getRoomStatus())) {
+        if (CLOSED_ROOM.equals(chatRoom.getRoomStatus())
+                || "TRDC0006".equals(chatRoom.getTradeStatus())) {
             throw new CustomException(ErrorCode.ALREADY_PROCESSED,
-                    "종료된 채팅방에서는 메시지를 전송할 수 없습니다.");
+                    "완료된 거래의 채팅방에서는 기존 대화만 열람할 수 있습니다.");
         }
 
         String maskedContent = sensitiveContentInspectionUseCase.inspect(
@@ -97,6 +138,19 @@ public class ChatService {
         chatMapper.insertChatMessage(message);
 
         return chatMapper.findMyChatMessageById(message.getMessageId(), userId);
+    }
+
+    // WebSocket은 Controller의 @Valid를 거치지 않으므로 서비스 경계에서도 같은 입력 규칙을 지킨다.
+    private void validateMessageRequest(ChatMessageSendRequest request) {
+        if (request == null
+                || request.getContent() == null
+                || request.getContent().isBlank()
+                || request.getContent().trim().length() > 500
+                || request.getDetectionKey() == null
+                || request.getDetectionKey().isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "메시지 내용과 요청 식별값을 확인해 주세요.");
+        }
     }
 
     // 채팅방 번호만으로는 접근을 허용하지 않고, 거래 당사자와 대면 거래 여부를 함께 검증한다.

@@ -154,6 +154,28 @@ class ChatServiceTest {
     }
 
     @Test
+    void rejectsMessageWhenCompletedTradeHasLegacyActiveChatRoom() {
+        ChatRoomAccess legacyActiveRoom = chatRoom(11L, 91L, "CHRC0001");
+        legacyActiveRoom.setTradeStatus("TRDC0006");
+        when(chatMapper.findMyChatRoom(11L, 10L)).thenReturn(legacyActiveRoom);
+
+        assertThatThrownBy(() -> chatService.sendMessage(
+                11L,
+                10L,
+                "10",
+                request("완료 뒤에는 전송할 수 없습니다.")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verify(inspectionUseCase, never()).inspect(
+                any(),
+                any(),
+                any(),
+                any(),
+                any());
+    }
+
+    @Test
     void rejectsChatRoomOutsideCurrentUsersTransactions() {
         when(chatMapper.findMyChatRoom(11L, 10L)).thenReturn(null);
 

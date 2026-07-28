@@ -34,6 +34,20 @@
         )
     </insert>
 
+    <!-- 완료된 직거래는 기존 메시지만 열람하고 새 메시지는 전송할 수 없게 한다. -->
+    <update id="closeOfflineTradeChatRoom">
+        UPDATE CHAT_ROOM r
+        JOIN TRADE t
+          ON t.TRD_SN = r.TRD_SN
+        JOIN PRODUCT p
+          ON p.PRD_SN = t.PRD_SN
+        SET r.CH_RM_STATUS_CD = 'CHRC0002'
+        WHERE r.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND r.CH_RM_STATUS_CD = 'CHRC0001'
+    </update>
+
     <!-- 대면 거래의 판매자·구매자만 본인 채팅방 목록에 포함한다. -->
     <select id="findMyChatRooms" resultType="nct.chat.dto.ChatRoomResponse">
         SELECT
@@ -44,7 +58,10 @@
                 ELSE buyer.USR_NM
             END AS counterpartNickname,
             p.PRD_NM AS productName,
-            r.CH_RM_STATUS_CD AS roomStatus,
+            CASE
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN 'CHRC0002'
+                ELSE r.CH_RM_STATUS_CD
+            END AS roomStatus,
             (
                 SELECT m.CH_MSG_CN
                 FROM CHAT_MESSAGE m
@@ -89,7 +106,8 @@
         SELECT
             r.CH_RM_SN AS roomId,
             t.TRD_SN AS tradeId,
-            r.CH_RM_STATUS_CD AS roomStatus
+            r.CH_RM_STATUS_CD AS roomStatus,
+            t.TRD_STATUS_CD AS tradeStatus
         FROM CHAT_ROOM r
         JOIN TRADE t
           ON t.TRD_SN = r.TRD_SN

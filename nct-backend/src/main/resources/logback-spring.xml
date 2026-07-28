@@ -3,7 +3,14 @@
 	: 요청 URI/메서드/사용자/본문 상세 로그 3) logback(이 파일) : 출력 패턴/파일 롤링 정책 패턴의 %X{traceId} 
 	: LoggingFilter 가 MDC 에 넣은 요청 추적 ID -->
 <configuration>
-	<property name="LOG_DIR" value="/home/nct/logs" />
+	<!--
+		운영 환경은 app.logging.dir 미지정 시 기존 경로를 유지한다.
+		로컬 프로필에서는 application-local.properties의 상대 경로를 사용한다.
+	-->
+	<springProperty scope="context"
+		name="LOG_DIR"
+		source="app.logging.dir"
+		defaultValue="/home/nct/logs" />
 	<property name="LOG_PATH_NAME" value="${LOG_DIR}/application.log" />
 	<property name="PATTERN" value="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
 

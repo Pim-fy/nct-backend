@@ -7,7 +7,6 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,13 +18,12 @@ import nct.notification.domain.UserNotificationEventSetting;
 import nct.notification.service.NotificationService;
 
 /**
- * Claude Code 작성 (BJN, 2026-07-16, 이벤트 단위 설정으로 재작성 2026-07-24)
+ * Claude Code 작성 (BJN, 2026-07-16, 이벤트 단위 설정으로 재작성 2026-07-24, 2026-07-28 실DB 적용 확인 후 게이팅 제거)
  *
  * [테스트 - 알림 수신 설정 저장·조회] (F-COM-012 세분화)
  *
- * USER_NOTIFICATION_EVENT_SETTING(신규 테이블)이 아직 공유 DB에 없어서, 이전 배송인증사진
- * 테이블 때와 같은 방식으로 로컬 DB에 먼저 테이블을 만든 뒤(NCT_LOCAL_DB_TEST=true 환경변수)만
- * 돌아가도록 게이팅한다. 신규 테이블이 공유 DB(NCTDB)에 정식 적용되면 이 게이팅을 걷어내면 된다.
+ * USER_NOTIFICATION_EVENT_SETTING(신규 테이블)이 공유 DB(NCTDB)에 정식 적용된 걸 확인해
+ * 로컬 전용 게이팅(NCT_LOCAL_DB_TEST)을 걷어냈다.
  *
  * 공유 DB(NCTDB) 주의사항 — PointFlowTest와 동일:
  * - @Transactional 테스트는 메소드 종료 시 전부 롤백되어 행을 남기지 않는다
@@ -33,7 +31,6 @@ import nct.notification.service.NotificationService;
  */
 @SpringBootTest
 @Transactional
-@EnabledIfEnvironmentVariable(named = "NCT_LOCAL_DB_TEST", matches = "true")
 class NotificationSettingTest {
 
     @Autowired NotificationService notificationService;

@@ -31,7 +31,6 @@ public class ProviderApplicationService {
     private static final String PENDING = "PRVC0002";
     private static final String APPROVED = "PRVC0003";
     private static final String REJECTED = "PRVC0004";
-    private static final String NEW_APPLICATION = "PRVC0009";
     private static final Set<String> FILE_TYPES = Set.of("PRVC0012", "PRVC0013", "PRVC0014");
     private final ProviderApplicationMapper mapper;
     private final ReferenceDataService referenceDataService;

@@ -156,19 +156,16 @@ public class NotificationService {
     }
 
     // ================================================================
-    // 알림 이벤트별 설정 (F-COM-012 세분화, 2026-07-24)
+    // 알림 이벤트별 설정 (F-COM-012 세분화, 2026-07-24, 2026-07-28 테이블 실DB 적용 확인 후 전환)
     // 위 도메인 단위(경매/거래/서비스) 설정·emailEligible()은 그대로 두고, 이벤트 단위 설정을
     // USER_NOTIFICATION_EVENT_SETTING(신규)에 별도로 추가한다.
     //
-    // ⚠ 이 신규 테이블은 아직 공유 DB(NCTDB)에 없다(사용자가 DDL 적용 전) — 그래서 지금은
-    // notifyForEvent()를 실제로 호출하는 곳이 "경매/서비스/운영(제공자심사·신고·공지) 쪽에 새로
-    // 추가한 메서드"뿐이다(팀전달_알림설정_*_260724.md 3건으로 호출 추가 요청, 아직 아무도 호출 안 함
-    // → 지금 당장은 테이블 없이도 안전). 기존에 이미 쓰이던 "거래 확정 요청"(notifyTradeConfirmRequest)과
-    // "포인트 지급/차감"(notifyCharge 등)은 테이블 적용 전에 연결하면 그 자리에서 알림이 깨지므로
-    // 각 메서드에 남긴 주석대로 아직 기존 경로(emailEligible 등) 그대로 둔 상태다 — 테이블 적용 확인
-    // 후 notifyForEvent(TRADE_CONFIRM_REQUEST / POINT_CHANGE)로 교체한다.
-    // "분쟁 접수/판정"·"환전 지급/반려"는 13개 이벤트 목록에 아예 없어 기존 emailEligible() 경로를
-    // 계속 쓴다(§ 알림 수신 설정 섹션 참고 — 도메인 단위 설정 화면이 없어졌으니 사실상 고정값).
+    // 신규 테이블이 공유 DB(NCTDB)에 적용된 걸 확인해, 기존에 도메인 단위 게이팅으로 남겨뒀던
+    // "거래 확정 요청"(notifyTradeConfirmRequest)·"포인트 지급/차감"(notifyCharge/notifyExchangeRequest/
+    // notifyPointConvert)도 notifyForEvent(TRADE_CONFIRM_REQUEST / POINT_CHANGE)로 교체했다.
+    // "분쟁 접수/판정"·"환전 지급/반려"는 13개 이벤트 목록에 아예 없거나(분쟁) D-031 정책상 의도적으로
+    // 게이팅하지 않는 것(환전 지급/반려)이라 기존 emailEligible() 경로를 계속 쓴다(§ 알림 수신 설정
+    // 섹션 참고 — 도메인 단위 설정 화면이 없어졌으니 사실상 고정값).
     // ================================================================
 
     /** 내 이벤트별 설정 전체 조회 — 13개 전부, 저장한 적 없는 이벤트는 기본값(전 채널 수신) */
@@ -354,12 +351,11 @@ public class NotificationService {
 
     /**
      * 거래 완료 확인 요청 — 상대방 확인 대기 시작 시 거래 담당자(4)가 호출. 기한 내 미확인 시 자동완료.
-     * "거래 확정 요청"(NTFC0021) 이벤트로 게이팅할 예정이지만, USER_NOTIFICATION_EVENT_SETTING이
-     * 아직 공유 DB에 없어 지금 연결하면 이 알림(F-COM-006 트리거) 자체가 깨진다 — 테이블 적용 확인
-     * 후 notifyForEvent(TRADE_CONFIRM_REQUEST)로 교체한다. 그때까지는 기존 도메인 단위 게이팅 그대로 둔다.
+     * "거래 확정 요청"(NTFC0021) 이벤트로 게이팅한다 — 이벤트 목록의 type이 TRADE라
+     * 알림 배지가 기존 [OPS]에서 [거래]로 바뀐다(F-COM-012 재분류, 의도된 변경).
      */
     public void notifyTradeConfirmRequest(long usrSn, long trdSn, int confirmDays) {
-        notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
+        notifyForEvent(usrSn, NotificationEvent.TRADE_CONFIRM_REQUEST, NotificationAudience.GENERAL,
                 "거래 완료 확인 요청",
                 String.format("상대방이 거래 완료 확인을 기다리고 있습니다. %d일 안에 확인하지 않으면 자동으로 완료 처리됩니다.", confirmDays),
                 RefType.TRADE, trdSn);
@@ -397,12 +393,10 @@ public class NotificationService {
 
     /**
      * 포인트 충전 완료 알림 — PointChargeService가 호출.
-     * "포인트 지급/차감"(NTFC0026) 이벤트로 게이팅할 예정이지만, USER_NOTIFICATION_EVENT_SETTING이
-     * 아직 공유 DB에 없어(사용자 적용 대기) 지금 연결하면 이 알림 자체가 깨진다 — 테이블 적용 확인
-     * 후 notifyForEvent(POINT_CHANGE)로 교체한다. 그때까지는 기존 방식 그대로 둔다.
+     * "포인트 지급/차감"(NTFC0026) 이벤트로 게이팅한다.
      */
     public void notifyCharge(long usrSn, long amt) {
-        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+        notifyForEvent(usrSn, NotificationEvent.POINT_CHANGE, NotificationAudience.GENERAL,
                 "충전 완료",
                 String.format("%,dP가 충전되었습니다.", amt),
                 null, null);
@@ -411,10 +405,10 @@ public class NotificationService {
     /**
      * 환전 신청 접수 알림 — PointExchangeService가 호출 (F-PAY-012, D-026)
      * 실제 입금은 관리자 수동 처리라 "며칠 내 지급 예정" 안내만 나간다 (자동화 금지 정본 규칙)
-     * 위 notifyCharge와 같은 사유로 이벤트 게이팅은 테이블 적용 후로 미룬다.
+     * 위 notifyCharge와 같은 사유로 "포인트 지급/차감"(NTFC0026) 이벤트로 게이팅한다.
      */
     public void notifyExchangeRequest(long usrSn, long amt) {
-        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+        notifyForEvent(usrSn, NotificationEvent.POINT_CHANGE, NotificationAudience.GENERAL,
                 "환전 신청 접수",
                 String.format("%,dP 환전 신청이 접수되었습니다. 등록하신 계좌로 며칠 내 지급될 예정입니다.", amt),
                 null, null);
@@ -435,10 +429,10 @@ public class NotificationService {
 
     /**
      * 포인트 전환 완료 알림 (F-PAY-010) — 본인 지갑 관리 이벤트라 '일반' 구분(기본값)으로 나간다.
-     * 위 notifyCharge와 같은 사유로 이벤트 게이팅은 테이블 적용 후로 미룬다.
+     * 위 notifyCharge와 같은 사유로 "포인트 지급/차감"(NTFC0026) 이벤트로 게이팅한다.
      */
     public void notifyPointConvert(long usrSn, long amt) {
-        notify(usrSn, NotificationType.OPS, NotificationDomain.OPS,
+        notifyForEvent(usrSn, NotificationEvent.POINT_CHANGE, NotificationAudience.GENERAL,
                 "포인트 전환 완료",
                 String.format("정산 가능 포인트 %,dP가 사용 가능 포인트로 전환되었습니다.", amt),
                 null, null);

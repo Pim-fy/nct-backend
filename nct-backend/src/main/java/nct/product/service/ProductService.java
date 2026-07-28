@@ -267,6 +267,10 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
+        if (productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE).size() >= 3) {
+            throw new CustomException(ErrorCode.CONFLICT, "변경 내역은 최대 3개까지 등록할 수 있습니다.");
+        }
+
         ProductComment comment = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -287,7 +291,6 @@ public class ProductService {
     public List<ProductCommentResponse> getComments(Long prdSn) {
         productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
-        // 판매자 상세 화면에서 프론트가 페이지네이션(5개씩)하므로 전체를 내려준다
         return productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE);
     }
 

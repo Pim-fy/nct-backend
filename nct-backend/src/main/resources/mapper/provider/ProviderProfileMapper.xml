@@ -3,15 +3,39 @@
 <mapper namespace="nct.provider.mapper.ProviderProfileMapper">
   <resultMap id="profile" type="nct.provider.dto.ProviderProfileResponse">
     <result column="USR_SN" property="userSn"/>
+    <result column="USR_NM" property="displayName"/>
+    <result column="PROFILE_IMAGE_URL" property="profileImageUrl"/>
     <result column="PRV_PRF_INTRO_CN" property="introduction"/>
     <result column="PRV_PRF_AREA_NM" property="availableArea"/>
     <result column="PRV_PRF_RVW_AVG_SCR" property="reviewAverageScore"/>
     <result column="PRV_PRF_RVW_CNT" property="reviewCount"/>
+    <collection property="categories" ofType="java.lang.String"
+                select="findActiveCategoryNames" column="USR_SN"/>
   </resultMap>
   <select id="findActiveByUserSn" resultMap="profile">
-    SELECT USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_RVW_AVG_SCR, PRV_PRF_RVW_CNT
-      FROM PROVIDER_PROFILE
-     WHERE USR_SN = #{userSn} AND PRV_PRF_USE_YN = 'Y'
+    SELECT p.USR_SN,
+           u.USR_NM,
+           f.FL_PATH AS PROFILE_IMAGE_URL,
+           p.PRV_PRF_INTRO_CN,
+           p.PRV_PRF_AREA_NM,
+           p.PRV_PRF_RVW_AVG_SCR,
+           p.PRV_PRF_RVW_CNT
+      FROM PROVIDER_PROFILE p
+      JOIN USERS u ON u.USR_SN = p.USR_SN
+      LEFT JOIN FILES f ON f.FL_SN = u.USR_PRFL_FL_SN AND f.FL_USE_YN = 'Y'
+     WHERE p.USR_SN = #{userSn}
+       AND p.PRV_PRF_USE_YN = 'Y'
+       AND u.USR_USE_YN = 'Y'
+  </select>
+  <select id="findActiveCategoryNames" resultType="java.lang.String">
+    SELECT c.CAT_NM
+      FROM PROVIDER_CATEGORY_PERMISSION permission
+      JOIN CATEGORY c ON c.CAT_SN = permission.CAT_SN
+     WHERE permission.USR_SN = #{userSn}
+       AND permission.PRV_CAT_PRM_STATUS_CD = 'PRVC0006'
+       AND permission.PRV_CAT_PRM_USE_YN = 'Y'
+       AND c.CAT_USE_YN = 'Y'
+     ORDER BY c.CAT_SORT_NO, c.CAT_SN
   </select>
   <insert id="upsert">
     INSERT INTO PROVIDER_PROFILE (USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_REG_ID, PRV_PRF_UPDT_ID)

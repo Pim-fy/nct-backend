@@ -124,6 +124,12 @@ public class SecurityConfig {
                     .permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/guides", "/api/guides/**")
                     .permitAll()
+                // 담당자 7 · F-PROV-004~005: 공개 제공자 프로필과 공개 포트폴리오 목록.
+                // /api/providers/me/** 쓰기 경로는 포함하지 않아 기존 인증·ROLE_SERVICE 검증을 유지한다.
+                .requestMatchers(HttpMethod.GET,
+                        "/api/providers/*/profile",
+                        "/api/providers/*/portfolios")
+                    .permitAll()
                 // 조회수 증가 — 비로그인 경매 상세에서도 호출된다.
                 .requestMatchers(HttpMethod.POST, "/api/products/*/view")
                     .permitAll()

@@ -22,8 +22,9 @@ import nct.trade.port.TradeSettlementReferenceReader;
  * [정산 - 서비스 계약] (담당자6 백종남)
  *
  * 거래 도메인(담당자4)이 거래 완료를 확정한 뒤 createPending을 호출한다 (F-PAY-042).
- * 완료 처리(F-PAY-043)는 관리자가, 보류/해제(F-PAY-044, F-OPS-079)는
- * 거래 분쟁 접수·판정에 따라 호출한다. SETTLEMENT 테이블 직접 변경 금지.
+ * 완료 처리(F-PAY-043)는 관리자 명시 처리 또는 거래 자동 완료에 따른 시스템 처리로 실행하며,
+ * 보류/해제(F-PAY-044, F-OPS-079)는 거래 분쟁 접수·판정에 따라 호출한다.
+ * SETTLEMENT 테이블 직접 변경 금지.
  *
  * 상태 전이: 대기 → 완료 / 대기 ↔ 보류 — requireStatus가 행 잠금 후 검증하므로
  * 보류 중인 정산이 실수로 완료되는 사고를 원천 차단한다.
@@ -84,6 +85,16 @@ public class SettlementService {
                     "처리 관리자 회원번호가 필요합니다.");
         }
         completeInternal(stlmSn, String.valueOf(adminUsrSn));
+    }
+
+    /** 만료 거래의 자동 완료가 호출하는 시스템 정산 완료 처리. */
+    @Transactional
+    public void completeAutomatically(long stlmSn) {
+        if (stlmSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "정산번호가 필요합니다.");
+        }
+        completeInternal(stlmSn, SYSTEM_ACTOR);
     }
 
     private void completeInternal(long stlmSn, String actorId) {

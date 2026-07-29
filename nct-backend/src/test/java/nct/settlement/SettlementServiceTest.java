@@ -293,6 +293,96 @@ class SettlementServiceTest {
                 anyLong(), anyLong(), any(), anyLong(), anyString());
     }
 
+    @Test
+    void holdUpByTradeReturnsFalseWhenSettlementDoesNotExist() {
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(null);
+
+        boolean held = settlementService.holdUpByTradeIfPending(91L, "거래 문제 접수");
+
+        assertThat(held).isFalse();
+        verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
+        verify(notificationService, never())
+                .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void holdUpByTradeChangesPendingSettlementToOnHold() {
+        Settlement pending = settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.PENDING);
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(pending);
+        when(settlementMapper.updateStatus(
+                501L,
+                SettlementStatus.ON_HOLD.getCode(),
+                "SYSTEM"))
+                .thenReturn(1);
+
+        boolean held = settlementService.holdUpByTradeIfPending(91L, "거래 문제 접수");
+
+        assertThat(held).isTrue();
+        verify(notificationService).notifySettlement(
+                10L,
+                "정산 보류",
+                "거래대금 30,000P의 정산이 보류되었습니다. 사유: 거래 문제 접수",
+                91L);
+    }
+
+    @Test
+    void holdUpByTradeIsIdempotentWhenSettlementIsAlreadyOnHold() {
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.ON_HOLD));
+
+        boolean held = settlementService.holdUpByTradeIfPending(91L, "거래 문제 재접수");
+
+        assertThat(held).isFalse();
+        verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
+        verify(notificationService, never())
+                .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void holdUpByTradeRejectsCompletedSettlement() {
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.COMPLETED));
+
+        assertThatThrownBy(() -> settlementService.holdUpByTradeIfPending(91L, "완료 후 분쟁"))
+                .isInstanceOf(SettlementException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SETTLEMENT_INVALID_STATUS);
+
+        verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void automaticCompleteRejectsOnHoldSettlement() {
+        when(settlementMapper.selectForUpdate(501L)).thenReturn(settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.ON_HOLD));
+
+        assertThatThrownBy(() -> settlementService.completeAutomatically(501L))
+                .isInstanceOf(SettlementException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SETTLEMENT_INVALID_STATUS);
+
+        verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
+        verify(pointService, never()).creditEscrowToSettleable(
+                anyLong(), anyLong(), any(), anyLong(), anyString());
+    }
+
     private Settlement settlement(
             long settlementId,
             long tradeId,

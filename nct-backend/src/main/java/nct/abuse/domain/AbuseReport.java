@@ -21,6 +21,8 @@ public class AbuseReport {
     private String statusCode;
     private String referenceTypeCode;
     private Long referenceSn;
+    private String title;
+    private String targetName;
     private String content;
     private String processReason;
     private String registeredBy;

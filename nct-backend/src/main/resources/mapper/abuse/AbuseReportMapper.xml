@@ -4,6 +4,20 @@
 
 <mapper namespace="nct.abuse.mapper.AbuseReportMapper">
 
+    <sql id="myReportColumns">
+        ar.ABR_SN          AS reportSn,
+        ar.ABR_TYPE_CD     AS reportTypeCode,
+        rt.CMM_NM          AS reportTypeName,
+        ar.ABR_TRG_NM      AS targetName,
+        ar.ABR_TITLE_NM    AS title,
+        ar.ABR_CN          AS content,
+        ar.ABR_STATUS_CD   AS statusCode,
+        st.CMM_NM          AS statusName,
+        ar.ABR_PROC_RSN_CN AS processReason,
+        ar.ABR_REG_DT      AS registeredAt,
+        ar.ABR_UPDT_DT     AS updatedAt
+    </sql>
+
     <sql id="adminReportColumns">
         ABR_SN AS reportSn,
         RSK_EVT_SN AS riskEventSn,
@@ -116,6 +130,86 @@
             #{referenceSn}
         </foreach>
          ORDER BY ABR_SN DESC
+    </select>
+
+    <insert id="insertCustomerReport"
+            parameterType="nct.abuse.domain.AbuseReport"
+            useGeneratedKeys="true"
+            keyProperty="reportSn"
+            keyColumn="ABR_SN">
+        INSERT INTO ABUSE_REPORT (
+            RSK_EVT_SN,
+            RPRT_USR_SN,
+            RPTD_USR_SN,
+            ABR_TYPE_CD,
+            ABR_STATUS_CD,
+            ABR_REF_TYPE_CD,
+            ABR_REF_SN,
+            ABR_TITLE_NM,
+            ABR_TRG_NM,
+            ABR_CN,
+            ABR_REG_ID,
+            ABR_UPDT_ID
+        ) VALUES (
+            NULL,
+            #{reporterUserSn},
+            #{reportedUserSn},
+            #{reportTypeCode},
+            #{statusCode},
+            #{referenceTypeCode},
+            #{referenceSn},
+            #{title},
+            #{targetName},
+            #{content},
+            #{registeredBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <select id="findMyReports" resultType="nct.abuse.dto.MyAbuseReportResponse">
+        SELECT
+            <include refid="myReportColumns"/>
+          FROM ABUSE_REPORT ar
+          LEFT JOIN CMM_CODE rt ON rt.CMM_CD = ar.ABR_TYPE_CD
+          LEFT JOIN CMM_CODE st ON st.CMM_CD = ar.ABR_STATUS_CD
+         WHERE ar.RPRT_USR_SN = #{reporterUserSn}
+           AND ar.RSK_EVT_SN IS NULL
+        <choose>
+            <when test="statusCode == 'FINISHED'">
+               AND ar.ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008')
+            </when>
+            <when test="statusCode != null">
+               AND ar.ABR_STATUS_CD = #{statusCode}
+            </when>
+        </choose>
+         ORDER BY ar.ABR_SN DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countMyReports" resultType="int">
+        SELECT COUNT(*)
+          FROM ABUSE_REPORT
+         WHERE RPRT_USR_SN = #{reporterUserSn}
+           AND RSK_EVT_SN IS NULL
+        <choose>
+            <when test="statusCode == 'FINISHED'">
+               AND ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008')
+            </when>
+            <when test="statusCode != null">
+               AND ABR_STATUS_CD = #{statusCode}
+            </when>
+        </choose>
+    </select>
+
+    <select id="findMyReportById" resultType="nct.abuse.dto.MyAbuseReportResponse">
+        SELECT
+            <include refid="myReportColumns"/>
+          FROM ABUSE_REPORT ar
+          LEFT JOIN CMM_CODE rt ON rt.CMM_CD = ar.ABR_TYPE_CD
+          LEFT JOIN CMM_CODE st ON st.CMM_CD = ar.ABR_STATUS_CD
+         WHERE ar.ABR_SN = #{reportSn}
+           AND ar.RPRT_USR_SN = #{reporterUserSn}
+           AND ar.RSK_EVT_SN IS NULL
     </select>
 
     <!-- 중복 INSERT가 선행 트랜잭션을 기다린 뒤 실패해도 최신 커밋 행을 읽는 current read다. -->

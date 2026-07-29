@@ -122,7 +122,8 @@ public class PointChargeReconciliationScheduler {
     private Outcome recoverPaidOrder(PointChargeOrder order, TossOrderLookupResult lookup) {
         try {
             pointChargeService.recoverFromReconciliation(
-                    order.getPtChgOrdNo(), lookup.paymentKey(), lookup.totalAmount());
+                    order.getPtChgOrdNo(), lookup.paymentKey(), lookup.totalAmount(),
+                    lookup.payMethod(), lookup.payDetail());
         } catch (PointException e) {
             // 이미 처리됐거나(사용자가 뒤늦게 confirm 성공) 금액 불일치 등 — 배치가 손댈 문제가
             // 아니므로 조용히 넘어간다(전자는 정상, 후자는 이미 실패 기록·알림까지 남음)

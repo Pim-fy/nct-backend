@@ -428,10 +428,11 @@ public class TradeService implements SellerCancellationDecisionPort {
         }
 
         // 즉시 완료도 자동 완료와 동일하게 정산 대기 생성까지 함께 성공해야 한다.
-        settlementService.createPending(
+        long settlementId = settlementService.createPending(
                 target.getTradeId(),
                 target.getSellerUserId(),
                 resolveSettlementAmount(target));
+        settlementService.completeAutomatically(settlementId);
         chatService.closeOfflineTradeChatRoom(target.getTradeId());
         tradeMapper.insertStatusHistory(
                 target.getTradeId(),
@@ -465,11 +466,12 @@ public class TradeService implements SellerCancellationDecisionPort {
             return false;
         }
 
-        // 거래 완료와 정산 대기 생성은 같은 트랜잭션으로 처리해 반쪽 완료 상태를 막는다.
-        settlementService.createPending(
+        // 거래 완료·정산 대기·정산가능 포인트 적립은 같은 트랜잭션으로 처리해 반쪽 완료를 막는다.
+        long settlementId = settlementService.createPending(
                 target.getTradeId(),
                 target.getSellerUserId(),
                 resolveSettlementAmount(target));
+        settlementService.completeAutomatically(settlementId);
         chatService.closeOfflineTradeChatRoom(target.getTradeId());
 
         tradeMapper.insertStatusHistory(
@@ -479,7 +481,6 @@ public class TradeService implements SellerCancellationDecisionPort {
         notificationService.notifyTradeComplete(target.getBuyerUserId(), tradeId, true);
         notificationService.notifyTradeComplete(target.getSellerUserId(), tradeId, true);
 
-        // 정산·포인트 원장 처리는 담당자5·6의 확정 계약을 받은 뒤 같은 완료 이벤트에 연결한다.
         return true;
     }
 

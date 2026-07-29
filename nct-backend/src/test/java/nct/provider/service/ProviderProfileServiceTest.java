@@ -20,6 +20,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.port.AuthMember;
+import nct.global.security.port.AuthMemberPort;
 import nct.ops.sanction.port.SanctionStatusReader;
 import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
@@ -31,6 +33,7 @@ class ProviderProfileServiceTest {
     @Mock private ProviderProfileMapper mapper;
     @Mock private ProviderApplicationService providerApplicationService;
     @Mock private SanctionStatusReader sanctionStatusReader;
+    @Mock private AuthMemberPort authMemberPort;
     @InjectMocks private ProviderProfileService service;
 
     @Test
@@ -39,6 +42,7 @@ class ProviderProfileServiceTest {
         request.setIntroduction("소개");
         request.setAvailableArea("서울");
         ProviderProfileResponse saved = profile(101L);
+        when(authMemberPort.findById(101L)).thenReturn(Optional.of(activeMember(101L)));
         when(mapper.findActiveByUserSn(101L)).thenReturn(Optional.of(saved));
 
         ProviderProfileResponse result = service.updateMine(101L, request);
@@ -51,6 +55,7 @@ class ProviderProfileServiceTest {
 
     @Test
     void suspendedProviderCannotReadPublicProfile() {
+        when(authMemberPort.findById(101L)).thenReturn(Optional.of(activeMember(101L)));
         doThrow(new CustomException(ErrorCode.FORBIDDEN)).when(sanctionStatusReader).requireNoActiveSanction(101L);
 
         assertThatThrownBy(() -> service.getPublic(101L))
@@ -59,8 +64,23 @@ class ProviderProfileServiceTest {
                 .isEqualTo(ErrorCode.FORBIDDEN);
     }
 
+    @Test
+    void withdrawnProviderCannotExposePublicProfile() {
+        when(authMemberPort.findById(101L)).thenReturn(Optional.of(
+                AuthMember.builder().id(101L).status("USRC0003").build()));
+
+        assertThatThrownBy(() -> service.getPublic(101L))
+                .isInstanceOf(CustomException.class)
+                .extracting(error -> ((CustomException) error).getErrorCode())
+                .isEqualTo(ErrorCode.NOT_FOUND);
+    }
+
     private ProviderProfileResponse profile(Long userSn) {
         return ProviderProfileResponse.builder().userSn(userSn).introduction("소개").availableArea("서울")
                 .reviewAverageScore(BigDecimal.ZERO).reviewCount(0L).build();
+    }
+
+    private AuthMember activeMember(Long userSn) {
+        return AuthMember.builder().id(userSn).status("USRC0001").build();
     }
 }

@@ -625,11 +625,13 @@ class TradeServiceTest {
                 .thenReturn(target);
         when(tradeMapper.completeConfirmationByCounterpart(91L, "10", "20"))
                 .thenReturn(1);
+        when(settlementService.createPending(91L, 10L, 30000L)).thenReturn(501L);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.requestCompletionConfirmation(91L, 20L);
 
         verify(settlementService).createPending(91L, 10L, 30000L);
+        verify(settlementService).completeAutomatically(501L);
         verify(chatService).closeOfflineTradeChatRoom(91L);
         verify(tradeMapper).insertStatusHistory(
                 91L,
@@ -652,6 +654,7 @@ class TradeServiceTest {
         target.setAutoCompleteAt(now.minusSeconds(1));
         when(tradeMapper.findAutoCompletionTargetForUpdate(91L)).thenReturn(target);
         when(tradeMapper.completeExpiredConfirmation(91L, now, "SYSTEM")).thenReturn(1);
+        when(settlementService.createPending(91L, 10L, 30000L)).thenReturn(501L);
 
         boolean completed = tradeService.completeExpiredConfirmation(91L, now);
 
@@ -661,6 +664,7 @@ class TradeServiceTest {
                 "TRDC0006",
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
         verify(settlementService).createPending(91L, 10L, 30000L);
+        verify(settlementService).completeAutomatically(501L);
         verify(chatService).closeOfflineTradeChatRoom(91L);
         verify(notificationService).notifyTradeComplete(20L, 91L, true);
         verify(notificationService).notifyTradeComplete(10L, 91L, true);

@@ -115,6 +115,9 @@ public class SecurityConfig {
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()
+                // 담당자 5 · F-COM-002: 가입 전에도 승인 제공자를 탐색할 수 있다.
+                .requestMatchers(HttpMethod.GET, "/api/service-discovery/providers")
+                    .permitAll()
                 // 담당자 7 · F-COM-003/F-OPS-007: 화면 공통코드 선택지는 읽기 전용으로 공개한다.
                 .requestMatchers(HttpMethod.GET, "/api/reference/codes")
                     .permitAll()
@@ -143,6 +146,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/auctions/*/stream")
                     .permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
+                    .permitAll()
+                // 담당자 2 · F-COM-002/F-SVC: 공개 서비스 요청 목록·상세는 비로그인 탐색도 허용.
+                // /me(내 목록)는 컨트롤러 @PreAuthorize("isAuthenticated()")로 별도 보호.
+                .requestMatchers(HttpMethod.GET, "/api/service-requests", "/api/service-requests/*")
                     .permitAll()
                 // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지·리뷰 사진은 비로그인 탐색에서도 보여야 한다.
                 //   업로드/삭제/교체(POST·DELETE·PUT)는 인증 필요라 GET만 연다.

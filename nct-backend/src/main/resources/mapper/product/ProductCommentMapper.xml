@@ -117,4 +117,27 @@
            AND PRD_CMT_TYPE_CD = 'PRDC0006'
     </select>
 
+    <!-- 특정 문의(PRDC0006)에 이미 등록된 답변(PRDC0007) 조회 — 1문의 1답변 제한·수정 가능 시간 판단용 -->
+    <select id="findReplyByParentSn" resultType="nct.product.domain.ProductComment">
+        SELECT PRD_CMT_SN        AS prdCmtSn,
+               PRD_SN            AS prdSn,
+               USR_SN            AS usrSn,
+               PRD_CMT_TYPE_CD   AS prdCmtTypeCd,
+               PRD_CMT_PARENT_SN AS prdCmtParentSn,
+               PRD_CMT_CN        AS prdCmtCn,
+               PRD_CMT_REG_DT    AS prdCmtRegDt
+          FROM PRODUCT_COMMENT
+         WHERE PRD_CMT_PARENT_SN = #{prdCmtParentSn}
+           AND PRD_CMT_TYPE_CD = 'PRDC0007'
+    </select>
+
+    <!-- 답변 수정 (등록 후 10분 이내 — 서비스 계층에서 시간 검증) -->
+    <update id="updateReply">
+        UPDATE PRODUCT_COMMENT
+           SET PRD_CMT_CN      = #{prdCmtCn},
+               PRD_CMT_UPDT_ID = #{prdCmtUpdtId}
+         WHERE PRD_CMT_SN = #{prdCmtSn}
+           AND PRD_CMT_TYPE_CD = 'PRDC0007'
+    </update>
+
 </mapper>

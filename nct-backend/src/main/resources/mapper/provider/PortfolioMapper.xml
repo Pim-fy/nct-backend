@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.provider.mapper.PortfolioMapper">
+  <resultMap id="portfolio" type="nct.provider.dto.PortfolioResponse">
+    <id column="PRTF_SN" property="portfolioSn"/>
+    <result column="USR_SN" property="userSn"/>
+    <result column="PRTF_TTL" property="title"/>
+    <result column="PRTF_CN" property="content"/>
+    <result column="PRTF_REG_DT" property="registeredAt"/>
+    <result column="PRTF_UPDT_DT" property="updatedAt"/>
+    <collection property="files" ofType="nct.provider.dto.PortfolioFileResponse">
+      <id column="FL_SN" property="fileSn"/>
+      <result column="FL_PATH" property="url"/>
+      <result column="IS_REPRESENTATIVE" property="representative"/>
+      <result column="PRTF_FL_SORT_NO" property="sortOrder"/>
+    </collection>
+  </resultMap>
+
+  <sql id="portfolioSelect">
+    SELECT p.PRTF_SN,
+           p.USR_SN,
+           p.PRTF_TTL,
+           p.PRTF_CN,
+           p.PRTF_REG_DT,
+           p.PRTF_UPDT_DT,
+           pf.FL_SN,
+           f.FL_PATH,
+           CASE WHEN pf.PRTF_FL_RPRS_YN = 'Y' THEN TRUE ELSE FALSE END AS IS_REPRESENTATIVE,
+           pf.PRTF_FL_SORT_NO
+      FROM PORTFOLIO p
+      LEFT JOIN PORTFOLIO_FILE pf ON pf.PRTF_SN = p.PRTF_SN
+      LEFT JOIN FILES f ON f.FL_SN = pf.FL_SN AND f.FL_USE_YN = 'Y'
+  </sql>
+
+  <select id="findActiveByUserSn" resultMap="portfolio">
+    <include refid="portfolioSelect"/>
+     WHERE p.USR_SN = #{userSn}
+       AND p.PRTF_USE_YN = 'Y'
+     ORDER BY p.PRTF_UPDT_DT DESC, p.PRTF_SN DESC, pf.PRTF_FL_SORT_NO ASC
+  </select>
+
+  <select id="findActiveOwned" resultMap="portfolio">
+    <include refid="portfolioSelect"/>
+     WHERE p.PRTF_SN = #{portfolioSn}
+       AND p.USR_SN = #{userSn}
+       AND p.PRTF_USE_YN = 'Y'
+     ORDER BY pf.PRTF_FL_SORT_NO ASC
+  </select>
+
+  <insert id="insert" parameterType="nct.provider.domain.PortfolioRecord"
+          useGeneratedKeys="true" keyProperty="portfolioSn" keyColumn="PRTF_SN">
+    INSERT INTO PORTFOLIO
+           (USR_SN, PRTF_TTL, PRTF_CN, PRTF_REG_ID, PRTF_UPDT_ID)
+    VALUES (#{userSn}, #{title}, #{content}, #{actorId}, #{actorId})
+  </insert>
+
+  <update id="update">
+    UPDATE PORTFOLIO
+       SET PRTF_TTL = #{title},
+           PRTF_CN = #{content},
+           PRTF_UPDT_ID = #{actorId}
+     WHERE PRTF_SN = #{portfolioSn}
+       AND USR_SN = #{userSn}
+       AND PRTF_USE_YN = 'Y'
+  </update>
+
+  <update id="softDelete">
+    UPDATE PORTFOLIO
+       SET PRTF_USE_YN = 'N',
+           PRTF_UPDT_ID = #{actorId}
+     WHERE PRTF_SN = #{portfolioSn}
+       AND USR_SN = #{userSn}
+       AND PRTF_USE_YN = 'Y'
+  </update>
+
+  <delete id="deleteFiles">
+    DELETE FROM PORTFOLIO_FILE
+     WHERE PRTF_SN = #{portfolioSn}
+  </delete>
+
+  <insert id="insertFiles">
+    INSERT INTO PORTFOLIO_FILE
+           (PRTF_SN, FL_SN, PRTF_FL_RPRS_YN, PRTF_FL_SORT_NO, PRTF_FL_REG_ID, PRTF_FL_UPDT_ID)
+    VALUES
+    <foreach collection="fileIds" item="fileId" index="index" separator=",">
+      (#{portfolioSn}, #{fileId},
+       CASE WHEN #{index} = 0 THEN 'Y' ELSE 'N' END,
+       #{index}, #{actorId}, #{actorId})
+    </foreach>
+  </insert>
+</mapper>

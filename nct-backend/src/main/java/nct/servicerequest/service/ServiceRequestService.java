@@ -27,6 +27,15 @@ public class ServiceRequestService {
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
 
+    @Transactional(readOnly = true)
+    public PagedResponse<ServiceRequestResponse> searchServiceRequests(
+            String keyword, Long categorySn, Long minBudget, Long maxBudget, String sort, int page, int size) {
+        PageHelper.startPage(page, size);
+        List<ServiceRequestResponse> list =
+                serviceRequestMapper.searchServiceRequests(keyword, categorySn, minBudget, maxBudget, sort);
+        return PagedResponse.of(new PageInfo<>(list));
+    }
+
     @Transactional
     public ServiceRequestResponse registerServiceRequest(Long usrSn, ServiceRequestRegisterRequest req) {
         String statusCd = (req.getSvcReqStatusCd() != null) ? req.getSvcReqStatusCd() : "SVCC0002";

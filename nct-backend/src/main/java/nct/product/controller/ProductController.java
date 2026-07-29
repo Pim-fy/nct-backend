@@ -6,6 +6,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -159,6 +160,19 @@ public class ProductController {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.status(201).body(ApiResponse.created(productService.addReply(prdSn, inquirySn, usrSn, request)));
+    }
+
+    /** 판매자 답변 수정 — 등록 후 10분 이내만 가능 (F-AUC-012) */
+    @PreAuthorize("hasRole('USER')")
+    @PatchMapping("/{prdSn}/inquiries/{inquirySn}/reply")
+    public ResponseEntity<ApiResponse<ProductInquiryResponse>> updateReply(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "prdSn") Long prdSn,
+            @PathVariable(name = "inquirySn") Long inquirySn,
+            @Valid @RequestBody ProductInquiryRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(productService.updateReply(prdSn, inquirySn, usrSn, request)));
     }
 
     /** 상품 삭제 (논리 삭제) */

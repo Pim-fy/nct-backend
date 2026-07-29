@@ -349,6 +349,15 @@ public class TradeService implements SellerCancellationDecisionPort {
                 request.getMeetingPlace().trim(),
                 fieldCryptoService.encrypt(normalizeOptional(request.getMeetingAddress())));
 
+        // 일정이 처음 제안되면 구매자도 즉시 직거래 진행 상태를 확인할 수 있게 전이한다.
+        // 이후 일정 수정 때는 이미 진행 상태이므로 상태 이력을 중복해서 남기지 않는다.
+        if (tradeMapper.startOfflineTrade(tradeId, String.valueOf(sellerUserId)) == 1) {
+            tradeMapper.insertStatusHistory(
+                    tradeId,
+                    DELIVERING,
+                    "판매자가 직거래 일정을 제안했습니다.");
+        }
+
         // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
         // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
         chatService.createOrGetOfflineTradeChatRoom(tradeId);
@@ -419,10 +428,11 @@ public class TradeService implements SellerCancellationDecisionPort {
         }
 
         // 즉시 완료도 자동 완료와 동일하게 정산 대기 생성까지 함께 성공해야 한다.
-        settlementService.createPending(
+        long settlementId = settlementService.createPending(
                 target.getTradeId(),
                 target.getSellerUserId(),
                 resolveSettlementAmount(target));
+        settlementService.completeAutomatically(settlementId);
         chatService.closeOfflineTradeChatRoom(target.getTradeId());
         tradeMapper.insertStatusHistory(
                 target.getTradeId(),
@@ -456,11 +466,12 @@ public class TradeService implements SellerCancellationDecisionPort {
             return false;
         }
 
-        // 거래 완료와 정산 대기 생성은 같은 트랜잭션으로 처리해 반쪽 완료 상태를 막는다.
-        settlementService.createPending(
+        // 거래 완료·정산 대기·정산가능 포인트 적립은 같은 트랜잭션으로 처리해 반쪽 완료를 막는다.
+        long settlementId = settlementService.createPending(
                 target.getTradeId(),
                 target.getSellerUserId(),
                 resolveSettlementAmount(target));
+        settlementService.completeAutomatically(settlementId);
         chatService.closeOfflineTradeChatRoom(target.getTradeId());
 
         tradeMapper.insertStatusHistory(
@@ -470,7 +481,6 @@ public class TradeService implements SellerCancellationDecisionPort {
         notificationService.notifyTradeComplete(target.getBuyerUserId(), tradeId, true);
         notificationService.notifyTradeComplete(target.getSellerUserId(), tradeId, true);
 
-        // 정산·포인트 원장 처리는 담당자5·6의 확정 계약을 받은 뒤 같은 완료 이벤트에 연결한다.
         return true;
     }
 
@@ -699,9 +709,9 @@ public class TradeService implements SellerCancellationDecisionPort {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
-        if (request.getMeetingDate().isBefore(LocalDate.now())) {
+        if (!request.toMeetingDateTime().isAfter(LocalDateTime.now())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "거래 날짜는 오늘 이후로 선택해 주세요.");
+                    "거래 일시는 현재 시간 이후로 선택해 주세요.");
         }
     }
 

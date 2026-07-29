@@ -1,5 +1,7 @@
 package nct.product.service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -13,9 +15,13 @@ import com.github.pagehelper.PageInfo;
 
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.service.AuctionService;
+import nct.common.domain.RefType;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.domain.NotificationDomain;
+import nct.notification.domain.NotificationType;
+import nct.notification.service.NotificationService;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.product.domain.Product;
 import nct.product.domain.ProductImage;
@@ -39,6 +45,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProductService {
 
+    // 판매자 답변 등록 후 수정 가능한 시간(분) — F-AUC-012
+    private static final long REPLY_EDIT_WINDOW_MINUTES = 10;
+
     private final ProductMapper productMapper;
     private final ReferenceDataService referenceDataService;
     private final ProductImageMapper productImageMapper;
@@ -46,6 +55,7 @@ public class ProductService {
     private final TradeService tradeService;
     private final BannedKeywordMapper bannedKeywordMapper;
     private final ProductCommentMapper productCommentMapper;
+    private final NotificationService notificationService;
 
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
@@ -71,6 +81,8 @@ public class ProductService {
                 .prdDraftBidUnit(isDraft ? req.getBidUnit() : null)
                 .prdDraftStartDt(isDraft ? req.getAucStartDt() : null)
                 .prdDraftEndDt(isDraft ? req.getAucEndDt() : null)
+                .prdDraftStartNowYn(isDraft ? (Boolean.TRUE.equals(req.getStartNow()) ? "Y" : "N") : null)
+                .prdDraftPolicyAgreedYn(isDraft ? draftPolicyAgreedYn(req) : null)
                 .build();
 
         productMapper.saveProduct(product);
@@ -122,6 +134,8 @@ public class ProductService {
                 .prdDraftBidUnit(isDraft ? req.getBidUnit() : null)
                 .prdDraftStartDt(isDraft ? req.getAucStartDt() : null)
                 .prdDraftEndDt(isDraft ? req.getAucEndDt() : null)
+                .prdDraftStartNowYn(isDraft ? (Boolean.TRUE.equals(req.getStartNow()) ? "Y" : "N") : null)
+                .prdDraftPolicyAgreedYn(isDraft ? draftPolicyAgreedYn(req) : null)
                 .build();
 
         productMapper.updateProduct(updated);
@@ -148,6 +162,26 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<String> getBannedKeywords() {
         return bannedKeywordMapper.findActiveBannedKeywords();
+    }
+
+    private String draftPolicyAgreedYn(ProductRegisterRequest req) {
+        return Boolean.TRUE.equals(req.getPolicyAgreed()) ? "Y" : "N";
+    }
+
+    // 상품 변경사항(F-AUC-007) 등록 시 이 상품에 입찰한 회원 전원에게 알림 — 알림 발행은
+    // NotificationService.notify()로 직접 호출(담당자6 계약 — "다른 도메인은 notify()만 호출")
+    private void notifyBiddersOfProductChange(Product product, String changeTitle) {
+        List<Long> bidderIds = productMapper.findAuctionBidderIds(product.getPrdSn());
+        for (Long bidderUsrSn : bidderIds) {
+            notificationService.notify(
+                    bidderUsrSn,
+                    NotificationType.AUCTION,
+                    NotificationDomain.AUCTION,
+                    "입찰한 상품에 변경사항이 추가되었습니다",
+                    product.getPrdNm() + " - " + changeTitle,
+                    RefType.PRODUCT,
+                    product.getPrdSn());
+        }
     }
 
     private void validateNoBannedKeyword(String prdNm) {
@@ -235,6 +269,10 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
+        if (productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE).size() >= 3) {
+            throw new CustomException(ErrorCode.CONFLICT, "변경 내역은 최대 3개까지 등록할 수 있습니다.");
+        }
+
         ProductComment comment = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -246,6 +284,7 @@ public class ProductService {
                 .build();
 
         productCommentMapper.insertComment(comment);
+        notifyBiddersOfProductChange(product, req.getTtl());
 
         return productCommentMapper.findLatestComments(prdSn, 1).get(0);
     }
@@ -254,7 +293,7 @@ public class ProductService {
     public List<ProductCommentResponse> getComments(Long prdSn) {
         productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
-        return productCommentMapper.findLatestComments(prdSn, 4);
+        return productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE);
     }
 
     @Transactional
@@ -272,6 +311,18 @@ public class ProductService {
         }
 
         productMapper.deleteProduct(prdSn, usrSn);
+    }
+
+    /** 취소 확정(AUCC0005) 후 cutoff 이전에 승인된 상품 prdSn 목록 — ProductCancelledAutoDeleteScheduler 전용 */
+    @Transactional(readOnly = true)
+    public List<Long> findExpiredCancelledProductIds(LocalDateTime cutoff, int limit) {
+        return productMapper.findExpiredCancelledProductIds(cutoff, limit);
+    }
+
+    /** 취소 확정 1일 경과 상품 자동 삭제 — ProductCancelledAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
+    @Transactional
+    public void deleteExpiredCancelledProduct(Long prdSn) {
+        productMapper.deleteExpiredCancelledProduct(prdSn);
     }
 
     /** 신고 검증용 문의 단건 조회 — 타 도메인 공개 계약 (F-AUC-013) */
@@ -324,6 +375,10 @@ public class ProductService {
         productCommentMapper.findInquiryById(inquirySn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
 
+        if (productCommentMapper.findReplyByParentSn(inquirySn).isPresent()) {
+            throw new CustomException(ErrorCode.CONFLICT, "이미 답변이 등록된 문의입니다.");
+        }
+
         ProductComment reply = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -334,6 +389,37 @@ public class ProductService {
                 .build();
 
         productCommentMapper.insertReply(reply);
+
+        return productCommentMapper.findInquiries(prdSn).stream()
+                .filter(r -> r.getPrdCmtSn().equals(reply.getPrdCmtSn()))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    /** 판매자 답변 수정 — 등록 후 10분 이내에만 가능 (F-AUC-012) */
+    @Transactional
+    public ProductInquiryResponse updateReply(Long prdSn, Long inquirySn, Long usrSn, ProductInquiryRequest req) {
+        Product product = productMapper.findProductEntityById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!product.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        ProductComment reply = productCommentMapper.findReplyByParentSn(inquirySn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (Duration.between(reply.getPrdCmtRegDt(), LocalDateTime.now()).toMinutes() >= REPLY_EDIT_WINDOW_MINUTES) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "답변 등록 후 10분이 지나 수정할 수 없습니다.");
+        }
+
+        ProductComment updated = ProductComment.builder()
+                .prdCmtSn(reply.getPrdCmtSn())
+                .prdCmtCn(req.getCn())
+                .prdCmtUpdtId(String.valueOf(usrSn))
+                .build();
+
+        productCommentMapper.updateReply(updated);
 
         return productCommentMapper.findInquiries(prdSn).stream()
                 .filter(r -> r.getPrdCmtSn().equals(reply.getPrdCmtSn()))

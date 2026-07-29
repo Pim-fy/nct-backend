@@ -43,6 +43,17 @@
         LIMIT 1
     </select>
 
+    <!-- 정산 도메인은 이 공개 조회 결과만 소비하고 TRADE를 직접 조회하지 않는다. -->
+    <select id="findSettlementReferenceByTradeId"
+            resultType="nct.trade.dto.TradeSettlementReference">
+        SELECT
+            t.TRD_SN AS tradeSn,
+            t.TRD_TYPE_CD AS tradeTypeCode,
+            t.BID_SN AS bidSn
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+    </select>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT
@@ -118,7 +129,17 @@
             END AS counterpartNickname,
             t.TRD_AMT AS tradeAmount,
             t.TRD_REG_DT AS createdAt,
-            t.TRD_STATUS_CD AS tradeStatus,
+            CASE
+                WHEN p.PRD_TRD_METHOD_CD = 'TRDC0010'
+                    AND t.TRD_STATUS_CD = 'TRDC0003'
+                    AND o.TRD_OFL_DT IS NOT NULL
+                    AND o.TRD_OFL_PLC_NM IS NOT NULL
+                    AND TRIM(o.TRD_OFL_PLC_NM) &lt;&gt; ''
+                    THEN 'TRDC0004'
+                ELSE t.TRD_STATUS_CD
+            END AS tradeStatus,
+            o.TRD_OFL_DT AS meetingDateTime,
+            o.TRD_OFL_PLC_NM AS meetingPlace,
             CASE p.PRD_TRD_METHOD_CD
                 WHEN 'TRDC0009' THEN 'DELIVERY'
                 WHEN 'TRDC0010' THEN 'OFFLINE'
@@ -130,6 +151,8 @@
           ON seller.USR_SN = t.SLLR_USR_SN
         JOIN USERS buyer
           ON buyer.USR_SN = t.BYPR_USR_SN
+        LEFT JOIN TRADE_OFFLINE o
+          ON o.TRD_SN = t.TRD_SN
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
         <if test="role == 'BUYER'">
@@ -139,7 +162,18 @@
           AND t.SLLR_USR_SN = #{userId}
         </if>
         <if test="statusCode != null">
-          AND t.TRD_STATUS_CD = #{statusCode}
+          <!-- 일정이 존재하는 기존 직거래는 진행 상태 탭으로 보정해 구매자가 즉시 확인할 수 있게 한다. -->
+          AND (
+              CASE
+                  WHEN p.PRD_TRD_METHOD_CD = 'TRDC0010'
+                      AND t.TRD_STATUS_CD = 'TRDC0003'
+                      AND o.TRD_OFL_DT IS NOT NULL
+                      AND o.TRD_OFL_PLC_NM IS NOT NULL
+                      AND TRIM(o.TRD_OFL_PLC_NM) &lt;&gt; ''
+                      THEN 'TRDC0004'
+                  ELSE t.TRD_STATUS_CD
+              END
+          ) = #{statusCode}
         </if>
         <if test="keyword != null">
           AND (
@@ -302,6 +336,14 @@
     </insert>
 
     <update id="startDelivery">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0004',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
+
+    <update id="startOfflineTrade">
         UPDATE TRADE
         SET TRD_STATUS_CD = 'TRDC0004',
             TRD_UPDT_ID = #{updaterId}

@@ -15,13 +15,16 @@ import nct.settlement.domain.Settlement;
 import nct.settlement.domain.SettlementStatus;
 import nct.settlement.exception.SettlementException;
 import nct.settlement.mapper.SettlementMapper;
+import nct.trade.dto.TradeSettlementReference;
+import nct.trade.port.TradeSettlementReferenceReader;
 
 /**
  * [정산 - 서비스 계약] (담당자6 백종남)
  *
  * 거래 도메인(담당자4)이 거래 완료를 확정한 뒤 createPending을 호출한다 (F-PAY-042).
- * 완료 처리(F-PAY-043)는 시스템/관리자가, 보류/해제(F-PAY-044, F-OPS-079)는
- * 거래 분쟁 접수·판정에 따라 호출한다. SETTLEMENT 테이블 직접 변경 금지.
+ * 완료 처리(F-PAY-043)는 관리자 명시 처리 또는 거래 자동 완료에 따른 시스템 처리로 실행하며,
+ * 보류/해제(F-PAY-044, F-OPS-079)는 거래 분쟁 접수·판정에 따라 호출한다.
+ * SETTLEMENT 테이블 직접 변경 금지.
  *
  * 상태 전이: 대기 → 완료 / 대기 ↔ 보류 — requireStatus가 행 잠금 후 검증하므로
  * 보류 중인 정산이 실수로 완료되는 사고를 원천 차단한다.
@@ -33,10 +36,13 @@ import nct.settlement.mapper.SettlementMapper;
 public class SettlementService {
 
     private static final String SYSTEM_ACTOR = "SYSTEM";
+    private static final String MATERIAL_TRADE = "TRDC0001";
+    private static final String SERVICE_TRADE = "TRDC0002";
 
     private final SettlementMapper settlementMapper;
     private final PointService pointService;
     private final NotificationService notificationService;
+    private final TradeSettlementReferenceReader tradeSettlementReferenceReader;
 
     /** 거래 완료 → 정산 대기 전환 (F-PAY-042). @return 생성된 정산 일련번호 */
     @Transactional
@@ -71,13 +77,7 @@ public class SettlementService {
         return s.getStlmSn();
     }
 
-    /** 정산 완료 처리 (F-PAY-043): 대기 → 완료, 판매자에게 정산가능 포인트 적립 */
-    @Transactional
-    public void complete(long stlmSn) {
-        completeInternal(stlmSn, SYSTEM_ACTOR);
-    }
-
-    /** 관리자 명시 정산 완료 처리. 관리자 번호는 감사 수정자로 기록한다. */
+    /** 관리자 명시 정산 완료 처리 (F-PAY-043). 관리자 번호는 감사 수정자로 기록한다. */
     @Transactional
     public void complete(long stlmSn, long adminUsrSn) {
         if (adminUsrSn <= 0) {
@@ -87,26 +87,109 @@ public class SettlementService {
         completeInternal(stlmSn, String.valueOf(adminUsrSn));
     }
 
+    /** 만료 거래의 자동 완료가 호출하는 시스템 정산 완료 처리. */
+    @Transactional
+    public void completeAutomatically(long stlmSn) {
+        if (stlmSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "정산번호가 필요합니다.");
+        }
+        completeInternal(stlmSn, SYSTEM_ACTOR);
+    }
+
     private void completeInternal(long stlmSn, String actorId) {
         Settlement s = requireStatus(stlmSn, SettlementStatus.PENDING, "완료");
+        EscrowReference escrowReference = resolveEscrowReference(s.getTrdSn());
 
         updateStatusOrThrow(stlmSn, SettlementStatus.COMPLETED, actorId, "완료");
-        // 보관금전환으로 빠졌던 거래대금이 판매자의 정산가능 버킷에 도착하는 지점
-        pointService.creditSettleable(s.getUsrSn(), s.getStlmAmt(),
-                RefType.TRADE, s.getTrdSn(), "정산 완료 (정산번호 " + stlmSn + ")");
+        long creditedAmount = pointService.creditEscrowToSettleable(
+                s.getUsrSn(),
+                s.getTrdSn(),
+                escrowReference.refType(),
+                escrowReference.refSn(),
+                "정산 완료 (정산번호 " + stlmSn + ")");
+        if (creditedAmount != s.getStlmAmt()) {
+            throw new SettlementException(ErrorCode.CONFLICT,
+                    "정산 금액과 보관금 잔액이 일치하지 않습니다. 정산번호: " + stlmSn
+                            + ", 정산금액: " + s.getStlmAmt()
+                            + ", 보관금: " + creditedAmount);
+        }
 
         notificationService.notifySettlement(s.getUsrSn(), "정산 완료",
                 String.format("%,dP가 정산 가능 포인트로 적립되었습니다.", s.getStlmAmt()), s.getTrdSn());
+    }
+
+    private EscrowReference resolveEscrowReference(long trdSn) {
+        TradeSettlementReference reference = tradeSettlementReferenceReader.getByTradeSn(trdSn);
+        if (reference.getTradeSn() != trdSn) {
+            throw new SettlementException(ErrorCode.CONFLICT,
+                    "거래와 정산 참조가 일치하지 않습니다: " + trdSn);
+        }
+
+        return switch (reference.getTradeTypeCode()) {
+            case MATERIAL_TRADE -> {
+                Long bidSn = reference.getBidSn();
+                if (bidSn == null || bidSn <= 0) {
+                    throw new SettlementException(ErrorCode.CONFLICT,
+                            "물건 거래의 낙찰 입찰 참조가 없습니다: " + trdSn);
+                }
+                yield new EscrowReference(RefType.BID, bidSn);
+            }
+            case SERVICE_TRADE -> new EscrowReference(RefType.TRADE, trdSn);
+            default -> throw new SettlementException(ErrorCode.CONFLICT,
+                    "지원하지 않는 거래 유형입니다: " + reference.getTradeTypeCode());
+        };
     }
 
     /** 거래 분쟁 접수 → 정산 보류 (F-PAY-044, ML-PAY-005): 대기 → 보류 */
     @Transactional
     public void holdUp(long stlmSn, String reason) {
         Settlement s = requireStatus(stlmSn, SettlementStatus.PENDING, "보류");
+        holdSettlement(s, reason);
+    }
 
-        updateStatusOrThrow(stlmSn, SettlementStatus.ON_HOLD, SYSTEM_ACTOR, "보류");
-        notificationService.notifySettlement(s.getUsrSn(), "정산 보류",
-                String.format("거래대금 %,dP의 정산이 보류되었습니다. 사유: %s", s.getStlmAmt(), reason), s.getTrdSn());
+    /**
+     * 거래 분쟁 접수 트랜잭션에서 거래번호 기준으로 기존 정산을 조건부 보류한다.
+     * 정산이 아직 생성되지 않은 정상적인 사전 분쟁 접수는 별도 정산 행을 만들지 않는다.
+     * 호출자는 먼저 동일 거래의 TRADE 행을 잠가 자동 완료와의 경합을 직렬화해야 한다.
+     *
+     * @return 이번 호출에서 대기 정산을 보류로 전환했으면 true, 정산이 없거나 이미 보류면 false
+     */
+    @Transactional
+    public boolean holdUpByTradeIfPending(long trdSn, String reason) {
+        if (trdSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호가 필요합니다.");
+        }
+
+        Settlement settlement = settlementMapper.selectByTradeForUpdate(trdSn);
+        if (settlement == null) {
+            return false;
+        }
+        if (SettlementStatus.ON_HOLD.getCode().equals(settlement.getStlmStatusCd())) {
+            return false;
+        }
+        if (!SettlementStatus.PENDING.getCode().equals(settlement.getStlmStatusCd())) {
+            throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_STATUS,
+                    "보류 처리할 수 없는 상태입니다. 거래번호: " + trdSn
+                            + ", 현재 상태: " + settlement.getStlmStatusCd());
+        }
+
+        holdSettlement(settlement, reason);
+        return true;
+    }
+
+    private void holdSettlement(Settlement settlement, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "정산 보류 사유가 필요합니다.");
+        }
+
+        updateStatusOrThrow(settlement.getStlmSn(), SettlementStatus.ON_HOLD, SYSTEM_ACTOR, "보류");
+        notificationService.notifySettlement(settlement.getUsrSn(), "정산 보류",
+                String.format("거래대금 %,dP의 정산이 보류되었습니다. 사유: %s",
+                        settlement.getStlmAmt(), reason.trim()),
+                settlement.getTrdSn());
     }
 
     /** 정산 보류 해제 (F-OPS-079): 보류 → 대기 */
@@ -171,5 +254,8 @@ public class SettlementService {
             throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_STATUS,
                     action + " 상태 변경에 실패했습니다. 정산번호: " + stlmSn);
         }
+    }
+
+    private record EscrowReference(RefType refType, long refSn) {
     }
 }

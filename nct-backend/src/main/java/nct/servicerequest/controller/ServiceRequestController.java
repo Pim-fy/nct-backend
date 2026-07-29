@@ -1,6 +1,7 @@
 package nct.servicerequest.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +30,7 @@ import nct.servicerequest.service.ServiceRequestService;
  *  POST   /api/service-requests                요청서 등록          (authenticated)
  *  PUT    /api/service-requests/{svcReqSn}      임시저장 수정·공개 전환 (authenticated, 본인만)
  *  PATCH  /api/service-requests/{svcReqSn}/close 요청서 마감           (authenticated, 본인만)
+ *  GET    /api/service-requests                 공개 요청서 검색      (permit-all, F-COM-002)
  *  GET    /api/service-requests/me              내 요청서 목록        (authenticated)
  *  GET    /api/service-requests/{svcReqSn}       요청서 상세 조회      (permit-all)
  *  DELETE /api/service-requests/{svcReqSn}       요청서 삭제           (authenticated, 본인만)
@@ -74,7 +76,24 @@ public class ServiceRequestController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    /** 내 요청서 목록 */
+    /** 공개 요청서 검색 (F-COM-002 · 동민씨 서비스 탐색·홈 큐레이션용 Reader 계약) */
+    @GetMapping
+    public ResponseEntity<ApiResponse<PagedResponse<ServiceRequestResponse>>> searchServiceRequests(
+            @RequestParam(required = false)     String keyword,
+            @RequestParam(required = false)     Long   categorySn,
+            @RequestParam(required = false)     Long   minBudget,
+            @RequestParam(required = false)     Long   maxBudget,
+            @RequestParam(defaultValue = "latest") String sort,
+            @RequestParam(defaultValue = "1")   int    page,
+            @RequestParam(defaultValue = "10")  int    size) {
+
+        PagedResponse<ServiceRequestResponse> response =
+                serviceRequestService.searchServiceRequests(keyword, categorySn, minBudget, maxBudget, sort, page, size);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /** 내 요청서 목록 — SecurityConfig에서 /api/service-requests/* 전체를 permit-all로 열었으므로 메서드 레벨에서 인증 강제 */
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PagedResponse<ServiceRequestResponse>>> getMyServiceRequests(
             @AuthenticationPrincipal CustomUserDetails userDetails,

@@ -493,6 +493,7 @@ class TradeServiceTest {
         TradeDetailResponse detail = new TradeDetailResponse();
         detail.setTradeId(91L);
         when(tradeMapper.findMyOfflineTradeIdForUpdate(91L, 10L)).thenReturn(91L);
+        when(tradeMapper.startOfflineTrade(91L, "10")).thenReturn(1);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.saveMyOfflineSchedule(91L, 10L, request);
@@ -502,6 +503,11 @@ class TradeServiceTest {
                 LocalDateTime.of(request.getMeetingDate(), request.getMeetingTime()),
                 "합정역 8번 출구 앞",
                 "서울 마포구 양화로 45");
+        verify(tradeMapper).startOfflineTrade(91L, "10");
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0004",
+                "판매자가 직거래 일정을 제안했습니다.");
         verify(chatService).createOrGetOfflineTradeChatRoom(91L);
         assertThat(result).isSameAs(detail);
     }
@@ -511,6 +517,20 @@ class TradeServiceTest {
         TradeOfflineScheduleRequest request = new TradeOfflineScheduleRequest();
         request.setMeetingDate(LocalDate.now().minusDays(1));
         request.setMeetingTime(LocalTime.NOON);
+        request.setMeetingPlace("합정역 8번 출구 앞");
+
+        assertThatThrownBy(() -> tradeService.saveMyOfflineSchedule(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verifyNoInteractions(tradeMapper);
+    }
+
+    @Test
+    void rejectsPastTimeOnTodayOfflineScheduleBeforeDatabaseAccess() {
+        TradeOfflineScheduleRequest request = new TradeOfflineScheduleRequest();
+        request.setMeetingDate(LocalDate.now());
+        request.setMeetingTime(LocalTime.MIDNIGHT);
         request.setMeetingPlace("합정역 8번 출구 앞");
 
         assertThatThrownBy(() -> tradeService.saveMyOfflineSchedule(91L, 10L, request))
@@ -605,11 +625,13 @@ class TradeServiceTest {
                 .thenReturn(target);
         when(tradeMapper.completeConfirmationByCounterpart(91L, "10", "20"))
                 .thenReturn(1);
+        when(settlementService.createPending(91L, 10L, 30000L)).thenReturn(501L);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.requestCompletionConfirmation(91L, 20L);
 
         verify(settlementService).createPending(91L, 10L, 30000L);
+        verify(settlementService).completeAutomatically(501L);
         verify(chatService).closeOfflineTradeChatRoom(91L);
         verify(tradeMapper).insertStatusHistory(
                 91L,
@@ -632,6 +654,7 @@ class TradeServiceTest {
         target.setAutoCompleteAt(now.minusSeconds(1));
         when(tradeMapper.findAutoCompletionTargetForUpdate(91L)).thenReturn(target);
         when(tradeMapper.completeExpiredConfirmation(91L, now, "SYSTEM")).thenReturn(1);
+        when(settlementService.createPending(91L, 10L, 30000L)).thenReturn(501L);
 
         boolean completed = tradeService.completeExpiredConfirmation(91L, now);
 
@@ -641,6 +664,7 @@ class TradeServiceTest {
                 "TRDC0006",
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
         verify(settlementService).createPending(91L, 10L, 30000L);
+        verify(settlementService).completeAutomatically(501L);
         verify(chatService).closeOfflineTradeChatRoom(91L);
         verify(notificationService).notifyTradeComplete(20L, 91L, true);
         verify(notificationService).notifyTradeComplete(10L, 91L, true);

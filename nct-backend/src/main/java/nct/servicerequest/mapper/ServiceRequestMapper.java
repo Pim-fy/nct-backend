@@ -14,6 +14,13 @@ public interface ServiceRequestMapper {
 
     void saveServiceRequest(ServiceRequest serviceRequest);
 
+    List<ServiceRequestResponse> searchServiceRequests(
+            @Param("keyword")     String keyword,
+            @Param("categorySn")  Long   categorySn,
+            @Param("minBudget")   Long   minBudget,
+            @Param("maxBudget")   Long   maxBudget,
+            @Param("sort")        String sort);
+
     Optional<ServiceRequestResponse> findServiceRequestById(@Param("svcReqSn") Long svcReqSn);
 
     List<ServiceRequestResponse> findMyServiceRequests(@Param("usrSn") Long usrSn, @Param("filterType") String filterType);

@@ -13,7 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 @ConditionalOnProperty(
         prefix = "auction.finalization",
         name = "scheduler-enabled",
-        havingValue = "true")
+        havingValue = "true",
+        matchIfMissing = true)
 public class AuctionFinalizationScheduler {
 
     private static final int BATCH_SIZE = 100;

@@ -47,6 +47,8 @@ public class ProductService {
 
     // 판매자 답변 등록 후 수정 가능한 시간(분) — F-AUC-012
     private static final long REPLY_EDIT_WINDOW_MINUTES = 10;
+    // 구매자 문의 등록 쿨타임(시간) — F-AUC-012
+    private static final long INQUIRY_COOLDOWN_HOURS = 6;
 
     private final ProductMapper productMapper;
     private final ReferenceDataService referenceDataService;
@@ -335,8 +337,18 @@ public class ProductService {
     /** 구매자 문의 등록 (F-AUC-012) */
     @Transactional
     public ProductInquiryResponse addInquiry(Long prdSn, Long usrSn, ProductInquiryRequest req) {
-        productMapper.findProductById(prdSn)
+        ProductResponse product = productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        productCommentMapper.findLastInquiryTime(usrSn, prdSn).ifPresent(lastTime -> {
+            long elapsed = Duration.between(lastTime, LocalDateTime.now()).toHours();
+            if (elapsed < INQUIRY_COOLDOWN_HOURS) {
+                LocalDateTime nextAvailable = lastTime.plusHours(INQUIRY_COOLDOWN_HOURS);
+                throw new CustomException(ErrorCode.INQUIRY_COOLDOWN,
+                        String.format("다음 등록 가능 시각: %02d:%02d",
+                                nextAvailable.getHour(), nextAvailable.getMinute()));
+            }
+        });
 
         ProductComment inquiry = ProductComment.builder()
                 .prdSn(prdSn)
@@ -347,10 +359,47 @@ public class ProductService {
                 .build();
 
         productCommentMapper.insertInquiry(inquiry);
+        notificationService.notifyInquiryReceived(product.getUsrSn(), inquiry.getPrdCmtSn());
 
         return productCommentMapper.findInquiries(prdSn).stream()
                 .filter(r -> r.getPrdCmtSn().equals(inquiry.getPrdCmtSn()))
                 .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    /** 구매자 문의 수정 — 본인만, 답변 전까지만 가능 (F-AUC-012) */
+    @Transactional
+    public ProductInquiryResponse updateInquiry(Long prdSn, Long inquirySn, Long usrSn, ProductInquiryRequest req) {
+        ProductComment inquiry = productCommentMapper.findInquiryById(inquirySn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!inquiry.getPrdSn().equals(prdSn)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (!inquiry.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        int updated = productCommentMapper.updateInquiry(ProductComment.builder()
+                .prdCmtSn(inquirySn)
+                .prdCmtCn(req.getCn())
+                .prdCmtUpdtId(String.valueOf(usrSn))
+                .build());
+
+        if (updated == 0) {
+            throw new CustomException(ErrorCode.CONFLICT, "이미 답변이 등록된 문의는 수정할 수 없습니다.");
+        }
+
+        return productCommentMapper.findInquiries(prdSn).stream()
+                .filter(r -> r.getPrdCmtSn().equals(inquirySn))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    /** 백종남(6) 알림 클릭 이동용 — prdCmtSn → prdSn 변환 */
+    @Transactional(readOnly = true)
+    public Long getProductSnByInquirySn(Long prdCmtSn) {
+        return productCommentMapper.findProductSnByInquirySn(prdCmtSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
@@ -372,7 +421,7 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        productCommentMapper.findInquiryById(inquirySn)
+        ProductComment inquiry = productCommentMapper.findInquiryById(inquirySn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
 
         if (productCommentMapper.findReplyByParentSn(inquirySn).isPresent()) {
@@ -389,6 +438,7 @@ public class ProductService {
                 .build();
 
         productCommentMapper.insertReply(reply);
+        notificationService.notifyInquiryReplied(inquiry.getUsrSn(), reply.getPrdCmtSn());
 
         return productCommentMapper.findInquiries(prdSn).stream()
                 .filter(r -> r.getPrdCmtSn().equals(reply.getPrdCmtSn()))

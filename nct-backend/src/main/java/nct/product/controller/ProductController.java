@@ -42,7 +42,9 @@ import nct.product.service.ProductService;
  *  GET    /api/products/{prdSn}/comments                          추가 공지 조회     (permit-all)
  *  POST   /api/products/{prdSn}/inquiries                         구매자 문의 등록   (authenticated)
  *  GET    /api/products/{prdSn}/inquiries                         구매자 문의 목록   (permit-all)
+ *  PATCH  /api/products/{prdSn}/inquiries/{inquirySn}             구매자 문의 수정   (authenticated, 작성자만)
  *  POST   /api/products/{prdSn}/inquiries/{inquirySn}/reply       판매자 답변 등록   (authenticated, 판매자만)
+ *  GET    /api/products/inquiries/{prdCmtSn}                      prdCmtSn→prdSn   (permit-all, 백종남6 알림 이동용)
  */
 @RestController
 @RequestMapping("/api/products")
@@ -149,6 +151,19 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.getInquiries(prdSn)));
     }
 
+    /** 구매자 문의 수정 — 본인만, 답변 전까지만 가능 (F-AUC-012) */
+    @PreAuthorize("hasRole('USER')")
+    @PatchMapping("/{prdSn}/inquiries/{inquirySn}")
+    public ResponseEntity<ApiResponse<ProductInquiryResponse>> updateInquiry(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "prdSn") Long prdSn,
+            @PathVariable(name = "inquirySn") Long inquirySn,
+            @Valid @RequestBody ProductInquiryRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(productService.updateInquiry(prdSn, inquirySn, usrSn, request)));
+    }
+
     /** 판매자 답변 등록 (F-AUC-012) */
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/{prdSn}/inquiries/{inquirySn}/reply")
@@ -173,6 +188,14 @@ public class ProductController {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(productService.updateReply(prdSn, inquirySn, usrSn, request)));
+    }
+
+    /** prdCmtSn → prdSn 변환 — 백종남(6) 알림 클릭 이동용 (permit-all) */
+    @GetMapping("/inquiries/{prdCmtSn}")
+    public ResponseEntity<ApiResponse<Long>> getProductSnByInquirySn(
+            @PathVariable(name = "prdCmtSn") Long prdCmtSn) {
+
+        return ResponseEntity.ok(ApiResponse.success(productService.getProductSnByInquirySn(prdCmtSn)));
     }
 
     /** 상품 삭제 (논리 삭제) */

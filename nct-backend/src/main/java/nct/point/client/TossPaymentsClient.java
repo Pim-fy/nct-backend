@@ -80,13 +80,32 @@ public class TossPaymentsClient {
                 String message = messageValue != null ? String.valueOf(messageValue) : "결제 승인에 실패했습니다.";
                 return TossConfirmResult.failure(message);
             }
-            return TossConfirmResult.success(((Number) json.get("totalAmount")).longValue());
+            String payMethod = (String) json.get("method");
+            return TossConfirmResult.success(
+                    ((Number) json.get("totalAmount")).longValue(), payMethod, extractPayDetail(json, payMethod));
         } catch (PointException e) {
             throw e;
         } catch (Exception e) {
             throw new PointException(ErrorCode.EXTERNAL_API_ERROR,
                     "토스페이먼츠 통신 중 오류가 발생했습니다: " + e.getMessage());
         }
+    }
+
+    /**
+     * 결제수단 상세 표시값 추출 — 카드는 마스킹된 카드번호(card.number), 간편결제는 제공사(easyPay.provider).
+     * 그 외 수단(계좌이체·가상계좌 등)은 화면에 보여줄 만한 추가 정보가 없어 null(결제수단명만 표시).
+     */
+    @SuppressWarnings("unchecked")
+    String extractPayDetail(Map<String, Object> json, String payMethod) {
+        if ("카드".equals(payMethod)) {
+            Map<String, Object> card = (Map<String, Object>) json.get("card");
+            return card != null ? (String) card.get("number") : null;
+        }
+        if ("간편결제".equals(payMethod)) {
+            Map<String, Object> easyPay = (Map<String, Object>) json.get("easyPay");
+            return easyPay != null ? (String) easyPay.get("provider") : null;
+        }
+        return null;
     }
 
     /**
@@ -154,7 +173,8 @@ public class TossPaymentsClient {
             String status = (String) json.get("status");
             long totalAmount = ((Number) json.get("totalAmount")).longValue();
             String paymentKey = (String) json.get("paymentKey");
-            return TossOrderLookupResult.found(status, totalAmount, paymentKey);
+            String payMethod = (String) json.get("method");
+            return TossOrderLookupResult.found(status, totalAmount, paymentKey, payMethod, extractPayDetail(json, payMethod));
         } catch (Exception e) {
             return TossOrderLookupResult.unreachable();
         }

@@ -24,13 +24,15 @@
         FOR UPDATE
     </select>
 
-    <!-- 완료 처리: 상태 + PG결제키 + 연결된 원장SN 기록 -->
+    <!-- 완료 처리: 상태 + PG결제키 + 연결된 원장SN + 결제수단 기록 -->
     <update id="complete">
         /* 포인트 충전 주문: 완료 처리 */
         UPDATE POINT_CHARGE_ORDER
         SET PT_CHG_ORD_STATUS_CD = #{statusCd},
             PT_CHG_ORD_PG_KEY = #{pgKey},
-            PT_LDG_SN = #{ptLdgSn}
+            PT_LDG_SN = #{ptLdgSn},
+            PT_CHG_ORD_PAY_METHOD = #{payMethod},
+            PT_CHG_ORD_PAY_DETAIL = #{payDetail}
         WHERE PT_CHG_ORD_SN = #{ptChgOrdSn}
     </update>
 
@@ -42,6 +44,7 @@
             O.PT_CHG_ORD_SN AS ptChgOrdSn, O.USR_SN AS usrSn, O.PT_CHG_ORD_NO AS ptChgOrdNo,
             O.PT_CHG_ORD_AMT AS ptChgOrdAmt, O.PT_CHG_ORD_STATUS_CD AS ptChgOrdStatusCd,
             O.PT_LDG_SN AS ptLdgSn, O.PT_CHG_ORD_FAIL_RSN_CN AS ptChgOrdFailRsnCn,
+            O.PT_CHG_ORD_PAY_METHOD AS ptChgOrdPayMethod, O.PT_CHG_ORD_PAY_DETAIL AS ptChgOrdPayDetail,
             O.PT_CHG_ORD_REG_DT AS ptChgOrdRegDt, O.PT_CHG_ORD_UPDT_DT AS ptChgOrdUpdtDt,
             S.CMM_NM AS statusNm
         FROM POINT_CHARGE_ORDER O

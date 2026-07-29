@@ -6,6 +6,8 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.port.AuthMember;
+import nct.global.security.port.AuthMemberPort;
 import nct.ops.sanction.port.SanctionStatusReader;
 import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
@@ -18,6 +20,7 @@ public class ProviderProfileService {
     private final ProviderProfileMapper mapper;
     private final ProviderApplicationService providerApplicationService;
     private final SanctionStatusReader sanctionStatusReader;
+    private final AuthMemberPort authMemberPort;
 
     @Transactional(readOnly = true)
     public ProviderProfileResponse getMine(Long userSn) {
@@ -41,6 +44,11 @@ public class ProviderProfileService {
 
     private void requireActiveProvider(Long userSn) {
         if (userSn == null || userSn <= 0) throw new CustomException(ErrorCode.UNAUTHORIZED);
+        AuthMember member = authMemberPort.findById(userSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+        if (!"USRC0001".equals(member.getStatus())) {
+            throw new CustomException(ErrorCode.NOT_FOUND);
+        }
         providerApplicationService.requireAnyActivePermission(userSn);
         sanctionStatusReader.requireNoActiveSanction(userSn);
     }

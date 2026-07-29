@@ -28,6 +28,8 @@ import nct.settlement.domain.SettlementStatus;
 import nct.settlement.exception.SettlementException;
 import nct.settlement.mapper.SettlementMapper;
 import nct.settlement.service.SettlementService;
+import nct.trade.dto.TradeSettlementReference;
+import nct.trade.port.TradeSettlementReferenceReader;
 
 @ExtendWith(MockitoExtension.class)
 class SettlementServiceTest {
@@ -40,6 +42,9 @@ class SettlementServiceTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private TradeSettlementReferenceReader tradeSettlementReferenceReader;
 
     @InjectMocks
     private SettlementService settlementService;
@@ -118,7 +123,7 @@ class SettlementServiceTest {
     }
 
     @Test
-    void adminCompleteCreditsSettleablePointOnceWithAdminAuditActor() {
+    void adminCompleteCreditsMaterialTradeEscrowByBidReference() {
         Settlement pending = settlement(
                 501L,
                 91L,
@@ -131,20 +136,117 @@ class SettlementServiceTest {
                 SettlementStatus.COMPLETED.getCode(),
                 "700"))
                 .thenReturn(1);
+        when(tradeSettlementReferenceReader.getByTradeSn(91L))
+                .thenReturn(tradeReference(91L, "TRDC0001", 801L));
+        when(pointService.creditEscrowToSettleable(
+                10L,
+                91L,
+                RefType.BID,
+                801L,
+                "정산 완료 (정산번호 501)"))
+                .thenReturn(30_000L);
 
         settlementService.complete(501L, 700L);
 
-        verify(pointService).creditSettleable(
+        verify(pointService).creditEscrowToSettleable(
                 10L,
-                30_000L,
-                RefType.TRADE,
                 91L,
+                RefType.BID,
+                801L,
                 "정산 완료 (정산번호 501)");
         verify(notificationService).notifySettlement(
                 10L,
                 "정산 완료",
                 "30,000P가 정산 가능 포인트로 적립되었습니다.",
                 91L);
+    }
+
+    @Test
+    void adminCompleteCreditsServiceTradeEscrowByTradeReference() {
+        Settlement pending = settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.PENDING);
+        when(settlementMapper.selectForUpdate(501L)).thenReturn(pending);
+        when(settlementMapper.updateStatus(
+                501L,
+                SettlementStatus.COMPLETED.getCode(),
+                "700"))
+                .thenReturn(1);
+        when(tradeSettlementReferenceReader.getByTradeSn(91L))
+                .thenReturn(tradeReference(91L, "TRDC0002", null));
+        when(pointService.creditEscrowToSettleable(
+                10L,
+                91L,
+                RefType.TRADE,
+                91L,
+                "정산 완료 (정산번호 501)"))
+                .thenReturn(30_000L);
+
+        settlementService.complete(501L, 700L);
+
+        verify(pointService).creditEscrowToSettleable(
+                10L,
+                91L,
+                RefType.TRADE,
+                91L,
+                "정산 완료 (정산번호 501)");
+    }
+
+    @Test
+    void completeRejectsMaterialTradeWithoutBidReference() {
+        Settlement pending = settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.PENDING);
+        when(settlementMapper.selectForUpdate(501L)).thenReturn(pending);
+        when(tradeSettlementReferenceReader.getByTradeSn(91L))
+                .thenReturn(tradeReference(91L, "TRDC0001", null));
+
+        assertThatThrownBy(() -> settlementService.complete(501L, 700L))
+                .isInstanceOf(SettlementException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
+        verify(pointService, never()).creditEscrowToSettleable(
+                anyLong(), anyLong(), any(), anyLong(), anyString());
+    }
+
+    @Test
+    void completeRejectsEscrowAmountMismatch() {
+        Settlement pending = settlement(
+                501L,
+                91L,
+                10L,
+                30_000L,
+                SettlementStatus.PENDING);
+        when(settlementMapper.selectForUpdate(501L)).thenReturn(pending);
+        when(settlementMapper.updateStatus(
+                501L,
+                SettlementStatus.COMPLETED.getCode(),
+                "700"))
+                .thenReturn(1);
+        when(tradeSettlementReferenceReader.getByTradeSn(91L))
+                .thenReturn(tradeReference(91L, "TRDC0002", null));
+        when(pointService.creditEscrowToSettleable(
+                10L,
+                91L,
+                RefType.TRADE,
+                91L,
+                "정산 완료 (정산번호 501)"))
+                .thenReturn(29_000L);
+
+        assertThatThrownBy(() -> settlementService.complete(501L, 700L))
+                .isInstanceOf(SettlementException.class)
+                .hasMessageContaining("정산 금액과 보관금 잔액");
+
+        verify(notificationService, never())
+                .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -161,13 +263,15 @@ class SettlementServiceTest {
                 SettlementStatus.COMPLETED.getCode(),
                 "700"))
                 .thenReturn(0);
+        when(tradeSettlementReferenceReader.getByTradeSn(91L))
+                .thenReturn(tradeReference(91L, "TRDC0002", null));
 
         assertThatThrownBy(() -> settlementService.complete(501L, 700L))
                 .isInstanceOf(SettlementException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SETTLEMENT_INVALID_STATUS);
 
-        verify(pointService, never()).creditSettleable(
+        verify(pointService, never()).creditEscrowToSettleable(
                 anyLong(), anyLong(), any(), anyLong(), anyString());
     }
 
@@ -185,7 +289,7 @@ class SettlementServiceTest {
                 .hasMessageContaining("완료 처리할 수 없는 상태");
 
         verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
-        verify(pointService, never()).creditSettleable(
+        verify(pointService, never()).creditEscrowToSettleable(
                 anyLong(), anyLong(), any(), anyLong(), anyString());
     }
 
@@ -202,5 +306,16 @@ class SettlementServiceTest {
         settlement.setStlmAmt(amount);
         settlement.setStlmStatusCd(status.getCode());
         return settlement;
+    }
+
+    private TradeSettlementReference tradeReference(
+            long tradeSn,
+            String tradeTypeCode,
+            Long bidSn) {
+        TradeSettlementReference reference = new TradeSettlementReference();
+        reference.setTradeSn(tradeSn);
+        reference.setTradeTypeCode(tradeTypeCode);
+        reference.setBidSn(bidSn);
+        return reference;
     }
 }

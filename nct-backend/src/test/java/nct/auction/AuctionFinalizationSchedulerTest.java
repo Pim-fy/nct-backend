@@ -1,5 +1,6 @@
 package nct.auction;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import nct.auction.service.AuctionFinalizationScheduler;
 import nct.auction.service.AuctionService;
@@ -26,6 +28,14 @@ class AuctionFinalizationSchedulerTest {
 
     @InjectMocks
     private AuctionFinalizationScheduler scheduler;
+
+    @Test
+    void finalizationSchedulerIsEnabledWhenPropertyIsMissing() {
+        ConditionalOnProperty condition = AuctionFinalizationScheduler.class
+                .getAnnotation(ConditionalOnProperty.class);
+
+        assertThat(condition.matchIfMissing()).isTrue();
+    }
 
     @Test
     void continuesWithNextClosingNotificationWhenOneAuctionFails() {

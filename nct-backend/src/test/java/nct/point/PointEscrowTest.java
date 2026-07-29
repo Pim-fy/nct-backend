@@ -106,7 +106,7 @@ class PointEscrowTest {
     void creditEscrowToSettleable() {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
 
-        long credited = pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "서비스 완료 정산");
+        long credited = pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산");
 
         assertThat(credited).isEqualTo(30000); // 금액은 호출자가 아니라 원장(보관금 잔존액)이 결정
         assertThat(pointService.getBalance(providerSn).getSettleableAmt()).isEqualTo(30000);
@@ -126,7 +126,7 @@ class PointEscrowTest {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
         insertDispute(trdSn, "TRDC0016"); // 접수 상태
 
-        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "서비스 완료 정산"))
+        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산"))
                 .isInstanceOf(PointException.class)
                 .hasMessageContaining("거래 문제");
         assertThat(pointService.getBalance(providerSn).getSettleableAmt()).isZero();
@@ -138,7 +138,7 @@ class PointEscrowTest {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
         insertDispute(trdSn, "TRDC0018"); // 완료 상태
 
-        pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "서비스 완료 정산");
+        pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산");
 
         assertThat(pointService.getBalance(providerSn).getSettleableAmt()).isEqualTo(30000);
     }
@@ -147,9 +147,9 @@ class PointEscrowTest {
     @DisplayName("정산 전환: 같은 거래로 두 번 전환하면 이중 정산으로 거부된다")
     void creditEscrowTwiceBlocked() {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
-        pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "서비스 완료 정산");
+        pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산");
 
-        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "중복 정산"))
+        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "중복 정산"))
                 .isInstanceOf(PointException.class)
                 .hasMessageContaining("이미 정산");
 
@@ -159,7 +159,7 @@ class PointEscrowTest {
     @Test
     @DisplayName("정산 전환: 보관금이 없는 거래는 거부된다")
     void creditEscrowWithoutEscrow() {
-        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "보관금 없는 정산"))
+        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "보관금 없는 정산"))
                 .isInstanceOf(PointException.class)
                 .hasMessageContaining("보관금이 없습니다");
     }
@@ -199,7 +199,7 @@ class PointEscrowTest {
     void refundAndSettleAreMutuallyExclusive() {
         // (1) 정산이 먼저 끝난 건은 환불할 수 없다 — 이미 제공자에게 지급된 돈 (관리자 수동 보정 영역)
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
-        pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn, "서비스 완료 정산");
+        pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산");
         assertThatThrownBy(() -> pointService.refundEscrow(requesterSn, trdSn, RefType.TRADE, trdSn, "정산 후 환불 시도"))
                 .isInstanceOf(PointException.class)
                 .hasMessageContaining("정산 지급이 끝나");
@@ -208,7 +208,7 @@ class PointEscrowTest {
         long trdSn2 = insertServiceTrade();
         pointService.debitEscrow(requesterSn, 10000, RefType.TRADE, trdSn2, "견적 선택 보관금");
         pointService.refundEscrow(requesterSn, trdSn2, RefType.TRADE, trdSn2, "거래 문제 판정 환불");
-        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, RefType.TRADE, trdSn2, "환불 후 정산 시도"))
+        assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, trdSn2, RefType.TRADE, trdSn2, "환불 후 정산 시도"))
                 .isInstanceOf(PointException.class)
                 .hasMessageContaining("보관금이 없습니다");
     }

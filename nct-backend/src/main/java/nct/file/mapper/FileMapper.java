@@ -61,4 +61,10 @@ public interface FileMapper {
      * - REVIEW_IMAGE는 담당자3(리뷰) 소유 — 읽기 전용 조회만, 변경 금지
      */
     int countReviewImageRefs(@Param("flSn") Long flSn);
+
+    /**
+     * 이 파일을 참조 중인 PORTFOLIO_FILE 행 수 (F-PROV-005) — 삭제 가드에 OR로 합산
+     * - PORTFOLIO_FILE은 담당자7(제공자) 소유 — 읽기 전용 조회만, 변경 금지
+     */
+    int countPortfolioFileRefs(@Param("flSn") Long flSn);
 }

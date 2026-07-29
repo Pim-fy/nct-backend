@@ -17,6 +17,7 @@ import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.SellerTradeStatusItem;
+import nct.trade.dto.TradeSettlementReference;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -31,6 +32,10 @@ public interface TradeMapper {
     /** 경매 취소·환불 흐름이 거래와 원본 입찰 보관금의 연결을 직접 확인한다. */
     AuctionTradeEscrowInfo findAuctionTradeEscrowInfoByProductId(
             @Param("productId") long productId);
+
+    /** 정산 도메인에 거래 유형과 원본 입찰 보관금 참조만 제공한다. */
+    TradeSettlementReference findSettlementReferenceByTradeId(
+            @Param("tradeId") long tradeId);
 
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);
@@ -92,6 +97,11 @@ public interface TradeMapper {
             @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
 
+    /** 판매자가 직거래 일정을 제안한 뒤 거래 상태를 직거래 진행으로 전이한다. */
+    int startOfflineTrade(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
     Long findMyOfflineTradeIdForUpdate(
             @Param("tradeId") long tradeId,
             @Param("sellerUserId") long sellerUserId);
@@ -102,10 +112,10 @@ public interface TradeMapper {
             @Param("meetingPlace") String meetingPlace,
             @Param("meetingAddress") String meetingAddress);
 
-    /** 구매자 본인의 물건 거래를 잠가 완료 확인 요청과 중복 요청이 경합하지 않게 한다. */
-    TradeConfirmationTarget findBuyerTradeForConfirmationForUpdate(
+    /** 거래 당사자 본인의 물건 거래를 잠가 완료 확인과 중복 요청이 경합하지 않게 한다. */
+    TradeConfirmationTarget findMyTradeForConfirmationForUpdate(
             @Param("tradeId") long tradeId,
-            @Param("buyerUserId") long buyerUserId);
+            @Param("userId") long userId);
 
     /** 직거래 일정이 실제로 저장됐는지 확인해 일정 전 완료 처리를 차단한다. */
     boolean hasOfflineSchedule(@Param("tradeId") long tradeId);
@@ -114,6 +124,12 @@ public interface TradeMapper {
     int startCompletionConfirmation(
             @Param("tradeId") long tradeId,
             @Param("autoCompleteAt") LocalDateTime autoCompleteAt,
+            @Param("updaterId") String updaterId);
+
+    /** 첫 확인자가 아닌 상대방만 확인 대기 거래를 완료로 바꾼다. */
+    int completeConfirmationByCounterpart(
+            @Param("tradeId") long tradeId,
+            @Param("completionRequesterId") String completionRequesterId,
             @Param("updaterId") String updaterId);
 
     /** 자동 완료 시각이 지난 확인 대기 거래를 배치 단위로 조회한다. */

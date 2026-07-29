@@ -54,6 +54,7 @@ class AuctionServiceCreateAuctionTest {
 
     @Test
     void createAuctionForProductUsesActiveStatusAndPolicyBidUnit() {
+        LocalDateTime startDateTime = LocalDateTime.now().minusMinutes(1);
         LocalDateTime endDateTime = LocalDateTime.now().plusDays(3);
         policy.setMinBidUnit(2500L);
         when(auctionMapper.insertAuction(
@@ -61,6 +62,7 @@ class AuctionServiceCreateAuctionTest {
                 AuctionStatusCode.ACTIVE,
                 BigDecimal.valueOf(50000),
                 BigDecimal.valueOf(2500),
+                startDateTime,
                 endDateTime,
                 "7"))
                 .thenReturn(1);
@@ -69,8 +71,8 @@ class AuctionServiceCreateAuctionTest {
                 10L,
                 BigDecimal.valueOf(50000),
                 null,
+                startDateTime,
                 endDateTime,
-                true,
                 7L);
 
         verify(auctionMapper).insertAuction(
@@ -78,18 +80,21 @@ class AuctionServiceCreateAuctionTest {
                 AuctionStatusCode.ACTIVE,
                 BigDecimal.valueOf(50000),
                 BigDecimal.valueOf(2500),
+                startDateTime,
                 endDateTime,
                 "7");
     }
 
     @Test
     void createAuctionForProductUsesReadyStatusAndRequestedBidUnit() {
+        LocalDateTime startDateTime = LocalDateTime.now().plusDays(1);
         LocalDateTime endDateTime = LocalDateTime.now().plusDays(3);
         when(auctionMapper.insertAuction(
                 11L,
                 AuctionStatusCode.READY,
                 BigDecimal.valueOf(30000),
                 BigDecimal.valueOf(5000),
+                startDateTime,
                 endDateTime,
                 "8"))
                 .thenReturn(1);
@@ -98,8 +103,8 @@ class AuctionServiceCreateAuctionTest {
                 11L,
                 BigDecimal.valueOf(30000),
                 BigDecimal.valueOf(5000),
+                startDateTime,
                 endDateTime,
-                false,
                 8L);
 
         verify(auctionMapper).insertAuction(
@@ -107,6 +112,7 @@ class AuctionServiceCreateAuctionTest {
                 AuctionStatusCode.READY,
                 BigDecimal.valueOf(30000),
                 BigDecimal.valueOf(5000),
+                startDateTime,
                 endDateTime,
                 "8");
     }
@@ -117,8 +123,8 @@ class AuctionServiceCreateAuctionTest {
                 10L,
                 BigDecimal.valueOf(50000),
                 BigDecimal.valueOf(1000),
+                LocalDateTime.now().minusDays(1),
                 LocalDateTime.now().minusMinutes(1),
-                true,
                 7L))
                 .isInstanceOf(CustomException.class);
 
@@ -131,8 +137,8 @@ class AuctionServiceCreateAuctionTest {
                 10L,
                 BigDecimal.valueOf(50000),
                 BigDecimal.ZERO,
+                LocalDateTime.now(),
                 LocalDateTime.now().plusDays(3),
-                true,
                 7L))
                 .isInstanceOf(CustomException.class);
 
@@ -147,8 +153,38 @@ class AuctionServiceCreateAuctionTest {
                 10L,
                 BigDecimal.valueOf(50000),
                 BigDecimal.valueOf(2000),
+                LocalDateTime.now(),
                 LocalDateTime.now().plusDays(3),
-                true,
+                7L))
+                .isInstanceOf(CustomException.class);
+
+        verifyNoInteractions(auctionMapper);
+    }
+
+    @Test
+    void createAuctionForProductRejectsEndBeforeScheduledStart() {
+        LocalDateTime startDateTime = LocalDateTime.now().plusDays(3);
+
+        assertThatThrownBy(() -> auctionService.createAuctionForProduct(
+                10L,
+                BigDecimal.valueOf(50000),
+                BigDecimal.valueOf(3000),
+                startDateTime,
+                startDateTime.minusMinutes(1),
+                7L))
+                .isInstanceOf(CustomException.class);
+
+        verifyNoInteractions(auctionMapper);
+    }
+
+    @Test
+    void createAuctionForProductRejectsMissingStartDateTime() {
+        assertThatThrownBy(() -> auctionService.createAuctionForProduct(
+                10L,
+                BigDecimal.valueOf(50000),
+                BigDecimal.valueOf(3000),
+                null,
+                LocalDateTime.now().plusDays(3),
                 7L))
                 .isInstanceOf(CustomException.class);
 

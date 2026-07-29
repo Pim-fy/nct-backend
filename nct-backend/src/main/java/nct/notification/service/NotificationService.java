@@ -260,8 +260,9 @@ public class NotificationService {
 
     /** 낙찰/유찰 결과 — 경매 담당(5)이 마감 처리 시 호출 */
     public void notifyAuctionResult(long usrSn, long auctionId, boolean won) {
+        String title = auctionResultTitle(auctionId, won ? "낙찰되었습니다" : "유찰되었습니다");
         notifyForEvent(usrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
-                won ? "낙찰되었습니다" : "유찰되었습니다",
+                title,
                 won ? "축하합니다! 입찰하신 경매에 낙찰되었습니다." : "입찰하신 경매가 유찰되었습니다.",
                 RefType.AUCTION, auctionId);
     }
@@ -273,9 +274,15 @@ public class NotificationService {
      */
     public void notifyAuctionFailed(long sellerUsrSn, long auctionId) {
         notifyForEvent(sellerUsrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
-                "경매가 유찰되었습니다",
+                auctionResultTitle(auctionId, "경매가 유찰되었습니다"),
                 "입찰자가 없어 경매가 종료되었습니다.",
                 RefType.AUCTION, auctionId);
+    }
+
+    /** 알림 목록에서 제목만 보고도 어떤 경매인지 알 수 있도록 상품명을 앞에 붙인다 (상품 삭제 등으로 조회가 안 되면 상품명 없이 둔다) */
+    private String auctionResultTitle(long auctionId, String suffix) {
+        String productName = notificationMapper.selectAuctionProductName(auctionId);
+        return productName == null ? suffix : "[" + productName + "] " + suffix;
     }
 
     /** 배송 시작 — 거래/배송 담당(4)이 배송 상태 전이 시 호출 (대상: 구매자) */

@@ -32,7 +32,10 @@ public enum NotificationEvent {
     POINT_CHANGE("NTFC0026", NotificationDomain.OPS, NotificationType.OPS, "포인트 지급/차감"),
     PROVIDER_APPROVAL_RESULT("NTFC0027", NotificationDomain.OPS, NotificationType.OPS, "제공자 심사 결과"),
     REPORT_RESULT("NTFC0028", NotificationDomain.OPS, NotificationType.OPS, "신고 처리 결과"),
-    NOTICE_PUBLISHED("NTFC0029", NotificationDomain.OPS, NotificationType.OPS, "공지사항");
+    NOTICE_PUBLISHED("NTFC0029", NotificationDomain.OPS, NotificationType.OPS, "공지사항"),
+
+    INQUIRY_RECEIVED("NTFC0030", NotificationDomain.AUCTION, NotificationType.AUCTION, "새 구매자 문의"),
+    INQUIRY_REPLIED("NTFC0031", NotificationDomain.AUCTION, NotificationType.AUCTION, "문의 답변 등록");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

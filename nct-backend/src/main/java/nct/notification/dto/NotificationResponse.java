@@ -35,6 +35,13 @@ public class NotificationResponse {
     private final String refTypeCd;
     private final Long refSn;
 
+    /**
+     * 알림이벤트코드(NTFG05, notifyForEvent 경로로 발행된 알림만 값이 있음, 기존 notify()/
+     * notifyImportant() 경로는 null). 같은 refTypeCd를 여러 이벤트가 공유할 때(예: 문의 등록·
+     * 답변 등록이 둘 다 REFC0002) 클릭 이동 대상을 구분하는 용도로 프론트에 노출한다 (2026-07-29).
+     */
+    private final String evtCd;
+
     /** 읽음 여부 (true=읽음) */
     private final boolean read;
     private final LocalDateTime readDt;
@@ -53,6 +60,7 @@ public class NotificationResponse {
                 .content(n.getNtfCn())
                 .refTypeCd(n.getNtfRefTypeCd())
                 .refSn(n.getNtfRefSn())
+                .evtCd(n.getNtfEvtCd())
                 .read("Y".equals(n.getNtfReadYn()))
                 .readDt(n.getNtfReadDt())
                 .regDt(n.getNtfRegDt())

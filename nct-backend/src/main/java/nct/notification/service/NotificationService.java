@@ -260,8 +260,9 @@ public class NotificationService {
 
     /** 낙찰/유찰 결과 — 경매 담당(5)이 마감 처리 시 호출 */
     public void notifyAuctionResult(long usrSn, long auctionId, boolean won) {
+        String title = auctionResultTitle(auctionId, won ? "낙찰되었습니다" : "유찰되었습니다");
         notifyForEvent(usrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
-                won ? "낙찰되었습니다" : "유찰되었습니다",
+                title,
                 won ? "축하합니다! 입찰하신 경매에 낙찰되었습니다." : "입찰하신 경매가 유찰되었습니다.",
                 RefType.AUCTION, auctionId);
     }
@@ -273,9 +274,38 @@ public class NotificationService {
      */
     public void notifyAuctionFailed(long sellerUsrSn, long auctionId) {
         notifyForEvent(sellerUsrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
-                "경매가 유찰되었습니다",
+                auctionResultTitle(auctionId, "경매가 유찰되었습니다"),
                 "입찰자가 없어 경매가 종료되었습니다.",
                 RefType.AUCTION, auctionId);
+    }
+
+    /** 알림 목록에서 제목만 보고도 어떤 경매인지 알 수 있도록 상품명을 앞에 붙인다 (상품 삭제 등으로 조회가 안 되면 상품명 없이 둔다) */
+    private String auctionResultTitle(long auctionId, String suffix) {
+        String productName = notificationMapper.selectAuctionProductName(auctionId);
+        return productName == null ? suffix : "[" + productName + "] " + suffix;
+    }
+
+    /**
+     * 구매자 문의 등록 — 상품 담당(2, 신현석)이 addInquiry 완료 시 호출. 대상: 판매자.
+     * refSn = prdCmtSn — 구매자가 같은 상품에 새 문의를 여러 번 등록할 수 있어 멱등 키를
+     * prdSn이 아닌 문의 단건 기준으로 잡아야 매 문의마다 알림이 발송된다 (신현석 요청, 2026-07-29).
+     */
+    public void notifyInquiryReceived(long sellerUsrSn, long prdCmtSn) {
+        notifyForEvent(sellerUsrSn, NotificationEvent.INQUIRY_RECEIVED, NotificationAudience.GENERAL,
+                "새 구매자 문의가 등록되었습니다",
+                "등록하신 상품에 새 문의가 도착했습니다.",
+                RefType.PRODUCT, prdCmtSn);
+    }
+
+    /**
+     * 판매자 답변 등록 — 상품 담당(2, 신현석)이 addReply 완료 시 호출. 대상: 문의 작성 구매자.
+     * refSn = prdCmtSn — 답변(reply) 행 자신의 prdCmtSn 기준 (2026-07-29).
+     */
+    public void notifyInquiryReplied(long buyerUsrSn, long prdCmtSn) {
+        notifyForEvent(buyerUsrSn, NotificationEvent.INQUIRY_REPLIED, NotificationAudience.GENERAL,
+                "판매자가 문의에 답변했습니다",
+                "등록하신 문의에 판매자가 답변 하였습니다.",
+                RefType.PRODUCT, prdCmtSn);
     }
 
     /** 배송 시작 — 거래/배송 담당(4)이 배송 상태 전이 시 호출 (대상: 구매자) */

@@ -126,7 +126,7 @@ public class PointChargeService {
             throw new PointException(ErrorCode.EXTERNAL_API_ERROR, "결제 승인 실패: " + result.failMessage());
         }
 
-        applyVerifiedPayment(order, paymentKey, result.approvedAmount());
+        applyVerifiedPayment(order, paymentKey, result.approvedAmount(), result.payMethod(), result.payDetail());
     }
 
     /**
@@ -137,9 +137,10 @@ public class PointChargeService {
      * 목적이라, 여기서 TTL을 걸면 정작 구하려는 케이스를 스스로 막아버리게 된다.
      */
     @Transactional(noRollbackFor = PointException.class)
-    public void recoverFromReconciliation(String orderNo, String paymentKey, long approvedAmount) {
+    public void recoverFromReconciliation(String orderNo, String paymentKey, long approvedAmount,
+                                          String payMethod, String payDetail) {
         PointChargeOrder order = requirePendingStatus(orderNo);
-        applyVerifiedPayment(order, paymentKey, approvedAmount);
+        applyVerifiedPayment(order, paymentKey, approvedAmount, payMethod, payDetail);
     }
 
     /**
@@ -148,7 +149,8 @@ public class PointChargeService {
      * 이 메서드를 거쳐서만 지급한다 — 검증·보상 경로를 하나로 유지하기 위함. 호출부가
      * 이미 FOR UPDATE로 잠근 order를 넘겨준다고 가정한다(requirePending/requirePendingStatus).
      */
-    private void applyVerifiedPayment(PointChargeOrder order, String paymentKey, long approvedAmount) {
+    private void applyVerifiedPayment(PointChargeOrder order, String paymentKey, long approvedAmount,
+                                      String payMethod, String payDetail) {
         // 위변조 방지 핵심: 토스가 승인한 실제 금액과 사전 기록 금액이 정확히 일치할 때만 반영
         if (approvedAmount != order.getPtChgOrdAmt()) {
             orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(), paymentKey,
@@ -163,7 +165,8 @@ public class PointChargeService {
         try {
             ptLdgSn = pointService.creditCharge(order.getUsrSn(), order.getPtChgOrdAmt(),
                     "포인트 충전");
-            orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey, ptLdgSn);
+            orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey,
+                    ptLdgSn, payMethod, payDetail);
 
             // 같은 트랜잭션 안에서 알림까지 기록 — 충전은 됐는데 알림만 누락되는 일이 없도록
             notificationService.notifyCharge(order.getUsrSn(), order.getPtChgOrdAmt());

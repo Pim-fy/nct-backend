@@ -80,18 +80,4 @@
         LIMIT 100
     </select>
 
-    <select id="selectListByTrade" resultType="nct.settlement.domain.Settlement">
-        /* 정산: 거래별 목록 */
-        SELECT STLM_SN        AS stlmSn,
-               TRD_SN         AS trdSn,
-               USR_SN         AS usrSn,
-               STLM_AMT       AS stlmAmt,
-               STLM_STATUS_CD AS stlmStatusCd,
-               STLM_REG_DT    AS stlmRegDt,
-               STLM_UPDT_DT   AS stlmUpdtDt
-        FROM SETTLEMENT
-        WHERE TRD_SN = #{trdSn}
-        ORDER BY STLM_SN DESC
-    </select>
-
 </mapper>

@@ -34,7 +34,4 @@ public interface SettlementMapper {
 
     /** 회원별 정산 목록 (최신순 100건) */
     List<Settlement> selectListByUser(@Param("usrSn") long usrSn);
-
-    /** 거래별 정산 목록 */
-    List<Settlement> selectListByTrade(@Param("trdSn") long trdSn);
 }

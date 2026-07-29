@@ -13,18 +13,25 @@ package nct.point.client;
  * - found(...): 결제 이력이 있음 — status로 실제 결제완료(DONE)인지 취소/만료/진행중인지 판단
  */
 public record TossOrderLookupResult(boolean reachable, boolean found, String status,
-                                     long totalAmount, String paymentKey) {
+                                     long totalAmount, String paymentKey,
+                                     String payMethod, String payDetail) {
 
     public static TossOrderLookupResult unreachable() {
-        return new TossOrderLookupResult(false, false, null, 0, null);
+        return new TossOrderLookupResult(false, false, null, 0, null, null, null);
     }
 
     public static TossOrderLookupResult notFound() {
-        return new TossOrderLookupResult(true, false, null, 0, null);
+        return new TossOrderLookupResult(true, false, null, 0, null, null, null);
     }
 
     public static TossOrderLookupResult found(String status, long totalAmount, String paymentKey) {
-        return new TossOrderLookupResult(true, true, status, totalAmount, paymentKey);
+        return found(status, totalAmount, paymentKey, null, null);
+    }
+
+    /** @param payMethod/payDetail 결제수단 표시용 — TossConfirmResult와 같은 의미 */
+    public static TossOrderLookupResult found(String status, long totalAmount, String paymentKey,
+                                               String payMethod, String payDetail) {
+        return new TossOrderLookupResult(true, true, status, totalAmount, paymentKey, payMethod, payDetail);
     }
 
     /** 토스 쪽에서 실제로 결제가 완료된 상태인지 */

@@ -83,12 +83,20 @@ public class AuctionService {
 
     @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
-        return findAuctionDetailWithProductValidation(auctionId, null);
+        return findAuctionDetailWithProductValidation(auctionId, null, true);
     }
 
     @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId, Long userId) {
-        return findAuctionDetailWithProductValidation(auctionId, userId);
+        return findAuctionDetailWithProductValidation(auctionId, userId, true);
+    }
+
+    @Transactional(readOnly = true)
+    public AuctionDetailResponse findAuctionDetail(
+            Long auctionId,
+            Long userId,
+            boolean includeSupplemental) {
+        return findAuctionDetailWithProductValidation(auctionId, userId, includeSupplemental);
     }
 
     @Transactional(readOnly = true)
@@ -274,7 +282,10 @@ public class AuctionService {
                 actorUserId);
     }
 
-    private AuctionDetailResponse findAuctionDetailWithProductValidation(Long auctionId, Long userId) {
+    private AuctionDetailResponse findAuctionDetailWithProductValidation(
+            Long auctionId,
+            Long userId,
+            boolean includeSupplemental) {
         Long productId = auctionMapper.findProductIdByAuctionId(auctionId);
         if (productId == null) {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
@@ -282,10 +293,17 @@ public class AuctionService {
 
         ProductService productService = productServiceProvider.getObject();
         productService.getProduct(productId);
-        return loadAuctionDetail(auctionId, userId);
+        return loadAuctionDetail(auctionId, userId, includeSupplemental);
     }
 
     private AuctionDetailResponse loadAuctionDetail(Long auctionId, Long userId) {
+        return loadAuctionDetail(auctionId, userId, true);
+    }
+
+    private AuctionDetailResponse loadAuctionDetail(
+            Long auctionId,
+            Long userId,
+            boolean includeSupplemental) {
         AuctionDetailResponse detail = auctionMapper.findAuctionDetail(auctionId, userId);
         if (detail == null) {
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
@@ -294,8 +312,10 @@ public class AuctionService {
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
-        applySellerReviewSummary(detail);
-        detail.setProductUpdates(loadProductUpdates(detail.getProductId()));
+        if (includeSupplemental) {
+            applySellerReviewSummary(detail);
+            detail.setProductUpdates(loadProductUpdates(detail.getProductId()));
+        }
         return detail;
     }
 

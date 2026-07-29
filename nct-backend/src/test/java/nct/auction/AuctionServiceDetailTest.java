@@ -150,4 +150,25 @@ class AuctionServiceDetailTest {
         assertThat(response.getProductUpdates().get(0).getRegisteredAt()).isEqualTo(registeredAt);
         verify(productService).getComments(20L);
     }
+
+    @Test
+    void findAuctionDetailSkipsSupplementalDataWhenDisabled() {
+        AuctionDetailResponse detail = new AuctionDetailResponse();
+        detail.setProductId(20L);
+        detail.setSellerId(30L);
+
+        when(auctionMapper.findProductIdByAuctionId(10L)).thenReturn(20L);
+        when(productServiceProvider.getObject()).thenReturn(productService);
+        when(auctionMapper.findAuctionDetail(10L, null)).thenReturn(detail);
+        when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
+        when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
+
+        AuctionDetailResponse response = auctionService.findAuctionDetail(10L, null, false);
+
+        assertThat(response.getSellerRating()).isNull();
+        assertThat(response.getSellerReviewCount()).isNull();
+        assertThat(response.getProductUpdates()).isEmpty();
+        verify(reviewService, never()).getTrustScore(anyLong());
+        verify(productService, never()).getComments(anyLong());
+    }
 }

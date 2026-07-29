@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
@@ -29,8 +30,12 @@ public class AuctionDetailController {
     @GetMapping("/{auctionId}")
     public ApiResponse<AuctionDetailResponse> findAuctionDetail(
             @PathVariable("auctionId") Long auctionId,
+            @RequestParam(name = "includeSupplemental", defaultValue = "true") boolean includeSupplemental,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
-        return ApiResponse.success(auctionService.findAuctionDetail(auctionId, optionalUserId(userDetails)));
+        return ApiResponse.success(auctionService.findAuctionDetail(
+                auctionId,
+                optionalUserId(userDetails),
+                includeSupplemental));
     }
 
     @GetMapping("/product/{productId}")

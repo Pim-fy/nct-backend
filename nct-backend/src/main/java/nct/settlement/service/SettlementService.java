@@ -145,10 +145,51 @@ public class SettlementService {
     @Transactional
     public void holdUp(long stlmSn, String reason) {
         Settlement s = requireStatus(stlmSn, SettlementStatus.PENDING, "보류");
+        holdSettlement(s, reason);
+    }
 
-        updateStatusOrThrow(stlmSn, SettlementStatus.ON_HOLD, SYSTEM_ACTOR, "보류");
-        notificationService.notifySettlement(s.getUsrSn(), "정산 보류",
-                String.format("거래대금 %,dP의 정산이 보류되었습니다. 사유: %s", s.getStlmAmt(), reason), s.getTrdSn());
+    /**
+     * 거래 분쟁 접수 트랜잭션에서 거래번호 기준으로 기존 정산을 조건부 보류한다.
+     * 정산이 아직 생성되지 않은 정상적인 사전 분쟁 접수는 별도 정산 행을 만들지 않는다.
+     * 호출자는 먼저 동일 거래의 TRADE 행을 잠가 자동 완료와의 경합을 직렬화해야 한다.
+     *
+     * @return 이번 호출에서 대기 정산을 보류로 전환했으면 true, 정산이 없거나 이미 보류면 false
+     */
+    @Transactional
+    public boolean holdUpByTradeIfPending(long trdSn, String reason) {
+        if (trdSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호가 필요합니다.");
+        }
+
+        Settlement settlement = settlementMapper.selectByTradeForUpdate(trdSn);
+        if (settlement == null) {
+            return false;
+        }
+        if (SettlementStatus.ON_HOLD.getCode().equals(settlement.getStlmStatusCd())) {
+            return false;
+        }
+        if (!SettlementStatus.PENDING.getCode().equals(settlement.getStlmStatusCd())) {
+            throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_STATUS,
+                    "보류 처리할 수 없는 상태입니다. 거래번호: " + trdSn
+                            + ", 현재 상태: " + settlement.getStlmStatusCd());
+        }
+
+        holdSettlement(settlement, reason);
+        return true;
+    }
+
+    private void holdSettlement(Settlement settlement, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "정산 보류 사유가 필요합니다.");
+        }
+
+        updateStatusOrThrow(settlement.getStlmSn(), SettlementStatus.ON_HOLD, SYSTEM_ACTOR, "보류");
+        notificationService.notifySettlement(settlement.getUsrSn(), "정산 보류",
+                String.format("거래대금 %,dP의 정산이 보류되었습니다. 사유: %s",
+                        settlement.getStlmAmt(), reason.trim()),
+                settlement.getTrdSn());
     }
 
     /** 정산 보류 해제 (F-OPS-079): 보류 → 대기 */

@@ -115,6 +115,9 @@ public class SecurityConfig {
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()
+                // 담당자 5 · F-COM-002: 가입 전에도 승인 제공자를 탐색할 수 있다.
+                .requestMatchers(HttpMethod.GET, "/api/service-discovery/providers")
+                    .permitAll()
                 // 담당자 7 · F-COM-003/F-OPS-007: 화면 공통코드 선택지는 읽기 전용으로 공개한다.
                 .requestMatchers(HttpMethod.GET, "/api/reference/codes")
                     .permitAll()

@@ -36,6 +36,8 @@ public class Product {
     private BigDecimal prdDraftBidUnit;
     private LocalDateTime prdDraftStartDt;
     private LocalDateTime prdDraftEndDt;
+    // 임시저장 시점의 즉시시작 여부(Y/N) — 복원 시 startNow 판단용
+    private String prdDraftStartNowYn;
     // 임시저장 시점에 "경매 정책을 확인하였습니다" 체크 여부(Y/N) — 재개 시 상품입력 탭 필수값이
     // 전부 채워져 있고 이 값도 Y면 등록확인 탭으로 바로 이동시키는 데 사용
     private String prdDraftPolicyAgreedYn;

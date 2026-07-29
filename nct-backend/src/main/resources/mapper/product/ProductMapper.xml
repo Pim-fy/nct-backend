@@ -21,6 +21,7 @@
         <result property="prdDraftBidUnit" column="PRD_DRAFT_BID_UNIT" />
         <result property="prdDraftStartDt" column="PRD_DRAFT_START_DT" />
         <result property="prdDraftEndDt"   column="PRD_DRAFT_END_DT"   />
+        <result property="prdDraftStartNowYn"     column="PRD_DRAFT_START_NOW_YN"  />
         <result property="prdDraftPolicyAgreedYn" column="PRD_DRAFT_POLICY_AGREED_YN" />
     </resultMap>
 
@@ -52,12 +53,12 @@
             (USR_SN, CAT_SN, PRD_NM, PRD_CN, PRD_STATUS_CD,
              PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD, PRD_USE_YN,
              PRD_REG_ID, PRD_UPDT_ID,
-             PRD_DRAFT_BID_UNIT, PRD_DRAFT_START_DT, PRD_DRAFT_END_DT, PRD_DRAFT_POLICY_AGREED_YN)
+             PRD_DRAFT_BID_UNIT, PRD_DRAFT_START_DT, PRD_DRAFT_END_DT, PRD_DRAFT_START_NOW_YN, PRD_DRAFT_POLICY_AGREED_YN)
         VALUES
             (#{usrSn}, #{catSn}, #{prdNm}, #{prdCn}, #{prdStatusCd},
              #{prdStartAmt}, #{prdIbyAmt}, #{prdTrdMethodCd}, 'Y',
              #{prdRegId}, #{prdUpdtId},
-             #{prdDraftBidUnit}, #{prdDraftStartDt}, #{prdDraftEndDt}, #{prdDraftPolicyAgreedYn})
+             #{prdDraftBidUnit}, #{prdDraftStartDt}, #{prdDraftEndDt}, #{prdDraftStartNowYn}, #{prdDraftPolicyAgreedYn})
     </insert>
 
     <!-- ── 상품 단건 조회 (카테고리명·대표이미지 JOIN) ──── -->
@@ -67,7 +68,7 @@
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
                p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
                p.PRD_REG_DT, p.PRD_UPDT_DT,
-               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT, p.PRD_DRAFT_POLICY_AGREED_YN,
+               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT, p.PRD_DRAFT_START_NOW_YN, p.PRD_DRAFT_POLICY_AGREED_YN,
                f.FL_PATH AS PRD_IMG_URL
           FROM PRODUCT p
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
@@ -142,6 +143,7 @@
                PRD_DRAFT_BID_UNIT = #{prdDraftBidUnit},
                PRD_DRAFT_START_DT = #{prdDraftStartDt},
                PRD_DRAFT_END_DT   = #{prdDraftEndDt},
+               PRD_DRAFT_START_NOW_YN = #{prdDraftStartNowYn},
                PRD_DRAFT_POLICY_AGREED_YN = #{prdDraftPolicyAgreedYn}
          WHERE PRD_SN    = #{prdSn}
            AND USR_SN    = #{usrSn}

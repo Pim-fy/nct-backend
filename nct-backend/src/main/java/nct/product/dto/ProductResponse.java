@@ -33,6 +33,8 @@ public class ProductResponse {
     private BigDecimal prdDraftBidUnit;
     private LocalDateTime prdDraftStartDt;
     private LocalDateTime prdDraftEndDt;
+    // 임시저장 시점의 즉시시작 여부(Y/N) — 복원 시 startNow 판단용
+    private String prdDraftStartNowYn;
     // 임시저장 시점의 경매정책 동의 여부(Y/N) — 재개 시 등록확인 탭 바로 이동 판단용
     private String prdDraftPolicyAgreedYn;
 

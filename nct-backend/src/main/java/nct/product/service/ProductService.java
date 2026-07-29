@@ -81,6 +81,7 @@ public class ProductService {
                 .prdDraftBidUnit(isDraft ? req.getBidUnit() : null)
                 .prdDraftStartDt(isDraft ? req.getAucStartDt() : null)
                 .prdDraftEndDt(isDraft ? req.getAucEndDt() : null)
+                .prdDraftStartNowYn(isDraft ? (Boolean.TRUE.equals(req.getStartNow()) ? "Y" : "N") : null)
                 .prdDraftPolicyAgreedYn(isDraft ? draftPolicyAgreedYn(req) : null)
                 .build();
 
@@ -133,6 +134,7 @@ public class ProductService {
                 .prdDraftBidUnit(isDraft ? req.getBidUnit() : null)
                 .prdDraftStartDt(isDraft ? req.getAucStartDt() : null)
                 .prdDraftEndDt(isDraft ? req.getAucEndDt() : null)
+                .prdDraftStartNowYn(isDraft ? (Boolean.TRUE.equals(req.getStartNow()) ? "Y" : "N") : null)
                 .prdDraftPolicyAgreedYn(isDraft ? draftPolicyAgreedYn(req) : null)
                 .build();
 

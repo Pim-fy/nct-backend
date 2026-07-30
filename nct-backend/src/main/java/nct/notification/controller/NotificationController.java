@@ -31,7 +31,7 @@ import reactor.core.publisher.Flux;
  * 엔드포인트 (모두 로그인 필요):
  *   GET   /api/notification               내 알림 목록 (최신순 100건)
  *   GET   /api/notification/unread-count  미읽음 개수 (헤더 배지용)
- *   GET   /api/notification/stream        실시간 push 구독 (SSE, F-COM-XXX)
+ *   GET   /api/notification/stream        실시간 push 구독 (SSE, 2026-07-22 신설 — 별도 기능ID 없음)
  *   PATCH /api/notification/{id}/read     개별 읽음 처리
  *   PATCH /api/notification/read-all      전체 읽음 처리
  *   GET   /api/notification/settings      내 알림 수신 설정 조회 — F-COM-012
@@ -108,7 +108,7 @@ public class NotificationController {
     }
 
     /**
-     * 내 알림 수신 설정 조회 — 이벤트 13개 전부(F-COM-012 세분화, 2026-07-24).
+     * 내 알림 수신 설정 조회 — NotificationEvent 전체(F-COM-012 세분화, 2026-07-24).
      * 저장한 적 없는 이벤트는 기본값(전 채널 수신)이 내려간다
      */
     @GetMapping("/settings")
@@ -121,7 +121,7 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success(body));
     }
 
-    /** 내 알림 수신 설정 저장 — 화면이 이벤트 13개 값을 전부 보내는 전체 덮어쓰기 계약 */
+    /** 내 알림 수신 설정 저장 — 화면이 전 이벤트 값을 전부 보내는 전체 덮어쓰기 계약 */
     @PutMapping("/settings")
     public ResponseEntity<ApiResponse<Void>> saveSettings(
             @RequestBody NotificationSettingRequest request,

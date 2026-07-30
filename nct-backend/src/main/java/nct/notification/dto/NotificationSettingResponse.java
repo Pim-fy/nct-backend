@@ -11,7 +11,7 @@ import nct.notification.domain.UserNotificationEventSetting;
  * Claude Code 작성 (BJN, 2026-07-16, 이벤트 단위로 재작성 2026-07-24)
  *
  * [알림 설정 - 응답 DTO] (F-COM-012 세분화, 목업 34_notification_settings.html)
- * - GET /api/notification/settings 응답 본문 — 이벤트 13개를 도메인·라벨과 함께 내려준다
+ * - GET /api/notification/settings 응답 본문 — NotificationEvent 전체를 도메인·라벨과 함께 내려준다
  *   (프론트가 라벨을 다시 하드코딩하지 않도록 domain/label도 함께 전달)
  */
 @Getter

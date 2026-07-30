@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.quote.mapper.QuoteMapper">
+
+    <!-- ── resultMap ─────────────────────────────────── -->
+    <resultMap id="QuoteResponseMap" type="nct.quote.dto.QuoteResponse">
+        <result property="qutSn"          column="QUT_SN"           />
+        <result property="svcReqSn"       column="SVC_REQ_SN"       />
+        <result property="svcReqTitle"    column="SVC_REQ_TTL"      />
+        <result property="amount"         column="QUT_AMT"          />
+        <result property="content"        column="QUT_CN"           />
+        <result property="statusCode"     column="QUT_STATUS_CD"    />
+        <result property="reviseCnt"      column="QUT_REVISE_CNT"   />
+        <result property="registeredAt"   column="QUT_REG_DT"       />
+        <result property="updatedAt"      column="QUT_UPDT_DT"      />
+    </resultMap>
+
+    <resultMap id="QuoteEntityMap" type="nct.quote.domain.Quote">
+        <id     property="qutSn"        column="QUT_SN"         />
+        <result property="svcReqSn"     column="SVC_REQ_SN"     />
+        <result property="usrSn"        column="USR_SN"         />
+        <result property="qutAmt"       column="QUT_AMT"        />
+        <result property="qutCn"        column="QUT_CN"         />
+        <result property="qutStatusCd"  column="QUT_STATUS_CD"  />
+        <result property="qutReviseCnt" column="QUT_REVISE_CNT" />
+        <result property="qutRegId"     column="QUT_REG_ID"     />
+        <result property="qutUpdtId"    column="QUT_UPDT_ID"    />
+    </resultMap>
+
+    <resultMap id="QuoteHistoryResponseMap" type="nct.quote.dto.QuoteHistoryResponse">
+        <result property="qutHstSn"     column="QUT_HST_SN"     />
+        <result property="qutSn"        column="QUT_SN"         />
+        <result property="amount"       column="QUT_HST_AMT"    />
+        <result property="content"      column="QUT_HST_CN"     />
+        <result property="registeredAt" column="QUT_HST_REG_DT" />
+    </resultMap>
+
+    <!-- ── 견적 제출 ─────────────────────────────────── -->
+    <insert id="insertQuote" useGeneratedKeys="true" keyProperty="qutSn">
+        /* QuoteMapper.insertQuote */
+        INSERT INTO QUOTE
+            (SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_STATUS_CD, QUT_REVISE_CNT,
+             QUT_REG_ID, QUT_UPDT_ID)
+        VALUES
+            (#{svcReqSn}, #{usrSn}, #{qutAmt}, #{qutCn}, #{qutStatusCd}, 0,
+             #{qutRegId}, #{qutUpdtId})
+    </insert>
+
+    <!-- ── 견적 단건 조회 (FOR UPDATE: 수정·철회 시 동시성 제어) ── -->
+    <select id="findQuoteByIdForUpdate" resultMap="QuoteEntityMap">
+        /* QuoteMapper.findQuoteByIdForUpdate */
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN,
+               QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
+          FROM QUOTE
+         WHERE QUT_SN = #{qutSn}
+        FOR UPDATE
+    </select>
+
+    <!-- ── 서비스 요청 등록자 조회 (자기거래 차단용) ── -->
+    <!-- 담당자2(신현석) 서비스 요청 조회 계약 완성 시 해당 계약으로 교체 -->
+    <select id="findRequesterUsrSn" resultType="java.lang.Long">
+        /* QuoteMapper.findRequesterUsrSn */
+        SELECT USR_SN
+          FROM SERVICE_REQUEST
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND SVC_REQ_USE_YN = 'Y'
+    </select>
+
+    <!-- ── 견적 수정 ─────────────────────────────────── -->
+    <update id="updateQuote">
+        /* QuoteMapper.updateQuote */
+        UPDATE QUOTE
+           SET QUT_AMT        = #{req.amount},
+               QUT_CN         = #{req.content},
+               QUT_STATUS_CD  = 'QUTC0002',
+               QUT_REVISE_CNT = QUT_REVISE_CNT + 1,
+               QUT_UPDT_ID    = #{updtId}
+         WHERE QUT_SN = #{qutSn}
+    </update>
+
+    <!-- ── 견적 철회 ─────────────────────────────────── -->
+    <update id="withdrawQuote">
+        /* QuoteMapper.withdrawQuote */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE QUT_SN = #{qutSn}
+    </update>
+
+    <!-- ── 내 견적 목록 (제공자 본인) ─────────────────── -->
+    <select id="findMyQuotes" resultMap="QuoteResponseMap">
+        /* QuoteMapper.findMyQuotes */
+        SELECT q.QUT_SN, q.SVC_REQ_SN, s.SVC_REQ_TTL,
+               q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
+               q.QUT_REG_DT, q.QUT_UPDT_DT
+          FROM QUOTE q
+          JOIN SERVICE_REQUEST s ON s.SVC_REQ_SN = q.SVC_REQ_SN
+         WHERE q.USR_SN = #{usrSn}
+         ORDER BY q.QUT_REG_DT DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countMyQuotes" resultType="int">
+        /* QuoteMapper.countMyQuotes */
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE USR_SN = #{usrSn}
+    </select>
+
+    <!-- ── 견적 수정 이력 INSERT ─────────────────────── -->
+    <insert id="insertQuoteHistory" useGeneratedKeys="true" keyProperty="qutHstSn">
+        /* QuoteMapper.insertQuoteHistory */
+        INSERT INTO QUOTE_HISTORY
+            (QUT_SN, QUT_HST_AMT, QUT_HST_CN, QUT_HST_REG_ID, QUT_HST_UPDT_ID)
+        VALUES
+            (#{qutSn}, #{qutHstAmt}, #{qutHstCn}, #{qutHstRegId}, #{qutHstUpdtId})
+    </insert>
+
+    <!-- ── 견적 수정 이력 조회 ───────────────────────── -->
+    <select id="findQuoteHistory" resultMap="QuoteHistoryResponseMap">
+        /* QuoteMapper.findQuoteHistory */
+        SELECT QUT_HST_SN, QUT_SN, QUT_HST_AMT, QUT_HST_CN, QUT_HST_REG_DT
+          FROM QUOTE_HISTORY
+         WHERE QUT_SN = #{qutSn}
+         ORDER BY QUT_HST_REG_DT ASC
+    </select>
+
+</mapper>

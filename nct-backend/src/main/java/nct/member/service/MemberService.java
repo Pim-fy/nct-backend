@@ -167,7 +167,7 @@ public class MemberService {
 
     /**
      * F-AUC-024 지원: 택배 거래 생성 시 낙찰자(구매자) 주소 스냅샷을 조회한다.
-     * 회원이 존재하지 않으면 USER_NOT_FOUND, 주소 3필드 중 하나라도 비어 있으면
+     * 회원이 존재하지 않으면 USER_NOT_FOUND, 우편번호·기본주소 중 하나라도 비어 있으면
      * BUYER_ADDRESS_INCOMPLETE를 던진다 - 호출 측은 반환값을 그대로 TRADE_DELIVERY에 복사하면 된다.
      */
     public BuyerAddressSnapshot getBuyerAddressSnapshot(Long buyerUsrSn) {
@@ -177,11 +177,11 @@ public class MemberService {
         String zip = fieldCryptoService.decrypt(member.getUsrZip());
         String address = fieldCryptoService.decrypt(member.getUsrAddr());
         String detailAddress = fieldCryptoService.decrypt(member.getUsrDaddr());
-        if (isBlank(zip) || isBlank(address) || isBlank(detailAddress)) {
+        if (isBlank(zip) || isBlank(address)) {
             throw new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
         }
 
-        return new BuyerAddressSnapshot(zip, address, detailAddress);
+        return new BuyerAddressSnapshot(zip, address, detailAddress == null ? "" : detailAddress.trim());
     }
 
     private boolean isBlank(String value) {

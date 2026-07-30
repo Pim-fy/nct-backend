@@ -51,4 +51,7 @@ application-local.properties
 # 업로드된 이미지 실 파일 - app.upload.dir (BJN, 2026-07-17, F-AUC-002)
 /uploads/
 
+# 로컬 실행 로그
+/logs/
+
 .DS_Store

@@ -14,7 +14,7 @@ import nct.trade.mapper.TradeMapper;
 import nct.trade.service.TradeService;
 
 /**
- * 상대방 확인 기한이 지난 물건 거래를 주기적으로 완료 처리한다.
+ * 상대방 확인 기한이 지난 물건·서비스 거래를 주기적으로 완료 처리한다.
  * 정산·포인트 처리는 확정된 도메인 계약이 연결되기 전까지 이 스케줄러에서 직접 다루지 않는다.
  */
 @Slf4j
@@ -67,6 +67,17 @@ public class TradeAutoCompletionScheduler {
             } catch (RuntimeException exception) {
                 // 한 거래의 일시적 실패가 같은 배치의 다른 만료 거래를 막지 않게 한다.
                 log.warn("거래 자동 완료 처리에 실패했습니다. tradeId={}", tradeId, exception);
+            }
+        }
+
+        List<Long> serviceTradeIds = tradeMapper.findExpiredServiceAutoCompletionTradeIds(
+                now,
+                BATCH_SIZE);
+        for (Long tradeId : serviceTradeIds) {
+            try {
+                tradeService.completeExpiredServiceConfirmation(tradeId, now);
+            } catch (RuntimeException exception) {
+                log.warn("서비스 거래 자동 완료 처리에 실패했습니다. tradeId={}", tradeId, exception);
             }
         }
     }

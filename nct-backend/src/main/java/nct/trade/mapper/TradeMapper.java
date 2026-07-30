@@ -15,9 +15,11 @@ import nct.trade.dto.TradeDeliveryProofFile;
 import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
+import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
+import nct.trade.dto.ServiceTradeCompletionTarget;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -36,6 +38,44 @@ public interface TradeMapper {
     /** 정산 도메인에 거래 유형과 원본 입찰 보관금 참조만 제공한다. */
     TradeSettlementReference findSettlementReferenceByTradeId(
             @Param("tradeId") long tradeId);
+
+    /**
+     * 거래 문제 접수·정산 보류 흐름이 같은 트랜잭션에서 사용할 TRADE 잠금 조회다.
+     * 소비자는 이 결과를 받은 뒤에만 자신의 TRADE_DISPUTE·SETTLEMENT 계약을 실행한다.
+     */
+    TradeDisputeTarget findTradeDisputeTargetForUpdate(@Param("tradeId") long tradeId);
+
+    /** 같은 거래의 접수·처리중 분쟁이 있는지 조회한다. TRADE 행 잠금 뒤에 호출한다. */
+    boolean hasOpenTradeDispute(@Param("tradeId") long tradeId);
+
+    int insertTradeDispute(
+            @Param("tradeId") long tradeId,
+            @Param("disputerUserId") long disputerUserId,
+            @Param("disputeTypeCode") String disputeTypeCode,
+            @Param("content") String content,
+            @Param("updaterId") String updaterId);
+
+    /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
+    int holdServiceTradeForDispute(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
+    /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */
+    ServiceTradeCompletionTarget findServiceTradeCompletionTargetForUpdate(
+            @Param("tradeId") long tradeId);
+
+    int startServiceCompletionRequest(
+            @Param("tradeId") long tradeId,
+            @Param("autoCompleteAt") LocalDateTime autoCompleteAt,
+            @Param("updaterId") String updaterId);
+
+    int completeServiceTrade(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
+    List<Long> findExpiredServiceAutoCompletionTradeIds(
+            @Param("now") LocalDateTime now,
+            @Param("limit") int limit);
 
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);

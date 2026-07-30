@@ -12,5 +12,5 @@ public record AdminCategoryRequest(
         @NotNull @Min(1) @Max(9999) Integer sortNo,
         @NotNull Boolean professional,
         @NotNull Boolean active,
-        @NotBlank @Size(max = 500) String changeReason) {
+        @Size(max = 500) String changeReason) {
 }

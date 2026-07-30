@@ -12,7 +12,7 @@ import nct.ops.security.service.SensitiveDataMasker;
 
 /**
  * 담당자 7 · F-COM-003/F-OPS-015: 카테고리 변경 이력을 실제 AUDIT_LOG에 남깁니다.
- * 현재 공통 RefType에 CATEGORY가 없어 참조유형은 비우고, 사유에 categorySn을 명시합니다.
+ * 현재 공통 RefType에 CATEGORY가 없어 참조유형은 비우고, 자동 작업명과 전후값에 categorySn을 명시합니다.
  */
 @Component
 @Primary
@@ -20,6 +20,7 @@ import nct.ops.security.service.SensitiveDataMasker;
 public class AuditCategoryChangeHistoryAdapter implements CategoryChangeHistoryPort {
 
     private static final int MAX_REASON_LENGTH = 500;
+    private static final int MAX_SUMMARY_LENGTH = 160;
 
     private final AuditLogService auditLogService;
     private final SensitiveDataMasker sensitiveDataMasker;
@@ -47,15 +48,19 @@ public class AuditCategoryChangeHistoryAdapter implements CategoryChangeHistoryP
     }
 
     private String reason(CategoryChangeHistoryCommand command) {
-        String value = "카테고리 변경 categorySn=" + command.categorySn()
-                + "; reason=" + safe(command.reason())
-                + "; before=" + safe(command.beforeSummary())
-                + "; after=" + safe(command.afterSummary());
-        return value.length() <= MAX_REASON_LENGTH ? value : value.substring(0, MAX_REASON_LENGTH);
+        String prefix = "카테고리 변경 categorySn=" + command.categorySn() + "; reason=";
+        String summaries = "; before=" + limit(safe(command.beforeSummary()), MAX_SUMMARY_LENGTH)
+                + "; after=" + limit(safe(command.afterSummary()), MAX_SUMMARY_LENGTH);
+        int reasonLength = Math.max(0, MAX_REASON_LENGTH - prefix.length() - summaries.length());
+        return prefix + limit(safe(command.reason()), reasonLength) + summaries;
     }
 
     private String safe(String value) {
         return sensitiveDataMasker.maskText(value == null ? "-" : value)
                 .replaceAll("[\\r\\n\\t]+", " ");
+    }
+
+    private String limit(String value, int maxLength) {
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 }

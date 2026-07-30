@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -31,6 +32,7 @@ import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.point.service.PointService;
 import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
@@ -45,6 +47,9 @@ import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeDeliverySubmitTarget;
+import nct.trade.dto.ServiceTradeDisputeRequest;
+import nct.trade.dto.ServiceTradeCompletionTarget;
+import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -63,6 +68,7 @@ class TradeServiceTest {
     private MemberService memberService;
     private SettlementService settlementService;
     private ChatService chatService;
+    private PointService pointService;
     private FieldCryptoService fieldCryptoService;
     private TradeService tradeService;
 
@@ -75,6 +81,7 @@ class TradeServiceTest {
         memberService = mock(MemberService.class);
         settlementService = mock(SettlementService.class);
         chatService = mock(ChatService.class);
+        pointService = mock(PointService.class);
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -86,6 +93,7 @@ class TradeServiceTest {
                 memberService,
                 settlementService,
                 chatService,
+                pointService,
                 fieldCryptoService);
     }
 
@@ -126,6 +134,157 @@ class TradeServiceTest {
     }
 
     @Test
+    void registersServiceTradeDisputeAndHoldsPendingSettlementInOneFlow() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0005");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("작업 완료 내용에 이견이 있습니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(tradeMapper.holdServiceTradeForDispute(81L, "11")).thenReturn(1);
+
+        tradeService.registerServiceTradeDispute(81L, 11L, request);
+
+        verify(tradeMapper).insertTradeDispute(
+                81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.", "11");
+        verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
+        verify(tradeMapper).insertStatusHistory(81L, "TRDC0007", "거래 문제가 접수되었습니다.");
+    }
+
+    @Test
+    void rejectsDuplicateOpenServiceTradeDispute() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("작업이 시작되지 않았습니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(true);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+
+        verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void rejectsServiceTradeDisputeFromNonPartyUser() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("제3자 접수 시도");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 99L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+
+        verify(tradeMapper, never()).hasOpenTradeDispute(anyLong());
+        verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void rejectsServiceTradeDisputeAfterCompletion() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0006");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("완료 후 접수 시도");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(tradeMapper, never()).hasOpenTradeDispute(anyLong());
+        verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void providerRequestsServiceCompletionAndStartsFiveDayConfirmation() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        SystemSettingDetail setting = new SystemSettingDetail();
+        setting.setTrdCfmnDays(5);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(systemSettingMapper.selectOne()).thenReturn(setting);
+        when(tradeMapper.startServiceCompletionRequest(anyLong(), any(), any())).thenReturn(1);
+
+        tradeService.requestServiceCompletion(81L, 22L);
+
+        verify(tradeMapper).startServiceCompletionRequest(eq(81L), any(), eq("22"));
+        verify(tradeMapper).insertStatusHistory(81L, "TRDC0005", "서비스 제공자가 완료 확인을 요청했습니다.");
+        verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5);
+    }
+
+    @Test
+    void requesterConfirmationCompletesServiceTradeAndSettlesProviderEscrow() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", LocalDateTime.now().plusDays(5));
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(tradeMapper.completeServiceTrade(81L, "11")).thenReturn(1);
+        when(settlementService.createPending(81L, 22L, 150000L)).thenReturn(61L);
+
+        tradeService.confirmServiceCompletion(81L, 11L);
+
+        verify(settlementService).createPending(81L, 22L, 150000L);
+        verify(settlementService).completeAutomatically(61L);
+        verify(tradeMapper).insertStatusHistory(81L, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
+        verify(notificationService).notifyTradeComplete(11L, 81L, false);
+        verify(notificationService).notifyTradeComplete(22L, 81L, false);
+    }
+
+    @Test
+    void expiredServiceCompletionDoesNotSettleWhenOpenDisputeExists() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", LocalDateTime.now().minusMinutes(1));
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(true);
+
+        assertThatThrownBy(() -> tradeService.completeExpiredServiceConfirmation(81L, LocalDateTime.now()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(tradeMapper, never()).completeServiceTrade(anyLong(), any());
+        verify(settlementService, never()).createPending(anyLong(), anyLong(), anyLong());
+    }
+
+    private ServiceTradeCompletionTarget serviceCompletionTarget(
+            String status,
+            LocalDateTime autoCompleteAt) {
+        ServiceTradeCompletionTarget target = new ServiceTradeCompletionTarget();
+        target.setTradeId(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeAmount(BigDecimal.valueOf(150000L));
+        target.setTradeStatus(status);
+        target.setAutoCompleteAt(autoCompleteAt);
+        return target;
+    }
+
+    @Test
     void createsAuctionTradeWithBuyNowSource() {
         AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
                 40L,
@@ -156,6 +315,46 @@ class TradeServiceTest {
                 91L,
                 "TRDC0003",
                 "즉시구매로 거래가 생성되었습니다.");
+    }
+
+    @Test
+    void createsDeliveryTradeForBothMethodProductWhenFinalMethodIsSelected() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L, 30L, 50L, 10L, 20L, BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW, "TRDC0009");
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0020");
+        when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
+                new BuyerAddressSnapshot("01234", "서울시 마포구", "101호"));
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+
+        tradeService.createAuctionTrade(command);
+
+        ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
+        verify(tradeMapper).insertMaterialTrade(tradeCaptor.capture());
+        assertThat(tradeCaptor.getValue().getTradeMethodCode()).isEqualTo("TRDC0009");
+        verify(tradeMapper).insertDeliverySnapshot(91L, "01234", "서울시 마포구", "101호");
+    }
+
+    @Test
+    void rejectsBothMethodProductWithoutFinalMethodSelection() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L, 30L, 50L, 10L, 20L, BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW);
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0020");
+
+        assertThatThrownBy(() -> tradeService.createAuctionTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(tradeMapper, never()).insertMaterialTrade(any(Trade.class));
     }
 
     @Test
@@ -688,6 +887,9 @@ class TradeServiceTest {
     void approvesSellerCancellationAndRecordsTradeStatusHistory() {
         TradeCancellationTarget target = new TradeCancellationTarget();
         target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setBidSn(501L);
         target.setTradeStatus("TRDC0004");
         SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
                 91L,
@@ -705,6 +907,14 @@ class TradeServiceTest {
                 91L,
                 "TRDC0008",
                 "판매자 취소 요청을 승인합니다.");
+        verify(pointService).refundEscrow(
+                20L,
+                91L,
+                nct.common.domain.RefType.BID,
+                501L,
+                "관리자 판매자 취소 승인: 판매자 취소 요청을 승인합니다.");
+        verify(notificationService).notifyTradeCancelled(20L, 91L, true);
+        verify(notificationService).notifyTradeCancelled(10L, 91L, false);
     }
 
     @Test
@@ -725,6 +935,7 @@ class TradeServiceTest {
     void preventsSellerCancellationAfterTradeCompletion() {
         TradeCancellationTarget target = new TradeCancellationTarget();
         target.setTradeId(91L);
+        target.setBidSn(501L);
         target.setTradeStatus("TRDC0006");
         SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
                 91L,

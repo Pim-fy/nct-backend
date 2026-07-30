@@ -163,12 +163,12 @@ public class NotificationService {
     // 신규 테이블이 공유 DB(NCTDB)에 적용된 걸 확인해, 기존에 도메인 단위 게이팅으로 남겨뒀던
     // "거래 확정 요청"(notifyTradeConfirmRequest)·"포인트 지급/차감"(notifyCharge/notifyExchangeRequest/
     // notifyPointConvert)도 notifyForEvent(TRADE_CONFIRM_REQUEST / POINT_CHANGE)로 교체했다.
-    // "분쟁 접수/판정"·"환전 지급/반려"는 13개 이벤트 목록에 아예 없거나(분쟁) D-031 정책상 의도적으로
+    // "분쟁 접수/판정"·"환전 지급/반려"는 이벤트 목록에 아예 없거나(분쟁) D-031 정책상 의도적으로
     // 게이팅하지 않는 것(환전 지급/반려)이라 기존 emailEligible() 경로를 계속 쓴다(§ 알림 수신 설정
     // 섹션 참고 — 도메인 단위 설정 화면이 없어졌으니 사실상 고정값).
     // ================================================================
 
-    /** 내 이벤트별 설정 전체 조회 — 13개 전부, 저장한 적 없는 이벤트는 기본값(전 채널 수신) */
+    /** 내 이벤트별 설정 전체 조회 — NotificationEvent 전체, 저장한 적 없는 이벤트는 기본값(전 채널 수신) */
     public List<UserNotificationEventSetting> getEventSettings(long usrSn) {
         Map<String, UserNotificationEventSetting> saved = eventSettingMapper.selectByUser(usrSn).stream()
                 .collect(Collectors.toMap(UserNotificationEventSetting::getNtfEvtCd, Function.identity()));
@@ -321,6 +321,16 @@ public class NotificationService {
         notifyForEvent(usrSn, NotificationEvent.TRADE_COMPLETE, NotificationAudience.GENERAL,
                 auto ? "거래 자동 완료" : "거래 완료",
                 auto ? "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다." : "거래가 완료되었습니다.",
+                RefType.TRADE, tradeId);
+    }
+
+    /** 관리자 판매자 취소 승인 결과를 거래 양 당사자에게 알린다. */
+    public void notifyTradeCancelled(long usrSn, long tradeId, boolean buyer) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "거래가 취소되었습니다",
+                buyer
+                        ? "판매자 취소 요청이 승인되어 거래대금이 환불되었습니다."
+                        : "판매자 취소 요청이 승인되어 거래가 취소되었습니다.",
                 RefType.TRADE, tradeId);
     }
 

@@ -116,6 +116,10 @@
                     AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
                   </otherwise>
               </choose>
+              AND (
+                  a.AUC_STATUS_CD != 'AUCC0002'
+                  OR a.AUC_END_DT &gt; NOW()
+              )
             </otherwise>
         </choose>
         <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">
@@ -349,6 +353,7 @@
             p.USR_SN AS sellerId,
             currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
+            currentBid.BID_TRD_METHOD_CD AS currentHighestTradeMethodCode,
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
@@ -360,12 +365,13 @@
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
         LEFT JOIN (
-            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN
+            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN, ranked.BID_TRD_METHOD_CD
             FROM (
                 SELECT
                     b.BID_SN,
                     b.AUC_SN,
                     b.USR_SN,
+                    b.BID_TRD_METHOD_CD,
                     ROW_NUMBER() OVER (
                         PARTITION BY b.AUC_SN
                         ORDER BY b.BID_AMT DESC, b.BID_SN DESC
@@ -506,6 +512,7 @@
             USR_SN,
             BID_AMT,
             BID_STATUS_CD,
+            BID_TRD_METHOD_CD,
             BID_REG_ID,
             BID_UPDT_ID
         )
@@ -514,6 +521,7 @@
             #{userId},
             #{bidAmount},
             #{statusCode},
+            #{selectedTradeMethodCode},
             #{actor},
             #{actor}
         )

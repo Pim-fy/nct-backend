@@ -280,6 +280,16 @@
            AND NTC_UPDT_DT = #{expectedUpdatedAt}
     </update>
 
+    <!-- 노출 요청은 작성 내용과 기간을 보존하고 게시 상태만 바꾼다. 재요청은 갱신하지 않는다. -->
+    <update id="publishAdminNotice">
+        UPDATE NOTICE
+           SET NTC_STATUS_CD = 'NTCC0006',
+               NTC_UPDT_ID = #{actorId}
+         WHERE NTC_SN = #{noticeId}
+           AND NTC_USE_YN = 'Y'
+           AND NTC_STATUS_CD != 'NTCC0006'
+    </update>
+
     <!-- 물리 삭제 대신 숨김 상태로 바꾼다. 이미 숨김이면 갱신하지 않아 재요청도 단일 결과가 된다. -->
     <update id="hideAdminNotice">
         UPDATE NOTICE

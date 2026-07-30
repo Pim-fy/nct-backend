@@ -92,4 +92,46 @@ class AuctionServiceListFilterTest {
         assertThat(request.isIncludeHistory()).isTrue();
         assertThat(request.getSize()).isEqualTo(5);
     }
+
+    @Test
+    void keepsPopularitySortForMapper() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setSort("popular");
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.getSort()).isEqualTo("popular");
+    }
+
+    @Test
+    void expandsTradeMethodToAvailableCapabilities() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest deliveryRequest = new AuctionListRequest();
+        deliveryRequest.setTradeMethod("delivery");
+
+        auctionService.findAuctions(deliveryRequest);
+
+        assertThat(deliveryRequest.getTradeMethodCodes())
+                .containsExactly("TRDC0009", "TRDC0020");
+
+        AuctionListRequest directRequest = new AuctionListRequest();
+        directRequest.setTradeMethod("direct");
+
+        auctionService.findAuctions(directRequest);
+
+        assertThat(directRequest.getTradeMethodCodes())
+                .containsExactly("TRDC0010", "TRDC0020");
+    }
+
+    @Test
+    void doesNotRestrictTradeMethodWhenAllIsSelected() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setTradeMethod("all");
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.getTradeMethodCodes()).isEmpty();
+    }
 }

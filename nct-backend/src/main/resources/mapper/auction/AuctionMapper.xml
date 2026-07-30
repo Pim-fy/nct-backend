@@ -79,8 +79,11 @@
           AND p.PRD_IBY_AMT IS NOT NULL
           AND p.PRD_IBY_AMT &gt; 0
         </if>
-        <if test="condition.tradeMethodCode != null">
-          AND p.PRD_TRD_METHOD_CD = #{condition.tradeMethodCode}
+        <if test="condition.tradeMethodCodes != null and condition.tradeMethodCodes.size() > 0">
+          AND p.PRD_TRD_METHOD_CD IN
+          <foreach collection="condition.tradeMethodCodes" item="tradeMethodCode" open="(" separator="," close=")">
+              #{tradeMethodCode}
+          </foreach>
         </if>
         <choose>
             <when test="condition.sellerId != null and condition.includeHistory">
@@ -149,6 +152,14 @@
             </when>
             <when test="condition.sort == 'bidsDesc'">
                 ORDER BY COALESCE(bid.BID_COUNT, 0) DESC, a.AUC_END_DT ASC
+            </when>
+            <when test="condition.sort == 'popular'">
+                ORDER BY
+                    (COALESCE(favorite.FAVORITE_COUNT, 0) * 100)
+                        + COALESCE(p.PRD_VIEW_CNT, 0) DESC,
+                    COALESCE(favorite.FAVORITE_COUNT, 0) DESC,
+                    COALESCE(p.PRD_VIEW_CNT, 0) DESC,
+                    a.AUC_SN DESC
             </when>
             <when test="condition.sort == 'latest'">
                 ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC

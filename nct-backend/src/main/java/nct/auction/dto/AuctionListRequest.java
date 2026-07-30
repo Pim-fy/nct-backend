@@ -25,7 +25,7 @@ public class AuctionListRequest {
     private int page = 1;
     private int size = 12;
 
-    private String tradeMethodCode;
+    private List<String> tradeMethodCodes = new ArrayList<>();
     private boolean statusReady;
     private boolean statusActive;
     private boolean statusEndingSoon;

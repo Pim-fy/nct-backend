@@ -607,7 +607,7 @@ public class AuctionService {
         request.setKeyword(blankToNull(request.getKeyword()));
         request.setSort(blankToDefault(request.getSort(), "deadline"));
         request.setTradeMethod(blankToDefault(request.getTradeMethod(), "all"));
-        request.setTradeMethodCode(resolveTradeMethodCode(request.getTradeMethod()));
+        request.setTradeMethodCodes(resolveTradeMethodCodes(request.getTradeMethod()));
 
         List<String> statuses = request.getStatus();
         boolean hasStatusFilter = statuses != null && !statuses.isEmpty();
@@ -621,12 +621,14 @@ public class AuctionService {
         request.setStatusEndingSoon(hasStatusFilter && statuses.contains("endingSoon"));
     }
 
-    private String resolveTradeMethodCode(String tradeMethod) {
+    private List<String> resolveTradeMethodCodes(String tradeMethod) {
         return switch (tradeMethod) {
-            case "delivery", DELIVERY_TRADE_METHOD_CODE -> DELIVERY_TRADE_METHOD_CODE;
-            case "direct", OFFLINE_TRADE_METHOD_CODE -> OFFLINE_TRADE_METHOD_CODE;
-            case BOTH_TRADE_METHOD_CODE -> BOTH_TRADE_METHOD_CODE;
-            default -> null;
+            case "delivery", DELIVERY_TRADE_METHOD_CODE ->
+                List.of(DELIVERY_TRADE_METHOD_CODE, BOTH_TRADE_METHOD_CODE);
+            case "direct", OFFLINE_TRADE_METHOD_CODE ->
+                List.of(OFFLINE_TRADE_METHOD_CODE, BOTH_TRADE_METHOD_CODE);
+            case BOTH_TRADE_METHOD_CODE -> List.of(BOTH_TRADE_METHOD_CODE);
+            default -> List.of();
         };
     }
 

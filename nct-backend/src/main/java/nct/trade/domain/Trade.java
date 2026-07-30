@@ -20,6 +20,8 @@ public class Trade {
     private Long bidId;
     private String tradeTypeCode;
     private String tradeStatusCode;
+    /** 상품 등록 방식이 아닌 낙찰 뒤 확정된 실제 거래방식이다. */
+    private String tradeMethodCode;
     private BigDecimal tradeAmount;
     private LocalDateTime autoCompleteAt;
     private LocalDateTime createdAt;

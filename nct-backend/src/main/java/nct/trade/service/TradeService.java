@@ -27,6 +27,7 @@ import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.operation.port.SellerCancellationDecisionPort;
+import nct.point.service.PointService;
 import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
@@ -59,6 +60,7 @@ public class TradeService implements SellerCancellationDecisionPort {
     private static final String MATERIAL_TRADE = "TRDC0001";
     private static final String DELIVERY_METHOD = "TRDC0009";
     private static final String OFFLINE_METHOD = "TRDC0010";
+    private static final String BOTH_METHOD = "TRDC0020";
     private static final String IN_PROGRESS = "TRDC0003";
     private static final String DELIVERING = "TRDC0004";
     private static final String WAITING_CONFIRMATION = "TRDC0005";
@@ -73,6 +75,7 @@ public class TradeService implements SellerCancellationDecisionPort {
     private final MemberService memberService;
     private final SettlementService settlementService;
     private final ChatService chatService;
+    private final PointService pointService;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
 
@@ -114,7 +117,8 @@ public class TradeService implements SellerCancellationDecisionPort {
                         command.getProductId(),
                         command.getTradeAmount()),
                 command.getSource().getStatusHistoryReason(),
-                command.getWinningBidId());
+                command.getWinningBidId(),
+                command.getSelectedTradeMethodCode());
 
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
@@ -132,13 +136,15 @@ public class TradeService implements SellerCancellationDecisionPort {
         return createOrGetMaterialTrade(
                 command,
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.",
+                null,
                 null);
     }
 
     private MaterialTradeCreateResult createOrGetMaterialTrade(
             MaterialTradeCreateCommand command,
             String creationReason,
-            Long bidId) {
+            Long bidId,
+            String selectedTradeMethodCode) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -152,8 +158,8 @@ public class TradeService implements SellerCancellationDecisionPort {
             return new MaterialTradeCreateResult(existingTradeId, IN_PROGRESS, false);
         }
 
-        String tradeMethod = tradeMapper.findProductTradeMethod(command.getProductId());
-        validateMaterialTradeMethod(tradeMethod);
+        String productTradeMethod = tradeMapper.findProductTradeMethod(command.getProductId());
+        String tradeMethod = resolveMaterialTradeMethod(productTradeMethod, selectedTradeMethodCode);
 
         Trade trade = new Trade();
         trade.setSellerUserId(command.getSellerUserId());
@@ -162,6 +168,7 @@ public class TradeService implements SellerCancellationDecisionPort {
         trade.setBidId(bidId);
         trade.setTradeTypeCode(MATERIAL_TRADE);
         trade.setTradeStatusCode(IN_PROGRESS);
+        trade.setTradeMethodCode(tradeMethod);
         trade.setTradeAmount(command.getTradeAmount());
 
         tradeMapper.insertMaterialTrade(trade);
@@ -549,7 +556,7 @@ public class TradeService implements SellerCancellationDecisionPort {
     }
 
     /**
-     * F-OPS-004 관리자 판단 계약이다. 승인된 판매자 취소만 거래 상태와 이력을 변경한다.
+     * F-OPS-004 관리자 판단 계약이다. 승인 시 거래 취소·보관금 환불·알림을 하나의 트랜잭션으로 처리한다.
      * 반려 결과의 저장·감사 처리는 운영 도메인이 소유하므로 이 거래 서비스에서는 변경하지 않는다.
      */
     @Override
@@ -574,6 +581,11 @@ public class TradeService implements SellerCancellationDecisionPort {
                     "현재 거래 상태에서는 취소 승인 처리할 수 없습니다.");
         }
 
+        if (target.getBidSn() == null || target.getBidSn() <= 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "낙찰 입찰 정보를 확인할 수 없어 취소 승인 처리할 수 없습니다.");
+        }
+
         if (tradeMapper.cancelMaterialTrade(
                 target.getTradeId(),
                 command.adminId()) == 0) {
@@ -585,6 +597,17 @@ public class TradeService implements SellerCancellationDecisionPort {
                 target.getTradeId(),
                 CANCELED,
                 command.reason().trim());
+
+        pointService.refundEscrow(
+                target.getBuyerUserId(),
+                target.getTradeId(),
+                RefType.BID,
+                target.getBidSn(),
+                "관리자 판매자 취소 승인: " + command.reason().trim());
+        notificationService.notifyTradeCancelled(
+                target.getBuyerUserId(), target.getTradeId(), true);
+        notificationService.notifyTradeCancelled(
+                target.getSellerUserId(), target.getTradeId(), false);
     }
 
     // 진행·발송 상태에서만 요청을 시작한다. 이미 대기/완료/보류/취소 상태의 중복 요청은 막는다.
@@ -689,14 +712,25 @@ public class TradeService implements SellerCancellationDecisionPort {
         }
     }
 
-    // 상품 거래 방식은 정본 공통코드의 택배·직거래 두 값만 물건 거래 생성에 허용한다.
-    private void validateMaterialTradeMethod(String tradeMethod) {
-        if (DELIVERY_METHOD.equals(tradeMethod) || OFFLINE_METHOD.equals(tradeMethod)) {
-            return;
+    // 상품이 단일 방식이면 그 방식만, 혼합 방식이면 AuctionService가 확정한 실제 방식만 허용한다.
+    private String resolveMaterialTradeMethod(String productTradeMethod, String selectedTradeMethodCode) {
+        if (DELIVERY_METHOD.equals(productTradeMethod) || OFFLINE_METHOD.equals(productTradeMethod)) {
+            if (selectedTradeMethodCode == null || selectedTradeMethodCode.isBlank()
+                    || productTradeMethod.equals(selectedTradeMethodCode)) {
+                return productTradeMethod;
+            }
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "상품의 거래방식과 선택한 거래방식이 일치하지 않습니다.");
+        }
+
+        if (BOTH_METHOD.equals(productTradeMethod)
+                && (DELIVERY_METHOD.equals(selectedTradeMethodCode)
+                || OFFLINE_METHOD.equals(selectedTradeMethodCode))) {
+            return selectedTradeMethodCode;
         }
 
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                "상품 거래 방식이 올바르지 않습니다.");
+                "혼합 거래 상품은 택배 또는 직거래 방식을 선택해야 합니다.");
     }
 
     // 컨트롤러 검증과 별개로, 다른 도메인 코드가 서비스를 직접 호출해도 과거 일정은 막는다.

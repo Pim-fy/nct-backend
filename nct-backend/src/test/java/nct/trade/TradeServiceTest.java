@@ -31,6 +31,7 @@ import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.point.service.PointService;
 import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
 import nct.trade.domain.AuctionTradeSource;
@@ -63,6 +64,7 @@ class TradeServiceTest {
     private MemberService memberService;
     private SettlementService settlementService;
     private ChatService chatService;
+    private PointService pointService;
     private FieldCryptoService fieldCryptoService;
     private TradeService tradeService;
 
@@ -75,6 +77,7 @@ class TradeServiceTest {
         memberService = mock(MemberService.class);
         settlementService = mock(SettlementService.class);
         chatService = mock(ChatService.class);
+        pointService = mock(PointService.class);
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -86,6 +89,7 @@ class TradeServiceTest {
                 memberService,
                 settlementService,
                 chatService,
+                pointService,
                 fieldCryptoService);
     }
 
@@ -156,6 +160,46 @@ class TradeServiceTest {
                 91L,
                 "TRDC0003",
                 "즉시구매로 거래가 생성되었습니다.");
+    }
+
+    @Test
+    void createsDeliveryTradeForBothMethodProductWhenFinalMethodIsSelected() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L, 30L, 50L, 10L, 20L, BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW, "TRDC0009");
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0020");
+        when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
+                new BuyerAddressSnapshot("01234", "서울시 마포구", "101호"));
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
+
+        tradeService.createAuctionTrade(command);
+
+        ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
+        verify(tradeMapper).insertMaterialTrade(tradeCaptor.capture());
+        assertThat(tradeCaptor.getValue().getTradeMethodCode()).isEqualTo("TRDC0009");
+        verify(tradeMapper).insertDeliverySnapshot(91L, "01234", "서울시 마포구", "101호");
+    }
+
+    @Test
+    void rejectsBothMethodProductWithoutFinalMethodSelection() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L, 30L, 50L, 10L, 20L, BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW);
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
+        when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0020");
+
+        assertThatThrownBy(() -> tradeService.createAuctionTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        verify(tradeMapper, never()).insertMaterialTrade(any(Trade.class));
     }
 
     @Test
@@ -688,6 +732,9 @@ class TradeServiceTest {
     void approvesSellerCancellationAndRecordsTradeStatusHistory() {
         TradeCancellationTarget target = new TradeCancellationTarget();
         target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setBidSn(501L);
         target.setTradeStatus("TRDC0004");
         SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
                 91L,
@@ -705,6 +752,14 @@ class TradeServiceTest {
                 91L,
                 "TRDC0008",
                 "판매자 취소 요청을 승인합니다.");
+        verify(pointService).refundEscrow(
+                20L,
+                91L,
+                nct.common.domain.RefType.BID,
+                501L,
+                "관리자 판매자 취소 승인: 판매자 취소 요청을 승인합니다.");
+        verify(notificationService).notifyTradeCancelled(20L, 91L, true);
+        verify(notificationService).notifyTradeCancelled(10L, 91L, false);
     }
 
     @Test
@@ -725,6 +780,7 @@ class TradeServiceTest {
     void preventsSellerCancellationAfterTradeCompletion() {
         TradeCancellationTarget target = new TradeCancellationTarget();
         target.setTradeId(91L);
+        target.setBidSn(501L);
         target.setTradeStatus("TRDC0006");
         SellerCancellationDecisionCommand command = new SellerCancellationDecisionCommand(
                 91L,

@@ -229,12 +229,6 @@ public class AuctionCancellationService {
                 adminUsrSn.toString(),
                 "AUC-CANCEL-" + cancelRequestSn));
         exceptionCancelHighestBid(auction, adminUsrSn);
-        pointService.refundEscrow(
-                escrow.getBuyerUsrSn(),
-                escrow.getTradeSn(),
-                RefType.BID,
-                escrow.getBidSn(),
-                "경매 취소 승인 보관금 환불: " + reason);
     }
 
     private void exceptionCancelHighestBid(AuctionBidTarget auction, Long adminUsrSn) {

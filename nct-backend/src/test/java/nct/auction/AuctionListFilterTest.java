@@ -105,7 +105,7 @@ class AuctionListFilterTest {
     }
 
     @Test
-    @DisplayName("공통코드 상태와 거래방식 값으로 경매 목록을 필터링한다")
+    @DisplayName("선택한 거래가 가능한 경매를 거래방식 공통코드로 필터링한다")
     void findAuctionsWithReferenceCodeFilters() {
         insertAuction(
                 sellerSn,
@@ -130,21 +130,32 @@ class AuctionListFilterTest {
                 "TRDC0020");
 
         AuctionListRequest request = keywordRequest("t_reference");
-        request.setStatus(List.of(AuctionStatusCode.READY));
-        request.setTradeMethod("TRDC0009");
+        request.setTradeMethod("delivery");
 
         AuctionListResponse response = auctionService.findAuctions(request);
 
         assertThat(response.getItems()).extracting("title")
-                .containsExactly("t_reference_ready_delivery");
+                .containsExactlyInAnyOrder(
+                        "t_reference_ready_delivery",
+                        "t_reference_active_both");
 
-        AuctionListRequest bothRequest = keywordRequest("t_reference");
-        bothRequest.setStatus(List.of(AuctionStatusCode.ACTIVE));
-        bothRequest.setTradeMethod("TRDC0020");
+        AuctionListRequest directRequest = keywordRequest("t_reference");
+        directRequest.setTradeMethod("direct");
 
-        assertThat(auctionService.findAuctions(bothRequest).getItems())
+        assertThat(auctionService.findAuctions(directRequest).getItems())
                 .extracting("title")
-                .containsExactly("t_reference_active_both");
+                .containsExactlyInAnyOrder(
+                        "t_reference_active_direct",
+                        "t_reference_active_both");
+
+        AuctionListRequest allRequest = keywordRequest("t_reference");
+
+        assertThat(auctionService.findAuctions(allRequest).getItems())
+                .extracting("title")
+                .containsExactlyInAnyOrder(
+                        "t_reference_ready_delivery",
+                        "t_reference_active_direct",
+                        "t_reference_active_both");
     }
 
     private AuctionListRequest keywordRequest(String keyword) {

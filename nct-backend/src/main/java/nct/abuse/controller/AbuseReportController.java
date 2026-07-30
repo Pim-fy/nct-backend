@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,11 +15,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import nct.abuse.dto.CustomerAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
+import nct.abuse.dto.MyAbuseReportResponse;
 import nct.abuse.service.AbuseReportService;
 import nct.global.response.ApiResponse;
+import nct.global.response.PageResponse;
 import nct.global.security.domain.CustomUserDetails;
 
 @RestController
@@ -37,6 +41,41 @@ public class AbuseReportController {
         Long reporterUserSn = userDetails.getMember().getId();
         return ResponseEntity.status(201).body(ApiResponse.created(
                 abuseReportService.requestManualReport(reporterUserSn, request)));
+    }
+
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/customer")
+    public ResponseEntity<ApiResponse<ManualAbuseReportResponse>> submitCustomerReport(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody CustomerAbuseReportRequest request) {
+
+        Long reporterUserSn = userDetails.getMember().getId();
+        return ResponseEntity.status(201).body(ApiResponse.created(
+                abuseReportService.submitCustomerReport(reporterUserSn, request)));
+    }
+
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<PageResponse<MyAbuseReportResponse>>> getMyReports(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
+
+        Long reporterUserSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                abuseReportService.getMyReports(reporterUserSn, status, page, size)));
+    }
+
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping("/me/{reportSn}")
+    public ResponseEntity<ApiResponse<MyAbuseReportResponse>> getMyReportDetail(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long reportSn) {
+
+        Long reporterUserSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                abuseReportService.getMyReportDetail(reporterUserSn, reportSn)));
     }
 
     @PreAuthorize("hasRole('USER')")

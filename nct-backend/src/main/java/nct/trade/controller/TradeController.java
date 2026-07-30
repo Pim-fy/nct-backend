@@ -112,4 +112,24 @@ public class TradeController {
         tradeService.registerServiceTradeDispute(tradeId, userDetails.getMember().getId(), request);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    /** 서비스 제공자가 완료 요청을 등록하고 의뢰자 확인 기한을 시작한다. */
+    @PostMapping("/{tradeId}/service-completion-requests")
+    public ResponseEntity<ApiResponse<Void>> requestServiceCompletion(
+            @PathVariable("tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.requestServiceCompletion(tradeId, userDetails.getMember().getId());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 서비스 의뢰자가 완료를 확인하면 정산과 정산가능 포인트 적립을 함께 처리한다. */
+    @PostMapping("/{tradeId}/service-completions")
+    public ResponseEntity<ApiResponse<Void>> confirmServiceCompletion(
+            @PathVariable("tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.confirmServiceCompletion(tradeId, userDetails.getMember().getId());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 }

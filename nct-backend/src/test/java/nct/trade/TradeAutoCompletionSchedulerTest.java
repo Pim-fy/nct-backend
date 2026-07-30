@@ -31,6 +31,8 @@ class TradeAutoCompletionSchedulerTest {
         when(settingMapper.selectOne()).thenReturn(setting);
         when(tradeMapper.findExpiredAutoCompletionTradeIds(any(), eq(100)))
                 .thenReturn(List.of(91L, 92L));
+        when(tradeMapper.findExpiredServiceAutoCompletionTradeIds(any(), eq(100)))
+                .thenReturn(List.of(93L));
         TradeAutoCompletionScheduler scheduler = new TradeAutoCompletionScheduler(
                 settingMapper,
                 tradeMapper,
@@ -41,6 +43,7 @@ class TradeAutoCompletionSchedulerTest {
 
         verify(tradeService).completeExpiredConfirmation(eq(91L), any());
         verify(tradeService).completeExpiredConfirmation(eq(92L), any());
+        verify(tradeService).completeExpiredServiceConfirmation(eq(93L), any());
     }
 
     @Test
@@ -60,6 +63,7 @@ class TradeAutoCompletionSchedulerTest {
         scheduler.completeExpiredTrades();
 
         verify(tradeMapper, never()).findExpiredAutoCompletionTradeIds(any(), anyInt());
+        verify(tradeMapper, never()).findExpiredServiceAutoCompletionTradeIds(any(), anyInt());
         verifyNoInteractions(tradeService);
     }
 

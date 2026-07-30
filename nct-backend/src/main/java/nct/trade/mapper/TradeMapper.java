@@ -19,6 +19,7 @@ import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
+import nct.trade.dto.ServiceTradeCompletionTarget;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -58,6 +59,23 @@ public interface TradeMapper {
     int holdServiceTradeForDispute(
             @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
+
+    /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */
+    ServiceTradeCompletionTarget findServiceTradeCompletionTargetForUpdate(
+            @Param("tradeId") long tradeId);
+
+    int startServiceCompletionRequest(
+            @Param("tradeId") long tradeId,
+            @Param("autoCompleteAt") LocalDateTime autoCompleteAt,
+            @Param("updaterId") String updaterId);
+
+    int completeServiceTrade(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
+    List<Long> findExpiredServiceAutoCompletionTradeIds(
+            @Param("now") LocalDateTime now,
+            @Param("limit") int limit);
 
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);

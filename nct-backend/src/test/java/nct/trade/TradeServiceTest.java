@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -47,6 +48,7 @@ import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.ServiceTradeDisputeRequest;
+import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -218,6 +220,68 @@ class TradeServiceTest {
 
         verify(tradeMapper, never()).hasOpenTradeDispute(anyLong());
         verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void providerRequestsServiceCompletionAndStartsFiveDayConfirmation() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        SystemSettingDetail setting = new SystemSettingDetail();
+        setting.setTrdCfmnDays(5);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(systemSettingMapper.selectOne()).thenReturn(setting);
+        when(tradeMapper.startServiceCompletionRequest(anyLong(), any(), any())).thenReturn(1);
+
+        tradeService.requestServiceCompletion(81L, 22L);
+
+        verify(tradeMapper).startServiceCompletionRequest(eq(81L), any(), eq("22"));
+        verify(tradeMapper).insertStatusHistory(81L, "TRDC0005", "서비스 제공자가 완료 확인을 요청했습니다.");
+        verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5);
+    }
+
+    @Test
+    void requesterConfirmationCompletesServiceTradeAndSettlesProviderEscrow() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", LocalDateTime.now().plusDays(5));
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(tradeMapper.completeServiceTrade(81L, "11")).thenReturn(1);
+        when(settlementService.createPending(81L, 22L, 150000L)).thenReturn(61L);
+
+        tradeService.confirmServiceCompletion(81L, 11L);
+
+        verify(settlementService).createPending(81L, 22L, 150000L);
+        verify(settlementService).completeAutomatically(61L);
+        verify(tradeMapper).insertStatusHistory(81L, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
+        verify(notificationService).notifyTradeComplete(11L, 81L, false);
+        verify(notificationService).notifyTradeComplete(22L, 81L, false);
+    }
+
+    @Test
+    void expiredServiceCompletionDoesNotSettleWhenOpenDisputeExists() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", LocalDateTime.now().minusMinutes(1));
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(true);
+
+        assertThatThrownBy(() -> tradeService.completeExpiredServiceConfirmation(81L, LocalDateTime.now()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(tradeMapper, never()).completeServiceTrade(anyLong(), any());
+        verify(settlementService, never()).createPending(anyLong(), anyLong(), anyLong());
+    }
+
+    private ServiceTradeCompletionTarget serviceCompletionTarget(
+            String status,
+            LocalDateTime autoCompleteAt) {
+        ServiceTradeCompletionTarget target = new ServiceTradeCompletionTarget();
+        target.setTradeId(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeAmount(BigDecimal.valueOf(150000L));
+        target.setTradeStatus(status);
+        target.setAutoCompleteAt(autoCompleteAt);
+        return target;
     }
 
     @Test

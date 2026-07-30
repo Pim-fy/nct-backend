@@ -18,7 +18,7 @@ import nct.ops.reference.port.CategoryChangeHistoryPort;
 
 /**
  * 담당자 7 · F-COM-003: 관리자 카테고리 변경 규칙을 한곳에서 처리한다.
- * 담당자 6의 공용 감사 저장 계약 전까지 변경 사유와 전후 요약은 안전한 로그로 남긴다.
+ * 관리자가 사유를 반복 입력하지 않아도 작업명과 전후 요약을 감사로그에 남긴다.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,7 +52,8 @@ public class AdminCategoryService {
         if (categoryMapper.insert(category, actor(actorUserId)) != 1 || category.getCategorySn() == null) {
             throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
-        audit("CREATE", actorUserId, category, request.changeReason(), null);
+        audit("CREATE", actorUserId, category,
+                auditReason(request.changeReason(), "카테고리 등록"), null);
         return AdminCategoryResponse.from(category);
     }
 
@@ -72,7 +73,8 @@ public class AdminCategoryService {
         updated.setName(name);
         if (same(before, updated)) return AdminCategoryResponse.from(before);
         if (categoryMapper.update(updated, actor(actorUserId)) != 1) throw new CustomException(ErrorCode.CONFLICT);
-        audit("UPDATE", actorUserId, updated, request.changeReason(), summary(before));
+        audit("UPDATE", actorUserId, updated,
+                auditReason(request.changeReason(), "카테고리 수정"), summary(before));
         return AdminCategoryResponse.from(updated);
     }
 
@@ -84,10 +86,15 @@ public class AdminCategoryService {
                 || request.name().trim().length() > 100 || request.sortNo() == null
                 || request.sortNo() < 1 || request.sortNo() > 9999
                 || request.professional() == null || request.active() == null
-                || request.changeReason() == null || request.changeReason().trim().isEmpty()
-                || request.changeReason().length() > 500) {
+                || (request.changeReason() != null && request.changeReason().length() > 500)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+    }
+
+    private String auditReason(String reason, String defaultReason) {
+        return reason == null || reason.isBlank()
+                ? defaultReason
+                : defaultReason + ": " + reason.trim();
     }
 
     private void validateDomain(String domainCode) {

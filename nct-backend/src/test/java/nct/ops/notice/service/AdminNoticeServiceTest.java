@@ -65,7 +65,29 @@ class AdminNoticeServiceTest {
                 ArgumentCaptor.forClass(NoticeChangeHistoryCommand.class);
         verify(changeHistoryPort).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().getAction()).isEqualTo("CREATE");
+        assertThat(auditCaptor.getValue().getReason()).isEqualTo("공지 등록");
         assertThat(auditCaptor.getValue().getAfterSummary()).doesNotContain("공지 본문");
+    }
+
+    @Test
+    void keepsAutomaticActionNameWhenLegacyClientSendsMemo() {
+        AdminNoticeUpsertRequest request = validRequest();
+        request.setChangeReason("정기 점검 메모");
+        Notice stored = notice(41L, "NTCC0006", "Y");
+        when(noticeMapper.insertAdminNotice(any(AdminNoticeWriteCommand.class)))
+                .thenAnswer(invocation -> {
+                    invocation.getArgument(0, AdminNoticeWriteCommand.class).setNoticeSn(41L);
+                    return 1;
+                });
+        when(noticeMapper.findAdminNoticeById(41L)).thenReturn(Optional.of(stored));
+
+        service.createNotice(request, 7L);
+
+        ArgumentCaptor<NoticeChangeHistoryCommand> auditCaptor =
+                ArgumentCaptor.forClass(NoticeChangeHistoryCommand.class);
+        verify(changeHistoryPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getReason())
+                .isEqualTo("공지 등록: 정기 점검 메모");
     }
 
     @Test
@@ -87,7 +109,7 @@ class AdminNoticeServiceTest {
         Notice hidden = notice(9L, "NTCC0007", "Y");
         when(noticeMapper.findAdminNoticeByIdForUpdate(9L)).thenReturn(Optional.of(hidden));
 
-        assertThat(service.hideNotice(9L, "게시 종료", 7L).getStatusCode())
+        assertThat(service.hideNotice(9L, null, 7L).getStatusCode())
                 .isEqualTo("NTCC0007");
 
         verify(noticeMapper, never()).hideAdminNotice(any(Long.class), any(String.class));
@@ -102,10 +124,64 @@ class AdminNoticeServiceTest {
         when(noticeMapper.hideAdminNotice(9L, "USR:7")).thenReturn(1);
         when(noticeMapper.findAdminNoticeById(9L)).thenReturn(Optional.of(hidden));
 
-        assertThat(service.hideNotice(9L, "게시 종료", 7L).getStatusCode())
+        assertThat(service.hideNotice(9L, null, 7L).getStatusCode())
                 .isEqualTo("NTCC0007");
 
-        verify(changeHistoryPort).record(any(NoticeChangeHistoryCommand.class));
+        ArgumentCaptor<NoticeChangeHistoryCommand> auditCaptor =
+                ArgumentCaptor.forClass(NoticeChangeHistoryCommand.class);
+        verify(changeHistoryPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getReason()).isEqualTo("공지 숨김");
+    }
+
+    @Test
+    void repeatedPublishDoesNotWriteOrDuplicateHistory() {
+        Notice published = notice(10L, "NTCC0006", "Y");
+        when(noticeMapper.findAdminNoticeByIdForUpdate(10L)).thenReturn(Optional.of(published));
+
+        assertThat(service.publishNotice(10L, null, "0".repeat(64), 7L).getStatusCode())
+                .isEqualTo("NTCC0006");
+
+        verify(noticeMapper, never()).publishAdminNotice(any(Long.class), any(String.class));
+        verifyNoInteractions(changeHistoryPort);
+    }
+
+    @Test
+    void publishLocksCurrentRowAndRecordsStatusChange() {
+        Notice before = notice(10L, "NTCC0007", "Y");
+        Notice published = notice(10L, "NTCC0006", "Y");
+        when(noticeMapper.findAdminNoticeById(10L))
+                .thenReturn(Optional.of(before), Optional.of(published));
+        String expectedRevision = service.getNotice(10L).getRevisionToken();
+        when(noticeMapper.findAdminNoticeByIdForUpdate(10L)).thenReturn(Optional.of(before));
+        when(noticeMapper.publishAdminNotice(10L, "USR:7")).thenReturn(1);
+
+        assertThat(service.publishNotice(10L, null, expectedRevision, 7L).getStatusCode())
+                .isEqualTo("NTCC0006");
+
+        ArgumentCaptor<NoticeChangeHistoryCommand> auditCaptor =
+                ArgumentCaptor.forClass(NoticeChangeHistoryCommand.class);
+        verify(changeHistoryPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getAction()).isEqualTo("PUBLISH");
+        assertThat(auditCaptor.getValue().getReason()).isEqualTo("공지 게시");
+    }
+
+    @Test
+    void rejectsPublishStartedBeforeAnotherAdministratorChangedNotice() {
+        LocalDateTime sameSecond = LocalDateTime.of(2026, 7, 30, 17, 0);
+        Notice originalDraft = notice(10L, "NTCC0005", "Y", sameSecond);
+        Notice currentlyHidden = notice(10L, "NTCC0007", "Y", sameSecond);
+        when(noticeMapper.findAdminNoticeById(10L)).thenReturn(Optional.of(originalDraft));
+        String staleRevision = service.getNotice(10L).getRevisionToken();
+        when(noticeMapper.findAdminNoticeByIdForUpdate(10L)).thenReturn(Optional.of(currentlyHidden));
+
+        assertThatThrownBy(() ->
+                service.publishNotice(10L, null, staleRevision, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(noticeMapper, never()).publishAdminNotice(any(Long.class), any(String.class));
+        verifyNoInteractions(changeHistoryPort);
     }
 
     @Test
@@ -136,6 +212,16 @@ class AdminNoticeServiceTest {
     }
 
     @Test
+    void rejectsDeleteWithoutReasonBeforeWriting() {
+        assertThatThrownBy(() -> service.deleteNotice(12L, " ", 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(noticeMapper, referenceDataService, changeHistoryPort);
+    }
+
+    @Test
     void rejectsSameSecondStaleUpdateThatCouldRestorePreviouslyHiddenStatus() {
         LocalDateTime sameSecond = LocalDateTime.of(2026, 7, 16, 10, 30, 0);
         Notice originallyPublished = notice(15L, "NTCC0006", "Y", sameSecond);
@@ -158,7 +244,7 @@ class AdminNoticeServiceTest {
 
     @Test
     void rejectsMissingActorBeforeReadingNotice() {
-        assertThatThrownBy(() -> service.hideNotice(1L, "숨김", null))
+        assertThatThrownBy(() -> service.hideNotice(1L, null, null))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.UNAUTHORIZED);
@@ -174,7 +260,6 @@ class AdminNoticeServiceTest {
         request.setPostingStartAt(LocalDateTime.of(2026, 7, 16, 9, 0));
         request.setPostingEndAt(LocalDateTime.of(2026, 7, 20, 9, 0));
         request.setPinned(Boolean.TRUE);
-        request.setChangeReason("점검 일정 안내");
         return request;
     }
 

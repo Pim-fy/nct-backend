@@ -42,6 +42,10 @@ public class AdminNoticeService {
     private static final String NOTICE_STATUS_GROUP = "NTCG02";
     private static final String PUBLISHED_STATUS = "NTCC0006";
     private static final String HIDDEN_STATUS = "NTCC0007";
+    private static final String CREATE_AUDIT_REASON = "공지 등록";
+    private static final String UPDATE_AUDIT_REASON = "공지 수정";
+    private static final String PUBLISH_AUDIT_REASON = "공지 게시";
+    private static final String HIDE_AUDIT_REASON = "공지 숨김";
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_KEYWORD_LENGTH = 100;
 
@@ -103,13 +107,14 @@ public class AdminNoticeService {
     public AdminNoticeDetailResponse createNotice(AdminNoticeUpsertRequest request, Long actorUserId) {
         validateActor(actorUserId);
         validateRequest(request);
+        String auditReason = resolveAuditReason(request.getChangeReason(), CREATE_AUDIT_REASON);
         AdminNoticeWriteCommand command = toCommand(request, actorUserId, actorUserId, null);
         if (noticeMapper.insertAdminNotice(command) != 1 || command.getNoticeSn() == null) {
             throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
 
         Notice created = requireNotice(command.getNoticeSn());
-        recordChange("CREATE", actorUserId, created.getNoticeSn(), request.getChangeReason(),
+        recordChange("CREATE", actorUserId, created.getNoticeSn(), auditReason,
                 null, summary(created));
         return toDetail(created);
     }
@@ -119,6 +124,7 @@ public class AdminNoticeService {
                                                   Long actorUserId) {
         validateActor(actorUserId);
         validateRequest(request);
+        String auditReason = resolveAuditReason(request.getChangeReason(), UPDATE_AUDIT_REASON);
         Notice before = requireNoticeForUpdate(noticeId);
         if (request.getExpectedUpdatedAt() == null
                 || !request.getExpectedUpdatedAt().equals(before.getUpdatedAt())
@@ -133,15 +139,47 @@ public class AdminNoticeService {
         }
 
         Notice updated = requireNotice(noticeId);
-        recordChange("UPDATE", actorUserId, noticeId, request.getChangeReason(),
+        recordChange("UPDATE", actorUserId, noticeId, auditReason,
                 summary(before), summary(updated));
         return toDetail(updated);
+    }
+
+    /**
+     * 담당자 7 | F-OPS-023: 목록의 노출 동작은 기간과 본문을 건드리지 않고 게시 상태만 바꾼다.
+     * 이미 게시 상태인 재요청은 이력과 갱신을 중복 생성하지 않는다.
+     */
+    @Transactional
+    public AdminNoticeDetailResponse publishNotice(Long noticeId, String reason,
+                                                   String expectedRevision, Long actorUserId) {
+        validateActor(actorUserId);
+        String auditReason = resolveAuditReason(reason, PUBLISH_AUDIT_REASON);
+        Notice before = requireNoticeForUpdate(noticeId);
+        if (!"Y".equals(before.getUseYn())) {
+            throw new CustomException(ErrorCode.NOT_FOUND);
+        }
+        if (PUBLISHED_STATUS.equals(before.getStatusCode())) {
+            return toDetail(before);
+        }
+        if (expectedRevision == null || !expectedRevision.equals(revisionToken(before))) {
+            throw new CustomException(ErrorCode.CONFLICT);
+        }
+        int changedRows = noticeMapper.publishAdminNotice(noticeId, actorId(actorUserId));
+        if (changedRows != 1) {
+            throw new CustomException(ErrorCode.CONFLICT);
+        }
+        Notice published = requireNotice(noticeId);
+        if (!PUBLISHED_STATUS.equals(published.getStatusCode())) {
+            throw new CustomException(ErrorCode.NOT_FOUND);
+        }
+        recordChange("PUBLISH", actorUserId, noticeId, auditReason,
+                summary(before), summary(published));
+        return toDetail(published);
     }
 
     @Transactional
     public AdminNoticeDetailResponse hideNotice(Long noticeId, String reason, Long actorUserId) {
         validateActor(actorUserId);
-        validateReason(reason);
+        String auditReason = resolveAuditReason(reason, HIDE_AUDIT_REASON);
         Notice before = requireNoticeForUpdate(noticeId);
         if (!"Y".equals(before.getUseYn())) {
             throw new CustomException(ErrorCode.NOT_FOUND);
@@ -157,7 +195,8 @@ public class AdminNoticeService {
         if (!HIDDEN_STATUS.equals(hidden.getStatusCode())) {
             throw new CustomException(ErrorCode.NOT_FOUND);
         }
-        recordChange("HIDE", actorUserId, noticeId, reason, summary(before), summary(hidden));
+        recordChange("HIDE", actorUserId, noticeId, auditReason,
+                summary(before), summary(hidden));
         return toDetail(hidden);
     }
 
@@ -182,20 +221,17 @@ public class AdminNoticeService {
                 || request.getStatusCode() == null
                 || request.getTitle() == null
                 || request.getContent() == null
-                || request.getPinned() == null
-                || request.getChangeReason() == null) {
+                || request.getPinned() == null) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         request.setTypeCode(request.getTypeCode().trim());
         request.setStatusCode(request.getStatusCode().trim());
         request.setTitle(request.getTitle().trim());
         request.setContent(request.getContent().trim());
-        request.setChangeReason(request.getChangeReason().trim());
         if (request.getTypeCode().isBlank() || request.getTypeCode().length() > 30
                 || request.getStatusCode().isBlank() || request.getStatusCode().length() > 30
                 || request.getTitle().isBlank() || request.getTitle().length() > 200
-                || request.getContent().isBlank() || request.getContent().length() > 4000
-                || request.getChangeReason().isBlank() || request.getChangeReason().length() > 500) {
+                || request.getContent().isBlank() || request.getContent().length() > 4000) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         referenceDataService.requireActiveCode(NOTICE_TYPE_GROUP, request.getTypeCode());
@@ -210,6 +246,14 @@ public class AdminNoticeService {
         if (reason == null || reason.isBlank() || reason.length() > 500) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+    }
+
+    private String resolveAuditReason(String reason, String defaultReason) {
+        if (reason != null && reason.length() > 500) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        String normalized = normalizeOptional(reason);
+        return normalized == null ? defaultReason : defaultReason + ": " + normalized;
     }
 
     private void validateActor(Long actorUserId) {
@@ -282,6 +326,7 @@ public class AdminNoticeService {
                 .postingStartAt(notice.getPostingStartAt())
                 .postingEndAt(notice.getPostingEndAt())
                 .updatedAt(notice.getUpdatedAt())
+                .revisionToken(revisionToken(notice))
                 .visibleNow(isVisibleNow(notice))
                 .build();
     }

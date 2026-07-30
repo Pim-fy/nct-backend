@@ -45,7 +45,8 @@ public class AdminNoticeUpsertRequest {
     @NotNull(message = "상단 고정 여부는 필수입니다.")
     private Boolean pinned;
 
-    @NotBlank(message = "변경 사유는 필수입니다.")
-    @Size(max = 500, message = "변경 사유는 500자 이하여야 합니다.")
+    /** 기존 관리자 소비자와의 호환용 선택 메모다. 비우면 서버가 작업명을 자동 기록한다. */
+    @Size(max = 500, message = "변경 메모는 500자 이하여야 합니다.")
     private String changeReason;
+
 }

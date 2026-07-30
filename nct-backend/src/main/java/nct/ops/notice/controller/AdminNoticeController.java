@@ -76,14 +76,26 @@ public class AdminNoticeController {
                 adminNoticeService.updateNotice(noticeId, request, actorUserId(userDetails))));
     }
 
-    @PatchMapping("/{noticeId}/hide")
-    public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> hideNotice(
+    @PatchMapping("/{noticeId}/publish")
+    public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> publishNotice(
             @PathVariable(name = "noticeId") Long noticeId,
             @Valid @RequestBody AdminNoticeActionRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         return ResponseEntity.ok(ApiResponse.success(
+                adminNoticeService.publishNotice(
+                        noticeId, request.getChangeReason(), request.getExpectedRevision(),
+                        actorUserId(userDetails))));
+    }
+
+    @PatchMapping("/{noticeId}/hide")
+    public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> hideNotice(
+            @PathVariable(name = "noticeId") Long noticeId,
+            @Valid @RequestBody(required = false) AdminNoticeActionRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(
                 adminNoticeService.hideNotice(
-                        noticeId, request.getChangeReason(), actorUserId(userDetails))));
+                        noticeId, request == null ? null : request.getChangeReason(),
+                        actorUserId(userDetails))));
     }
 
     @DeleteMapping("/{noticeId}")

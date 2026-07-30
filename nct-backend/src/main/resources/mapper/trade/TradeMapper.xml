@@ -73,6 +73,44 @@
         FOR UPDATE
     </select>
 
+    <select id="hasOpenTradeDispute" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM TRADE_DISPUTE
+            WHERE TRD_SN = #{tradeId}
+              AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+        )
+    </select>
+
+    <insert id="insertTradeDispute">
+        INSERT INTO TRADE_DISPUTE (
+            TRD_SN,
+            DSPT_USR_SN,
+            TRD_DSP_TYPE_CD,
+            TRD_DSP_STATUS_CD,
+            TRD_DSP_CN,
+            TRD_DSP_REG_ID,
+            TRD_DSP_UPDT_ID
+        ) VALUES (
+            #{tradeId},
+            #{disputerUserId},
+            #{disputeTypeCode},
+            'TRDC0016',
+            #{content},
+            #{updaterId},
+            #{updaterId}
+        )
+    </insert>
+
+    <update id="holdServiceTradeForDispute">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0007',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005')
+    </update>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT

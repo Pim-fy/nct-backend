@@ -44,6 +44,21 @@ public interface TradeMapper {
      */
     TradeDisputeTarget findTradeDisputeTargetForUpdate(@Param("tradeId") long tradeId);
 
+    /** 같은 거래의 접수·처리중 분쟁이 있는지 조회한다. TRADE 행 잠금 뒤에 호출한다. */
+    boolean hasOpenTradeDispute(@Param("tradeId") long tradeId);
+
+    int insertTradeDispute(
+            @Param("tradeId") long tradeId,
+            @Param("disputerUserId") long disputerUserId,
+            @Param("disputeTypeCode") String disputeTypeCode,
+            @Param("content") String content,
+            @Param("updaterId") String updaterId);
+
+    /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
+    int holdServiceTradeForDispute(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);
 

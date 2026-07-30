@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.trade.dto.TradeDetailResponse;
+import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -99,5 +100,16 @@ public class TradeController {
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 tradeService.requestCompletionConfirmation(tradeId, userId)));
+    }
+
+    /** 서비스 거래 당사자가 거래 문제를 접수하면 거래·정산을 같은 트랜잭션으로 보류한다. */
+    @PostMapping("/{tradeId}/service-disputes")
+    public ResponseEntity<ApiResponse<Void>> registerServiceTradeDispute(
+            @PathVariable("tradeId") long tradeId,
+            @Valid @RequestBody ServiceTradeDisputeRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.registerServiceTradeDispute(tradeId, userDetails.getMember().getId(), request);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

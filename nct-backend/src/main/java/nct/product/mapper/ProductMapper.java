@@ -35,4 +35,7 @@ public interface ProductMapper {
 
     /** 상품 변경사항 알림 대상 조회 — 이 상품 경매에 입찰한 회원 전원(중복 제거). BID/AUCTION은 조회만(기존 합의된 방식) */
     List<Long> findAuctionBidderIds(@Param("prdSn") Long prdSn);
+
+    /** 삭제 전 가드 — 유찰·취소로 종결되지 않은 진행 중 경매가 있는지 확인. AUCTION은 조회만(기존 합의된 방식) */
+    boolean existsBlockingAuction(@Param("prdSn") Long prdSn);
 }

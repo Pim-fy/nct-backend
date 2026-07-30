@@ -214,4 +214,14 @@
          WHERE a.PRD_SN = #{prdSn}
     </select>
 
+    <!-- ── 삭제 전 가드: 유찰(AUCC0004)·취소(AUCC0005)로 종결되지 않은 경매가 있으면 true — AUCTION은 조회만(기존 합의된 방식) ─ -->
+    <select id="existsBlockingAuction" resultType="boolean">
+        /* ProductMapper.existsBlockingAuction */
+        SELECT EXISTS (
+            SELECT 1 FROM AUCTION
+             WHERE PRD_SN = #{prdSn}
+               AND AUC_STATUS_CD NOT IN ('AUCC0004', 'AUCC0005')
+        )
+    </select>
+
 </mapper>

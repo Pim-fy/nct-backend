@@ -15,6 +15,7 @@ import nct.trade.dto.TradeDeliveryProofFile;
 import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
+import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
@@ -36,6 +37,12 @@ public interface TradeMapper {
     /** 정산 도메인에 거래 유형과 원본 입찰 보관금 참조만 제공한다. */
     TradeSettlementReference findSettlementReferenceByTradeId(
             @Param("tradeId") long tradeId);
+
+    /**
+     * 거래 문제 접수·정산 보류 흐름이 같은 트랜잭션에서 사용할 TRADE 잠금 조회다.
+     * 소비자는 이 결과를 받은 뒤에만 자신의 TRADE_DISPUTE·SETTLEMENT 계약을 실행한다.
+     */
+    TradeDisputeTarget findTradeDisputeTargetForUpdate(@Param("tradeId") long tradeId);
 
     /** 거래 생성 시 배송/직거래 후속 처리를 결정할 상품 거래 방식을 조회한다. */
     String findProductTradeMethod(@Param("productId") long productId);

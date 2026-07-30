@@ -54,6 +54,25 @@
         WHERE t.TRD_SN = #{tradeId}
     </select>
 
+    <!--
+        거래 문제 접수와 정산 보류가 같은 TRADE 행을 기준으로 직렬화되도록 잠근다.
+        서비스 거래는 REQ_USR_SN·PRV_USR_SN을, 물건 거래는 SLLR_USR_SN·BYPR_USR_SN을 소비한다.
+    -->
+    <select id="findTradeDisputeTargetForUpdate"
+            resultType="nct.trade.dto.TradeDisputeTarget">
+        SELECT
+            t.TRD_SN AS tradeSn,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.TRD_TYPE_CD AS tradeTypeCode,
+            t.TRD_STATUS_CD AS tradeStatusCode
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+        FOR UPDATE
+    </select>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT

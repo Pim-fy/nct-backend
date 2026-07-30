@@ -44,6 +44,9 @@ public interface NoticeMapper {
 
     int updateAdminNotice(AdminNoticeWriteCommand command);
 
+    int publishAdminNotice(@Param("noticeId") Long noticeId,
+                           @Param("actorId") String actorId);
+
     int hideAdminNotice(@Param("noticeId") Long noticeId,
                         @Param("actorId") String actorId);
 

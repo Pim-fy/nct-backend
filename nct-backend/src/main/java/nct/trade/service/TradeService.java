@@ -42,6 +42,9 @@ import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeDeliverySubmitTarget;
+import nct.trade.dto.ServiceTradeDisputeRequest;
+import nct.trade.dto.ServiceTradeCompletionTarget;
+import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -58,6 +61,7 @@ import nct.setting.mapper.SystemSettingAdminMapper;
 public class TradeService implements SellerCancellationDecisionPort {
 
     private static final String MATERIAL_TRADE = "TRDC0001";
+    private static final String SERVICE_TRADE = "TRDC0002";
     private static final String DELIVERY_METHOD = "TRDC0009";
     private static final String OFFLINE_METHOD = "TRDC0010";
     private static final String BOTH_METHOD = "TRDC0020";
@@ -66,6 +70,7 @@ public class TradeService implements SellerCancellationDecisionPort {
     private static final String WAITING_CONFIRMATION = "TRDC0005";
     private static final String COMPLETED = "TRDC0006";
     private static final String CANCELED = "TRDC0008";
+    private static final String ON_HOLD = "TRDC0007";
     private static final String SCHEDULER_UPDATER = "SYSTEM";
 
     private final TradeMapper tradeMapper;
@@ -99,6 +104,170 @@ public class TradeService implements SellerCancellationDecisionPort {
 
         return Optional.ofNullable(
                 tradeMapper.findAuctionTradeEscrowInfoByProductId(productId));
+    }
+
+    /**
+     * F-SVC-012: 서비스 거래 당사자가 진행 또는 완료 확인 대기 상태에서 문제를 접수한다.
+     * TRADE 행을 먼저 잠가 자동 완료와 직렬화하고, 분쟁 이력·정산 보류·상태 이력을 하나의
+     * 트랜잭션으로 확정한다. 완료된 거래의 사후 분쟁 정책은 미확정이므로 허용하지 않는다.
+     */
+    @Transactional
+    public void registerServiceTradeDispute(
+            long tradeId,
+            long userId,
+            ServiceTradeDisputeRequest request) {
+        if (tradeId <= 0 || userId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호와 회원번호가 필요합니다.");
+        }
+
+        TradeDisputeTarget target = tradeMapper.findTradeDisputeTargetForUpdate(tradeId);
+        if (target == null || !SERVICE_TRADE.equals(target.getTradeTypeCode())) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "서비스 거래를 찾을 수 없습니다.");
+        }
+        if (!Objects.equals(userId, target.getRequesterUserId())
+                && !Objects.equals(userId, target.getProviderUserId())) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
+                    "서비스 거래 당사자만 거래 문제를 접수할 수 있습니다.");
+        }
+        if (!IN_PROGRESS.equals(target.getTradeStatusCode())
+                && !WAITING_CONFIRMATION.equals(target.getTradeStatusCode())) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "진행 또는 완료 확인 대기 상태에서만 거래 문제를 접수할 수 있습니다.");
+        }
+        if (tradeMapper.hasOpenTradeDispute(tradeId)) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "이미 처리 중인 거래 문제가 있습니다.");
+        }
+
+        String updaterId = String.valueOf(userId);
+        tradeMapper.insertTradeDispute(
+                tradeId,
+                userId,
+                request.getDisputeTypeCode().trim(),
+                request.getContent().trim(),
+                updaterId);
+        settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
+        if (tradeMapper.holdServiceTradeForDispute(tradeId, updaterId) == 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "거래 상태가 변경되어 거래 문제를 접수할 수 없습니다.");
+        }
+        tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 접수되었습니다.");
+    }
+
+    /** 제공자가 서비스 완료를 요청하고, 의뢰자의 확인 기한 5일을 시작한다. */
+    @Transactional
+    public void requestServiceCompletion(long tradeId, long providerUserId) {
+        ServiceTradeCompletionTarget target = lockServiceTradeCompletionTarget(tradeId);
+        if (target.getProviderUserId() != providerUserId) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
+                    "서비스 제공자만 완료 요청을 할 수 있습니다.");
+        }
+        if (!IN_PROGRESS.equals(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "서비스 진행 상태에서만 완료 요청을 할 수 있습니다.");
+        }
+        rejectOpenServiceDispute(tradeId);
+
+        int confirmDays = getConfirmDays();
+        LocalDateTime autoCompleteAt = LocalDateTime.now().plusDays(confirmDays);
+        if (tradeMapper.startServiceCompletionRequest(
+                tradeId, autoCompleteAt, String.valueOf(providerUserId)) == 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "거래 상태가 변경되어 완료 요청을 처리할 수 없습니다.");
+        }
+        tradeMapper.insertStatusHistory(
+                tradeId, WAITING_CONFIRMATION, "서비스 제공자가 완료 확인을 요청했습니다.");
+        notificationService.notifyTradeConfirmRequest(
+                target.getRequesterUserId(), tradeId, confirmDays);
+    }
+
+    /** 의뢰자의 확인으로 서비스 거래·정산·정산가능 포인트 적립을 함께 확정한다. */
+    @Transactional
+    public void confirmServiceCompletion(long tradeId, long requesterUserId) {
+        ServiceTradeCompletionTarget target = lockServiceTradeCompletionTarget(tradeId);
+        if (target.getRequesterUserId() != requesterUserId) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
+                    "서비스 의뢰자만 완료를 확인할 수 있습니다.");
+        }
+        if (!WAITING_CONFIRMATION.equals(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "완료 확인 대기 상태의 서비스 거래만 확인할 수 있습니다.");
+        }
+        rejectOpenServiceDispute(tradeId);
+        completeServiceTradeAndSettle(target, String.valueOf(requesterUserId),
+                "서비스 의뢰자가 완료를 확인했습니다.", false);
+    }
+
+    /** 만료 시각이 지난 서비스 완료 확인을 자동 완료한다. */
+    @Transactional
+    public boolean completeExpiredServiceConfirmation(long tradeId, LocalDateTime now) {
+        if (now == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "자동 완료 기준 시각이 필요합니다.");
+        }
+
+        ServiceTradeCompletionTarget target = lockServiceTradeCompletionTarget(tradeId);
+        if (!WAITING_CONFIRMATION.equals(target.getTradeStatus())
+                || target.getAutoCompleteAt() == null
+                || target.getAutoCompleteAt().isAfter(now)) {
+            return false;
+        }
+        rejectOpenServiceDispute(tradeId);
+        completeServiceTradeAndSettle(target, SCHEDULER_UPDATER,
+                "서비스 완료 확인 기한이 지나 자동으로 거래가 완료되었습니다.", true);
+        return true;
+    }
+
+    private ServiceTradeCompletionTarget lockServiceTradeCompletionTarget(long tradeId) {
+        if (tradeId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "거래번호가 필요합니다.");
+        }
+        ServiceTradeCompletionTarget target = tradeMapper.findServiceTradeCompletionTargetForUpdate(tradeId);
+        if (target == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "서비스 거래를 찾을 수 없습니다.");
+        }
+        return target;
+    }
+
+    private void rejectOpenServiceDispute(long tradeId) {
+        if (tradeMapper.hasOpenTradeDispute(tradeId)) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "처리 중인 거래 문제가 있어 완료 처리할 수 없습니다.");
+        }
+    }
+
+    private void completeServiceTradeAndSettle(
+            ServiceTradeCompletionTarget target,
+            String updaterId,
+            String historyReason,
+            boolean automaticallyCompleted) {
+        if (target.getProviderUserId() <= 0
+                || target.getTradeAmount() == null
+                || target.getTradeAmount().signum() <= 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "서비스 거래의 정산 대상 또는 금액을 확인할 수 없습니다.");
+        }
+        long settlementAmount;
+        try {
+            settlementAmount = target.getTradeAmount().longValueExact();
+        } catch (ArithmeticException exception) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "서비스 거래 정산 금액이 올바르지 않습니다.");
+        }
+        if (tradeMapper.completeServiceTrade(target.getTradeId(), updaterId) == 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "거래 상태가 변경되어 완료 처리할 수 없습니다.");
+        }
+
+        long settlementId = settlementService.createPending(
+                target.getTradeId(), target.getProviderUserId(), settlementAmount);
+        settlementService.completeAutomatically(settlementId);
+        tradeMapper.insertStatusHistory(target.getTradeId(), COMPLETED, historyReason);
+        notificationService.notifyTradeComplete(
+                target.getRequesterUserId(), target.getTradeId(), automaticallyCompleted);
+        notificationService.notifyTradeComplete(
+                target.getProviderUserId(), target.getTradeId(), automaticallyCompleted);
     }
 
     /**

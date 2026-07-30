@@ -32,8 +32,7 @@ import nct.global.security.domain.CustomUserDetails;
  *  - /api/admin/** 이 아니라서 SecurityConfig 기본 규칙(anyRequest authenticated)으로
  *    로그인만 강제되고, "당사자인지"는 서비스 레이어가 검증한다 (404→403 순서)
  *
- * ⚠️ TRADE_DELIVERY_FILE 테이블은 정본 CHG 승인 대기 — 승인·실DB 적용 전까지
- *    이 API는 로컬 DB에서만 동작한다 (공유 DB에는 테이블이 없어 호출 시 오류).
+ * TRADE_DELIVERY_FILE 테이블은 D-034로 실DB 적용 완료 (2026-07-20).
  *
  * 엔드포인트:
  *   GET /api/attachment/delivery/{trdDlvrSn}/files/{flSn}/download

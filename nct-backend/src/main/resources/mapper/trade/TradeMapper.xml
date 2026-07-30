@@ -54,6 +54,109 @@
         WHERE t.TRD_SN = #{tradeId}
     </select>
 
+    <!--
+        거래 문제 접수와 정산 보류가 같은 TRADE 행을 기준으로 직렬화되도록 잠근다.
+        서비스 거래는 REQ_USR_SN·PRV_USR_SN을, 물건 거래는 SLLR_USR_SN·BYPR_USR_SN을 소비한다.
+    -->
+    <select id="findTradeDisputeTargetForUpdate"
+            resultType="nct.trade.dto.TradeDisputeTarget">
+        SELECT
+            t.TRD_SN AS tradeSn,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.TRD_TYPE_CD AS tradeTypeCode,
+            t.TRD_STATUS_CD AS tradeStatusCode
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+        FOR UPDATE
+    </select>
+
+    <select id="hasOpenTradeDispute" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM TRADE_DISPUTE
+            WHERE TRD_SN = #{tradeId}
+              AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+        )
+    </select>
+
+    <insert id="insertTradeDispute">
+        INSERT INTO TRADE_DISPUTE (
+            TRD_SN,
+            DSPT_USR_SN,
+            TRD_DSP_TYPE_CD,
+            TRD_DSP_STATUS_CD,
+            TRD_DSP_CN,
+            TRD_DSP_REG_ID,
+            TRD_DSP_UPDT_ID
+        ) VALUES (
+            #{tradeId},
+            #{disputerUserId},
+            #{disputeTypeCode},
+            'TRDC0016',
+            #{content},
+            #{updaterId},
+            #{updaterId}
+        )
+    </insert>
+
+    <update id="holdServiceTradeForDispute">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0007',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005')
+    </update>
+
+    <!-- 서비스 완료 요청·확인·자동 완료가 같은 TRADE 행 잠금 기준으로 경합한다. -->
+    <select id="findServiceTradeCompletionTargetForUpdate"
+            resultType="nct.trade.dto.ServiceTradeCompletionTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_STATUS_CD AS tradeStatus,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
+        FOR UPDATE
+    </select>
+
+    <update id="startServiceCompletionRequest">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0005',
+            TRD_AUTO_CMPL_DT = #{autoCompleteAt},
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
+
+    <update id="completeServiceTrade">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0006',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD = 'TRDC0005'
+    </update>
+
+    <select id="findExpiredServiceAutoCompletionTradeIds" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        WHERE t.TRD_TYPE_CD = 'TRDC0002'
+          AND t.TRD_STATUS_CD = 'TRDC0005'
+          AND t.TRD_AUTO_CMPL_DT IS NOT NULL
+          AND t.TRD_AUTO_CMPL_DT &lt;= #{now}
+        ORDER BY t.TRD_AUTO_CMPL_DT ASC, t.TRD_SN ASC
+        LIMIT #{limit}
+    </select>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT

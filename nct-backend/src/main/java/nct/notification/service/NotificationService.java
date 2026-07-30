@@ -324,6 +324,16 @@ public class NotificationService {
                 RefType.TRADE, tradeId);
     }
 
+    /** 관리자 판매자 취소 승인 결과를 거래 양 당사자에게 알린다. */
+    public void notifyTradeCancelled(long usrSn, long tradeId, boolean buyer) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "거래가 취소되었습니다",
+                buyer
+                        ? "판매자 취소 요청이 승인되어 거래대금이 환불되었습니다."
+                        : "판매자 취소 요청이 승인되어 거래가 취소되었습니다.",
+                RefType.TRADE, tradeId);
+    }
+
     /** 새 견적 도착 — 서비스 요청자에게, 서비스 매칭 담당(5, 2단계)이 호출 */
     public void notifyNewQuote(long usrSn, long requestId) {
         notifyForEvent(usrSn, NotificationEvent.NEW_QUOTE, NotificationAudience.GENERAL,

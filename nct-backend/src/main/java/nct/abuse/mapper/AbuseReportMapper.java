@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
+import nct.abuse.dto.MyAbuseReportResponse;
 
 @Mapper
 public interface AbuseReportMapper {
@@ -40,6 +41,22 @@ public interface AbuseReportMapper {
             @Param("processingStatusCode") String processingStatusCode);
 
     AdminAbuseReportResponse findReportDetailById(@Param("reportSn") Long reportSn);
+
+    int insertCustomerReport(AbuseReport report);
+
+    List<MyAbuseReportResponse> findMyReports(
+            @Param("reporterUserSn") Long reporterUserSn,
+            @Param("statusCode") String statusCode,
+            @Param("offset") int offset,
+            @Param("size") int size);
+
+    int countMyReports(
+            @Param("reporterUserSn") Long reporterUserSn,
+            @Param("statusCode") String statusCode);
+
+    MyAbuseReportResponse findMyReportById(
+            @Param("reportSn") Long reportSn,
+            @Param("reporterUserSn") Long reporterUserSn);
 
     int updateDecision(
             @Param("reportSn") Long reportSn,

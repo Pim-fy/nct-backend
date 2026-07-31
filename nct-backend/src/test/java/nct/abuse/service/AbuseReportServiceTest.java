@@ -3,6 +3,7 @@ package nct.abuse.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -37,6 +38,7 @@ import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.operation.port.AdminReportDecision;
@@ -53,6 +55,7 @@ class AbuseReportServiceTest {
     private AbuseReportMapper abuseReportMapper;
     private ReferenceDataService referenceDataService;
     private AuditLogPort auditLogPort;
+    private NotificationService notificationService;
     private ProductService productService;
     private ObjectProvider<ProductService> productServiceProvider;
     private AbuseReportService service;
@@ -62,6 +65,7 @@ class AbuseReportServiceTest {
         abuseReportMapper = mock(AbuseReportMapper.class);
         referenceDataService = mock(ReferenceDataService.class);
         auditLogPort = mock(AuditLogPort.class);
+        notificationService = mock(NotificationService.class);
         productService = mock(ProductService.class);
         productServiceProvider = mock(ObjectProvider.class);
         when(productServiceProvider.getObject()).thenReturn(productService);
@@ -70,6 +74,7 @@ class AbuseReportServiceTest {
                 abuseReportMapper,
                 referenceDataService,
                 auditLogPort,
+                notificationService,
                 productServiceProvider);
     }
 
@@ -382,6 +387,7 @@ class AbuseReportServiceTest {
         assertThat(audit.beforeSummary()).isEqualTo("reportSn=101,status=ABRC0005");
         assertThat(audit.afterSummary()).isEqualTo("reportSn=101,status=ABRC0007");
         assertThat(audit.requestId()).isEqualTo("request-1");
+        verify(notificationService).notifyReportResult(10L, 101L, "처리 완료");
     }
 
     @Test
@@ -411,6 +417,31 @@ class AbuseReportServiceTest {
         ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogPort).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().actionCode()).isEqualTo("ADMIN_REJECT");
+        verify(notificationService).notifyReportResult(10L, 101L, "반려");
+    }
+
+    @Test
+    void doesNotNotifyUserForAutomaticReportWithoutReporter() {
+        AbuseReport report = pendingReport(
+                101L,
+                AbuseReportService.RECEIVED_STATUS,
+                null);
+        when(abuseReportMapper.findReportByIdForUpdate(101L)).thenReturn(report);
+        when(abuseReportMapper.updateDecision(
+                101L,
+                AbuseReportService.RECEIVED_STATUS,
+                AbuseReportService.PROCESSED_STATUS,
+                "자동 탐지 확인",
+                "7")).thenReturn(1);
+
+        service.decide(new AdminReportDecisionCommand(
+                101L,
+                AdminReportDecision.PROCESSED,
+                "자동 탐지 확인",
+                "7",
+                "request-system-1"));
+
+        verify(notificationService, never()).notifyReportResult(anyLong(), anyLong(), any());
     }
 
     @Test
@@ -472,6 +503,8 @@ class AbuseReportServiceTest {
             assertThat(failures.peek()).isInstanceOfSatisfying(CustomException.class, exception ->
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
             verify(auditLogPort, times(1)).record(any());
+            verify(notificationService, times(1))
+                    .notifyReportResult(eq(10L), eq(101L), any());
         } finally {
             pool.shutdownNow();
         }
@@ -519,9 +552,17 @@ class AbuseReportServiceTest {
     }
 
     private AbuseReport pendingReport(Long reportSn, String statusCode) {
+        return pendingReport(reportSn, statusCode, 10L);
+    }
+
+    private AbuseReport pendingReport(
+            Long reportSn,
+            String statusCode,
+            Long reporterUserSn) {
         return AbuseReport.builder()
                 .reportSn(reportSn)
                 .riskEventSn(77L)
+                .reporterUserSn(reporterUserSn)
                 .statusCode(statusCode)
                 .referenceTypeCode("REFC0005")
                 .referenceSn(31L)

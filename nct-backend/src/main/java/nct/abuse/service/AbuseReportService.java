@@ -22,6 +22,7 @@ import nct.global.response.PageResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.operation.port.AdminReportDecision;
@@ -61,6 +62,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private final AbuseReportMapper abuseReportMapper;
     private final ReferenceDataService referenceDataService;
     private final AuditLogPort auditLogPort;
+    private final NotificationService notificationService;
     private final ObjectProvider<ProductService> productServiceProvider;
 
     /** F-COM-018: 로그인 사용자가 고객센터형 신고를 접수한다. */
@@ -349,6 +351,15 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                 statusSummary(report.getReportSn(), report.getStatusCode()),
                 statusSummary(report.getReportSn(), values.newStatusCode()),
                 values.requestId()));
+
+        // 담당자 7 · F-OPS-007: 일반 신고에만 처리 결과를 알리고,
+        // 신고자가 없는 SYSTEM 자동 탐지 신고에는 사용자 알림을 만들지 않는다.
+        if (report.getReporterUserSn() != null && report.getReporterUserSn() > 0) {
+            notificationService.notifyReportResult(
+                    report.getReporterUserSn(),
+                    report.getReportSn(),
+                    decisionResult(values.newStatusCode()));
+        }
     }
 
     /** 접수·처리중 상태의 신고를 자동·일반 신고 구분 없이 오래된 순서로 조회한다. */
@@ -528,6 +539,10 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
 
     private String statusSummary(Long reportSn, String statusCode) {
         return "reportSn=" + reportSn + ",status=" + statusCode;
+    }
+
+    private String decisionResult(String statusCode) {
+        return PROCESSED_STATUS.equals(statusCode) ? "처리 완료" : "반려";
     }
 
     private String trimToNull(String value) {

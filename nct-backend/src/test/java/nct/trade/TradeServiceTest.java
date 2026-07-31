@@ -43,6 +43,8 @@ import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
+import nct.trade.dto.ServiceTradeCreateCommand;
+import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
@@ -131,6 +133,61 @@ class TradeServiceTest {
                 "01234",
                 "서울시 마포구",
                 "101호");
+    }
+
+    @Test
+    void createsServiceTradeFromServerVerifiedSelectionAndInitialStatusHistory() {
+        ServiceTradeCreateCommand command = new ServiceTradeCreateCommand(
+                11L, 22L, 31L, 41L, BigDecimal.valueOf(150000));
+        when(tradeMapper.findServiceTradeIdByQuoteId(41L)).thenReturn(null);
+        doAnswer(invocation -> {
+            Trade trade = invocation.getArgument(0);
+            trade.setTrdSn(91L);
+            return 1;
+        }).when(tradeMapper).insertServiceTrade(any(Trade.class));
+
+        ServiceTradeCreateResult result = tradeService.createOrGetServiceTrade(command);
+
+        ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
+        verify(tradeMapper).insertServiceTrade(tradeCaptor.capture());
+        Trade saved = tradeCaptor.getValue();
+        assertThat(result.getTradeId()).isEqualTo(91L);
+        assertThat(result.isCreated()).isTrue();
+        assertThat(saved.getRequesterUserId()).isEqualTo(11L);
+        assertThat(saved.getProviderUserId()).isEqualTo(22L);
+        assertThat(saved.getServiceRequestId()).isEqualTo(31L);
+        assertThat(saved.getQuoteId()).isEqualTo(41L);
+        assertThat(saved.getTradeTypeCode()).isEqualTo("TRDC0002");
+        assertThat(saved.getTradeStatusCode()).isEqualTo("TRDC0003");
+        verify(tradeMapper).insertStatusHistory(
+                91L, "TRDC0003", "선택 견적으로 서비스 거래가 생성되었습니다.");
+    }
+
+    @Test
+    void returnsExistingServiceTradeForDuplicateSelectedQuote() {
+        ServiceTradeCreateCommand command = new ServiceTradeCreateCommand(
+                11L, 22L, 31L, 41L, BigDecimal.valueOf(150000));
+        when(tradeMapper.findServiceTradeIdByQuoteId(41L)).thenReturn(91L);
+
+        ServiceTradeCreateResult result = tradeService.createOrGetServiceTrade(command);
+
+        assertThat(result.getTradeId()).isEqualTo(91L);
+        assertThat(result.isCreated()).isFalse();
+        verify(tradeMapper, never()).insertServiceTrade(any(Trade.class));
+        verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
+    }
+
+    @Test
+    void rejectsServiceTradeWhenRequesterAndProviderAreSame() {
+        ServiceTradeCreateCommand command = new ServiceTradeCreateCommand(
+                11L, 11L, 31L, 41L, BigDecimal.valueOf(150000));
+
+        assertThatThrownBy(() -> tradeService.createOrGetServiceTrade(command))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(tradeMapper);
     }
 
     @Test

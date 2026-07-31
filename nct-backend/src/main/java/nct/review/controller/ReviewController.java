@@ -32,7 +32,7 @@ import nct.review.service.ReviewService;
  *  GET    /api/reviews/writable          작성 가능한 리뷰 목록 (완료 거래 중 미작성) (authenticated)
  *  GET    /api/reviews/me               내가 작성한 리뷰 목록                      (authenticated)
  *  GET    /api/reviews/user/{usrSn}     특정 회원이 받은 리뷰 목록 (F-COM-008)     (authenticated)
- *  GET    /api/reviews/trust/{usrSn}    특정 회원의 신뢰지표 (F-COM-009~010)       (authenticated)
+ *  GET    /api/reviews/trust/{usrSn}    특정 회원의 신뢰지표 (F-COM-009~010)       (permit-all)
  *  POST   /api/reviews                  리뷰 등록 (multipart/form-data)            (authenticated)
  *  PUT    /api/reviews/{id}             리뷰 수정 (multipart/form-data, 본인 소유만)(authenticated)
  *  DELETE /api/reviews/{id}             리뷰 삭제 (소프트 삭제, 본인 소유만)        (authenticated)
@@ -82,11 +82,10 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
-    /** 특정 회원의 신뢰지표 (F-COM-009~010, 담당자4 정민재 소비). */
+    /** 특정 회원의 공개 신뢰지표 (F-COM-009~010, 담당자4 정민재 소비). */
     @GetMapping("/trust/{usrSn}")
     public ResponseEntity<ApiResponse<TrustScoreResponse>> getTrustScore(
-            @PathVariable("usrSn") long usrSn,
-            @AuthenticationPrincipal CustomUserDetails userDetails) {
+            @PathVariable("usrSn") long usrSn) {
 
         TrustScoreResponse result = reviewService.getTrustScore(usrSn);
         return ResponseEntity.ok(ApiResponse.success(result));

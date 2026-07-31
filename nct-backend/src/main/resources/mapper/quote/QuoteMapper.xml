@@ -4,6 +4,19 @@
 <mapper namespace="nct.quote.mapper.QuoteMapper">
 
     <!-- ── resultMap ─────────────────────────────────── -->
+    <resultMap id="ReceivedQuoteResponseMap" type="nct.quote.dto.ReceivedQuoteResponse">
+        <result property="qutSn"          column="QUT_SN"           />
+        <result property="providerUsrSn"  column="PROVIDER_USR_SN"  />
+        <result property="providerNm"     column="PROVIDER_NM"      />
+        <result property="amount"         column="QUT_AMT"          />
+        <result property="content"        column="QUT_CN"           />
+        <result property="statusCode"     column="QUT_STATUS_CD"    />
+        <result property="reviseCnt"      column="QUT_REVISE_CNT"   />
+        <result property="registeredAt"   column="QUT_REG_DT"       />
+        <result property="updatedAt"      column="QUT_UPDT_DT"      />
+    </resultMap>
+
+    <!-- ── resultMap ─────────────────────────────────── -->
     <resultMap id="QuoteResponseMap" type="nct.quote.dto.QuoteResponse">
         <result property="qutSn"          column="QUT_SN"           />
         <result property="svcReqSn"       column="SVC_REQ_SN"       />
@@ -124,6 +137,23 @@
           FROM QUOTE_HISTORY
          WHERE QUT_SN = #{qutSn}
          ORDER BY QUT_HST_REG_DT ASC
+    </select>
+
+    <!-- ── 받은 견적 목록 (요청자용) ─────────────────── -->
+    <select id="findQuotesBySvcReqSn" resultMap="ReceivedQuoteResponseMap">
+        /* QuoteMapper.findQuotesBySvcReqSn */
+        SELECT q.QUT_SN,
+               q.USR_SN    AS PROVIDER_USR_SN,
+               u.USR_NM    AS PROVIDER_NM,
+               q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
+               q.QUT_REG_DT, q.QUT_UPDT_DT
+          FROM QUOTE q
+          JOIN SERVICE_REQUEST s ON s.SVC_REQ_SN = q.SVC_REQ_SN
+          JOIN USERS u ON u.USR_SN = q.USR_SN
+         WHERE q.SVC_REQ_SN = #{svcReqSn}
+           AND s.USR_SN     = #{usrSn}
+           AND s.SVC_REQ_USE_YN = 'Y'
+         ORDER BY q.QUT_REG_DT DESC
     </select>
 
 </mapper>

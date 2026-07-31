@@ -25,6 +25,7 @@ import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
+import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.service.QuoteService;
 
 @RestController
@@ -82,6 +83,18 @@ public class QuoteController {
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 quoteService.getMyQuotes(usrSn, page, size)));
+    }
+
+    /** 받은 견적 목록 (요청자용 — ROLE_USER) */
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping("/service-request/{svcReqSn}")
+    public ResponseEntity<ApiResponse<List<ReceivedQuoteResponse>>> getReceivedQuotes(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long svcReqSn) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getReceivedQuotes(usrSn, svcReqSn)));
     }
 
     /** 견적 수정 이력 (F-SVC-007 요청자 비교 화면용 계약 제공) */

@@ -16,6 +16,7 @@ import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
+import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
 
 @Service
@@ -146,6 +147,22 @@ public class QuoteService {
                 .size(size)
                 .hasNext(offset + content.size() < total)
                 .build();
+    }
+
+    /** 받은 견적 목록 조회 (요청자용). 본인 서비스 요청에 달린 견적만 허용. */
+    @Transactional(readOnly = true)
+    public List<ReceivedQuoteResponse> getReceivedQuotes(Long usrSn, Long svcReqSn) {
+        if (usrSn == null || usrSn <= 0 || svcReqSn == null || svcReqSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        Long requesterUsrSn = quoteMapper.findRequesterUsrSn(svcReqSn);
+        if (requesterUsrSn == null) {
+            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
+        }
+        if (!usrSn.equals(requesterUsrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        return quoteMapper.findQuotesBySvcReqSn(usrSn, svcReqSn);
     }
 
     /** 견적 수정 이력 조회. 본인 견적만 허용. */

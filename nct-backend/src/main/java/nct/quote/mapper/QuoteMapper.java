@@ -10,6 +10,7 @@ import nct.quote.domain.QuoteHistory;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteUpdateRequest;
+import nct.quote.dto.ReceivedQuoteResponse;
 
 @Mapper
 public interface QuoteMapper {
@@ -40,4 +41,8 @@ public interface QuoteMapper {
     int insertQuoteHistory(QuoteHistory history);
 
     List<QuoteHistoryResponse> findQuoteHistory(@Param("qutSn") Long qutSn);
+
+    List<ReceivedQuoteResponse> findQuotesBySvcReqSn(
+            @Param("usrSn") Long usrSn,
+            @Param("svcReqSn") Long svcReqSn);
 }

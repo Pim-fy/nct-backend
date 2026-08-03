@@ -133,6 +133,10 @@ public class SecurityConfig {
                         "/api/providers/*/profile",
                         "/api/providers/*/portfolios")
                     .permitAll()
+                // F-COM-009~010: 공개 프로필·경매 상세에서 사용하는 점수·리뷰 건수 집계.
+                // 리뷰 작성·내 리뷰 등 다른 /api/reviews/** 경로는 기존 인증을 유지한다.
+                .requestMatchers(HttpMethod.GET, "/api/reviews/trust/*")
+                    .permitAll()
                 // 조회수 증가 — 비로그인 경매 상세에서도 호출된다.
                 .requestMatchers(HttpMethod.POST, "/api/products/*/view")
                     .permitAll()

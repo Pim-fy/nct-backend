@@ -82,6 +82,11 @@ public interface TradeMapper {
 
     int insertMaterialTrade(Trade trade);
 
+    /** 선택 견적당 거래 1건 규칙의 멱등 재호출 확인용 조회다. */
+    Long findServiceTradeIdByQuoteId(@Param("quoteId") long quoteId);
+
+    int insertServiceTrade(Trade trade);
+
     /** MemberService가 검증한 낙찰자 주소를 거래 배송지 스냅샷으로 저장한다. */
     int insertDeliverySnapshot(
             @Param("tradeId") long tradeId,

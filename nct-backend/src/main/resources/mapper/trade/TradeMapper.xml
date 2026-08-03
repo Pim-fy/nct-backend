@@ -187,6 +187,38 @@
         )
     </insert>
 
+    <!-- 견적 선택 도메인이 잠근 QUT_SN을 기준으로 서비스 거래를 1건만 생성한다. -->
+    <select id="findServiceTradeIdByQuoteId" resultType="long">
+        SELECT TRD_SN
+        FROM TRADE
+        WHERE QUT_SN = #{quoteId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+        ORDER BY TRD_SN DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertServiceTrade" parameterType="nct.trade.domain.Trade"
+            useGeneratedKeys="true" keyProperty="trdSn">
+        INSERT INTO TRADE (
+            REQ_USR_SN,
+            PRV_USR_SN,
+            SVC_REQ_SN,
+            QUT_SN,
+            TRD_TYPE_CD,
+            TRD_STATUS_CD,
+            TRD_AMT
+        )
+        VALUES (
+            #{requesterUserId},
+            #{providerUserId},
+            #{serviceRequestId},
+            #{quoteId},
+            #{tradeTypeCode},
+            #{tradeStatusCode},
+            #{tradeAmount}
+        )
+    </insert>
+
     <!-- MemberService가 검증한 주소값만 저장해 회원 테이블 직접 조회 의존을 없앤다. -->
     <insert id="insertDeliverySnapshot">
         INSERT INTO TRADE_DELIVERY (

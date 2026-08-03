@@ -1,0 +1,91 @@
+package nct.trade.controller;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import nct.global.exception.GlobalExceptionHandler;
+import nct.global.security.domain.CustomUserDetails;
+import nct.global.security.port.AuthMember;
+import nct.ops.security.service.SensitiveDataMasker;
+import nct.trade.dto.ServiceTradeCompletionRequest;
+import nct.trade.service.TradeService;
+
+/** F-SVC-014 완료 요청 메모의 HTTP 입력 검증과 서비스 전달 계약을 확인한다. */
+class TradeControllerTest {
+
+    private TradeService tradeService;
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        tradeService = mock(TradeService.class);
+        mockMvc = MockMvcBuilders
+                .standaloneSetup(new TradeController(tradeService))
+                .setControllerAdvice(new GlobalExceptionHandler(new SensitiveDataMasker()))
+                .build();
+    }
+
+    @Test
+    void forwardsCompletionMemoAndReturnsOk() {
+        ServiceTradeCompletionRequest request = new ServiceTradeCompletionRequest();
+        request.setCompletionMemo("에어컨 분해 청소와 시운전을 완료했습니다.");
+
+        var response = new TradeController(tradeService)
+                .requestServiceCompletion(81L, request, providerUserDetails(22L));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        verify(tradeService).requestServiceCompletion(
+                81L, 22L, "에어컨 분해 청소와 시운전을 완료했습니다.");
+    }
+
+    @Test
+    void rejectsMissingCompletionMemoBeforeCallingService() throws Exception {
+        mockMvc.perform(post("/api/trades/81/service-completion-requests")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(tradeService);
+    }
+
+    @Test
+    void rejectsBlankCompletionMemoBeforeCallingService() throws Exception {
+        mockMvc.perform(post("/api/trades/81/service-completion-requests")
+                        .contentType("application/json")
+                        .content("{\"completionMemo\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(tradeService);
+    }
+
+    @Test
+    void rejectsOverlongCompletionMemoBeforeCallingService() throws Exception {
+        String memo = "가".repeat(1001);
+
+        mockMvc.perform(post("/api/trades/81/service-completion-requests")
+                        .contentType("application/json")
+                        .content("{\"completionMemo\":\"" + memo + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(tradeService);
+    }
+
+    private CustomUserDetails providerUserDetails(long userId) {
+        return new CustomUserDetails(AuthMember.builder()
+                .id(userId)
+                .email("provider@example.com")
+                .password("{noop}test")
+                .role("ROLE_SERVICE")
+                .status("USRC0001")
+                .build());
+    }
+}

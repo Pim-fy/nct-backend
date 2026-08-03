@@ -69,6 +69,13 @@
 
     <!-- 관리자 처리 대기 목록: 신청 상태만, 신청자 이름 조인.
          정렬이 오래된 순인 이유: 먼저 신청한 사람에게 먼저 지급하는 것이 공정하므로 -->
+    <select id="countRequestedForAdmin" resultType="long">
+        /* 포인트 환전 주문: 관리자 대시보드용 지급 대기 건수 */
+        SELECT COUNT(*)
+        FROM POINT_EXCHANGE_ORDER
+        WHERE PT_EXC_ORD_STATUS_CD = 'PEOC0001'
+    </select>
+
     <select id="selectRequestedListForAdmin" resultType="nct.point.domain.PointExchangeOrder">
         /* 포인트 환전 주문: 관리자 처리 대기 목록 (오래된 순) */
         SELECT

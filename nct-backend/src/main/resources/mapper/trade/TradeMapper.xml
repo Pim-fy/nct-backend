@@ -223,12 +223,16 @@
     <insert id="insertDeliverySnapshot">
         INSERT INTO TRADE_DELIVERY (
             TRD_SN,
+            TRD_DLVR_RCPNT_NM_ENC,
+            TRD_DLVR_RCPNT_TELNO_ENC,
             TRD_DLVR_ADDR_ENC,
             TRD_DLVR_DADDR_ENC,
             TRD_DLVR_ZIP_ENC
         )
         VALUES (
             #{tradeId},
+            #{recipientName},
+            #{recipientPhone},
             #{address},
             #{detailAddress},
             #{zip}
@@ -386,6 +390,8 @@
             END AS tradeMethod,
             t.TRD_REG_DT AS createdAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            d.TRD_DLVR_RCPNT_NM_ENC AS recipientName,
+            d.TRD_DLVR_RCPNT_TELNO_ENC AS recipientPhone,
             d.TRD_DLVR_ADDR_ENC AS deliveryAddress,
             d.TRD_DLVR_DADDR_ENC AS deliveryDetailAddress,
             d.TRD_DLVR_MEMO_CN AS deliveryMessage,

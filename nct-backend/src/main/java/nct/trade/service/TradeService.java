@@ -392,6 +392,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     command.getBuyerUserId());
             tradeMapper.insertDeliverySnapshot(
                     trade.getTrdSn(),
+                    fieldCryptoService.encrypt(address.recipientName()),
+                    fieldCryptoService.encrypt(address.recipientPhone()),
                     fieldCryptoService.encrypt(address.zip()),
                     fieldCryptoService.encrypt(address.addr()),
                     fieldCryptoService.encrypt(address.daddr()));
@@ -1005,6 +1007,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
     // @ai_generated: SQL에서 암호문 주소를 조합하지 않고, 권한 확인이 끝난 서비스 경계에서만 복호화한다.
     private void decryptDetailAddresses(TradeDetailResponse detail) {
+        detail.setRecipientName(fieldCryptoService.decrypt(detail.getRecipientName()));
+        detail.setRecipientPhone(fieldCryptoService.decrypt(detail.getRecipientPhone()));
         String deliveryAddress = fieldCryptoService.decrypt(detail.getDeliveryAddress());
         String deliveryDetailAddress = fieldCryptoService.decrypt(detail.getDeliveryDetailAddress());
         if (deliveryAddress == null) {
@@ -1014,7 +1018,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         } else {
             detail.setDeliveryAddress(deliveryAddress + " " + deliveryDetailAddress);
         }
-        detail.setDeliveryDetailAddress(null);
+        detail.setDeliveryDetailAddress(deliveryDetailAddress);
         detail.setMeetingAddress(fieldCryptoService.decrypt(detail.getMeetingAddress()));
     }
 

@@ -22,6 +22,8 @@ public class TradeDetailResponse {
     private String completionRequestedBy;
     private LocalDateTime createdAt;
     private LocalDateTime autoCompleteAt;
+    private String recipientName;
+    private String recipientPhone;
     private String deliveryAddress;
     // @ai_generated: Mapper 경계에서는 배송 상세주소 암호문을 별도 보관하고 서비스가 합쳐서 응답한다.
     private String deliveryDetailAddress;

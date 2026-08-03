@@ -164,7 +164,8 @@ class MemberServiceTest {
 
         BuyerAddressSnapshot snapshot = memberService.getBuyerAddressSnapshot(101L);
 
-        assertThat(snapshot).isEqualTo(new BuyerAddressSnapshot("12345", "서울시 강남구", ""));
+        assertThat(snapshot).isEqualTo(
+                new BuyerAddressSnapshot("구매자", "01012345678", "12345", "서울시 강남구", ""));
     }
 
     @Test
@@ -174,7 +175,8 @@ class MemberServiceTest {
 
         BuyerAddressSnapshot snapshot = memberService.getBuyerAddressSnapshot(101L);
 
-        assertThat(snapshot).isEqualTo(new BuyerAddressSnapshot("12345", "서울시 강남구", "101동 202호"));
+        assertThat(snapshot).isEqualTo(new BuyerAddressSnapshot(
+                "구매자", "01012345678", "12345", "서울시 강남구", "101동 202호"));
     }
 
     @Test
@@ -286,7 +288,9 @@ class MemberServiceTest {
     }
 
     private Member memberWithAddress(String zip, String addr, String daddr) {
-        return Member.builder().usrSn(101L).usrZip(zip).usrAddr(addr).usrDaddr(daddr).build();
+        return Member.builder()
+                .usrSn(101L).usrNm("구매자").usrTelno("01012345678")
+                .usrZip(zip).usrAddr(addr).usrDaddr(daddr).build();
     }
 
     private Member memberWithNickname(String nickname) {

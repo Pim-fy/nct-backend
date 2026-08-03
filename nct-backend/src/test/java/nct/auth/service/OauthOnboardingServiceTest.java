@@ -64,7 +64,7 @@ class OauthOnboardingServiceTest {
         when(jwtTokenProvider.createAccessToken(501L)).thenReturn("access-token");
         when(jwtTokenProvider.createRefreshToken(501L, true)).thenReturn("refresh-token");
 
-        AuthSessionResult result = onboardingService.complete("onboarding-token", request);
+        AuthSessionResult result = onboardingService.complete("onboarding-token", request, true);
 
         ArgumentCaptor<OAuthProfile> profileCaptor = ArgumentCaptor.forClass(OAuthProfile.class);
         verify(authMemberPort).registerOAuthMember(profileCaptor.capture());
@@ -88,7 +88,7 @@ class OauthOnboardingServiceTest {
         request.setTelno("");
         when(onboardingTokenProvider.parseToken("onboarding-token")).thenReturn(claims());
 
-        assertThatThrownBy(() -> onboardingService.complete("onboarding-token", request))
+        assertThatThrownBy(() -> onboardingService.complete("onboarding-token", request, true))
                 .isInstanceOf(CustomException.class)
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
@@ -104,7 +104,7 @@ class OauthOnboardingServiceTest {
         request.setBankName("에누리은행");
         when(onboardingTokenProvider.parseToken("onboarding-token")).thenReturn(claims());
 
-        assertThatThrownBy(() -> onboardingService.complete("onboarding-token", request))
+        assertThatThrownBy(() -> onboardingService.complete("onboarding-token", request, true))
                 .isInstanceOf(CustomException.class)
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);

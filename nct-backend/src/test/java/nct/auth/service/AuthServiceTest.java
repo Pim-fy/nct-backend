@@ -454,16 +454,21 @@ class AuthServiceTest {
     }
 
     @Test
-    void 재발급은_요청토큰을_해시화한뒤_DB저장값과_일치해야_성공한다() {
+    void 재발급은_요청토큰을_해시화한뒤_DB저장값과_일치해야_성공하고_리프레시_토큰도_회전한다() {
         AuthMember member = activeMemberWithRefreshHash("stored-hash");
         when(jwtTokenProvider.getUsrSn("raw-refresh-token")).thenReturn(101L);
         when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(member));
         when(tokenHashUtil.hash("raw-refresh-token")).thenReturn("stored-hash");
+        when(jwtTokenProvider.getRememberMe("raw-refresh-token")).thenReturn(true);
         when(jwtTokenProvider.createAccessToken(101L)).thenReturn("new-access-token");
+        when(jwtTokenProvider.createRefreshToken(101L, true)).thenReturn("new-refresh-token");
 
-        String accessToken = authService.refresh("raw-refresh-token");
+        AuthSessionResult session = authService.refresh("raw-refresh-token");
 
-        assertThat(accessToken).isEqualTo("new-access-token");
+        assertThat(session.getAccessToken()).isEqualTo("new-access-token");
+        assertThat(session.getRefreshToken()).isEqualTo("new-refresh-token");
+        assertThat(session.isRememberMe()).isTrue();
+        verify(authMemberPort).updateRefreshToken(101L, "new-refresh-token");
     }
 
     @Test

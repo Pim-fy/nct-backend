@@ -151,8 +151,11 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse response) {
         String onboardingToken = cookieUtil.extractCookie(httpRequest, CookieUtil.ONBOARDING_TOKEN_COOKIE);
-        AuthSessionResult session = oauthOnboardingService.complete(onboardingToken, request);
-        writeLoginCookies(response, session, true); // @ai_generated: 소셜은 별도 로그인 유지 체크박스가 없어 OAuth2SuccessHandler와 동일하게 rememberMe 고정
+        // @ai_generated: 로그인 페이지에서 리다이렉트 직전 심어둔 쿠키로 로그인 유지 여부를 판단한다(OAuth2SuccessHandler와 동일 기준).
+        boolean rememberMe = Boolean.parseBoolean(
+                cookieUtil.extractCookie(httpRequest, CookieUtil.OAUTH_REMEMBER_ME_COOKIE));
+        AuthSessionResult session = oauthOnboardingService.complete(onboardingToken, request, rememberMe);
+        writeLoginCookies(response, session, rememberMe);
         response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.deleteOnboardingTokenCookie().toString());
         return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
     }
@@ -173,8 +176,10 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> refresh(HttpServletRequest request,
                                                       HttpServletResponse response) {
         String refreshToken = cookieUtil.extractCookie(request, CookieUtil.REFRESH_TOKEN_COOKIE);
-        String accessToken = authService.refresh(refreshToken);
-        response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.createAccessTokenCookie(accessToken).toString());
+        AuthSessionResult session = authService.refresh(refreshToken);
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.createAccessTokenCookie(session.getAccessToken()).toString());
+        response.addHeader(HttpHeaders.SET_COOKIE,
+                cookieUtil.createRefreshTokenCookie(session.getRefreshToken(), session.isRememberMe()).toString());
         return ResponseEntity.ok(ApiResponse.success());
     }
 

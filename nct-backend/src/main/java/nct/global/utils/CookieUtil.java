@@ -21,6 +21,10 @@ public class CookieUtil {
     public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
     // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 소셜 최초 가입 온보딩 임시 토큰 전용 쿠키
     public static final String ONBOARDING_TOKEN_COOKIE = "oauth_onboarding_token";
+    // @ai_generated: 소셜 로그인은 체크박스가 없어, 로그인 페이지에서 OAuth 리다이렉트 직전
+    // 프론트가 심어두는 비민감 쿠키(true/false)로 로그인 유지 여부를 전달받는다. 민감정보가 아니라
+    // httpOnly로 만들 필요는 없지만(프론트가 직접 써야 함), 백엔드는 읽기만 하고 별도 생성 메서드는 없다.
+    public static final String OAUTH_REMEMBER_ME_COOKIE = "oauth_remember_me";
 
     /** Refresh 쿠키를 전송할 경로 (재발급·로그아웃 API 프리픽스) */
     private static final String REFRESH_TOKEN_PATH = "/api/auth";

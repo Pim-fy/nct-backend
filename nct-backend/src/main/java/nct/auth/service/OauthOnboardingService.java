@@ -50,7 +50,7 @@ public class OauthOnboardingService {
     }
 
     @Transactional
-    public AuthSessionResult complete(String onboardingToken, OauthOnboardingRequest request) {
+    public AuthSessionResult complete(String onboardingToken, OauthOnboardingRequest request, boolean rememberMe) {
         if (onboardingToken == null) {
             throw new CustomException(ErrorCode.ONBOARDING_TOKEN_NOT_FOUND);
         }
@@ -87,8 +87,9 @@ public class OauthOnboardingService {
         userAgreementMapper.insertAll(AgreementValidator.toUserAgreements(member.getId(), request.getAgreements()));
 
         String accessToken = jwtTokenProvider.createAccessToken(member.getId());
-        // @ai_generated: 소셜 로그인은 별도 로그인 유지 체크박스가 없어 OAuth2SuccessHandler와 동일하게 rememberMe 고정.
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), true);
+        // @ai_generated: 로그인 페이지의 로그인 유지 체크 상태를 호출측(컨트롤러)이 oauth_remember_me
+        // 쿠키에서 읽어 전달한다 - OAuth2SuccessHandler와 동일 기준.
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), rememberMe);
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
 
         return AuthSessionResult.builder()

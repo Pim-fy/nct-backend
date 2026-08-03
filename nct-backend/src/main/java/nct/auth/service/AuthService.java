@@ -193,11 +193,22 @@ public class AuthService {
     /**
      * Access Token 재발급
      * - Refresh 쿠키 -> JWT 검증 -> DB 저장값과 비교(탈취 토큰 재사용 방지) -> 새 Access 발급
+     * @ai_generated: 활동 기반 세션 연장 - Access Token뿐 아니라 Refresh Token도 매번 재발급하여
+     *   DB 저장값을 갱신한다(회전). 이렇게 해야 활동이 계속되는 한 만료(30분/1일)가 매번 뒤로 밀려
+     *   "활동 있으면 유지, 없으면 만료"가 성립한다. rememberMe 종류는 기존 토큰의 클레임을 그대로 승계한다.
      */
-    @Transactional(readOnly = true)
-    public String refresh(String refreshToken) {
+    @Transactional
+    public AuthSessionResult refresh(String refreshToken) {
         AuthMember member = verifyRefreshToken(refreshToken);
-        return jwtTokenProvider.createAccessToken(member.getId());
+        boolean rememberMe = jwtTokenProvider.getRememberMe(refreshToken);
+        String newAccessToken = jwtTokenProvider.createAccessToken(member.getId());
+        String newRefreshToken = jwtTokenProvider.createRefreshToken(member.getId(), rememberMe);
+        authMemberPort.updateRefreshToken(member.getId(), newRefreshToken);
+        return AuthSessionResult.builder()
+                                 .accessToken(newAccessToken)
+                                 .refreshToken(newRefreshToken)
+                                 .rememberMe(rememberMe)
+                                 .build();
     }
 
     /**

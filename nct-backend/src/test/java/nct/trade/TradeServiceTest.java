@@ -289,11 +289,21 @@ class TradeServiceTest {
         when(systemSettingMapper.selectOne()).thenReturn(setting);
         when(tradeMapper.startServiceCompletionRequest(anyLong(), any(), any())).thenReturn(1);
 
-        tradeService.requestServiceCompletion(81L, 22L);
+        tradeService.requestServiceCompletion(81L, 22L, "  에어컨 분해 청소와 시운전을 완료했습니다.  ");
 
         verify(tradeMapper).startServiceCompletionRequest(eq(81L), any(), eq("22"));
-        verify(tradeMapper).insertStatusHistory(81L, "TRDC0005", "서비스 제공자가 완료 확인을 요청했습니다.");
+        verify(tradeMapper).insertStatusHistory(81L, "TRDC0005", "에어컨 분해 청소와 시운전을 완료했습니다.");
         verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5);
+    }
+
+    @Test
+    void rejectsBlankServiceCompletionMemoBeforeChangingTradeState() {
+        assertThatThrownBy(() -> tradeService.requestServiceCompletion(81L, 22L, "   "))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(tradeMapper, notificationService);
     }
 
     @Test

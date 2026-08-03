@@ -160,7 +160,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
     /** 제공자가 서비스 완료를 요청하고, 의뢰자의 확인 기한 5일을 시작한다. */
     @Transactional
-    public void requestServiceCompletion(long tradeId, long providerUserId) {
+    public void requestServiceCompletion(long tradeId, long providerUserId, String completionMemo) {
+        String normalizedCompletionMemo = normalizeCompletionMemo(completionMemo);
         ServiceTradeCompletionTarget target = lockServiceTradeCompletionTarget(tradeId);
         if (target.getProviderUserId() != providerUserId) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
@@ -180,9 +181,18 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     "거래 상태가 변경되어 완료 요청을 처리할 수 없습니다.");
         }
         tradeMapper.insertStatusHistory(
-                tradeId, WAITING_CONFIRMATION, "서비스 제공자가 완료 확인을 요청했습니다.");
+                tradeId, WAITING_CONFIRMATION, normalizedCompletionMemo);
         notificationService.notifyTradeConfirmRequest(
                 target.getRequesterUserId(), tradeId, confirmDays);
+    }
+
+    private String normalizeCompletionMemo(String completionMemo) {
+        String normalizedMemo = completionMemo == null ? "" : completionMemo.trim();
+        if (normalizedMemo.isEmpty() || normalizedMemo.length() > 1000) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "완료 요청 메모는 1자 이상 1,000자 이하로 입력해 주세요.");
+        }
+        return normalizedMemo;
     }
 
     /** 의뢰자의 확인으로 서비스 거래·정산·정산가능 포인트 적립을 함께 확정한다. */

@@ -29,4 +29,7 @@ public class ServiceRequestResponse {
 
     // 요청 항목 목록 — 상세 조회 시에만 세팅. 목록 조회(me)에서는 null
     @Setter private List<String> items;
+
+    // 첨부사진 목록 — 상세 조회 시에만 세팅. 목록 조회(me)에서는 null
+    @Setter private List<SvcReqImageItem> imageList;
 }

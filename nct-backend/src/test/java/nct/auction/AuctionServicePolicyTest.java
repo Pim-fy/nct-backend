@@ -31,6 +31,7 @@ import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionRealtimeEvent;
+import nct.auction.dto.AuctionTradeMethodChangeRequest;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.service.AuctionEventPublisher;
 import nct.auction.service.AuctionService;
@@ -270,6 +271,122 @@ class AuctionServicePolicyTest {
     }
 
     @Test
+    void currentHighestBidderChangesMixedAuctionTradeMethodToDelivery() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        when(auctionMapper.updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                "40"))
+                .thenReturn(1);
+        stubAuctionDetail();
+
+        AuctionDetailResponse response = auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009"));
+
+        assertThat(response).isNotNull();
+        verify(memberService).getBuyerAddressSnapshot(40L);
+        verify(auctionMapper).updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                "40");
+        verifyRealtimeEvent("BID_TRADE_METHOD_CHANGED");
+    }
+
+    @Test
+    void tradeMethodChangeRejectsUserWhoIsNotCurrentHighestBidder() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(41L);
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009")))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("현재 최고입찰자만 거래방식을 변경할 수 있습니다.");
+
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any());
+    }
+
+    @Test
+    void tradeMethodChangeRejectsDeliveryWhenBuyerAddressIsIncomplete() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))
+                .when(memberService)
+                .getBuyerAddressSnapshot(40L);
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any());
+    }
+
+    @Test
+    void tradeMethodChangeReturnsCurrentDetailWhenMethodIsUnchanged() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        stubAuctionDetail();
+
+        AuctionDetailResponse response = auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0010"));
+
+        assertThat(response).isNotNull();
+        verify(memberService, never()).getBuyerAddressSnapshot(anyLong());
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any());
+        verify(auctionEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void tradeMethodChangeFailsWhenHighestBidChangedDuringUpdate() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        when(auctionMapper.updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                "40"))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(auctionMapper, never()).findAuctionDetail(10L, 40L);
+        verify(auctionEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
     void buyNowRejectsTradeMethodThatDoesNotMatchSingleMethodProduct() {
         target.setInstantBuyPrice(BigDecimal.valueOf(30000));
         AuctionBuyNowRequest request = new AuctionBuyNowRequest();
@@ -391,6 +508,12 @@ class AuctionServicePolicyTest {
     private AuctionBidRequest bidRequest(long bidAmount) {
         AuctionBidRequest request = new AuctionBidRequest();
         request.setBidAmount(BigDecimal.valueOf(bidAmount));
+        return request;
+    }
+
+    private AuctionTradeMethodChangeRequest tradeMethodChangeRequest(String tradeMethod) {
+        AuctionTradeMethodChangeRequest request = new AuctionTradeMethodChangeRequest();
+        request.setTradeMethod(tradeMethod);
         return request;
     }
 

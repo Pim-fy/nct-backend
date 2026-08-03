@@ -2,6 +2,7 @@ package nct.auction;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -42,7 +44,7 @@ class AuctionSecurityTest {
         detail.setCurrentHighestBidderId(99L);
         detail.setCurrentHighestBidder(true);
 
-        when(auctionService.findAuctionDetail(1L, null)).thenReturn(detail);
+        when(auctionService.findAuctionDetail(1L, null, true)).thenReturn(detail);
 
         mockMvc.perform(get("/api/auctions/1"))
                 .andExpect(status().isOk())
@@ -58,6 +60,14 @@ class AuctionSecurityTest {
     @Test
     void rejectsAnonymousFavoriteStatusLookup() throws Exception {
         mockMvc.perform(get("/api/auctions/1/favorite"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsAnonymousCurrentBidTradeMethodChange() throws Exception {
+        mockMvc.perform(put("/api/auctions/1/bids/me/trade-method")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"tradeMethod\":\"TRDC0009\"}"))
                 .andExpect(status().isUnauthorized());
     }
 }

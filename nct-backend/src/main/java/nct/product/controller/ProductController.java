@@ -1,5 +1,8 @@
 package nct.product.controller;
 
+import java.util.UUID;
+
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import java.util.List;
@@ -21,12 +26,14 @@ import java.util.List;
 import nct.global.dto.PagedResponse;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.global.utils.CookieUtil;
 import nct.product.dto.ProductCommentRequest;
 import nct.product.dto.ProductCommentResponse;
 import nct.product.dto.ProductInquiryRequest;
 import nct.product.dto.ProductInquiryResponse;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
+import nct.product.dto.ProductViewResponse;
 import nct.product.service.ProductService;
 
 /**
@@ -52,6 +59,7 @@ import nct.product.service.ProductService;
 public class ProductController {
 
     private final ProductService productService;
+    private final CookieUtil cookieUtil;
 
     /** 상품 등록 */
     @PostMapping
@@ -124,11 +132,33 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.getComments(prdSn)));
     }
 
-    /** 상품 조회수 증가 — 옥동민(5) 경매 상세 조회 시 호출 */
+    /**
+     * 상품 조회수 증가 — 옥동민(5) 경매 상세 조회 시 호출 (F-AUC-006).
+     * 로그인 회원은 usrSn, 비로그인 방문자는 서버 발급 익명 쿠키로 24시간 내 중복 방문을 판정한다.
+     * 비로그인 방문자에게 쿠키가 없으면 이번 요청에서 새로 발급해 응답에 실어 보낸다.
+     */
     @PostMapping("/{prdSn}/view")
-    public ResponseEntity<ApiResponse<Void>> increaseViewCount(@PathVariable(name = "prdSn") Long prdSn) {
-        productService.increaseViewCount(prdSn);
-        return ResponseEntity.ok(ApiResponse.success());
+    public ResponseEntity<ApiResponse<ProductViewResponse>> increaseViewCount(
+            @PathVariable(name = "prdSn") Long prdSn,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+
+        Long usrSn = (userDetails != null && userDetails.getMember() != null)
+                ? userDetails.getMember().getId() : null;
+
+        String anonVisitorKey = null;
+        if (usrSn == null) {
+            anonVisitorKey = cookieUtil.extractCookie(request, CookieUtil.ANON_VISITOR_COOKIE);
+            if (anonVisitorKey == null) {
+                anonVisitorKey = UUID.randomUUID().toString();
+                response.addHeader(HttpHeaders.SET_COOKIE,
+                        cookieUtil.createAnonymousVisitorCookie(anonVisitorKey).toString());
+            }
+        }
+
+        ProductViewResponse result = productService.increaseViewCount(prdSn, usrSn, anonVisitorKey);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     /** 구매자 문의 등록 (F-AUC-012) */

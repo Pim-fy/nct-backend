@@ -36,11 +36,13 @@ import nct.product.dto.ProductInquiryRequest;
 import nct.product.dto.ProductInquiryResponse;
 import nct.product.domain.ProductTradeRegion;
 import nct.product.dto.ProductTradeRegionItem;
+import nct.product.dto.ProductViewResponse;
 import nct.product.mapper.BannedKeywordMapper;
 import nct.product.mapper.ProductCommentMapper;
 import nct.product.mapper.ProductImageMapper;
 import nct.product.mapper.ProductMapper;
 import nct.product.mapper.ProductTradeRegionMapper;
+import nct.product.mapper.ProductViewLogMapper;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.service.TradeService;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +72,7 @@ public class ProductService {
     private final BannedKeywordMapper bannedKeywordMapper;
     private final ProductCommentMapper productCommentMapper;
     private final ProductTradeRegionMapper productTradeRegionMapper;
+    private final ProductViewLogMapper productViewLogMapper;
     private final NotificationService notificationService;
 
     @Transactional
@@ -333,9 +336,26 @@ public class ProductService {
         return productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE);
     }
 
+    /**
+     * 상품 조회수 증가 (F-AUC-006) — 옥동민(5) 경매 상세 조회 시 호출.
+     * 동일 방문자(로그인=usrSn, 비로그인=익명 쿠키)가 동일 상품을 24시간 내 재조회하면 증가시키지 않는다.
+     * 중복 판정과 카운트 증가를 하나의 트랜잭션으로 묶어 판정과 반영 사이 불일치가 없게 한다.
+     */
     @Transactional
-    public void increaseViewCount(Long prdSn) {
+    public ProductViewResponse increaseViewCount(Long prdSn, Long usrSn, String anonVisitorKey) {
+        long viewCount = productMapper.findActiveViewCount(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        String visitorKey = usrSn != null ? String.valueOf(usrSn) : anonVisitorKey;
+        LocalDateTime since = LocalDateTime.now().minusHours(24);
+
+        if (productViewLogMapper.existsRecentView(prdSn, visitorKey, since)) {
+            return new ProductViewResponse(false, viewCount);
+        }
+
+        productViewLogMapper.insert(prdSn, visitorKey);
         productMapper.incrementViewCount(prdSn);
+        return new ProductViewResponse(true, viewCount + 1);
     }
 
     @Transactional

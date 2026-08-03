@@ -160,6 +160,16 @@
          WHERE PRD_SN = #{prdSn}
     </select>
 
+    <!-- ── 활성 상품 조회수 조회 — 존재/비활성 판정 겸용 ─────────── -->
+    <select id="findActiveViewCount" resultType="java.lang.Long">
+        /* ProductMapper.findActiveViewCount */
+        SELECT PRD_VIEW_CNT
+          FROM PRODUCT
+         WHERE PRD_SN = #{prdSn}
+           AND PRD_USE_YN = 'Y'
+           AND PRD_STATUS_CD != 'PRDC0004'
+    </select>
+
     <!-- ── 조회수 증가 ────────────────────────────────────────── -->
     <update id="incrementViewCount">
         /* ProductMapper.incrementViewCount */

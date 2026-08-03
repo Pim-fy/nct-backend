@@ -27,6 +27,9 @@ public interface ProductMapper {
 
     void incrementViewCount(@Param("prdSn") Long prdSn);
 
+    /** 활성 상품(사용중·삭제 아님)인 경우에만 현재 조회수 반환 — 조회수 증가 API의 존재/비활성 판정 겸용 */
+    Optional<Long> findActiveViewCount(@Param("prdSn") Long prdSn);
+
     /** 취소 확정(AUCC0005) 후 cutoff 이전에 승인된 상품 prdSn 목록 — 자동 삭제 스케줄러 전용 (AUCTION은 조회만) */
     List<Long> findExpiredCancelledProductIds(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
 

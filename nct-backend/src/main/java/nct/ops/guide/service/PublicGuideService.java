@@ -39,10 +39,10 @@ public class PublicGuideService {
                     "/guide/service-request",
                     List.of(
                             "필요한 서비스 카테고리와 요청 내용을 구체적으로 작성합니다.",
-                            "예산, 지역, 희망 일정처럼 견적 비교에 필요한 조건을 입력합니다.",
+                            "예산, 지역, 작업 조건처럼 견적 비교에 필요한 내용을 입력합니다.",
                             "요청을 공개하면 승인된 제공자만 견적을 제출할 수 있습니다.",
                             "제출된 견적을 비교한 뒤 하나를 선택하면 서비스 거래가 시작됩니다."),
-                    List.of("/service", "/service-requests/new"),
+                    List.of("/service-requests/new", "/service-requests/me"),
                     20),
             new PublicGuideDetailResponse(
                     "bid",

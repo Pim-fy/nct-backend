@@ -70,16 +70,6 @@
         FOR UPDATE
     </select>
 
-    <!-- ── 서비스 요청 등록자 조회 (자기거래 차단용) ── -->
-    <!-- 담당자2(신현석) 서비스 요청 조회 계약 완성 시 해당 계약으로 교체 -->
-    <select id="findRequesterUsrSn" resultType="java.lang.Long">
-        /* QuoteMapper.findRequesterUsrSn */
-        SELECT USR_SN
-          FROM SERVICE_REQUEST
-         WHERE SVC_REQ_SN = #{svcReqSn}
-           AND SVC_REQ_USE_YN = 'Y'
-    </select>
-
     <!-- ── 견적 수정 ─────────────────────────────────── -->
     <update id="updateQuote">
         /* QuoteMapper.updateQuote */
@@ -104,11 +94,10 @@
     <!-- ── 내 견적 목록 (제공자 본인) ─────────────────── -->
     <select id="findMyQuotes" resultMap="QuoteResponseMap">
         /* QuoteMapper.findMyQuotes */
-        SELECT q.QUT_SN, q.SVC_REQ_SN, s.SVC_REQ_TTL,
+        SELECT q.QUT_SN, q.SVC_REQ_SN,
                q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
                q.QUT_REG_DT, q.QUT_UPDT_DT
           FROM QUOTE q
-          JOIN SERVICE_REQUEST s ON s.SVC_REQ_SN = q.SVC_REQ_SN
          WHERE q.USR_SN = #{usrSn}
          ORDER BY q.QUT_REG_DT DESC
          LIMIT #{size} OFFSET #{offset}
@@ -148,11 +137,8 @@
                q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
                q.QUT_REG_DT, q.QUT_UPDT_DT
           FROM QUOTE q
-          JOIN SERVICE_REQUEST s ON s.SVC_REQ_SN = q.SVC_REQ_SN
           JOIN USERS u ON u.USR_SN = q.USR_SN
          WHERE q.SVC_REQ_SN = #{svcReqSn}
-           AND s.USR_SN     = #{usrSn}
-           AND s.SVC_REQ_USE_YN = 'Y'
          ORDER BY q.QUT_REG_DT DESC
     </select>
 

@@ -1,5 +1,7 @@
 package nct.servicerequest.controller;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,19 +23,21 @@ import nct.global.dto.PagedResponse;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
+import nct.servicerequest.dto.ServiceRequestFormResponse;
 import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.service.ServiceRequestService;
+import nct.servicerequest.service.ServiceRequestFormService;
 
 /**
  * [서비스 요청서 API] (F-SVC-001~004)
  *
- *  POST   /api/service-requests                요청서 등록          (authenticated)
- *  PUT    /api/service-requests/{svcReqSn}      임시저장 수정·공개 전환 (authenticated, 본인만)
- *  PATCH  /api/service-requests/{svcReqSn}/close 요청서 마감           (authenticated, 본인만)
- *  GET    /api/service-requests                 공개 요청서 검색      (permit-all, F-COM-002)
- *  GET    /api/service-requests/me              내 요청서 목록        (authenticated)
- *  GET    /api/service-requests/{svcReqSn}       요청서 상세 조회      (permit-all)
- *  DELETE /api/service-requests/{svcReqSn}       요청서 삭제           (authenticated, 본인만)
+ *  POST   /api/service-requests                 일반회원 요청서 등록
+ *  PUT    /api/service-requests/{svcReqSn}      일반회원 임시저장 수정·공개 전환 (본인만)
+ *  PATCH  /api/service-requests/{svcReqSn}/close 일반회원 요청서 마감 (본인만)
+ *  GET    /api/service-requests                 제공자 공개 요청서 검색
+ *  GET    /api/service-requests/me              일반회원 내 요청서 목록
+ *  GET    /api/service-requests/{svcReqSn}       요청자 본인 또는 제공자 상세 조회
+ *  DELETE /api/service-requests/{svcReqSn}       일반회원 요청서 삭제 (본인만)
  */
 @RestController
 @RequestMapping("/api/service-requests")
@@ -41,8 +45,26 @@ import nct.servicerequest.service.ServiceRequestService;
 public class ServiceRequestController {
 
     private final ServiceRequestService serviceRequestService;
+    private final ServiceRequestFormService serviceRequestFormService;
+
+    /** F-SVC-002 현재 활성 카테고리별 동적 폼 정의 */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
+    @GetMapping("/forms")
+    public ResponseEntity<ApiResponse<List<ServiceRequestFormResponse>>> getActiveForms() {
+        return ResponseEntity.ok(ApiResponse.success(serviceRequestFormService.getActiveForms()));
+    }
+
+    /** F-SVC-002 기존 임시저장 요청서가 작성 당시 폼 버전을 복원할 때 사용 */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
+    @GetMapping("/forms/{formTemplateSn}")
+    public ResponseEntity<ApiResponse<ServiceRequestFormResponse>> getFormByTemplateSn(
+            @PathVariable(name = "formTemplateSn") Long formTemplateSn) {
+        return ResponseEntity.ok(ApiResponse.success(
+                serviceRequestFormService.getFormByTemplateSn(formTemplateSn)));
+    }
 
     /** 요청서 등록 */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
     @PostMapping
     public ResponseEntity<ApiResponse<ServiceRequestResponse>> registerServiceRequest(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -54,6 +76,7 @@ public class ServiceRequestController {
     }
 
     /** 임시저장 요청서 수정 및 공개 전환 */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
     @PutMapping("/{svcReqSn}")
     public ResponseEntity<ApiResponse<ServiceRequestResponse>> updateServiceRequest(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -66,6 +89,7 @@ public class ServiceRequestController {
     }
 
     /** 요청서 마감 (F-SVC-003) */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
     @PatchMapping("/{svcReqSn}/close")
     public ResponseEntity<ApiResponse<Void>> closeServiceRequest(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -76,7 +100,8 @@ public class ServiceRequestController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    /** 공개 요청서 검색 (F-COM-002 · 동민씨 서비스 탐색·홈 큐레이션용 Reader 계약) */
+    /** 담당자 7 통합: 제공자 모드에서 일반회원의 공개 요청서를 검색한다. */
+    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     @GetMapping
     public ResponseEntity<ApiResponse<PagedResponse<ServiceRequestResponse>>> searchServiceRequests(
             @RequestParam(name = "keyword", required = false)     String keyword,
@@ -92,8 +117,8 @@ public class ServiceRequestController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    /** 내 요청서 목록 — SecurityConfig에서 /api/service-requests/* 전체를 permit-all로 열었으므로 메서드 레벨에서 인증 강제 */
-    @PreAuthorize("isAuthenticated()")
+    /** 일반회원의 내 요청서 목록 */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PagedResponse<ServiceRequestResponse>>> getMyServiceRequests(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -106,15 +131,33 @@ public class ServiceRequestController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    /** 요청서 상세 조회 */
+    /** 일반회원은 본인 요청만, 제공자는 공개 요청을 조회한다. */
+    @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
     @GetMapping("/{svcReqSn}")
     public ResponseEntity<ApiResponse<ServiceRequestResponse>> getServiceRequest(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable(name = "svcReqSn") Long svcReqSn) {
 
-        return ResponseEntity.ok(ApiResponse.success(serviceRequestService.getServiceRequest(svcReqSn)));
+        Long viewerUsrSn = userDetails.getMember().getId();
+        boolean providerViewer = userDetails.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_SERVICE".equals(authority.getAuthority()));
+        return ResponseEntity.ok(ApiResponse.success(
+                serviceRequestService.getServiceRequest(svcReqSn, viewerUsrSn, providerViewer)));
+    }
+
+    /** 임시저장 수정 화면 전용 상세 — 소유자에게만 구조화 답변과 복호화 주소 반환 */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
+    @GetMapping("/{svcReqSn}/edit")
+    public ResponseEntity<ApiResponse<ServiceRequestResponse>> getEditableServiceRequest(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "svcReqSn") Long svcReqSn) {
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                serviceRequestService.getEditableServiceRequest(svcReqSn, usrSn)));
     }
 
     /** 요청서 삭제 (논리 삭제) */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
     @DeleteMapping("/{svcReqSn}")
     public ResponseEntity<ApiResponse<Void>> deleteServiceRequest(
             @AuthenticationPrincipal CustomUserDetails userDetails,

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.servicerequest.mapper.SvcReqAddressMapper">
+
+    <!-- 담당자 7: F-SVC-002 정확주소 암호문 저장 및 소유자 복원 SQL. -->
+
+    <delete id="deleteBySvcReqSn">
+        /* SvcReqAddressMapper.deleteBySvcReqSn */
+        DELETE FROM SVC_REQ_ADDRESS WHERE SVC_REQ_SN = #{svcReqSn}
+    </delete>
+
+    <insert id="insertAll">
+        /* SvcReqAddressMapper.insertAll */
+        INSERT INTO SVC_REQ_ADDRESS
+            (SVC_REQ_SN, SVC_REQ_FORM_TMPL_SN, SVC_REQ_STEP_SN, ADDR_ROLE_KEY,
+             SVC_REQ_ADDR_SEQ_NO, ADDR_FIELD_SN, DADDR_FIELD_SN,
+             RGN_SIDO_NM, RGN_SIGUNGU_NM, SVC_REQ_ADDR_ENC, SVC_REQ_DADDR_ENC,
+             SVC_REQ_ZIP_ENC, SVC_REQ_ADDR_PBLC_RGN_YN, SVC_REQ_ADDR_REG_ID,
+             SVC_REQ_ADDR_UPDT_ID)
+        VALUES
+        <foreach collection="addresses" item="a" separator=",">
+            (#{a.svcReqSn}, #{a.formTemplateSn}, #{a.stepSn}, #{a.addressRoleKey},
+             #{a.sequence}, #{a.addressFieldSn}, #{a.detailFieldSn},
+             #{a.sido}, #{a.sigungu}, #{a.encryptedAddress}, #{a.encryptedDetailAddress},
+             #{a.encryptedZonecode}, #{a.publicRegionYn}, #{a.regId}, #{a.updtId})
+        </foreach>
+    </insert>
+
+    <select id="findBySvcReqSn" resultType="nct.servicerequest.domain.SvcReqAddress">
+        /* SvcReqAddressMapper.findBySvcReqSn */
+        SELECT A.SVC_REQ_SN AS svcReqSn,
+               A.SVC_REQ_FORM_TMPL_SN AS formTemplateSn,
+               A.SVC_REQ_STEP_SN AS stepSn,
+               S.SVC_REQ_STEP_KEY AS stepKey,
+               A.ADDR_ROLE_KEY AS addressRoleKey,
+               CAST(A.SVC_REQ_ADDR_SEQ_NO AS SIGNED) AS sequence,
+               A.ADDR_FIELD_SN AS addressFieldSn,
+               AF.SVC_REQ_FIELD_KEY AS addressFieldKey,
+               A.DADDR_FIELD_SN AS detailFieldSn,
+               DF.SVC_REQ_FIELD_KEY AS detailFieldKey,
+               A.RGN_SIDO_NM AS sido,
+               A.RGN_SIGUNGU_NM AS sigungu,
+               A.SVC_REQ_ADDR_ENC AS encryptedAddress,
+               A.SVC_REQ_DADDR_ENC AS encryptedDetailAddress,
+               A.SVC_REQ_ZIP_ENC AS encryptedZonecode,
+               A.SVC_REQ_ADDR_PBLC_RGN_YN AS publicRegionYn
+          FROM SVC_REQ_ADDRESS A
+          JOIN SVC_REQ_STEP_DEF S
+            ON S.SVC_REQ_FORM_TMPL_SN = A.SVC_REQ_FORM_TMPL_SN
+           AND S.SVC_REQ_STEP_SN = A.SVC_REQ_STEP_SN
+          JOIN SVC_REQ_FIELD_DEF AF
+            ON AF.SVC_REQ_FORM_TMPL_SN = A.SVC_REQ_FORM_TMPL_SN
+           AND AF.SVC_REQ_FIELD_SN = A.ADDR_FIELD_SN
+          LEFT JOIN SVC_REQ_FIELD_DEF DF
+            ON DF.SVC_REQ_FORM_TMPL_SN = A.SVC_REQ_FORM_TMPL_SN
+           AND DF.SVC_REQ_FIELD_SN = A.DADDR_FIELD_SN
+         WHERE A.SVC_REQ_SN = #{svcReqSn}
+           AND A.SVC_REQ_ADDR_USE_YN = 'Y'
+         ORDER BY A.SVC_REQ_STEP_SN, A.ADDR_ROLE_KEY, A.SVC_REQ_ADDR_SEQ_NO
+    </select>
+
+</mapper>

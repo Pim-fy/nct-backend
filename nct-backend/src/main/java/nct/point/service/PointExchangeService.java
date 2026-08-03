@@ -97,6 +97,12 @@ public class PointExchangeService {
         return orders;
     }
 
+    /** 관리자 대시보드용 — 계좌 복호화 없이 지급 대기 건수만 조회한다. */
+    @Transactional(readOnly = true)
+    public long countRequestedForAdmin() {
+        return exchangeMapper.countRequestedForAdmin();
+    }
+
     /**
      * 지급 완료 처리 — 관리자가 실제 계좌 이체를 마친 뒤 호출한다.
      * 포인트는 신청 때 이미 차감돼 있으므로 여기서는 상태·처리자만 기록하고 알림을 보낸다.

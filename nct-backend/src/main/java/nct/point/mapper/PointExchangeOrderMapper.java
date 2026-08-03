@@ -31,6 +31,9 @@ public interface PointExchangeOrderMapper {
     /** 관리자 처리 대기 목록 — 신청 상태 건만, 신청자 이름 조인 (오래된 것부터: 먼저 신청한 사람 먼저 지급) */
     List<PointExchangeOrder> selectRequestedListForAdmin();
 
+    /** 관리자 대시보드용 — 계좌 정보를 조회하지 않고 신청 상태 건수만 반환 */
+    long countRequestedForAdmin();
+
     /** 지급 완료 처리 — 상태·처리자·처리일시 기록 */
     int complete(@Param("ptExcOrdSn") long ptExcOrdSn, @Param("statusCd") String statusCd,
                  @Param("procUsrSn") long procUsrSn);

@@ -114,9 +114,7 @@ public class SettlementService {
                             + ", 정산금액: " + s.getStlmAmt()
                             + ", 보관금: " + creditedAmount);
         }
-
-        notificationService.notifySettlement(s.getUsrSn(), "정산 완료",
-                String.format("%,dP가 정산 가능 포인트로 적립되었습니다.", s.getStlmAmt()), s.getTrdSn());
+        // 정산 적립 알림은 creditEscrowToSettleable 내부에서 함께 발행한다.
     }
 
     private EscrowReference resolveEscrowReference(long trdSn) {

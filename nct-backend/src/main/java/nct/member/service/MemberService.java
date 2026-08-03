@@ -177,11 +177,17 @@ public class MemberService {
         String zip = fieldCryptoService.decrypt(member.getUsrZip());
         String address = fieldCryptoService.decrypt(member.getUsrAddr());
         String detailAddress = fieldCryptoService.decrypt(member.getUsrDaddr());
+        String phone = fieldCryptoService.decrypt(member.getUsrTelno());
         if (isBlank(zip) || isBlank(address)) {
             throw new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
         }
 
-        return new BuyerAddressSnapshot(zip, address, detailAddress == null ? "" : detailAddress.trim());
+        return new BuyerAddressSnapshot(
+                member.getUsrNm(),
+                phone == null ? "" : phone.trim(),
+                zip,
+                address,
+                detailAddress == null ? "" : detailAddress.trim());
     }
 
     private boolean isBlank(String value) {

@@ -24,6 +24,7 @@ import nct.auction.dto.AuctionProductUpdateItem;
 import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
+import nct.auction.dto.AuctionTradeMethodChangeRequest;
 import nct.auction.mapper.AuctionMapper;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
@@ -405,6 +406,41 @@ public class AuctionService {
     }
 
     @Transactional
+    public AuctionDetailResponse changeCurrentHighestBidTradeMethod(
+            Long auctionId,
+            Long userId,
+            AuctionTradeMethodChangeRequest request) {
+        AuctionBidTarget target = findBidTarget(auctionId);
+        validateBidAvailable(target, userId);
+        validateCurrentHighestBidder(target, userId);
+        validateMixedTradeMethodProduct(target);
+
+        String selectedTradeMethodCode = resolveSelectedTradeMethod(
+                target,
+                request == null ? null : request.getTradeMethod());
+        if (selectedTradeMethodCode.equals(target.getCurrentHighestTradeMethodCode())) {
+            return loadAuctionDetail(auctionId, userId);
+        }
+
+        validateDeliveryAddress(selectedTradeMethodCode, userId);
+        int updatedCount = auctionMapper.updateCurrentHighestBidTradeMethod(
+                auctionId,
+                target.getCurrentHighestBidId(),
+                userId,
+                selectedTradeMethodCode,
+                userId.toString());
+        if (updatedCount == 0) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "최고입찰 정보가 변경되었습니다. 다시 확인해 주세요.");
+        }
+
+        AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        publishAuctionChanged(auctionId, "BID_TRADE_METHOD_CHANGED");
+        return detail;
+    }
+
+    @Transactional
     public AuctionDetailResponse buyNow(Long auctionId, Long userId, AuctionBuyNowRequest request) {
         AuctionBidTarget target = findBidTarget(auctionId);
         validateBidAvailable(target, userId);
@@ -526,6 +562,24 @@ public class AuctionService {
     private void validateNotCurrentHighestBidder(AuctionBidTarget target, Long userId) {
         if (target.getCurrentHighestBidderId() != null && target.getCurrentHighestBidderId().equals(userId)) {
             throw new CustomException(ErrorCode.CONFLICT, "현재 최고 입찰자입니다.");
+        }
+    }
+
+    private void validateCurrentHighestBidder(AuctionBidTarget target, Long userId) {
+        if (target.getCurrentHighestBidId() == null
+                || target.getCurrentHighestBidderId() == null
+                || !target.getCurrentHighestBidderId().equals(userId)) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "현재 최고입찰자만 거래방식을 변경할 수 있습니다.");
+        }
+    }
+
+    private void validateMixedTradeMethodProduct(AuctionBidTarget target) {
+        if (!BOTH_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "배송과 직거래를 모두 지원하는 경매만 거래방식을 변경할 수 있습니다.");
         }
     }
 

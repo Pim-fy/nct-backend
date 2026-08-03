@@ -154,11 +154,8 @@ class SettlementServiceTest {
                 RefType.BID,
                 801L,
                 "정산 완료 (정산번호 501)");
-        verify(notificationService).notifySettlement(
-                10L,
-                "정산 완료",
-                "30,000P가 정산 가능 포인트로 적립되었습니다.",
-                91L);
+        verify(notificationService, never())
+                .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -193,6 +190,8 @@ class SettlementServiceTest {
                 RefType.TRADE,
                 91L,
                 "정산 완료 (정산번호 501)");
+        verify(notificationService, never())
+                .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }
 
     @Test

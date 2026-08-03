@@ -43,8 +43,10 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
         AuthMember member = userDetails.getMember();
 
-        // 소셜 로그인은 별도 로그인 유지 체크박스가 없으므로 rememberMe 고정 (쿠키·토큰 만료 모두 동일 기준)
-        boolean rememberMe = true;
+        // 소셜 로그인은 자체 체크박스가 없어, 로그인 페이지에서 리다이렉트 직전 심어둔
+        // oauth_remember_me 쿠키(프론트가 로컬 로그인과 같은 체크박스 값으로 설정)로 판단한다.
+        boolean rememberMe = Boolean.parseBoolean(
+                cookieUtil.extractCookie(request, CookieUtil.OAUTH_REMEMBER_ME_COOKIE));
 
         // JWT 발급
         // @ai_generated: subject를 email(가변)에서 usrSn(불변 PK)으로 전환 - JwtTokenProvider 시그니처 변경에 따른 연쇄 수정

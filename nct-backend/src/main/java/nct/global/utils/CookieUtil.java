@@ -24,6 +24,10 @@ public class CookieUtil {
     // 비로그인 방문자 식별용 익명 쿠키 — 상품 조회수 중복 방지(F-AUC-006) 등 비로그인 방문자 구분이
     // 필요한 곳에서 공통으로 사용. 로그인 토큰이 아니라 값 탈취 위험이 낮아 httpOnly만 적용
     public static final String ANON_VISITOR_COOKIE = "anon_visitor_id";
+    // @ai_generated: 소셜 로그인은 체크박스가 없어, 로그인 페이지에서 OAuth 리다이렉트 직전
+    // 프론트가 심어두는 비민감 쿠키(true/false)로 로그인 유지 여부를 전달받는다. 민감정보가 아니라
+    // httpOnly로 만들 필요는 없지만(프론트가 직접 써야 함), 백엔드는 읽기만 하고 별도 생성 메서드는 없다.
+    public static final String OAUTH_REMEMBER_ME_COOKIE = "oauth_remember_me";
 
     /** Refresh 쿠키를 전송할 경로 (재발급·로그아웃 API 프리픽스) */
     private static final String REFRESH_TOKEN_PATH = "/api/auth";

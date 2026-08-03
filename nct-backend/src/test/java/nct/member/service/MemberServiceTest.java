@@ -89,6 +89,21 @@ class MemberServiceTest {
         verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any(), any(), any(), any(), any());
     }
 
+    // @ai_generated: ISS-023 - 전화번호가 선택에서 필수로 전환됐으므로 빈 값 제출은 저장을 차단해야 한다.
+    @Test
+    void 전화번호가_비어있으면_프로필_수정을_차단한다() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("구매자");
+        request.setPhone("");
+
+        assertThatThrownBy(() -> memberService.updateProfile(101L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any(), any(), any(), any(), any());
+    }
+
     @Test
     void 사전확인을_통과해도_DB_제약_위반이면_중복오류로_변환한다() {
         when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
@@ -304,6 +319,7 @@ class MemberServiceTest {
         ProfileUpdateRequest request = new ProfileUpdateRequest();
         request.setNickname(nickname);
         request.setEmail("user@example.com");
+        request.setPhone("01012345678");
         return request;
     }
 

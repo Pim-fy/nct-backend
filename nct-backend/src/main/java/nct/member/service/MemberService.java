@@ -54,6 +54,11 @@ public class MemberService {
         if (!nickname.equals(member.getUsrNm()) && memberMapper.existsByNickname(nickname)) {
             throw new CustomException(ErrorCode.DUPLICATE_NICKNAME);
         }
+        // @ai_generated: ISS-023 - 전화번호가 필수로 전환돼 COALESCE 없이 직접 갱신하므로, DTO
+        // @NotBlank를 우회해 이 메서드가 호출되더라도 빈 값으로 기존 전화번호를 지우지 않도록 재확인한다.
+        if (request.getPhone() == null || request.getPhone().isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
 
         try {
             memberMapper.updateProfile(usrSn, nickname, request.getProfileFileSn(),

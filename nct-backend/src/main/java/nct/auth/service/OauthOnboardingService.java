@@ -117,9 +117,12 @@ public class OauthOnboardingService {
         return value.trim();
     }
 
+    // @ai_generated: ISS-023 - 전화번호는 필수 입력으로 전환돼 다른 선택 필드와 달리 공백을 허용하지 않는다.
     private String normalizeTelno(String value) {
-        String normalized = normalizeOptionalText(value);
-        return normalized == null ? null : normalized.replaceAll("\\D", "");
+        if (value == null || value.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return value.trim().replaceAll("\\D", "");
     }
 
     private void requireCompletePair(String first, String second) {

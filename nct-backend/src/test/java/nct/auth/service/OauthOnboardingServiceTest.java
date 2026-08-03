@@ -81,6 +81,23 @@ class OauthOnboardingServiceTest {
         assertThat(result.getAccessToken()).isEqualTo("access-token");
     }
 
+    // @ai_generated: ISS-023 - 온보딩 전화번호가 선택에서 필수로 전환됐으므로 빈 값은 가입을 차단해야 한다.
+    @Test
+    void 전화번호가_비어있으면_가입과_약관저장을_시작하지_않는다() {
+        OauthOnboardingRequest request = validRequest();
+        request.setTelno("");
+        when(onboardingTokenProvider.parseToken("onboarding-token")).thenReturn(claims());
+
+        assertThatThrownBy(() -> onboardingService.complete("onboarding-token", request))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(authMemberPort, never()).registerOAuthMember(any());
+        verify(userAgreementMapper, never()).insertAll(any());
+        verify(authMemberPort, never()).updateRefreshToken(any(), any());
+    }
+
     @Test
     void 은행명과_계좌번호가_한쪽만_입력되면_가입과_약관저장을_시작하지_않는다() {
         OauthOnboardingRequest request = validRequest();
@@ -100,6 +117,7 @@ class OauthOnboardingServiceTest {
     private OauthOnboardingRequest validRequest() {
         OauthOnboardingRequest request = new OauthOnboardingRequest();
         request.setNickname("온보딩회원");
+        request.setTelno("01012345678");
         request.setAgreements(List.of(
                 agreement("AGRC0001", true), agreement("AGRC0002", true), agreement("AGRC0003", false)));
         return request;

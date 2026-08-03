@@ -30,8 +30,9 @@ public class ProfileUpdateRequest {
     @Size(max = 50, message = "계좌번호는 50자를 초과할 수 없습니다.")
     private String accountNo;
 
-    // @ai_generated: ISS-022 - SignUpRequest·OauthOnboardingRequest와 동일한 전화번호 계약(빈 값 허용).
-    @Pattern(regexp = "^$|^0\\d{10}$", message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
+    // @ai_generated: ISS-023 - SignUpRequest·OauthOnboardingRequest와 동일하게 전화번호를 필수로 전환.
+    @NotBlank(message = "전화번호는 필수입니다.")
+    @Pattern(regexp = "^0\\d{10}$", message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
     private String phone;
 
     @Pattern(regexp = "^$|^\\d{5}$", message = "우편번호는 5자리 숫자여야 합니다.")

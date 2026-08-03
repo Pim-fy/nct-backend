@@ -38,8 +38,9 @@ public class SignUpRequest {
     @Email(message = "이메일 형식이 올바르지 않습니다.")
     private String email;
 
-    // @ai_generated: 화면 포맷과 분리해 API/암호화 평문은 숫자 11자리만 받는다.
-    @Pattern(regexp = "^$|^0\\d{10}$",
+    // @ai_generated: ISS-023 - 전화번호를 선택에서 필수로 전환. 화면 포맷과 분리해 API/암호화 평문은 숫자 11자리만 받는다.
+    @NotBlank(message = "전화번호는 필수입니다.")
+    @Pattern(regexp = "^0\\d{10}$",
              message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
     private String telno;
 

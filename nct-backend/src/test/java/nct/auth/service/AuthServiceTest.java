@@ -106,10 +106,14 @@ class AuthServiceTest {
         hyphenated.setTelno("010-1234-5678");
         SignUpRequest shortNumber = validRequest();
         shortNumber.setTelno("0212345678");
+        SignUpRequest blank = validRequest();
+        blank.setTelno("");
 
         assertThat(validator.validate(valid)).noneMatch(v -> v.getPropertyPath().toString().equals("telno"));
         assertThat(validator.validate(hyphenated)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
         assertThat(validator.validate(shortNumber)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
+        // @ai_generated: ISS-023 - 전화번호가 선택에서 필수로 전환됐으므로 공백 입력도 검증에 걸려야 한다.
+        assertThat(validator.validate(blank)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
     }
 
     @Test
@@ -598,6 +602,7 @@ class AuthServiceTest {
         request.setPassword("Password1!");
         request.setNickname("구매자");
         request.setEmail("user@example.com");
+        request.setTelno("01012345678");
         request.setVerificationId(77L);
         request.setAgreements(List.of(agreement("AGRC0001", true),
                                      agreement("AGRC0002", true),

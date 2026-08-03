@@ -364,9 +364,9 @@ public class AuthService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    // @ai_generated: ISS-023 - 전화번호는 필수 입력으로 전환돼 다른 필수 필드와 동일하게 requireText로 검증한다.
     private String normalizeTelno(String value) {
-        String normalized = normalizeOptionalText(value);
-        return normalized == null ? null : normalized.replaceAll("\\D", "");
+        return requireText(value, ErrorCode.INVALID_INPUT_VALUE).replaceAll("\\D", "");
     }
 
     private void requireCompletePair(String firstValue, String secondValue) {

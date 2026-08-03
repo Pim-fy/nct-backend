@@ -21,6 +21,9 @@ public class CookieUtil {
     public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
     // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 소셜 최초 가입 온보딩 임시 토큰 전용 쿠키
     public static final String ONBOARDING_TOKEN_COOKIE = "oauth_onboarding_token";
+    // 비로그인 방문자 식별용 익명 쿠키 — 상품 조회수 중복 방지(F-AUC-006) 등 비로그인 방문자 구분이
+    // 필요한 곳에서 공통으로 사용. 로그인 토큰이 아니라 값 탈취 위험이 낮아 httpOnly만 적용
+    public static final String ANON_VISITOR_COOKIE = "anon_visitor_id";
 
     /** Refresh 쿠키를 전송할 경로 (재발급·로그아웃 API 프리픽스) */
     private static final String REFRESH_TOKEN_PATH = "/api/auth";
@@ -28,6 +31,8 @@ public class CookieUtil {
     private static final String ONBOARDING_TOKEN_PATH = "/api/auth/oauth-onboarding";
     // @ai_generated: 온보딩 쿠키 수명(초) - OAuthOnboardingTokenProvider의 토큰 만료(10분)와 동일
     private static final int ONBOARDING_TOKEN_MAX_AGE = 600;
+    /** 익명 방문자 쿠키 수명(초) — 1년, 재방문 시에도 동일 방문자로 식별되도록 길게 유지 */
+    private static final long ANON_VISITOR_MAX_AGE = 365L * 24 * 60 * 60;
 
     @Value("${cookie.secure:false}")
     private boolean secure;
@@ -111,6 +116,17 @@ public class CookieUtil {
                              .sameSite("Lax")
                              .path(ONBOARDING_TOKEN_PATH)
                              .maxAge(0)
+                             .build();
+    }
+
+    /** 비로그인 방문자 식별 쿠키 생성 — 발급 시 한 번만 서버가 UUID를 내려주고, 이후 요청은 그대로 전달됨 */
+    public ResponseCookie createAnonymousVisitorCookie(String visitorId) {
+        return ResponseCookie.from(ANON_VISITOR_COOKIE, visitorId)
+                             .httpOnly(true)
+                             .secure(secure)
+                             .sameSite("Lax")
+                             .path("/")
+                             .maxAge(ANON_VISITOR_MAX_AGE)
                              .build();
     }
 

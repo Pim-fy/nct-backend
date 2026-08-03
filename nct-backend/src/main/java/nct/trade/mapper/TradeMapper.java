@@ -87,9 +87,11 @@ public interface TradeMapper {
 
     int insertServiceTrade(Trade trade);
 
-    /** MemberService가 검증한 낙찰자 주소를 거래 배송지 스냅샷으로 저장한다. */
+    /** MemberService가 조회한 낙찰자 배송정보를 거래 시점 스냅샷으로 저장한다. */
     int insertDeliverySnapshot(
             @Param("tradeId") long tradeId,
+            @Param("recipientName") String recipientName,
+            @Param("recipientPhone") String recipientPhone,
             @Param("zip") String zip,
             @Param("address") String address,
             @Param("detailAddress") String detailAddress);

@@ -232,6 +232,18 @@
                 ELSE FALSE
             END AS currentHighestBidder,
             CASE
+                WHEN #{userId} IS NOT NULL THEN (
+                    SELECT highestBid.BID_TRD_METHOD_CD
+                    FROM BID highestBid
+                    WHERE highestBid.AUC_SN = a.AUC_SN
+                      AND highestBid.BID_STATUS_CD = 'BIDC0001'
+                      AND highestBid.USR_SN = #{userId}
+                    ORDER BY highestBid.BID_AMT DESC, highestBid.BID_SN DESC
+                    LIMIT 1
+                )
+                ELSE NULL
+            END AS myBidTradeMethodCode,
+            CASE
                 WHEN #{userId} IS NOT NULL
                  AND EXISTS (
                     SELECT 1
@@ -504,6 +516,21 @@
         WHERE AUC_SN = #{auctionId}
           AND BID_SN = #{bidId}
           AND BID_STATUS_CD = 'BIDC0001'
+    </update>
+
+    <update id="updateCurrentHighestBidTradeMethod">
+        UPDATE BID
+        SET BID_TRD_METHOD_CD = #{tradeMethodCode},
+            BID_UPDT_ID = #{actor},
+            BID_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND BID_SN = #{bidId}
+          AND USR_SN = #{userId}
+          AND BID_STATUS_CD = 'BIDC0001'
+          AND (
+              BID_TRD_METHOD_CD IS NULL
+              OR BID_TRD_METHOD_CD &lt;&gt; #{tradeMethodCode}
+          )
     </update>
 
     <insert id="insertBid" useGeneratedKeys="true" keyProperty="bidId" keyColumn="BID_SN">

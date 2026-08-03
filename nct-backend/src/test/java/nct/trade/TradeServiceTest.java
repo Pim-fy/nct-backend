@@ -110,7 +110,7 @@ class TradeServiceTest {
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
         when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
         when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
-                new BuyerAddressSnapshot("01234", "서울시 마포구", "101호"));
+                new BuyerAddressSnapshot("구매자", "01012345678", "01234", "서울시 마포구", "101호"));
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -130,6 +130,8 @@ class TradeServiceTest {
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.");
         verify(tradeMapper).insertDeliverySnapshot(
                 91L,
+                "구매자",
+                "01012345678",
                 "01234",
                 "서울시 마포구",
                 "101호");
@@ -393,7 +395,7 @@ class TradeServiceTest {
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
         when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0020");
         when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
-                new BuyerAddressSnapshot("01234", "서울시 마포구", "101호"));
+                new BuyerAddressSnapshot("구매자", "01012345678", "01234", "서울시 마포구", "101호"));
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -405,7 +407,8 @@ class TradeServiceTest {
         ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
         verify(tradeMapper).insertMaterialTrade(tradeCaptor.capture());
         assertThat(tradeCaptor.getValue().getTradeMethodCode()).isEqualTo("TRDC0009");
-        verify(tradeMapper).insertDeliverySnapshot(91L, "01234", "서울시 마포구", "101호");
+        verify(tradeMapper).insertDeliverySnapshot(
+                91L, "구매자", "01012345678", "01234", "서울시 마포구", "101호");
     }
 
     @Test
@@ -487,6 +490,8 @@ class TradeServiceTest {
                 anyLong(),
                 any(),
                 any(),
+                any(),
+                any(),
                 any());
     }
 
@@ -514,6 +519,8 @@ class TradeServiceTest {
                 .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
         verify(tradeMapper, never()).insertDeliverySnapshot(
                 anyLong(),
+                any(),
+                any(),
                 any(),
                 any(),
                 any());
@@ -602,11 +609,23 @@ class TradeServiceTest {
     void returnsCurrentUsersTradeDetail() {
         TradeDetailResponse detail = new TradeDetailResponse();
         detail.setTradeId(91L);
+        detail.setRecipientName("암호화된 구매자");
+        detail.setRecipientPhone("암호화된 연락처");
+        detail.setDeliveryAddress("암호화된 기본주소");
+        detail.setDeliveryDetailAddress("암호화된 상세주소");
         when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
+        when(fieldCryptoService.decrypt("암호화된 구매자")).thenReturn("구매자");
+        when(fieldCryptoService.decrypt("암호화된 연락처")).thenReturn("01012345678");
+        when(fieldCryptoService.decrypt("암호화된 기본주소")).thenReturn("서울시 마포구");
+        when(fieldCryptoService.decrypt("암호화된 상세주소")).thenReturn("101호");
 
         TradeDetailResponse result = tradeService.getMyMaterialTradeDetail(91L, 10L);
 
         assertThat(result).isSameAs(detail);
+        assertThat(result.getRecipientName()).isEqualTo("구매자");
+        assertThat(result.getRecipientPhone()).isEqualTo("01012345678");
+        assertThat(result.getDeliveryAddress()).isEqualTo("서울시 마포구 101호");
+        assertThat(result.getDeliveryDetailAddress()).isEqualTo("101호");
     }
 
     @Test

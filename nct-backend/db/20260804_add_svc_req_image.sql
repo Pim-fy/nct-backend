@@ -1,0 +1,24 @@
+-- 서비스 요청서 첨부사진 연결 테이블 (F-SVC-001, 담당자2)
+-- PRODUCT_IMAGE와 동일한 패턴: 등록 폼에서 넘어온 flSn 목록 순서를 그대로 정렬순서로 저장.
+-- 대표이미지 개념은 없음(위저드 사진첨부는 단순 다중 첨부, 협의 추가 항목 31번).
+
+CREATE TABLE SVC_REQ_IMAGE
+(
+    SVC_REQ_IMG_SN      BIGINT   NOT NULL AUTO_INCREMENT COMMENT '요청이미지일련번호',
+    SVC_REQ_SN          BIGINT   NOT NULL COMMENT '서비스요청일련번호',
+    FL_SN               BIGINT   NOT NULL COMMENT '파일일련번호',
+    SVC_REQ_IMG_SORT_NO INT      NOT NULL DEFAULT 0 COMMENT '정렬순서',
+    PRIMARY KEY (SVC_REQ_IMG_SN),
+    KEY IDX_SVC_REQ_IMAGE_SVC_REQ_SN (SVC_REQ_SN),
+    CONSTRAINT FK_SVC_REQ_IMAGE_SERVICE_REQUEST
+        FOREIGN KEY (SVC_REQ_SN)
+        REFERENCES SERVICE_REQUEST (SVC_REQ_SN)
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT FK_SVC_REQ_IMAGE_FILES
+        FOREIGN KEY (FL_SN)
+        REFERENCES FILES (FL_SN)
+        ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci
+  COMMENT = '서비스 요청서 첨부사진 연결 테이블';

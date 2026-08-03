@@ -15,10 +15,12 @@ import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
 
 @Service
@@ -27,6 +29,7 @@ public class ServiceRequestService {
 
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
+    private final SvcReqImageMapper svcReqImageMapper;
 
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
     private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
@@ -63,6 +66,7 @@ public class ServiceRequestService {
 
         serviceRequestMapper.saveServiceRequest(serviceRequest);
         saveItems(serviceRequest.getSvcReqSn(), req.getItems());
+        saveImages(serviceRequest.getSvcReqSn(), req.getFlSnList());
 
         return serviceRequestMapper.findServiceRequestById(serviceRequest.getSvcReqSn())
                 .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
@@ -100,6 +104,11 @@ public class ServiceRequestService {
             saveItems(svcReqSn, req.getItems());
         }
 
+        if (req.getFlSnList() != null) {
+            svcReqImageMapper.deleteBySvcReqSn(svcReqSn);
+            saveImages(svcReqSn, req.getFlSnList());
+        }
+
         return serviceRequestMapper.findServiceRequestById(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
     }
@@ -109,6 +118,7 @@ public class ServiceRequestService {
         ServiceRequestResponse response = serviceRequestMapper.findServiceRequestById(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
         response.setItems(svcReqItemMapper.findItemContentsBySvcReqSn(svcReqSn));
+        response.setImageList(svcReqImageMapper.findImagesBySvcReqSn(svcReqSn));
         return response;
     }
 
@@ -163,5 +173,20 @@ public class ServiceRequestService {
                     .build());
         }
         svcReqItemMapper.insertAll(rows);
+    }
+
+    // 업로드된 파일 id 목록을 SVC_REQ_IMAGE로 연결 — 대표이미지 개념 없이 순서만 정렬순서로 보존
+    private void saveImages(Long svcReqSn, List<Long> flSnList) {
+        if (flSnList == null || flSnList.isEmpty()) return;
+
+        List<SvcReqImage> images = new ArrayList<>();
+        for (int i = 0; i < flSnList.size(); i++) {
+            images.add(SvcReqImage.builder()
+                    .svcReqSn(svcReqSn)
+                    .flSn(flSnList.get(i))
+                    .svcReqImgSortNo(i)
+                    .build());
+        }
+        svcReqImageMapper.insertAll(images);
     }
 }

@@ -32,4 +32,8 @@ public class ServiceRequestRegisterRequest {
     // 요청 조건/체크리스트 — 항목 순서 = 정렬순서
     @Size(max = 20, message = "요청 항목은 최대 20개까지 등록할 수 있습니다.")
     private List<@Size(max = 500, message = "요청 항목은 500자 이내로 입력해주세요.") String> items;
+
+    // 첨부사진 flSn 목록 — 순서 = 정렬순서. null이면 수정 시 기존 이미지 유지, 등록 시 사진 없음
+    @Size(max = 5, message = "사진은 최대 5장까지 첨부할 수 있습니다.")
+    private List<Long> flSnList;
 }

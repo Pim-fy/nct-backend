@@ -67,4 +67,10 @@ public interface FileMapper {
      * - PORTFOLIO_FILE은 담당자7(제공자) 소유 — 읽기 전용 조회만, 변경 금지
      */
     int countPortfolioFileRefs(@Param("flSn") Long flSn);
+
+    /**
+     * 이 파일을 참조 중인 SVC_REQ_IMAGE 행 수 (F-SVC-001) — 삭제 가드에 OR로 합산
+     * - SVC_REQ_IMAGE는 담당자2(신현석) 소유
+     */
+    int countServiceRequestImageRefs(@Param("flSn") Long flSn);
 }

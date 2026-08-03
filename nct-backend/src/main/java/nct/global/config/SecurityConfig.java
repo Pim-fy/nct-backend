@@ -151,10 +151,6 @@ public class SecurityConfig {
                     .permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
                     .permitAll()
-                // 담당자 2 · F-COM-002/F-SVC: 공개 서비스 요청 목록·상세는 비로그인 탐색도 허용.
-                // /me(내 목록)는 컨트롤러 @PreAuthorize("isAuthenticated()")로 별도 보호.
-                .requestMatchers(HttpMethod.GET, "/api/service-requests", "/api/service-requests/*")
-                    .permitAll()
                 // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지·리뷰 사진은 비로그인 탐색에서도 보여야 한다.
                 //   업로드/삭제/교체(POST·DELETE·PUT)는 인증 필요라 GET만 연다.
                 //   (properties의 permit-all-paths는 HTTP 메서드 구분이 없어 여기 Java에서 지정)

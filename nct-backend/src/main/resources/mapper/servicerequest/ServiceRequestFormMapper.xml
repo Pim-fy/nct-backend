@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.servicerequest.mapper.ServiceRequestFormMapper">
+
+    <!-- 담당자 7: F-SVC-002 동적 폼 정의 읽기 전용 SQL. -->
+
+    <sql id="formHeaderColumns">
+        F.SVC_REQ_FORM_TMPL_SN AS formTemplateSn,
+        F.CAT_SN AS catSn,
+        C.CAT_NM AS catNm,
+        F.FORM_VER_NO AS formVersion,
+        FIRST_STEP.SVC_REQ_STEP_KEY AS firstStepKey,
+        F.FORM_SUBTTL AS subtitle,
+        CAST(F.FORM_UI_META_JSON AS CHAR) AS uiMetaJson
+    </sql>
+
+    <select id="findActiveFormHeaders" resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
+        /* ServiceRequestFormMapper.findActiveFormHeaders */
+        SELECT <include refid="formHeaderColumns" />
+          FROM SVC_REQ_FORM_TMPL F
+          JOIN CATEGORY C ON C.CAT_SN = F.CAT_SN
+          JOIN SVC_REQ_STEP_DEF FIRST_STEP
+            ON FIRST_STEP.SVC_REQ_FORM_TMPL_SN = F.SVC_REQ_FORM_TMPL_SN
+           AND FIRST_STEP.SVC_REQ_STEP_SN = F.FIRST_STEP_SN
+         WHERE F.FORM_ACTV_YN = 'Y'
+           AND F.FORM_USE_YN = 'Y'
+           AND C.CAT_USE_YN = 'Y'
+         ORDER BY C.CAT_SORT_NO, C.CAT_SN
+    </select>
+
+    <select id="findActiveFormHeader" resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
+        /* ServiceRequestFormMapper.findActiveFormHeader */
+        SELECT <include refid="formHeaderColumns" />
+          FROM SVC_REQ_FORM_TMPL F
+          JOIN CATEGORY C ON C.CAT_SN = F.CAT_SN
+          JOIN SVC_REQ_STEP_DEF FIRST_STEP
+            ON FIRST_STEP.SVC_REQ_FORM_TMPL_SN = F.SVC_REQ_FORM_TMPL_SN
+           AND FIRST_STEP.SVC_REQ_STEP_SN = F.FIRST_STEP_SN
+         WHERE F.CAT_SN = #{catSn}
+           AND F.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND F.FORM_ACTV_YN = 'Y'
+           AND F.FORM_USE_YN = 'Y'
+           AND C.CAT_USE_YN = 'Y'
+    </select>
+
+    <select id="findFormHeaderByTemplateSn" resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
+        /* ServiceRequestFormMapper.findFormHeaderByTemplateSn */
+        SELECT <include refid="formHeaderColumns" />
+          FROM SVC_REQ_FORM_TMPL F
+          JOIN CATEGORY C ON C.CAT_SN = F.CAT_SN
+          JOIN SVC_REQ_STEP_DEF FIRST_STEP
+            ON FIRST_STEP.SVC_REQ_FORM_TMPL_SN = F.SVC_REQ_FORM_TMPL_SN
+           AND FIRST_STEP.SVC_REQ_STEP_SN = F.FIRST_STEP_SN
+         WHERE F.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND F.FORM_USE_YN = 'Y'
+    </select>
+
+    <select id="findSteps" resultType="nct.servicerequest.dto.ServiceRequestFormStep">
+        /* ServiceRequestFormMapper.findSteps */
+        SELECT S.SVC_REQ_STEP_SN AS stepSn,
+               S.SVC_REQ_STEP_KEY AS stepKey,
+               S.SVC_REQ_STEP_TTL AS title,
+               S.SVC_REQ_STEP_EXPLN AS description,
+               S.SVC_REQ_STEP_TYPE_CD AS type,
+               N.SVC_REQ_STEP_KEY AS nextStepKey,
+               S.SVC_REQ_STEP_SNSTV_YN AS sensitiveYn,
+               S.SVC_REQ_STEP_PBLC_YN AS publicYn,
+               CAST(S.SVC_REQ_STEP_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_STEP_DEF S
+          LEFT JOIN SVC_REQ_STEP_DEF N
+            ON N.SVC_REQ_FORM_TMPL_SN = S.SVC_REQ_FORM_TMPL_SN
+           AND N.SVC_REQ_STEP_SN = S.NEXT_STEP_SN
+         WHERE S.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND S.SVC_REQ_STEP_USE_YN = 'Y'
+         ORDER BY S.SVC_REQ_STEP_SORT_NO, S.SVC_REQ_STEP_SN
+    </select>
+
+    <select id="findStepOptions" resultType="nct.servicerequest.dto.ServiceRequestFormOption">
+        /* ServiceRequestFormMapper.findStepOptions */
+        SELECT O.SVC_REQ_STEP_OPT_SN AS optionSn,
+               O.SVC_REQ_STEP_SN AS stepSn,
+               O.SVC_REQ_STEP_OPT_KEY AS optionKey,
+               O.SVC_REQ_STEP_OPT_VAL AS value,
+               O.SVC_REQ_STEP_OPT_LABEL AS label,
+               O.SVC_REQ_STEP_OPT_SUBTTL AS subtitle,
+               N.SVC_REQ_STEP_KEY AS nextStepKey,
+               CAST(O.SVC_REQ_STEP_OPT_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_STEP_OPT_DEF O
+          LEFT JOIN SVC_REQ_STEP_DEF N
+            ON N.SVC_REQ_FORM_TMPL_SN = O.SVC_REQ_FORM_TMPL_SN
+           AND N.SVC_REQ_STEP_SN = O.NEXT_STEP_SN
+         WHERE O.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND O.SVC_REQ_STEP_OPT_USE_YN = 'Y'
+         ORDER BY O.SVC_REQ_STEP_SN, O.SVC_REQ_STEP_OPT_SORT_NO, O.SVC_REQ_STEP_OPT_SN
+    </select>
+
+    <select id="findFields" resultType="nct.servicerequest.dto.ServiceRequestFormField">
+        /* ServiceRequestFormMapper.findFields */
+        SELECT D.SVC_REQ_FIELD_SN AS fieldSn,
+               D.SVC_REQ_STEP_SN AS stepSn,
+               D.SVC_REQ_FIELD_KEY AS fieldKey,
+               D.SVC_REQ_FIELD_LABEL AS label,
+               D.SVC_REQ_FIELD_TYPE_CD AS type,
+               D.SVC_REQ_FIELD_PH AS placeholder,
+               D.SVC_REQ_FIELD_EXPLN AS description,
+               D.SVC_REQ_FIELD_REQ_YN AS requiredYn,
+               D.SVC_REQ_FIELD_DIGIT_YN AS requireDigitYn,
+               D.SVC_REQ_FIELD_SNSTV_YN AS sensitiveYn,
+               D.SVC_REQ_FIELD_PBLC_YN AS publicYn,
+               D.SVC_REQ_FIELD_MAX_CNT AS maxSelections,
+               CAST(D.SVC_REQ_FIELD_SORT_NO AS SIGNED) AS sortNo,
+               CAST(D.SVC_REQ_FIELD_UI_META_JSON AS CHAR) AS uiMetaJson
+          FROM SVC_REQ_FIELD_DEF D
+         WHERE D.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND D.SVC_REQ_FIELD_USE_YN = 'Y'
+         ORDER BY D.SVC_REQ_STEP_SN, D.SVC_REQ_FIELD_SORT_NO, D.SVC_REQ_FIELD_SN
+    </select>
+
+    <select id="findFieldOptions" resultType="nct.servicerequest.dto.ServiceRequestFormOption">
+        /* ServiceRequestFormMapper.findFieldOptions */
+        SELECT O.SVC_REQ_FIELD_OPT_SN AS optionSn,
+               O.SVC_REQ_FIELD_SN AS fieldSn,
+               O.SVC_REQ_FIELD_OPT_KEY AS optionKey,
+               O.SVC_REQ_FIELD_OPT_VAL AS value,
+               O.SVC_REQ_FIELD_OPT_LABEL AS label,
+               CAST(O.SVC_REQ_FIELD_OPT_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_FIELD_OPT_DEF O
+         WHERE O.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND O.SVC_REQ_FIELD_OPT_USE_YN = 'Y'
+         ORDER BY O.SVC_REQ_FIELD_SN, O.SVC_REQ_FIELD_OPT_SORT_NO, O.SVC_REQ_FIELD_OPT_SN
+    </select>
+
+    <select id="findFieldRules" resultType="nct.servicerequest.dto.ServiceRequestFormRule">
+        /* ServiceRequestFormMapper.findFieldRules */
+        SELECT R.SVC_REQ_FIELD_RULE_SN AS ruleSn,
+               R.TARGET_FIELD_SN AS targetFieldSn,
+               SOURCE_STEP.SVC_REQ_STEP_KEY AS sourceStepKey,
+               SOURCE_FIELD.SVC_REQ_FIELD_KEY AS sourceFieldKey,
+               SOURCE_FIELD.SVC_REQ_FIELD_LABEL AS sourceFieldLabel,
+               COALESCE(STEP_OPT.SVC_REQ_STEP_OPT_VAL, FIELD_OPT.SVC_REQ_FIELD_OPT_VAL) AS compareValue,
+               R.RULE_OPERATOR_CD AS operator,
+               R.RULE_ACTION_CD AS action,
+               CAST(R.SVC_REQ_FIELD_RULE_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_FIELD_RULE_DEF R
+          LEFT JOIN SVC_REQ_STEP_DEF SOURCE_STEP
+            ON SOURCE_STEP.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND SOURCE_STEP.SVC_REQ_STEP_SN = R.SOURCE_STEP_SN
+          LEFT JOIN SVC_REQ_FIELD_DEF SOURCE_FIELD
+            ON SOURCE_FIELD.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND SOURCE_FIELD.SVC_REQ_FIELD_SN = R.SOURCE_FIELD_SN
+          LEFT JOIN SVC_REQ_STEP_OPT_DEF STEP_OPT
+            ON STEP_OPT.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND STEP_OPT.SVC_REQ_STEP_OPT_SN = R.COMPARE_STEP_OPT_SN
+          LEFT JOIN SVC_REQ_FIELD_OPT_DEF FIELD_OPT
+            ON FIELD_OPT.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND FIELD_OPT.SVC_REQ_FIELD_OPT_SN = R.COMPARE_FIELD_OPT_SN
+         WHERE R.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND R.SVC_REQ_FIELD_RULE_USE_YN = 'Y'
+         ORDER BY R.SVC_REQ_FIELD_RULE_SORT_NO, R.SVC_REQ_FIELD_RULE_SN
+    </select>
+
+</mapper>

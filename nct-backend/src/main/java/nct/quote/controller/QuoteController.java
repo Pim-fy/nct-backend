@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,12 +40,10 @@ public class QuoteController {
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     @PostMapping
     public ResponseEntity<ApiResponse<QuoteCreateResponse>> submitQuote(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
+            Authentication authentication,
             @Valid @RequestBody QuoteSubmitRequest request) {
-
-        Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.status(201).body(ApiResponse.created(
-                quoteService.submitQuote(usrSn, request)));
+                quoteService.submitQuote(authentication, request)));
     }
 
     /** F-SVC-006: 견적 수정 (3회 제한) */

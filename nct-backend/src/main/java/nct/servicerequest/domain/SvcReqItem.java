@@ -7,8 +7,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * [서비스 요청 - SVC_REQ_ITEM 행 모델] (F-SVC-001)
- * - 요청서 하나에 여러 줄의 요청 조건/체크리스트 항목이 붙는다.
- * - 등록 폼에서 넘어온 문자열 목록의 순서를 그대로 정렬순서(svcReqItmSortNo)로 쓴다.
+ * - 기존 문자열 행과 F-SVC-002 구조화 답변 행을 함께 표현한다.
  */
 @Getter
 @Builder
@@ -18,6 +17,15 @@ public class SvcReqItem {
 
     private Long svcReqItmSn;
     private Long svcReqSn;
+    private Long formTemplateSn;
+    private Long stepSn;
+    private Long fieldSn;
+    private Long stepOptionSn;
+    private Long fieldOptionSn;
     private String svcReqItmCn;
+    private String value;
+    private String encryptedValue;
+    private String structuredYn;
+    private String publicYn;
     private Integer svcReqItmSortNo;
 }

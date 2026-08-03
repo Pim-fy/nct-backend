@@ -23,11 +23,17 @@ public interface ServiceRequestMapper {
 
     Optional<ServiceRequestResponse> findServiceRequestById(@Param("svcReqSn") Long svcReqSn);
 
+    Optional<ServiceRequestResponse> findPublicServiceRequestById(@Param("svcReqSn") Long svcReqSn);
+
+    List<ServiceRequestResponse> findServiceRequestTitles(@Param("svcReqSnList") List<Long> svcReqSnList);
+
     List<ServiceRequestResponse> findMyServiceRequests(@Param("usrSn") Long usrSn, @Param("filterType") String filterType);
 
     Optional<ServiceRequest> findServiceRequestEntityById(@Param("svcReqSn") Long svcReqSn);
 
-    void updateServiceRequest(ServiceRequest serviceRequest);
+    Optional<ServiceRequest> findServiceRequestEntityByIdForUpdate(@Param("svcReqSn") Long svcReqSn);
+
+    int updateServiceRequest(ServiceRequest serviceRequest);
 
     int closeServiceRequest(@Param("svcReqSn") Long svcReqSn, @Param("usrSn") Long usrSn, @Param("updtId") String updtId);
 

@@ -1,7 +1,9 @@
 package nct.quote.service;
 
 import java.util.List;
+import java.util.Map;
 
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -9,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.dto.QuoteCreateResponse;
@@ -18,6 +21,8 @@ import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.servicerequest.port.ServiceRequestQuoteReader;
+import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 
 @Service
 @RequiredArgsConstructor
@@ -31,19 +36,19 @@ public class QuoteService {
     private static final int MAX_REVISE_CNT = 3;
 
     private final QuoteMapper quoteMapper;
+    private final ServiceRequestQuoteReader serviceRequestQuoteReader;
+    private final ProviderAccessGuard providerAccessGuard;
 
     /** F-SVC-005: 견적 제출. 자기거래 차단 포함. */
     @Transactional
-    public QuoteCreateResponse submitQuote(Long usrSn, QuoteSubmitRequest request) {
-        if (usrSn == null || usrSn <= 0 || request == null) {
+    public QuoteCreateResponse submitQuote(Authentication authentication, QuoteSubmitRequest request) {
+        if (request == null) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
-        Long requesterUsrSn = quoteMapper.findRequesterUsrSn(request.svcReqSn());
-        if (requesterUsrSn == null) {
-            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
-        }
-        if (usrSn.equals(requesterUsrSn)) {
+        ServiceRequestQuoteTarget target = serviceRequestQuoteReader.requireOpenForQuote(request.svcReqSn());
+        Long usrSn = providerAccessGuard.requireServiceAccess(authentication, target.categorySn());
+        if (usrSn.equals(target.requesterUsrSn())) {
             throw new CustomException(ErrorCode.QUOTE_SELF_TRADE);
         }
 
@@ -139,6 +144,12 @@ public class QuoteService {
         }
         int offset = (page - 1) * size;
         List<QuoteResponse> content = quoteMapper.findMyQuotes(usrSn, offset, size);
+        List<Long> svcReqSnList = content.stream()
+                .map(QuoteResponse::getSvcReqSn)
+                .distinct()
+                .toList();
+        Map<Long, String> titles = serviceRequestQuoteReader.findTitles(svcReqSnList);
+        content.forEach(quote -> quote.setSvcReqTitle(titles.get(quote.getSvcReqSn())));
         int total = quoteMapper.countMyQuotes(usrSn);
         return PageResponse.<QuoteResponse>builder()
                 .content(content)
@@ -155,14 +166,8 @@ public class QuoteService {
         if (usrSn == null || usrSn <= 0 || svcReqSn == null || svcReqSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        Long requesterUsrSn = quoteMapper.findRequesterUsrSn(svcReqSn);
-        if (requesterUsrSn == null) {
-            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
-        }
-        if (!usrSn.equals(requesterUsrSn)) {
-            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
-        }
-        return quoteMapper.findQuotesBySvcReqSn(usrSn, svcReqSn);
+        serviceRequestQuoteReader.requireOwner(svcReqSn, usrSn);
+        return quoteMapper.findQuotesBySvcReqSn(svcReqSn);
     }
 
     /** 견적 수정 이력 조회. 본인 견적만 허용. */

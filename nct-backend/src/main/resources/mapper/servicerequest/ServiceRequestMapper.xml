@@ -8,6 +8,7 @@
         <id     property="svcReqSn"       column="SVC_REQ_SN"       />
         <result property="usrSn"          column="USR_SN"           />
         <result property="catSn"          column="CAT_SN"           />
+        <result property="formTemplateSn" column="SVC_REQ_FORM_TMPL_SN" />
         <result property="catNm"          column="CAT_NM"           />
         <result property="svcReqTtl"      column="SVC_REQ_TTL"      />
         <result property="svcReqCn"       column="SVC_REQ_CN"       />
@@ -21,6 +22,7 @@
         <id     property="svcReqSn"       column="SVC_REQ_SN"       />
         <result property="usrSn"          column="USR_SN"           />
         <result property="catSn"          column="CAT_SN"           />
+        <result property="formTemplateSn" column="SVC_REQ_FORM_TMPL_SN" />
         <result property="svcReqTtl"      column="SVC_REQ_TTL"      />
         <result property="svcReqCn"       column="SVC_REQ_CN"       />
         <result property="svcReqBdgtAmt"  column="SVC_REQ_BDGT_AMT" />
@@ -36,17 +38,17 @@
     <insert id="saveServiceRequest" useGeneratedKeys="true" keyProperty="svcReqSn">
         /* ServiceRequestMapper.saveServiceRequest */
         INSERT INTO SERVICE_REQUEST
-            (USR_SN, CAT_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
+            (USR_SN, CAT_SN, SVC_REQ_FORM_TMPL_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
              SVC_REQ_REG_ID, SVC_REQ_UPDT_ID)
         VALUES
-            (#{usrSn}, #{catSn}, #{svcReqTtl}, #{svcReqCn}, #{svcReqBdgtAmt}, #{svcReqStatusCd},
+            (#{usrSn}, #{catSn}, #{formTemplateSn}, #{svcReqTtl}, #{svcReqCn}, #{svcReqBdgtAmt}, #{svcReqStatusCd},
              #{svcReqRegId}, #{svcReqUpdtId})
     </insert>
 
     <!-- ── 요청서 단건 조회 (카테고리명 JOIN) ──── -->
     <select id="findServiceRequestById" resultMap="ServiceRequestResponseMap">
         /* ServiceRequestMapper.findServiceRequestById */
-        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, c.CAT_NM,
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
                s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
           FROM SERVICE_REQUEST s
@@ -55,11 +57,36 @@
            AND s.SVC_REQ_USE_YN = 'Y'
     </select>
 
-    <!-- ── 공개 요청서 검색 (F-COM-002 · permit-all) ──────────────────── -->
+    <!-- 제공자 상세는 현재 견적 접수 중인 공개 상태만 조회한다. -->
+    <select id="findPublicServiceRequestById" resultMap="ServiceRequestResponseMap">
+        /* ServiceRequestMapper.findPublicServiceRequestById */
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
+               s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+         WHERE s.SVC_REQ_SN = #{svcReqSn}
+           AND s.SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND s.SVC_REQ_USE_YN = 'Y'
+    </select>
+
+    <!-- 견적 목록 표시용 제목 projection. 견적 Mapper가 SERVICE_REQUEST를 직접 JOIN하지 않는다. -->
+    <select id="findServiceRequestTitles" resultMap="ServiceRequestResponseMap">
+        /* ServiceRequestMapper.findServiceRequestTitles */
+        SELECT SVC_REQ_SN, SVC_REQ_TTL
+          FROM SERVICE_REQUEST
+         WHERE SVC_REQ_USE_YN = 'Y'
+           AND SVC_REQ_SN IN
+        <foreach collection="svcReqSnList" item="svcReqSn" open="(" separator="," close=")">
+            #{svcReqSn}
+        </foreach>
+    </select>
+
+    <!-- ── 제공자 전용 공개 상태 요청서 검색 (F-COM-002) ──────────────── -->
     <!-- sort: latest(최신등록순) | budget(예산높은순) -->
     <select id="searchServiceRequests" resultMap="ServiceRequestResponseMap">
         /* ServiceRequestMapper.searchServiceRequests */
-        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, c.CAT_NM,
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
                s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
           FROM SERVICE_REQUEST s
@@ -90,7 +117,7 @@
     <!-- filterType: DRAFT(임시저장) | OPEN(공개) | MATCHED(매칭완료) | CLOSED(종료) | null(전체) -->
     <select id="findMyServiceRequests" resultMap="ServiceRequestResponseMap">
         /* ServiceRequestMapper.findMyServiceRequests */
-        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, c.CAT_NM,
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
                s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
           FROM SERVICE_REQUEST s
@@ -119,6 +146,7 @@
         /* ServiceRequestMapper.updateServiceRequest */
         UPDATE SERVICE_REQUEST
            SET CAT_SN            = #{catSn},
+               SVC_REQ_FORM_TMPL_SN = #{formTemplateSn},
                SVC_REQ_TTL       = #{svcReqTtl},
                SVC_REQ_CN        = #{svcReqCn},
                SVC_REQ_BDGT_AMT  = #{svcReqBdgtAmt},
@@ -126,6 +154,7 @@
                SVC_REQ_UPDT_ID   = #{svcReqUpdtId}
          WHERE SVC_REQ_SN  = #{svcReqSn}
            AND USR_SN      = #{usrSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0001'
            AND SVC_REQ_USE_YN = 'Y'
     </update>
 
@@ -143,10 +172,20 @@
     <!-- ── 소유자 확인용 엔티티 조회 ──────────────────────── -->
     <select id="findServiceRequestEntityById" resultMap="ServiceRequestEntityMap">
         /* ServiceRequestMapper.findServiceRequestEntityById */
-        SELECT SVC_REQ_SN, USR_SN, CAT_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
+        SELECT SVC_REQ_SN, USR_SN, CAT_SN, SVC_REQ_FORM_TMPL_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
                SVC_REQ_USE_YN, SVC_REQ_REG_DT, SVC_REQ_UPDT_DT, SVC_REQ_REG_ID, SVC_REQ_UPDT_ID
           FROM SERVICE_REQUEST
          WHERE SVC_REQ_SN = #{svcReqSn}
+    </select>
+
+    <!-- 담당자 7: 초안 수정 트랜잭션 동안 상태 행을 잠가 공개 전환과 답변 교체의 경합을 막는다. -->
+    <select id="findServiceRequestEntityByIdForUpdate" resultMap="ServiceRequestEntityMap">
+        /* ServiceRequestMapper.findServiceRequestEntityByIdForUpdate */
+        SELECT SVC_REQ_SN, USR_SN, CAT_SN, SVC_REQ_FORM_TMPL_SN, SVC_REQ_TTL, SVC_REQ_CN, SVC_REQ_BDGT_AMT, SVC_REQ_STATUS_CD,
+               SVC_REQ_USE_YN, SVC_REQ_REG_DT, SVC_REQ_UPDT_DT, SVC_REQ_REG_ID, SVC_REQ_UPDT_ID
+          FROM SERVICE_REQUEST
+         WHERE SVC_REQ_SN = #{svcReqSn}
+         FOR UPDATE
     </select>
 
     <!-- ── 논리 삭제 ─────────────────────────────────────── -->

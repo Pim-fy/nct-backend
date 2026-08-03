@@ -19,4 +19,6 @@ public interface SvcReqImageMapper {
 
     /** 요청서 이미지 목록 조회 — 상세 조회·임시저장 복원용 */
     List<SvcReqImageItem> findImagesBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
+
+    int countImageLink(@Param("svcReqSn") Long svcReqSn, @Param("flSn") Long flSn);
 }

@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.trade.dto.TradeDetailResponse;
+import nct.trade.dto.ServiceTradeCompletionRequest;
 import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
@@ -117,9 +118,11 @@ public class TradeController {
     @PostMapping("/{tradeId}/service-completion-requests")
     public ResponseEntity<ApiResponse<Void>> requestServiceCompletion(
             @PathVariable("tradeId") long tradeId,
+            @Valid @RequestBody ServiceTradeCompletionRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        tradeService.requestServiceCompletion(tradeId, userDetails.getMember().getId());
+        tradeService.requestServiceCompletion(
+                tradeId, userDetails.getMember().getId(), request.getCompletionMemo());
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

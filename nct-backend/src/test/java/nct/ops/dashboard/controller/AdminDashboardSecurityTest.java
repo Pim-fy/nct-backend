@@ -46,12 +46,14 @@ class AdminDashboardSecurityTest {
     void allowsAdmin() throws Exception {
         AdminDashboardSummaryResponse response = new AdminDashboardSummaryResponse();
         response.setActiveUserCount(12L);
+        response.setPendingExchangeCount(2L);
         when(adminDashboardService.getSummary()).thenReturn(response);
 
         mockMvc.perform(get("/api/admin/dashboard/summary")
                         .with(user("admin@example.com").authorities(() -> "ROLE_ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"))
-                .andExpect(jsonPath("$.data.activeUserCount").value(12));
+                .andExpect(jsonPath("$.data.activeUserCount").value(12))
+                .andExpect(jsonPath("$.data.pendingExchangeCount").value(2));
     }
 }

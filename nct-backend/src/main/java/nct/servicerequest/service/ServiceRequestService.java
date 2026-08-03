@@ -2,6 +2,7 @@ package nct.servicerequest.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,15 @@ public class ServiceRequestService {
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
 
+    // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
+    private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
+
+    private void validateClientStatusCd(String statusCd) {
+        if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "허용되지 않는 요청서 상태값입니다.");
+        }
+    }
+
     @Transactional(readOnly = true)
     public PagedResponse<ServiceRequestResponse> searchServiceRequests(
             String keyword, Long categorySn, Long minBudget, Long maxBudget, String sort, int page, int size) {
@@ -39,6 +49,7 @@ public class ServiceRequestService {
     @Transactional
     public ServiceRequestResponse registerServiceRequest(Long usrSn, ServiceRequestRegisterRequest req) {
         String statusCd = (req.getSvcReqStatusCd() != null) ? req.getSvcReqStatusCd() : "SVCC0002";
+        validateClientStatusCd(statusCd);
         ServiceRequest serviceRequest = ServiceRequest.builder()
                 .usrSn(usrSn)
                 .catSn(req.getCatSn())
@@ -70,6 +81,7 @@ public class ServiceRequestService {
         }
 
         String statusCd = (req.getSvcReqStatusCd() != null) ? req.getSvcReqStatusCd() : "SVCC0002";
+        validateClientStatusCd(statusCd);
         ServiceRequest updated = ServiceRequest.builder()
                 .svcReqSn(svcReqSn)
                 .usrSn(usrSn)

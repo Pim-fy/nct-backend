@@ -160,6 +160,16 @@
          WHERE PRD_SN = #{prdSn}
     </select>
 
+    <!-- ── 활성 상품 조회수 조회 — 존재/비활성 판정 겸용 ─────────── -->
+    <select id="findActiveViewCount" resultType="java.lang.Long">
+        /* ProductMapper.findActiveViewCount */
+        SELECT PRD_VIEW_CNT
+          FROM PRODUCT
+         WHERE PRD_SN = #{prdSn}
+           AND PRD_USE_YN = 'Y'
+           AND PRD_STATUS_CD != 'PRDC0004'
+    </select>
+
     <!-- ── 조회수 증가 ────────────────────────────────────────── -->
     <update id="incrementViewCount">
         /* ProductMapper.incrementViewCount */
@@ -212,6 +222,16 @@
           FROM BID b
           JOIN AUCTION a ON a.AUC_SN = b.AUC_SN
          WHERE a.PRD_SN = #{prdSn}
+    </select>
+
+    <!-- ── 삭제 전 가드: 유찰(AUCC0004)·취소(AUCC0005)로 종결되지 않은 경매가 있으면 true — AUCTION은 조회만(기존 합의된 방식) ─ -->
+    <select id="existsBlockingAuction" resultType="boolean">
+        /* ProductMapper.existsBlockingAuction */
+        SELECT EXISTS (
+            SELECT 1 FROM AUCTION
+             WHERE PRD_SN = #{prdSn}
+               AND AUC_STATUS_CD NOT IN ('AUCC0004', 'AUCC0005')
+        )
     </select>
 
 </mapper>

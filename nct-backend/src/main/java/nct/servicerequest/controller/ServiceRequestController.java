@@ -79,13 +79,13 @@ public class ServiceRequestController {
     /** 공개 요청서 검색 (F-COM-002 · 동민씨 서비스 탐색·홈 큐레이션용 Reader 계약) */
     @GetMapping
     public ResponseEntity<ApiResponse<PagedResponse<ServiceRequestResponse>>> searchServiceRequests(
-            @RequestParam(required = false)     String keyword,
-            @RequestParam(required = false)     Long   categorySn,
-            @RequestParam(required = false)     Long   minBudget,
-            @RequestParam(required = false)     Long   maxBudget,
-            @RequestParam(defaultValue = "latest") String sort,
-            @RequestParam(defaultValue = "1")   int    page,
-            @RequestParam(defaultValue = "10")  int    size) {
+            @RequestParam(name = "keyword", required = false)     String keyword,
+            @RequestParam(name = "categorySn", required = false)  Long   categorySn,
+            @RequestParam(name = "minBudget", required = false)   Long   minBudget,
+            @RequestParam(name = "maxBudget", required = false)   Long   maxBudget,
+            @RequestParam(name = "sort", defaultValue = "latest") String sort,
+            @RequestParam(name = "page", defaultValue = "1")      int    page,
+            @RequestParam(name = "size", defaultValue = "10")     int    size) {
 
         PagedResponse<ServiceRequestResponse> response =
                 serviceRequestService.searchServiceRequests(keyword, categorySn, minBudget, maxBudget, sort, page, size);
@@ -97,9 +97,9 @@ public class ServiceRequestController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PagedResponse<ServiceRequestResponse>>> getMyServiceRequests(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam(defaultValue = "1")  int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false)    String filterType) {
+            @RequestParam(name = "page", defaultValue = "1")  int page,
+            @RequestParam(name = "size", defaultValue = "10") int size,
+            @RequestParam(name = "filterType", required = false) String filterType) {
 
         Long usrSn = userDetails.getMember().getId();
         PagedResponse<ServiceRequestResponse> response = serviceRequestService.getMyServiceRequests(usrSn, page, size, filterType);

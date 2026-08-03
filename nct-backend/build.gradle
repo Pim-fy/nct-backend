@@ -13,6 +13,14 @@ java {
 	}
 }
 
+// IDE·실행 방식(IntelliJ/VSCode/gradle 커맨드)에 따라 컴파일러가 메서드 파라미터 이름을
+// 바이트코드에 남기는지 여부가 갈려서, @RequestParam 등에 name을 안 붙이면 특정 환경에서만
+// "parameter name information not available via reflection" 500 에러가 나는 문제가 있었다
+// (2026-07-30). 실행 환경과 무관하게 항상 남도록 고정.
+tasks.withType(JavaCompile).configureEach {
+	options.compilerArgs << '-parameters'
+}
+
 repositories {
 	mavenCentral()
 }

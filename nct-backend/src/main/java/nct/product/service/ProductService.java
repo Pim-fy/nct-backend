@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -33,10 +34,15 @@ import nct.product.dto.ProductCommentResponse;
 import nct.product.dto.InquiryReportTarget;
 import nct.product.dto.ProductInquiryRequest;
 import nct.product.dto.ProductInquiryResponse;
+import nct.product.domain.ProductTradeRegion;
+import nct.product.dto.ProductTradeRegionItem;
+import nct.product.dto.ProductViewResponse;
 import nct.product.mapper.BannedKeywordMapper;
 import nct.product.mapper.ProductCommentMapper;
 import nct.product.mapper.ProductImageMapper;
 import nct.product.mapper.ProductMapper;
+import nct.product.mapper.ProductTradeRegionMapper;
+import nct.product.mapper.ProductViewLogMapper;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.service.TradeService;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +53,16 @@ public class ProductService {
 
     // 판매자 답변 등록 후 수정 가능한 시간(분) — F-AUC-012
     private static final long REPLY_EDIT_WINDOW_MINUTES = 10;
+    // 구매자 문의 등록 쿨타임(시간) — F-AUC-012
+    private static final long INQUIRY_COOLDOWN_HOURS = 6;
+    // 클라이언트가 직접 지정할 수 있는 상품 상태 — 종료(PRDC0003)·삭제(PRDC0004)는 서버 내부 전이만 허용
+    private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("PRDC0001", "PRDC0002");
+
+    private void validateClientStatusCd(String statusCd) {
+        if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "허용되지 않는 상품 상태값입니다.");
+        }
+    }
 
     private final ProductMapper productMapper;
     private final ReferenceDataService referenceDataService;
@@ -55,6 +71,8 @@ public class ProductService {
     private final TradeService tradeService;
     private final BannedKeywordMapper bannedKeywordMapper;
     private final ProductCommentMapper productCommentMapper;
+    private final ProductTradeRegionMapper productTradeRegionMapper;
+    private final ProductViewLogMapper productViewLogMapper;
     private final NotificationService notificationService;
 
     @Transactional
@@ -64,6 +82,7 @@ public class ProductService {
         }
         validateNoBannedKeyword(req.getPrdNm());
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
+        validateClientStatusCd(statusCd);
         boolean isDraft = "PRDC0001".equals(statusCd);
         Product product = Product.builder()
                 .usrSn(usrSn)
@@ -87,6 +106,7 @@ public class ProductService {
 
         productMapper.saveProduct(product);
         saveImages(product.getPrdSn(), req.getFlSnList());
+        saveTradeRegions(product.getPrdSn(), req.getTradeRegions());
 
         if ("PRDC0002".equals(statusCd) && req.getAucEndDt() != null) {
             auctionService.createAuctionForProduct(
@@ -119,6 +139,7 @@ public class ProductService {
         validateNoBannedKeyword(req.getPrdNm());
 
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
+        validateClientStatusCd(statusCd);
         boolean isDraft = "PRDC0001".equals(statusCd);
         Product updated = Product.builder()
                 .prdSn(prdSn)
@@ -144,6 +165,9 @@ public class ProductService {
             productImageMapper.deleteByPrdSn(prdSn);
             saveImages(prdSn, req.getFlSnList());
         }
+
+        productTradeRegionMapper.deleteByPrdSn(prdSn);
+        saveTradeRegions(prdSn, req.getTradeRegions());
 
         if ("PRDC0002".equals(statusCd) && req.getAucEndDt() != null) {
             auctionService.createAuctionForProduct(
@@ -212,11 +236,27 @@ public class ProductService {
         productImageMapper.insertAll(images);
     }
 
+    // 희망 거래지역 저장 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)에서만 프론트가 값을 보내지만,
+    // 어떤 거래방식이든 보낸 값 그대로 저장한다(검증은 요청 시점 @Size(max=5)로 충분)
+    private void saveTradeRegions(Long prdSn, List<ProductTradeRegionItem> tradeRegions) {
+        if (tradeRegions == null || tradeRegions.isEmpty()) return;
+
+        List<ProductTradeRegion> regions = tradeRegions.stream()
+                .map(r -> ProductTradeRegion.builder()
+                        .prdSn(prdSn)
+                        .rgnCd(r.getCode())
+                        .rgnNm(r.getName())
+                        .build())
+                .collect(Collectors.toList());
+        productTradeRegionMapper.insertAll(regions);
+    }
+
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long prdSn) {
         ProductResponse product = productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
         product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
+        product.setTradeRegions(productTradeRegionMapper.findByPrdSn(prdSn));
         return product;
     }
 
@@ -296,9 +336,26 @@ public class ProductService {
         return productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE);
     }
 
+    /**
+     * 상품 조회수 증가 (F-AUC-006) — 옥동민(5) 경매 상세 조회 시 호출.
+     * 동일 방문자(로그인=usrSn, 비로그인=익명 쿠키)가 동일 상품을 24시간 내 재조회하면 증가시키지 않는다.
+     * 중복 판정과 카운트 증가를 하나의 트랜잭션으로 묶어 판정과 반영 사이 불일치가 없게 한다.
+     */
     @Transactional
-    public void increaseViewCount(Long prdSn) {
+    public ProductViewResponse increaseViewCount(Long prdSn, Long usrSn, String anonVisitorKey) {
+        long viewCount = productMapper.findActiveViewCount(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        String visitorKey = usrSn != null ? String.valueOf(usrSn) : anonVisitorKey;
+        LocalDateTime since = LocalDateTime.now().minusHours(24);
+
+        if (productViewLogMapper.existsRecentView(prdSn, visitorKey, since)) {
+            return new ProductViewResponse(false, viewCount);
+        }
+
+        productViewLogMapper.insert(prdSn, visitorKey);
         productMapper.incrementViewCount(prdSn);
+        return new ProductViewResponse(true, viewCount + 1);
     }
 
     @Transactional
@@ -308,6 +365,12 @@ public class ProductService {
 
         if (!product.getUsrSn().equals(usrSn)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        // 유찰(AUCC0004)·취소(AUCC0005)로 이미 종결된 경매만 삭제 허용 — 그 외(준비·진행·종료·취소요청)
+        // 상태에서 삭제하면 관리자 승인이 필수인 경매취소 절차를 우회해 입찰 홀딩이 방치된다.
+        if (productMapper.existsBlockingAuction(prdSn)) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "진행 중인 경매가 있는 상품은 삭제할 수 없습니다. 경매 취소 요청을 이용해 주세요.");
         }
 
         productMapper.deleteProduct(prdSn, usrSn);
@@ -335,8 +398,18 @@ public class ProductService {
     /** 구매자 문의 등록 (F-AUC-012) */
     @Transactional
     public ProductInquiryResponse addInquiry(Long prdSn, Long usrSn, ProductInquiryRequest req) {
-        productMapper.findProductById(prdSn)
+        ProductResponse product = productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        productCommentMapper.findLastInquiryTime(usrSn, prdSn).ifPresent(lastTime -> {
+            long elapsed = Duration.between(lastTime, LocalDateTime.now()).toHours();
+            if (elapsed < INQUIRY_COOLDOWN_HOURS) {
+                LocalDateTime nextAvailable = lastTime.plusHours(INQUIRY_COOLDOWN_HOURS);
+                throw new CustomException(ErrorCode.INQUIRY_COOLDOWN,
+                        String.format("다음 등록 가능 시각: %02d:%02d",
+                                nextAvailable.getHour(), nextAvailable.getMinute()));
+            }
+        });
 
         ProductComment inquiry = ProductComment.builder()
                 .prdSn(prdSn)
@@ -347,10 +420,47 @@ public class ProductService {
                 .build();
 
         productCommentMapper.insertInquiry(inquiry);
+        notificationService.notifyInquiryReceived(product.getUsrSn(), inquiry.getPrdCmtSn());
 
         return productCommentMapper.findInquiries(prdSn).stream()
                 .filter(r -> r.getPrdCmtSn().equals(inquiry.getPrdCmtSn()))
                 .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    /** 구매자 문의 수정 — 본인만, 답변 전까지만 가능 (F-AUC-012) */
+    @Transactional
+    public ProductInquiryResponse updateInquiry(Long prdSn, Long inquirySn, Long usrSn, ProductInquiryRequest req) {
+        ProductComment inquiry = productCommentMapper.findInquiryById(inquirySn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!inquiry.getPrdSn().equals(prdSn)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (!inquiry.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        int updated = productCommentMapper.updateInquiry(ProductComment.builder()
+                .prdCmtSn(inquirySn)
+                .prdCmtCn(req.getCn())
+                .prdCmtUpdtId(String.valueOf(usrSn))
+                .build());
+
+        if (updated == 0) {
+            throw new CustomException(ErrorCode.CONFLICT, "이미 답변이 등록된 문의는 수정할 수 없습니다.");
+        }
+
+        return productCommentMapper.findInquiries(prdSn).stream()
+                .filter(r -> r.getPrdCmtSn().equals(inquirySn))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    /** 백종남(6) 알림 클릭 이동용 — prdCmtSn → prdSn 변환 */
+    @Transactional(readOnly = true)
+    public Long getProductSnByInquirySn(Long prdCmtSn) {
+        return productCommentMapper.findProductSnByInquirySn(prdCmtSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
@@ -372,8 +482,12 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        productCommentMapper.findInquiryById(inquirySn)
+        ProductComment inquiry = productCommentMapper.findInquiryById(inquirySn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!inquiry.getPrdSn().equals(prdSn)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
 
         if (productCommentMapper.findReplyByParentSn(inquirySn).isPresent()) {
             throw new CustomException(ErrorCode.CONFLICT, "이미 답변이 등록된 문의입니다.");
@@ -389,6 +503,7 @@ public class ProductService {
                 .build();
 
         productCommentMapper.insertReply(reply);
+        notificationService.notifyInquiryReplied(inquiry.getUsrSn(), reply.getPrdCmtSn());
 
         return productCommentMapper.findInquiries(prdSn).stream()
                 .filter(r -> r.getPrdCmtSn().equals(reply.getPrdCmtSn()))
@@ -408,6 +523,10 @@ public class ProductService {
 
         ProductComment reply = productCommentMapper.findReplyByParentSn(inquirySn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        if (!reply.getPrdSn().equals(prdSn)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
 
         if (Duration.between(reply.getPrdCmtRegDt(), LocalDateTime.now()).toMinutes() >= REPLY_EDIT_WINDOW_MINUTES) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "답변 등록 후 10분이 지나 수정할 수 없습니다.");

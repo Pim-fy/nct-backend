@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.product.mapper.ProductViewLogMapper">
+
+    <!-- 동일 상품·동일 방문자의 24시간 내 방문 기록 존재 여부 -->
+    <select id="existsRecentView" resultType="boolean">
+        /* ProductViewLogMapper.existsRecentView */
+        SELECT EXISTS (
+            SELECT 1 FROM PRODUCT_VIEW_LOG
+             WHERE PRD_SN = #{prdSn}
+               AND VISITOR_KEY = #{visitorKey}
+               AND PRD_VIEW_LOG_REG_DT > #{since}
+        )
+    </select>
+
+    <!-- 방문 이력 기록 -->
+    <insert id="insert">
+        /* ProductViewLogMapper.insert */
+        INSERT INTO PRODUCT_VIEW_LOG (PRD_SN, VISITOR_KEY)
+        VALUES (#{prdSn}, #{visitorKey})
+    </insert>
+
+</mapper>

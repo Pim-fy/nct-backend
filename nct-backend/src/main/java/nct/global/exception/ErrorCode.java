@@ -85,6 +85,7 @@ public enum ErrorCode {
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     EMAIL_RESEND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "인증번호 재발송은 1분 후에 가능합니다."),
+    INQUIRY_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "문의는 상품별로 6시간마다 등록할 수 있습니다."),
 
     /*==================== 포인트/정산 도메인 (담당자6) ====================*/
 

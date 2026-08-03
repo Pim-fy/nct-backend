@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -58,4 +59,9 @@ public class ProductRegisterRequest {
     // 경매 정책 동의 체크 여부 — 임시저장(PRDC0001) 시점에만 draft 보존용으로 저장.
     // true면 재개 시 상품입력 탭 필수값이 다 채워져 있다는 전제하에 등록확인 탭으로 바로 이동시킨다.
     private Boolean policyAgreed;
+
+    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)일 때만 의미 있음, 최대 5곳
+    @Valid
+    @Size(max = 5, message = "희망 거래지역은 최대 5곳까지 선택할 수 있습니다.")
+    private List<ProductTradeRegionItem> tradeRegions;
 }

@@ -10,7 +10,7 @@ import nct.notification.domain.UserNotificationEventSetting;
  * Claude Code 작성 (BJN, 2026-07-16, 이벤트 단위로 재작성 2026-07-24)
  *
  * [알림 설정 - 저장 요청 DTO] (F-COM-012 세분화)
- * - PUT /api/notification/settings 요청 본문 — 화면이 13개 이벤트 항목을 전부 보내는 계약
+ * - PUT /api/notification/settings 요청 본문 — 화면이 전 이벤트 항목을 전부 보내는 계약
  *   (부분 갱신은 지원하지 않는다 — 전체 덮어쓰기)
  */
 @Getter

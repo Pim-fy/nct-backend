@@ -39,6 +39,7 @@ public class AuctionDetailResponse {
     @JsonIgnore
     private Long currentHighestBidderId;
     private boolean currentHighestBidder;
+    private String myBidTradeMethodCode;
     private boolean hasBidHistory;
     private List<AuctionImageItem> images = List.of();
     private List<AuctionBidItem> bids = List.of();

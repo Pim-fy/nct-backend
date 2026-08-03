@@ -54,6 +54,109 @@
         WHERE t.TRD_SN = #{tradeId}
     </select>
 
+    <!--
+        거래 문제 접수와 정산 보류가 같은 TRADE 행을 기준으로 직렬화되도록 잠근다.
+        서비스 거래는 REQ_USR_SN·PRV_USR_SN을, 물건 거래는 SLLR_USR_SN·BYPR_USR_SN을 소비한다.
+    -->
+    <select id="findTradeDisputeTargetForUpdate"
+            resultType="nct.trade.dto.TradeDisputeTarget">
+        SELECT
+            t.TRD_SN AS tradeSn,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.TRD_TYPE_CD AS tradeTypeCode,
+            t.TRD_STATUS_CD AS tradeStatusCode
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+        FOR UPDATE
+    </select>
+
+    <select id="hasOpenTradeDispute" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM TRADE_DISPUTE
+            WHERE TRD_SN = #{tradeId}
+              AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+        )
+    </select>
+
+    <insert id="insertTradeDispute">
+        INSERT INTO TRADE_DISPUTE (
+            TRD_SN,
+            DSPT_USR_SN,
+            TRD_DSP_TYPE_CD,
+            TRD_DSP_STATUS_CD,
+            TRD_DSP_CN,
+            TRD_DSP_REG_ID,
+            TRD_DSP_UPDT_ID
+        ) VALUES (
+            #{tradeId},
+            #{disputerUserId},
+            #{disputeTypeCode},
+            'TRDC0016',
+            #{content},
+            #{updaterId},
+            #{updaterId}
+        )
+    </insert>
+
+    <update id="holdServiceTradeForDispute">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0007',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005')
+    </update>
+
+    <!-- 서비스 완료 요청·확인·자동 완료가 같은 TRADE 행 잠금 기준으로 경합한다. -->
+    <select id="findServiceTradeCompletionTargetForUpdate"
+            resultType="nct.trade.dto.ServiceTradeCompletionTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_STATUS_CD AS tradeStatus,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
+        FOR UPDATE
+    </select>
+
+    <update id="startServiceCompletionRequest">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0005',
+            TRD_AUTO_CMPL_DT = #{autoCompleteAt},
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
+
+    <update id="completeServiceTrade">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0006',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD = 'TRDC0005'
+    </update>
+
+    <select id="findExpiredServiceAutoCompletionTradeIds" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        WHERE t.TRD_TYPE_CD = 'TRDC0002'
+          AND t.TRD_STATUS_CD = 'TRDC0005'
+          AND t.TRD_AUTO_CMPL_DT IS NOT NULL
+          AND t.TRD_AUTO_CMPL_DT &lt;= #{now}
+        ORDER BY t.TRD_AUTO_CMPL_DT ASC, t.TRD_SN ASC
+        LIMIT #{limit}
+    </select>
+
     <select id="findProductTradeMethod" resultType="string">
         SELECT PRD_TRD_METHOD_CD
         FROM PRODUCT
@@ -69,6 +172,7 @@
             BID_SN,
             TRD_TYPE_CD,
             TRD_STATUS_CD,
+            TRD_METHOD_CD,
             TRD_AMT
         )
         VALUES (
@@ -76,6 +180,39 @@
             #{buyerUserId},
             #{productId},
             #{bidId},
+            #{tradeTypeCode},
+            #{tradeStatusCode},
+            #{tradeMethodCode},
+            #{tradeAmount}
+        )
+    </insert>
+
+    <!-- 견적 선택 도메인이 잠근 QUT_SN을 기준으로 서비스 거래를 1건만 생성한다. -->
+    <select id="findServiceTradeIdByQuoteId" resultType="long">
+        SELECT TRD_SN
+        FROM TRADE
+        WHERE QUT_SN = #{quoteId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+        ORDER BY TRD_SN DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertServiceTrade" parameterType="nct.trade.domain.Trade"
+            useGeneratedKeys="true" keyProperty="trdSn">
+        INSERT INTO TRADE (
+            REQ_USR_SN,
+            PRV_USR_SN,
+            SVC_REQ_SN,
+            QUT_SN,
+            TRD_TYPE_CD,
+            TRD_STATUS_CD,
+            TRD_AMT
+        )
+        VALUES (
+            #{requesterUserId},
+            #{providerUserId},
+            #{serviceRequestId},
+            #{quoteId},
             #{tradeTypeCode},
             #{tradeStatusCode},
             #{tradeAmount}
@@ -86,12 +223,16 @@
     <insert id="insertDeliverySnapshot">
         INSERT INTO TRADE_DELIVERY (
             TRD_SN,
+            TRD_DLVR_RCPNT_NM_ENC,
+            TRD_DLVR_RCPNT_TELNO_ENC,
             TRD_DLVR_ADDR_ENC,
             TRD_DLVR_DADDR_ENC,
             TRD_DLVR_ZIP_ENC
         )
         VALUES (
             #{tradeId},
+            #{recipientName},
+            #{recipientPhone},
             #{address},
             #{detailAddress},
             #{zip}
@@ -130,7 +271,7 @@
             t.TRD_AMT AS tradeAmount,
             t.TRD_REG_DT AS createdAt,
             CASE
-                WHEN p.PRD_TRD_METHOD_CD = 'TRDC0010'
+                WHEN t.TRD_METHOD_CD = 'TRDC0010'
                     AND t.TRD_STATUS_CD = 'TRDC0003'
                     AND o.TRD_OFL_DT IS NOT NULL
                     AND o.TRD_OFL_PLC_NM IS NOT NULL
@@ -140,7 +281,7 @@
             END AS tradeStatus,
             o.TRD_OFL_DT AS meetingDateTime,
             o.TRD_OFL_PLC_NM AS meetingPlace,
-            CASE p.PRD_TRD_METHOD_CD
+            CASE t.TRD_METHOD_CD
                 WHEN 'TRDC0009' THEN 'DELIVERY'
                 WHEN 'TRDC0010' THEN 'OFFLINE'
             END AS tradeMethod
@@ -165,7 +306,7 @@
           <!-- 일정이 존재하는 기존 직거래는 진행 상태 탭으로 보정해 구매자가 즉시 확인할 수 있게 한다. -->
           AND (
               CASE
-                  WHEN p.PRD_TRD_METHOD_CD = 'TRDC0010'
+                  WHEN t.TRD_METHOD_CD = 'TRDC0010'
                       AND t.TRD_STATUS_CD = 'TRDC0003'
                       AND o.TRD_OFL_DT IS NOT NULL
                       AND o.TRD_OFL_PLC_NM IS NOT NULL
@@ -243,12 +384,14 @@
                     AND t.TRD_UPDT_ID = CAST(t.SLLR_USR_SN AS CHAR) THEN 'SELLER'
                 ELSE NULL
             END AS completionRequestedBy,
-            CASE p.PRD_TRD_METHOD_CD
+            CASE t.TRD_METHOD_CD
                 WHEN 'TRDC0009' THEN 'DELIVERY'
                 WHEN 'TRDC0010' THEN 'OFFLINE'
             END AS tradeMethod,
             t.TRD_REG_DT AS createdAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            d.TRD_DLVR_RCPNT_NM_ENC AS recipientName,
+            d.TRD_DLVR_RCPNT_TELNO_ENC AS recipientPhone,
             d.TRD_DLVR_ADDR_ENC AS deliveryAddress,
             d.TRD_DLVR_DADDR_ENC AS deliveryDetailAddress,
             d.TRD_DLVR_MEMO_CN AS deliveryMessage,
@@ -298,7 +441,7 @@
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
           AND t.SLLR_USR_SN = #{sellerUserId}
-          AND p.PRD_TRD_METHOD_CD = 'TRDC0009'
+          AND t.TRD_METHOD_CD = 'TRDC0009'
         FOR UPDATE
     </select>
 
@@ -360,7 +503,7 @@
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
           AND t.SLLR_USR_SN = #{sellerUserId}
-          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
         FOR UPDATE
     </select>
 
@@ -392,7 +535,7 @@
             t.SLLR_USR_SN AS sellerUserId,
             t.BYPR_USR_SN AS buyerUserId,
             t.TRD_STATUS_CD AS tradeStatus,
-            p.PRD_TRD_METHOD_CD AS tradeMethod,
+            t.TRD_METHOD_CD AS tradeMethod,
             t.TRD_UPDT_ID AS completionRequesterId,
             t.TRD_AMT AS tradeAmount
         FROM TRADE t
@@ -479,6 +622,7 @@
         SELECT
             t.TRD_SN AS tradeId,
             t.BYPR_USR_SN AS buyerUserId,
+            t.SLLR_USR_SN AS sellerUserId,
             t.BID_SN AS bidSn,
             t.TRD_STATUS_CD AS tradeStatus
         FROM TRADE t

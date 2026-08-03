@@ -29,6 +29,12 @@ public class PointChargeOrder {
     /** PG결제키(paymentKey) — 승인 성공 후 저장 */
     private String ptChgOrdPgKey;
 
+    /** 결제수단 한글명("카드"/"간편결제"/"계좌이체" 등, 토스 응답 method 그대로) — 승인 성공 후 저장 */
+    private String ptChgOrdPayMethod;
+
+    /** 결제수단 상세(카드는 마스킹된 카드번호, 간편결제는 제공사) — 없으면 null */
+    private String ptChgOrdPayDetail;
+
     /** 완료 후 생성된 포인트원장일련번호 */
     private Long ptLdgSn;
 

@@ -140,4 +140,39 @@
            AND PRD_CMT_TYPE_CD = 'PRDC0007'
     </update>
 
+    <!-- 문의 수정 — 답변(PRDC0007)이 없을 때만 UPDATE (동시성 보호) -->
+    <update id="updateInquiry">
+        UPDATE PRODUCT_COMMENT
+           SET PRD_CMT_CN      = #{prdCmtCn},
+               PRD_CMT_UPDT_ID = #{prdCmtUpdtId}
+         WHERE PRD_CMT_SN      = #{prdCmtSn}
+           AND PRD_CMT_TYPE_CD = 'PRDC0006'
+           AND NOT EXISTS (
+               SELECT 1 FROM (
+                   SELECT PRD_CMT_SN FROM PRODUCT_COMMENT
+                    WHERE PRD_CMT_PARENT_SN = #{prdCmtSn}
+                      AND PRD_CMT_TYPE_CD = 'PRDC0007'
+               ) r
+           )
+    </update>
+
+    <!-- 쿨타임 체크 — usrSn+prdSn 기준 가장 최근 문의(PRDC0006) 등록 시각 -->
+    <select id="findLastInquiryTime" resultType="java.time.LocalDateTime">
+        SELECT PRD_CMT_REG_DT
+          FROM PRODUCT_COMMENT
+         WHERE USR_SN           = #{usrSn}
+           AND PRD_SN           = #{prdSn}
+           AND PRD_CMT_TYPE_CD  = 'PRDC0006'
+         ORDER BY PRD_CMT_REG_DT DESC
+         LIMIT 1
+    </select>
+
+    <!-- 백종남(6) 알림 클릭 이동용 — prdCmtSn → prdSn -->
+    <select id="findProductSnByInquirySn" resultType="java.lang.Long">
+        SELECT PRD_SN
+          FROM PRODUCT_COMMENT
+         WHERE PRD_CMT_SN      = #{prdCmtSn}
+           AND PRD_CMT_TYPE_CD = 'PRDC0006'
+    </select>
+
 </mapper>

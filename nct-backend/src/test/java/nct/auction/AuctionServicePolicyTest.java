@@ -31,6 +31,7 @@ import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionRealtimeEvent;
+import nct.auction.dto.AuctionTradeMethodChangeRequest;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.service.AuctionEventPublisher;
 import nct.auction.service.AuctionService;
@@ -38,6 +39,7 @@ import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.service.MemberService;
 import nct.notification.service.NotificationService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.exception.PointException;
@@ -58,6 +60,9 @@ class AuctionServicePolicyTest {
 
     @Mock
     private PointService pointService;
+
+    @Mock
+    private MemberService memberService;
 
     @Mock
     private ObjectProvider<ProductService> productServiceProvider;
@@ -191,9 +196,207 @@ class AuctionServicePolicyTest {
         assertThat(command.getBuyerUserId()).isEqualTo(40L);
         assertThat(command.getTradeAmount()).isEqualByComparingTo("30000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.BUY_NOW);
+        assertThat(command.getSelectedTradeMethodCode()).isEqualTo("TRDC0010");
         verify(notificationService).notifyBidUpdated(35L, 10L, 30000L);
         verify(notificationService).notifyAuctionResult(40L, 10L, true);
         verifyRealtimeEvent("BUY_NOW");
+    }
+
+    @Test
+    void placeBidRejectsDeliveryAuctionWhenBuyerAddressIsIncomplete() {
+        target.setTradeMethodCode("TRDC0009");
+        doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))
+                .when(memberService)
+                .getBuyerAddressSnapshot(40L);
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, bidRequest(12000)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
+        verify(pointService, never()).hold(anyLong(), anyLong(), any(), anyLong(), any());
+    }
+
+    @Test
+    void placeBidRejectsMixedAuctionDeliverySelectionWhenBuyerAddressIsIncomplete() {
+        target.setTradeMethodCode("TRDC0020");
+        AuctionBidRequest request = bidRequest(12000);
+        request.setTradeMethod("TRDC0009");
+        doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))
+                .when(memberService)
+                .getBuyerAddressSnapshot(40L);
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
+        verify(pointService, never()).hold(anyLong(), anyLong(), any(), anyLong(), any());
+    }
+
+    @Test
+    void placeBidRejectsMixedAuctionWithoutTradeMethodSelection() {
+        target.setTradeMethodCode("TRDC0020");
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, bidRequest(12000)))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("배송 또는 직거래 방식을 선택해 주세요.");
+
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
+    }
+
+    @Test
+    void placeBidStoresMixedAuctionOfflineSelectionWithoutCheckingDeliveryAddress() {
+        target.setTradeMethodCode("TRDC0020");
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
+        when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
+            AuctionBidCreateCommand command = invocation.getArgument(0);
+            ReflectionTestUtils.setField(command, "bidId", 50L);
+            return 1;
+        });
+        stubAuctionDetail();
+        AuctionBidRequest request = bidRequest(12000);
+        request.setTradeMethod("TRDC0010");
+
+        auctionService.placeBid(10L, 40L, request);
+
+        ArgumentCaptor<AuctionBidCreateCommand> commandCaptor =
+                ArgumentCaptor.forClass(AuctionBidCreateCommand.class);
+        verify(auctionMapper).insertBid(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().getSelectedTradeMethodCode()).isEqualTo("TRDC0010");
+        verify(memberService, never()).getBuyerAddressSnapshot(anyLong());
+    }
+
+    @Test
+    void currentHighestBidderChangesMixedAuctionTradeMethodToDelivery() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        when(auctionMapper.updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                "40"))
+                .thenReturn(1);
+        stubAuctionDetail();
+
+        AuctionDetailResponse response = auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009"));
+
+        assertThat(response).isNotNull();
+        verify(memberService).getBuyerAddressSnapshot(40L);
+        verify(auctionMapper).updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                "40");
+        verifyRealtimeEvent("BID_TRADE_METHOD_CHANGED");
+    }
+
+    @Test
+    void tradeMethodChangeRejectsUserWhoIsNotCurrentHighestBidder() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(41L);
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009")))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("현재 최고입찰자만 거래방식을 변경할 수 있습니다.");
+
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any());
+    }
+
+    @Test
+    void tradeMethodChangeRejectsDeliveryWhenBuyerAddressIsIncomplete() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))
+                .when(memberService)
+                .getBuyerAddressSnapshot(40L);
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any());
+    }
+
+    @Test
+    void tradeMethodChangeReturnsCurrentDetailWhenMethodIsUnchanged() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        stubAuctionDetail();
+
+        AuctionDetailResponse response = auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0010"));
+
+        assertThat(response).isNotNull();
+        verify(memberService, never()).getBuyerAddressSnapshot(anyLong());
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any());
+        verify(auctionEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void tradeMethodChangeFailsWhenHighestBidChangedDuringUpdate() {
+        target.setTradeMethodCode("TRDC0020");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
+        when(auctionMapper.updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                "40"))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(auctionMapper, never()).findAuctionDetail(10L, 40L);
+        verify(auctionEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void buyNowRejectsTradeMethodThatDoesNotMatchSingleMethodProduct() {
+        target.setInstantBuyPrice(BigDecimal.valueOf(30000));
+        AuctionBuyNowRequest request = new AuctionBuyNowRequest();
+        request.setTradeMethod("TRDC0009");
+
+        assertThatThrownBy(() -> auctionService.buyNow(10L, 40L, request))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("상품의 거래방식과 선택한 거래방식이 일치하지 않습니다.");
+
+        verify(auctionMapper, never()).insertBid(any());
     }
 
     @Test
@@ -240,6 +443,7 @@ class AuctionServicePolicyTest {
         target.setEndDateTime(LocalDateTime.now().minusMinutes(1));
         target.setCurrentHighestBidId(50L);
         target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0010");
         when(auctionMapper.updateExpiredAuctionStatus(10L, AuctionStatusCode.ENDED, "SYSTEM"))
                 .thenReturn(1);
 
@@ -256,6 +460,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getBuyerUserId()).isEqualTo(40L);
         assertThat(command.getTradeAmount()).isEqualByComparingTo("10000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.AUCTION_WIN);
+        assertThat(command.getSelectedTradeMethodCode()).isEqualTo("TRDC0010");
         verify(notificationService).notifyAuctionResult(40L, 10L, true);
         verifyRealtimeEvent("AUCTION_FINALIZED");
     }
@@ -303,6 +508,12 @@ class AuctionServicePolicyTest {
     private AuctionBidRequest bidRequest(long bidAmount) {
         AuctionBidRequest request = new AuctionBidRequest();
         request.setBidAmount(BigDecimal.valueOf(bidAmount));
+        return request;
+    }
+
+    private AuctionTradeMethodChangeRequest tradeMethodChangeRequest(String tradeMethod) {
+        AuctionTradeMethodChangeRequest request = new AuctionTradeMethodChangeRequest();
+        request.setTradeMethod(tradeMethod);
         return request;
     }
 

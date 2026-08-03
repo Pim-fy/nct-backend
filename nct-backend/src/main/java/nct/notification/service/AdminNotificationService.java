@@ -23,8 +23,8 @@ import nct.point.service.PointExchangeService;
  * 운영 현황까지 모아 보여준다. 각 도메인이 아직 "몇 건 있다"를 내려주는 계약을 안 만들어놔서,
  * 여기서는 그 도메인 테이블을 직접 읽기 전용으로 집계한다(AdminNotificationMapper).
  *
- * linkPath는 담당자6가 실제로 만든 화면(환전·감사로그)에만 채운다 — 다른 카테고리는
- * 아직 관리자 화면 자체가 없어서, 죽은 링크를 만드느니 정보만 보여주고 링크를 비워둔다.
+ * linkPath는 현재 실제로 존재하는 관리자 화면에만 채운다. 회원 관리와 관리자 서비스 조회처럼
+ * 대상 화면·계약이 아직 없는 항목은 죽은 링크를 만들지 않도록 비워둔다.
  */
 @Service
 @RequiredArgsConstructor
@@ -61,6 +61,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("제공자 심사 대기")
                     .detail(String.format("심사 대기 중인 제공자 신청이 %d건 있습니다", pendingProvider))
+                    .linkPath("/admin/provider-applications")
                     .build());
         }
         return items;
@@ -73,6 +74,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("신고 접수 대기")
                     .detail(String.format("접수 대기 중인 신고가 %d건 있습니다", pendingReports))
+                    .linkPath("/admin/reports")
                     .build());
         }
         return items;
@@ -86,6 +88,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("마감임박 경매")
                     .detail(String.format("%d시간 이내 종료되는 경매가 %d건 있습니다", AUCTION_ENDING_SOON_HOURS, endingSoon))
+                    .linkPath("/admin/auctions")
                     .build());
         }
 
@@ -109,6 +112,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("환전 대기")
                     .detail(String.format("환전 대기 요청이 %d건, %,d원입니다", pending.size(), totalAmt))
+                    .linkPath("/admin/exchanges")
                     .build());
         }
 

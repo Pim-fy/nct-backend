@@ -42,7 +42,7 @@ public interface FileMapper {
 
     /**
      * 해당 배송 건에 이 파일이 실제 연결돼 있는지 (당사자 열람 가드, F-AUC-009)
-     * - TRADE_DELIVERY_FILE은 담당자6 제안 신규 테이블 — 정본 CHG 승인 전까지 로컬 DB에만 존재
+     * - TRADE_DELIVERY_FILE은 담당자6 제안 신규 테이블 — D-034로 실DB 적용 완료 (2026-07-20)
      */
     int countTradeDeliveryFileLink(@Param("trdDlvrSn") Long trdDlvrSn, @Param("flSn") Long flSn);
 

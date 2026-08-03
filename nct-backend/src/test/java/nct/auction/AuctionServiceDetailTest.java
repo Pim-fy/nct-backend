@@ -1,6 +1,7 @@
 package nct.auction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -73,7 +74,7 @@ class AuctionServiceDetailTest {
 
         assertThat(response).isSameAs(detail);
         verify(productService).getProduct(20L);
-        verify(productService, never()).increaseViewCount(anyLong());
+        verify(productService, never()).increaseViewCount(anyLong(), any(), any());
     }
 
     @Test

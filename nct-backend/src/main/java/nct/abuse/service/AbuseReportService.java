@@ -12,12 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.dto.CustomerAbuseReportRequest;
+import nct.abuse.dto.CustomerSupportReportRequest;
 import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
+import nct.abuse.dto.MyAbuseReportResponse;
+import nct.global.response.PageResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.operation.port.AdminReportDecision;
@@ -57,7 +62,143 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private final AbuseReportMapper abuseReportMapper;
     private final ReferenceDataService referenceDataService;
     private final AuditLogPort auditLogPort;
+    private final NotificationService notificationService;
     private final ObjectProvider<ProductService> productServiceProvider;
+
+    /** F-COM-018: 로그인 사용자가 고객센터형 신고를 접수한다. */
+    @Transactional
+    public ManualAbuseReportResponse submitCustomerReport(
+            Long reporterUserSn,
+            CustomerAbuseReportRequest request) {
+        if (reporterUserSn == null || reporterUserSn <= 0 || request == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, request.reportTypeCode());
+        referenceDataService.requireActiveCode(REPORT_STATUS_GROUP, RECEIVED_STATUS);
+        if (request.referenceTypeCode() != null && !request.referenceTypeCode().isBlank()) {
+            referenceDataService.requireActiveCode(REFERENCE_TYPE_GROUP, request.referenceTypeCode().trim());
+        }
+
+        String actorId = String.valueOf(reporterUserSn);
+        String refTypeCode = (request.referenceTypeCode() == null || request.referenceTypeCode().isBlank())
+                ? null : request.referenceTypeCode().trim();
+
+        AbuseReport report = AbuseReport.builder()
+                .riskEventSn(null)
+                .reporterUserSn(reporterUserSn)
+                .reportedUserSn(request.reportedUserSn())
+                .reportTypeCode(request.reportTypeCode())
+                .statusCode(RECEIVED_STATUS)
+                .referenceTypeCode(refTypeCode)
+                .referenceSn(request.referenceSn())
+                .title(request.title().trim())
+                .targetName(request.targetName() == null ? null : request.targetName().trim())
+                .content(request.content().trim())
+                .registeredBy(actorId)
+                .updatedBy(actorId)
+                .build();
+
+        int inserted = abuseReportMapper.insertCustomerReport(report);
+        if (inserted != 1 || report.getReportSn() == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+        return new ManualAbuseReportResponse(report.getReportSn());
+    }
+
+    /** F-COM-018: 내 신고 목록을 페이지 단위로 조회한다. */
+    @Transactional(readOnly = true)
+    public PageResponse<MyAbuseReportResponse> getMyReports(
+            Long reporterUserSn,
+            String statusCode,
+            int page,
+            int size) {
+        if (reporterUserSn == null || reporterUserSn <= 0 || page < 1 || size < 1 || size > 50) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        String normalizedStatus = (statusCode == null || statusCode.isBlank()) ? null : statusCode.trim();
+        int offset = (page - 1) * size;
+        List<MyAbuseReportResponse> content = abuseReportMapper.findMyReports(
+                reporterUserSn, normalizedStatus, offset, size);
+        int total = abuseReportMapper.countMyReports(reporterUserSn, normalizedStatus);
+        return PageResponse.<MyAbuseReportResponse>builder()
+                .content(content)
+                .totalCount(total)
+                .page(page)
+                .size(size)
+                .hasNext(offset + content.size() < total)
+                .build();
+    }
+
+    /** F-COM-018: 내 신고 단건 상세를 조회한다. */
+    @Transactional(readOnly = true)
+    public MyAbuseReportResponse getMyReportDetail(Long reporterUserSn, Long reportSn) {
+        if (reporterUserSn == null || reporterUserSn <= 0
+                || reportSn == null || reportSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        MyAbuseReportResponse report = abuseReportMapper.findMyReportById(reportSn, reporterUserSn);
+        if (report == null) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
+        }
+        return report;
+    }
+
+    /**
+     * 신현석(담당자2) 연동용: ProductDetailSellerPage 구매자 문의 신고 버튼 접수.
+     * targetType="INQUIRY" → REFC0012(상품 댓글·문의) 매핑.
+     */
+    @Transactional
+    public void submitCustomerSupportReport(
+            Long reporterUserSn,
+            CustomerSupportReportRequest request) {
+        if (reporterUserSn == null || reporterUserSn <= 0 || request == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (!"INQUIRY".equalsIgnoreCase(request.targetType())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        InquiryReportTarget target = productServiceProvider.getObject()
+                .getInquiryReportTarget(request.targetSn());
+        if (target == null
+                || !request.targetSn().equals(target.getPrdCmtSn())
+                || !BUYER_INQUIRY_TYPE.equals(target.getPrdCmtTypeCd())
+                || target.getWriterUsrSn() == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (reporterUserSn.equals(target.getWriterUsrSn())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (!reporterUserSn.equals(target.getSellerUsrSn())) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        Long existingReport = abuseReportMapper.findManualReportId(
+                reporterUserSn, PRODUCT_COMMENT_REFERENCE_TYPE, request.targetSn());
+        if (existingReport != null) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
+        }
+
+        validateReferenceCodes(PRODUCT_COMMENT_REFERENCE_TYPE);
+        String actorId = String.valueOf(reporterUserSn);
+        AbuseReport report = AbuseReport.builder()
+                .riskEventSn(null)
+                .reporterUserSn(reporterUserSn)
+                .reportedUserSn(target.getWriterUsrSn())
+                .reportTypeCode(CONTENT_REPORT_TYPE)
+                .statusCode(RECEIVED_STATUS)
+                .referenceTypeCode(PRODUCT_COMMENT_REFERENCE_TYPE)
+                .referenceSn(request.targetSn())
+                .content(request.reportContent().trim())
+                .registeredBy(actorId)
+                .updatedBy(actorId)
+                .build();
+
+        int inserted = abuseReportMapper.insertManualReport(report);
+        if (inserted != 1 || report.getReportSn() == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+    }
 
     /** 판매자가 자기 상품에 등록된 구매자 문의를 수동 신고한다. */
     @Transactional
@@ -210,6 +351,15 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                 statusSummary(report.getReportSn(), report.getStatusCode()),
                 statusSummary(report.getReportSn(), values.newStatusCode()),
                 values.requestId()));
+
+        // 담당자 7 · F-OPS-007: 일반 신고에만 처리 결과를 알리고,
+        // 신고자가 없는 SYSTEM 자동 탐지 신고에는 사용자 알림을 만들지 않는다.
+        if (report.getReporterUserSn() != null && report.getReporterUserSn() > 0) {
+            notificationService.notifyReportResult(
+                    report.getReporterUserSn(),
+                    report.getReportSn(),
+                    decisionResult(values.newStatusCode()));
+        }
     }
 
     /** 접수·처리중 상태의 신고를 자동·일반 신고 구분 없이 오래된 순서로 조회한다. */
@@ -389,6 +539,10 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
 
     private String statusSummary(Long reportSn, String statusCode) {
         return "reportSn=" + reportSn + ",status=" + statusCode;
+    }
+
+    private String decisionResult(String statusCode) {
+        return PROCESSED_STATUS.equals(statusCode) ? "처리 완료" : "반려";
     }
 
     private String trimToNull(String value) {

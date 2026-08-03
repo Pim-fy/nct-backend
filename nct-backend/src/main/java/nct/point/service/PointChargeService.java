@@ -58,13 +58,6 @@ public class PointChargeService {
     private static final long[] CONFIRM_RETRY_BACKOFF_MS = {1000, 2000, 4000};
 
     /**
-     * 충전 주문 생성 (결제위젯 호출 전). @return 프론트에 넘길 주문번호
-     *
-     * 최소·최대 충전금액은 SYSTEM_SETTING 값으로 앱 계층에서 검증한다(CHG-003 정본 확정 사항).
-     * DB CHECK 제약이 아니라 여기서 막는 이유: 한도가 운영 중 바뀔 수 있는 설정값이라
-     * 매번 배포 없이 SYSTEM_SETTING 값만 바꿔서 조정할 수 있어야 하기 때문.
-     */
-    /**
      * 현재 충전 한도(최소·최대) 조회 — 지갑 충전 모달 안내문용 (2026-07-20).
      * 안내문을 프론트에 하드코딩하면 관리자가 시스템 설정에서 한도를 바꿀 때 안내만 스테일이 되므로,
      * 검증에 실제로 쓰는 값(SYSTEM_SETTING)을 그대로 노출한다 — 안내와 검증의 출처 단일화
@@ -74,6 +67,13 @@ public class PointChargeService {
         return systemSettingMapper.selectChargeLimits();
     }
 
+    /**
+     * 충전 주문 생성 (결제위젯 호출 전). @return 프론트에 넘길 주문번호
+     *
+     * 최소·최대 충전금액은 SYSTEM_SETTING 값으로 앱 계층에서 검증한다(CHG-003 정본 확정 사항).
+     * DB CHECK 제약이 아니라 여기서 막는 이유: 한도가 운영 중 바뀔 수 있는 설정값이라
+     * 매번 배포 없이 SYSTEM_SETTING 값만 바꿔서 조정할 수 있어야 하기 때문.
+     */
     @Transactional
     public String createOrder(long usrSn, long amt) {
         if (amt <= 0) {
@@ -126,7 +126,7 @@ public class PointChargeService {
             throw new PointException(ErrorCode.EXTERNAL_API_ERROR, "결제 승인 실패: " + result.failMessage());
         }
 
-        applyVerifiedPayment(order, paymentKey, result.approvedAmount());
+        applyVerifiedPayment(order, paymentKey, result.approvedAmount(), result.payMethod(), result.payDetail());
     }
 
     /**
@@ -137,9 +137,10 @@ public class PointChargeService {
      * 목적이라, 여기서 TTL을 걸면 정작 구하려는 케이스를 스스로 막아버리게 된다.
      */
     @Transactional(noRollbackFor = PointException.class)
-    public void recoverFromReconciliation(String orderNo, String paymentKey, long approvedAmount) {
+    public void recoverFromReconciliation(String orderNo, String paymentKey, long approvedAmount,
+                                          String payMethod, String payDetail) {
         PointChargeOrder order = requirePendingStatus(orderNo);
-        applyVerifiedPayment(order, paymentKey, approvedAmount);
+        applyVerifiedPayment(order, paymentKey, approvedAmount, payMethod, payDetail);
     }
 
     /**
@@ -148,7 +149,8 @@ public class PointChargeService {
      * 이 메서드를 거쳐서만 지급한다 — 검증·보상 경로를 하나로 유지하기 위함. 호출부가
      * 이미 FOR UPDATE로 잠근 order를 넘겨준다고 가정한다(requirePending/requirePendingStatus).
      */
-    private void applyVerifiedPayment(PointChargeOrder order, String paymentKey, long approvedAmount) {
+    private void applyVerifiedPayment(PointChargeOrder order, String paymentKey, long approvedAmount,
+                                      String payMethod, String payDetail) {
         // 위변조 방지 핵심: 토스가 승인한 실제 금액과 사전 기록 금액이 정확히 일치할 때만 반영
         if (approvedAmount != order.getPtChgOrdAmt()) {
             orderMapper.fail(order.getPtChgOrdSn(), PointChargeOrderStatus.FAILED.getCode(), paymentKey,
@@ -163,7 +165,8 @@ public class PointChargeService {
         try {
             ptLdgSn = pointService.creditCharge(order.getUsrSn(), order.getPtChgOrdAmt(),
                     "포인트 충전");
-            orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey, ptLdgSn);
+            orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey,
+                    ptLdgSn, payMethod, payDetail);
 
             // 같은 트랜잭션 안에서 알림까지 기록 — 충전은 됐는데 알림만 누락되는 일이 없도록
             notificationService.notifyCharge(order.getUsrSn(), order.getPtChgOrdAmt());

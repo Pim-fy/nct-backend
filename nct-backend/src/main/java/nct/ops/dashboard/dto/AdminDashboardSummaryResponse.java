@@ -16,5 +16,8 @@ public class AdminDashboardSummaryResponse {
     private Long totalTradeCount;
     private Long activeDisputeCount;
     private Long incompleteSettlementCount;
+    private Long pendingProviderApplicationCount;
+    private Long pendingReportCount;
+    private Long pendingExchangeCount;
     private Long unprocessedRiskEventCount;
 }

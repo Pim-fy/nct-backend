@@ -3,6 +3,7 @@ package nct.auction.controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -14,6 +15,7 @@ import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
+import nct.auction.dto.AuctionTradeMethodChangeRequest;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.auction.service.AuctionService;
@@ -50,6 +52,17 @@ public class AuctionDetailController {
             @RequestBody AuctionBidRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         return ApiResponse.success(auctionService.placeBid(auctionId, currentUserId(userDetails), request));
+    }
+
+    @PutMapping("/{auctionId}/bids/me/trade-method")
+    public ApiResponse<AuctionDetailResponse> changeMyBidTradeMethod(
+            @PathVariable("auctionId") Long auctionId,
+            @RequestBody AuctionTradeMethodChangeRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ApiResponse.success(auctionService.changeCurrentHighestBidTradeMethod(
+                auctionId,
+                currentUserId(userDetails),
+                request));
     }
 
     @PostMapping("/{auctionId}/buy-now")

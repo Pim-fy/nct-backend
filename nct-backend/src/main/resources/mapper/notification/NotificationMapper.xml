@@ -100,4 +100,13 @@
         WHERE USR_SN = #{usrSn}
     </select>
 
+    <!-- 경매 결과 알림 제목용 상품명. ⚠️ AUCTION은 담당자5 소유 — 읽기 전용 SELECT만, 변경 금지 -->
+    <select id="selectAuctionProductName" resultType="string">
+        /* 알림: 경매 결과 알림에 표시할 상품명 조회 (읽기 전용) */
+        SELECT p.PRD_NM
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        WHERE a.AUC_SN = #{auctionId}
+    </select>
+
 </mapper>

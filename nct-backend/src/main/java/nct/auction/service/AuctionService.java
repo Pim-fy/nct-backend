@@ -24,11 +24,13 @@ import nct.auction.dto.AuctionProductUpdateItem;
 import nct.auction.dto.AuctionRealtimeEvent;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
+import nct.auction.dto.AuctionTradeMethodChangeRequest;
 import nct.auction.mapper.AuctionMapper;
 import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.service.MemberService;
 import nct.notification.service.NotificationService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
@@ -57,6 +59,7 @@ public class AuctionService {
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
+    private final MemberService memberService;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
     private final AuctionEventPublisher auctionEventPublisher;
@@ -202,7 +205,8 @@ public class AuctionService {
                     target.getCurrentHighestBidId(),
                     target.getCurrentHighestBidderId(),
                     target.getCurrentPrice(),
-                    AuctionTradeSource.AUCTION_WIN);
+                    AuctionTradeSource.AUCTION_WIN,
+                    target.getCurrentHighestTradeMethodCode());
             notificationService.notifyAuctionResult(
                     target.getCurrentHighestBidderId(),
                     auctionId,
@@ -360,6 +364,10 @@ public class AuctionService {
         AuctionBidTarget target = findBidTarget(auctionId);
         validateBidAvailable(target, userId);
         validateNotCurrentHighestBidder(target, userId);
+        String selectedTradeMethodCode = resolveSelectedTradeMethod(
+                target,
+                request == null ? null : request.getTradeMethod());
+        validateDeliveryAddress(selectedTradeMethodCode, userId);
         AuctionPolicy policy = pointService.getAuctionPolicy();
 
         BigDecimal bidAmount = request == null ? null : request.getBidAmount();
@@ -378,7 +386,11 @@ public class AuctionService {
         Long previousHighestBidderId = target.getCurrentHighestBidderId();
 
         auctionMapper.updateCurrentHighestBids(auctionId);
-        AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, bidAmount);
+        AuctionBidCreateCommand bid = insertHighestBid(
+                auctionId,
+                userId,
+                bidAmount,
+                selectedTradeMethodCode);
         pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
         auctionMapper.extendAuctionTime(
@@ -394,9 +406,48 @@ public class AuctionService {
     }
 
     @Transactional
+    public AuctionDetailResponse changeCurrentHighestBidTradeMethod(
+            Long auctionId,
+            Long userId,
+            AuctionTradeMethodChangeRequest request) {
+        AuctionBidTarget target = findBidTarget(auctionId);
+        validateBidAvailable(target, userId);
+        validateCurrentHighestBidder(target, userId);
+        validateMixedTradeMethodProduct(target);
+
+        String selectedTradeMethodCode = resolveSelectedTradeMethod(
+                target,
+                request == null ? null : request.getTradeMethod());
+        if (selectedTradeMethodCode.equals(target.getCurrentHighestTradeMethodCode())) {
+            return loadAuctionDetail(auctionId, userId);
+        }
+
+        validateDeliveryAddress(selectedTradeMethodCode, userId);
+        int updatedCount = auctionMapper.updateCurrentHighestBidTradeMethod(
+                auctionId,
+                target.getCurrentHighestBidId(),
+                userId,
+                selectedTradeMethodCode,
+                userId.toString());
+        if (updatedCount == 0) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "최고입찰 정보가 변경되었습니다. 다시 확인해 주세요.");
+        }
+
+        AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        publishAuctionChanged(auctionId, "BID_TRADE_METHOD_CHANGED");
+        return detail;
+    }
+
+    @Transactional
     public AuctionDetailResponse buyNow(Long auctionId, Long userId, AuctionBuyNowRequest request) {
         AuctionBidTarget target = findBidTarget(auctionId);
         validateBidAvailable(target, userId);
+        String selectedTradeMethodCode = resolveSelectedTradeMethod(
+                target,
+                request == null ? null : request.getTradeMethod());
+        validateDeliveryAddress(selectedTradeMethodCode, userId);
 
         BigDecimal instantBuyPrice = target.getInstantBuyPrice();
         if (instantBuyPrice == null || instantBuyPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -407,7 +458,11 @@ public class AuctionService {
         Long previousHighestBidderId = target.getCurrentHighestBidderId();
 
         auctionMapper.updateCurrentHighestBids(auctionId);
-        AuctionBidCreateCommand bid = insertHighestBid(auctionId, userId, instantBuyPrice);
+        AuctionBidCreateCommand bid = insertHighestBid(
+                auctionId,
+                userId,
+                instantBuyPrice,
+                selectedTradeMethodCode);
         pointService.hold(userId, toPointAmount(instantBuyPrice), RefType.BID, bid.getBidId(), "즉시구매 포인트 홀딩");
         pointService.convertHoldToEscrow(userId, RefType.BID, bid.getBidId(), "즉시구매 보관금 전환");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
@@ -420,7 +475,8 @@ public class AuctionService {
                 bid.getBidId(),
                 userId,
                 instantBuyPrice,
-                AuctionTradeSource.BUY_NOW);
+                AuctionTradeSource.BUY_NOW,
+                selectedTradeMethodCode);
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, instantBuyPrice);
         notificationService.notifyAuctionResult(userId, auctionId, true);
 
@@ -434,7 +490,8 @@ public class AuctionService {
             Long winningBidId,
             Long buyerUserId,
             BigDecimal tradeAmount,
-            AuctionTradeSource source) {
+            AuctionTradeSource source,
+            String selectedTradeMethodCode) {
         tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
@@ -443,7 +500,8 @@ public class AuctionService {
                         target.getSellerId(),
                         buyerUserId,
                         tradeAmount,
-                        source));
+                        source,
+                        selectedTradeMethodCode));
     }
 
     private void publishAuctionChanged(Long auctionId, String eventType) {
@@ -470,9 +528,58 @@ public class AuctionService {
         }
     }
 
+    private void validateDeliveryAddress(String selectedTradeMethodCode, Long userId) {
+        if (DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
+            memberService.getBuyerAddressSnapshot(userId);
+        }
+    }
+
+    private String resolveSelectedTradeMethod(AuctionBidTarget target, String requestedTradeMethodCode) {
+        String productTradeMethodCode = target.getTradeMethodCode();
+        if (DELIVERY_TRADE_METHOD_CODE.equals(productTradeMethodCode)
+                || OFFLINE_TRADE_METHOD_CODE.equals(productTradeMethodCode)) {
+            if (requestedTradeMethodCode == null
+                    || requestedTradeMethodCode.isBlank()
+                    || productTradeMethodCode.equals(requestedTradeMethodCode)) {
+                return productTradeMethodCode;
+            }
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "상품의 거래방식과 선택한 거래방식이 일치하지 않습니다.");
+        }
+
+        if (BOTH_TRADE_METHOD_CODE.equals(productTradeMethodCode)
+                && (DELIVERY_TRADE_METHOD_CODE.equals(requestedTradeMethodCode)
+                || OFFLINE_TRADE_METHOD_CODE.equals(requestedTradeMethodCode))) {
+            return requestedTradeMethodCode;
+        }
+
+        throw new CustomException(
+                ErrorCode.INVALID_INPUT_VALUE,
+                "배송 또는 직거래 방식을 선택해 주세요.");
+    }
+
     private void validateNotCurrentHighestBidder(AuctionBidTarget target, Long userId) {
         if (target.getCurrentHighestBidderId() != null && target.getCurrentHighestBidderId().equals(userId)) {
             throw new CustomException(ErrorCode.CONFLICT, "현재 최고 입찰자입니다.");
+        }
+    }
+
+    private void validateCurrentHighestBidder(AuctionBidTarget target, Long userId) {
+        if (target.getCurrentHighestBidId() == null
+                || target.getCurrentHighestBidderId() == null
+                || !target.getCurrentHighestBidderId().equals(userId)) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "현재 최고입찰자만 거래방식을 변경할 수 있습니다.");
+        }
+    }
+
+    private void validateMixedTradeMethodProduct(AuctionBidTarget target) {
+        if (!BOTH_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "배송과 직거래를 모두 지원하는 경매만 거래방식을 변경할 수 있습니다.");
         }
     }
 
@@ -514,12 +621,17 @@ public class AuctionService {
         }
     }
 
-    private AuctionBidCreateCommand insertHighestBid(Long auctionId, Long userId, BigDecimal bidAmount) {
+    private AuctionBidCreateCommand insertHighestBid(
+            Long auctionId,
+            Long userId,
+            BigDecimal bidAmount,
+            String selectedTradeMethodCode) {
         AuctionBidCreateCommand bid = new AuctionBidCreateCommand(
                 auctionId,
                 userId,
                 bidAmount,
                 BidStatusCode.HIGHEST,
+                selectedTradeMethodCode,
                 userId.toString());
         int inserted = auctionMapper.insertBid(bid);
         if (inserted == 0 || bid.getBidId() == null) {
@@ -607,7 +719,7 @@ public class AuctionService {
         request.setKeyword(blankToNull(request.getKeyword()));
         request.setSort(blankToDefault(request.getSort(), "deadline"));
         request.setTradeMethod(blankToDefault(request.getTradeMethod(), "all"));
-        request.setTradeMethodCode(resolveTradeMethodCode(request.getTradeMethod()));
+        request.setTradeMethodCodes(resolveTradeMethodCodes(request.getTradeMethod()));
 
         List<String> statuses = request.getStatus();
         boolean hasStatusFilter = statuses != null && !statuses.isEmpty();
@@ -621,12 +733,14 @@ public class AuctionService {
         request.setStatusEndingSoon(hasStatusFilter && statuses.contains("endingSoon"));
     }
 
-    private String resolveTradeMethodCode(String tradeMethod) {
+    private List<String> resolveTradeMethodCodes(String tradeMethod) {
         return switch (tradeMethod) {
-            case "delivery", DELIVERY_TRADE_METHOD_CODE -> DELIVERY_TRADE_METHOD_CODE;
-            case "direct", OFFLINE_TRADE_METHOD_CODE -> OFFLINE_TRADE_METHOD_CODE;
-            case BOTH_TRADE_METHOD_CODE -> BOTH_TRADE_METHOD_CODE;
-            default -> null;
+            case "delivery", DELIVERY_TRADE_METHOD_CODE ->
+                List.of(DELIVERY_TRADE_METHOD_CODE, BOTH_TRADE_METHOD_CODE);
+            case "direct", OFFLINE_TRADE_METHOD_CODE ->
+                List.of(OFFLINE_TRADE_METHOD_CODE, BOTH_TRADE_METHOD_CODE);
+            case BOTH_TRADE_METHOD_CODE -> List.of(BOTH_TRADE_METHOD_CODE);
+            default -> List.of();
         };
     }
 

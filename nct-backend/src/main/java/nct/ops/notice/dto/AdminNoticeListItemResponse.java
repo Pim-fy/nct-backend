@@ -22,5 +22,6 @@ public class AdminNoticeListItemResponse {
     private final LocalDateTime postingStartAt;
     private final LocalDateTime postingEndAt;
     private final LocalDateTime updatedAt;
+    private final String revisionToken;
     private final boolean visibleNow;
 }

@@ -71,6 +71,13 @@ public interface AuctionMapper {
             @Param("bidId") Long bidId,
             @Param("actor") String actor);
 
+    int updateCurrentHighestBidTradeMethod(
+            @Param("auctionId") Long auctionId,
+            @Param("bidId") Long bidId,
+            @Param("userId") Long userId,
+            @Param("tradeMethodCode") String tradeMethodCode,
+            @Param("actor") String actor);
+
     int insertBid(AuctionBidCreateCommand command);
 
     int updateAuctionCurrentPrice(

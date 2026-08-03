@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.dashboard.mapper.AdminDashboardMapper">
+
+    <select id="countPendingProviderApplications" resultType="long">
+        /* 관리자 대시보드: 제공자 심사 대기 건수 */
+        SELECT COUNT(*)
+        FROM PROVIDER_APPLY
+        WHERE PRV_APLY_STATUS_CD = 'PRVC0002'
+    </select>
+
+    <select id="countPendingReports" resultType="long">
+        /* 관리자 대시보드: 신고 접수 대기 건수 */
+        SELECT COUNT(*)
+        FROM ABUSE_REPORT
+        WHERE ABR_STATUS_CD = 'ABRC0005'
+    </select>
+
+</mapper>

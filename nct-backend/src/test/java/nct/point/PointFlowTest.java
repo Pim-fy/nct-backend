@@ -50,7 +50,7 @@ class PointFlowTest {
     void setUpUsers() {
         buyerSn = insertUser("t_buyer");
         sellerSn = insertUser("t_seller");
-        // 충전 기능은 DEC-117 확정 전이므로 시작 잔액은 원장 직접 적재로 대체
+        // 시작 잔액은 원장 직접 적재 — 실충전(토스 승인)을 테스트에서 태울 수 없어서다
         jdbc.update("""
                 INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)
                 VALUES (?, 'PTLC0001', 'PTLC0004', 100000, 100000, '테스트 충전')

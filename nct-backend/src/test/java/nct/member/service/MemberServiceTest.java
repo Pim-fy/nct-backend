@@ -147,14 +147,25 @@ class MemberServiceTest {
     }
 
     @Test
-    void 구매자_주소가_불완전하면_BUYER_ADDRESS_INCOMPLETE를_던진다() {
+    void 구매자_우편번호_또는_기본주소가_없으면_BUYER_ADDRESS_INCOMPLETE를_던진다() {
         when(memberMapper.findMemberById(101L))
-                .thenReturn(Optional.of(memberWithAddress("12345", "서울시 강남구", "  ")));
+                .thenReturn(Optional.of(memberWithAddress("12345", "  ", "상세주소")));
 
         assertThatThrownBy(() -> memberService.getBuyerAddressSnapshot(101L))
                 .isInstanceOf(CustomException.class)
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.BUYER_ADDRESS_INCOMPLETE);
+    }
+
+    @Test
+    void 구매자_상세주소가_없어도_배송지_스냅샷을_반환한다() {
+        when(memberMapper.findMemberById(101L))
+                .thenReturn(Optional.of(memberWithAddress("12345", "서울시 강남구", "  ")));
+
+        BuyerAddressSnapshot snapshot = memberService.getBuyerAddressSnapshot(101L);
+
+        assertThat(snapshot).isEqualTo(
+                new BuyerAddressSnapshot("구매자", "01012345678", "12345", "서울시 강남구", ""));
     }
 
     @Test
@@ -164,7 +175,8 @@ class MemberServiceTest {
 
         BuyerAddressSnapshot snapshot = memberService.getBuyerAddressSnapshot(101L);
 
-        assertThat(snapshot).isEqualTo(new BuyerAddressSnapshot("12345", "서울시 강남구", "101동 202호"));
+        assertThat(snapshot).isEqualTo(new BuyerAddressSnapshot(
+                "구매자", "01012345678", "12345", "서울시 강남구", "101동 202호"));
     }
 
     @Test
@@ -276,7 +288,9 @@ class MemberServiceTest {
     }
 
     private Member memberWithAddress(String zip, String addr, String daddr) {
-        return Member.builder().usrSn(101L).usrZip(zip).usrAddr(addr).usrDaddr(daddr).build();
+        return Member.builder()
+                .usrSn(101L).usrNm("구매자").usrTelno("01012345678")
+                .usrZip(zip).usrAddr(addr).usrDaddr(daddr).build();
     }
 
     private Member memberWithNickname(String nickname) {

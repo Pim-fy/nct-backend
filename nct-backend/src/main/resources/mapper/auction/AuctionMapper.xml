@@ -79,8 +79,11 @@
           AND p.PRD_IBY_AMT IS NOT NULL
           AND p.PRD_IBY_AMT &gt; 0
         </if>
-        <if test="condition.tradeMethodCode != null">
-          AND p.PRD_TRD_METHOD_CD = #{condition.tradeMethodCode}
+        <if test="condition.tradeMethodCodes != null and condition.tradeMethodCodes.size() > 0">
+          AND p.PRD_TRD_METHOD_CD IN
+          <foreach collection="condition.tradeMethodCodes" item="tradeMethodCode" open="(" separator="," close=")">
+              #{tradeMethodCode}
+          </foreach>
         </if>
         <choose>
             <when test="condition.sellerId != null and condition.includeHistory">
@@ -113,6 +116,10 @@
                     AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
                   </otherwise>
               </choose>
+              AND (
+                  a.AUC_STATUS_CD != 'AUCC0002'
+                  OR a.AUC_END_DT &gt; NOW()
+              )
             </otherwise>
         </choose>
         <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">
@@ -149,6 +156,14 @@
             </when>
             <when test="condition.sort == 'bidsDesc'">
                 ORDER BY COALESCE(bid.BID_COUNT, 0) DESC, a.AUC_END_DT ASC
+            </when>
+            <when test="condition.sort == 'popular'">
+                ORDER BY
+                    (COALESCE(favorite.FAVORITE_COUNT, 0) * 100)
+                        + COALESCE(p.PRD_VIEW_CNT, 0) DESC,
+                    COALESCE(favorite.FAVORITE_COUNT, 0) DESC,
+                    COALESCE(p.PRD_VIEW_CNT, 0) DESC,
+                    a.AUC_SN DESC
             </when>
             <when test="condition.sort == 'latest'">
                 ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC
@@ -216,6 +231,18 @@
                 THEN TRUE
                 ELSE FALSE
             END AS currentHighestBidder,
+            CASE
+                WHEN #{userId} IS NOT NULL THEN (
+                    SELECT highestBid.BID_TRD_METHOD_CD
+                    FROM BID highestBid
+                    WHERE highestBid.AUC_SN = a.AUC_SN
+                      AND highestBid.BID_STATUS_CD = 'BIDC0001'
+                      AND highestBid.USR_SN = #{userId}
+                    ORDER BY highestBid.BID_AMT DESC, highestBid.BID_SN DESC
+                    LIMIT 1
+                )
+                ELSE NULL
+            END AS myBidTradeMethodCode,
             CASE
                 WHEN #{userId} IS NOT NULL
                  AND EXISTS (
@@ -338,6 +365,7 @@
             p.USR_SN AS sellerId,
             currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
+            currentBid.BID_TRD_METHOD_CD AS currentHighestTradeMethodCode,
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
@@ -349,12 +377,13 @@
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
         LEFT JOIN (
-            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN
+            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN, ranked.BID_TRD_METHOD_CD
             FROM (
                 SELECT
                     b.BID_SN,
                     b.AUC_SN,
                     b.USR_SN,
+                    b.BID_TRD_METHOD_CD,
                     ROW_NUMBER() OVER (
                         PARTITION BY b.AUC_SN
                         ORDER BY b.BID_AMT DESC, b.BID_SN DESC
@@ -489,12 +518,28 @@
           AND BID_STATUS_CD = 'BIDC0001'
     </update>
 
+    <update id="updateCurrentHighestBidTradeMethod">
+        UPDATE BID
+        SET BID_TRD_METHOD_CD = #{tradeMethodCode},
+            BID_UPDT_ID = #{actor},
+            BID_UPDT_DT = NOW()
+        WHERE AUC_SN = #{auctionId}
+          AND BID_SN = #{bidId}
+          AND USR_SN = #{userId}
+          AND BID_STATUS_CD = 'BIDC0001'
+          AND (
+              BID_TRD_METHOD_CD IS NULL
+              OR BID_TRD_METHOD_CD &lt;&gt; #{tradeMethodCode}
+          )
+    </update>
+
     <insert id="insertBid" useGeneratedKeys="true" keyProperty="bidId" keyColumn="BID_SN">
         INSERT INTO BID (
             AUC_SN,
             USR_SN,
             BID_AMT,
             BID_STATUS_CD,
+            BID_TRD_METHOD_CD,
             BID_REG_ID,
             BID_UPDT_ID
         )
@@ -503,6 +548,7 @@
             #{userId},
             #{bidAmount},
             #{statusCode},
+            #{selectedTradeMethodCode},
             #{actor},
             #{actor}
         )

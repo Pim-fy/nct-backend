@@ -69,6 +69,13 @@ public enum ErrorCode {
     // @ai_generated: 작업단위5(F-AUTH-004 온보딩) - 온보딩 완료 API 전용
     ONBOARDING_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "온보딩 정보를 찾을 수 없습니다. 소셜 로그인을 다시 시도해주세요."),
 
+    // ---- 견적 도메인 (F-SVC-005/006/008, QUOTE 테이블 고정 기술 소유) ----
+    QUOTE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 견적입니다."),
+    QUOTE_REVISION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "견적 수정은 최대 3회까지 가능합니다."),
+    QUOTE_ALREADY_SELECTED(HttpStatus.CONFLICT, "이미 선택된 견적은 철회할 수 없습니다."),
+    QUOTE_SELF_TRADE(HttpStatus.FORBIDDEN, "본인이 등록한 서비스 요청에는 견적을 제출할 수 없습니다."),
+    QUOTE_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 견적 처리입니다."),
+
     // ---- 리뷰 도메인 (F-COM-007, REVIEW 테이블 고정 기술 소유 - 09_기능단위_7인_업무분장 v10) ----
     REVIEW_TRADE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "리뷰를 작성할 수 없는 거래입니다."),
     REVIEW_INVALID_RATING(HttpStatus.BAD_REQUEST, "평점은 1~5점 사이여야 합니다."),
@@ -78,6 +85,7 @@ public enum ErrorCode {
     // 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     EMAIL_RESEND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "인증번호 재발송은 1분 후에 가능합니다."),
+    INQUIRY_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "문의는 상품별로 6시간마다 등록할 수 있습니다."),
 
     /*==================== 포인트/정산 도메인 (담당자6) ====================*/
 

@@ -36,6 +36,10 @@ public class PointChargeOrderResponse {
     /** 실패·취소 사유 (없으면 null → 화면에 '-') */
     private final String failReason;
 
+    /** 결제수단 표시 문자열 (예: "카드 (433012******1234)", "간편결제 (토스페이)") — 승인 전이거나
+     *  상세 정보가 없으면 결제수단명만, 결제수단 자체가 없으면(대기 중 등) null → 화면에 '-' */
+    private final String payMethod;
+
     /** 도메인 모델 → 응답 DTO 변환 */
     public static PointChargeOrderResponse from(PointChargeOrder o) {
         return PointChargeOrderResponse.builder()
@@ -46,6 +50,9 @@ public class PointChargeOrderResponse {
                 .status(o.getStatusNm())
                 .statusCd(o.getPtChgOrdStatusCd())
                 .failReason(o.getPtChgOrdFailRsnCn())
+                .payMethod(o.getPtChgOrdPayMethod() == null ? null
+                        : o.getPtChgOrdPayDetail() == null ? o.getPtChgOrdPayMethod()
+                        : o.getPtChgOrdPayMethod() + " (" + o.getPtChgOrdPayDetail() + ")")
                 .build();
     }
 }

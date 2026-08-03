@@ -13,12 +13,14 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.reference.domain.Category;
 import nct.ops.reference.dto.AdminCategoryRequest;
 import nct.ops.reference.mapper.CategoryMapper;
+import nct.ops.reference.port.CategoryChangeHistoryCommand;
 import nct.ops.reference.port.CategoryChangeHistoryPort;
 
 /** 담당자 7 · F-COM-003: 중복, 도메인, 멱등 변경 규칙을 검증한다. */
@@ -50,7 +52,30 @@ class AdminCategoryServiceTest {
         assertThat(result.categorySn()).isEqualTo(15L);
         assertThat(result.name()).isEqualTo("인테리어");
         verify(mapper).insert(any(Category.class), org.mockito.ArgumentMatchers.eq("USR:7"));
-        verify(changeHistoryPort).record(any());
+        ArgumentCaptor<CategoryChangeHistoryCommand> auditCaptor =
+                ArgumentCaptor.forClass(CategoryChangeHistoryCommand.class);
+        verify(changeHistoryPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().reason()).isEqualTo("카테고리 등록");
+    }
+
+    @Test
+    void keepsAutomaticActionNameWhenLegacyClientSendsMemo() {
+        when(mapper.findRootByDomainForUpdate("CATC0002"))
+                .thenReturn(Optional.of(category(10L, null, "서비스 거래", 10, "N", "Y")));
+        when(mapper.insert(any(Category.class), any(String.class))).thenAnswer(invocation -> {
+            invocation.getArgument(0, Category.class).setCategorySn(15L);
+            return 1;
+        });
+        AdminCategoryRequest request =
+                new AdminCategoryRequest("인테리어", 50, true, true, "분류 개편 메모");
+
+        service.createCategory("CATC0002", request, 7L);
+
+        ArgumentCaptor<CategoryChangeHistoryCommand> auditCaptor =
+                ArgumentCaptor.forClass(CategoryChangeHistoryCommand.class);
+        verify(changeHistoryPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().reason())
+                .isEqualTo("카테고리 등록: 분류 개편 메모");
     }
 
     @Test
@@ -81,7 +106,7 @@ class AdminCategoryServiceTest {
     }
 
     private AdminCategoryRequest request(String name, int sortNo, boolean professional, boolean active) {
-        return new AdminCategoryRequest(name, sortNo, professional, active, "카테고리 정책 반영");
+        return new AdminCategoryRequest(name, sortNo, professional, active, null);
     }
 
     private Category category(Long id, Long parentId, String name, int sortNo,

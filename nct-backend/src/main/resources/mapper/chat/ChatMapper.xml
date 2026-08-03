@@ -8,11 +8,9 @@
     <select id="findOfflineMaterialTradeIdForUpdate" resultType="long">
         SELECT t.TRD_SN
         FROM TRADE t
-        JOIN PRODUCT p
-          ON p.PRD_SN = t.PRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
-          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
         FOR UPDATE
     </select>
 
@@ -39,12 +37,10 @@
         UPDATE CHAT_ROOM r
         JOIN TRADE t
           ON t.TRD_SN = r.TRD_SN
-        JOIN PRODUCT p
-          ON p.PRD_SN = t.PRD_SN
         SET r.CH_RM_STATUS_CD = 'CHRC0002'
         WHERE r.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
-          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
           AND r.CH_RM_STATUS_CD = 'CHRC0001'
     </update>
 
@@ -93,7 +89,7 @@
         JOIN USERS buyer
           ON buyer.USR_SN = t.BYPR_USR_SN
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
-          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
         <if test="tradeId != null">
           AND t.TRD_SN = #{tradeId}
@@ -111,11 +107,9 @@
         FROM CHAT_ROOM r
         JOIN TRADE t
           ON t.TRD_SN = r.TRD_SN
-        JOIN PRODUCT p
-          ON p.PRD_SN = t.PRD_SN
         WHERE r.CH_RM_SN = #{roomId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
-          AND p.PRD_TRD_METHOD_CD = 'TRDC0010'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
     </select>
 

@@ -20,18 +20,23 @@ import nct.global.exception.ErrorCode;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
+import nct.servicerequest.dto.AdminServiceRequestDetail;
+import nct.servicerequest.dto.AdminServiceRequestListItem;
+import nct.servicerequest.dto.AdminServiceRequestPage;
+import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
+import nct.servicerequest.port.AdminServiceRequestReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 import nct.servicerequest.service.ServiceRequestFormService.ValidatedSubmission;
 
 @Service
 @RequiredArgsConstructor
-public class ServiceRequestService implements ServiceRequestQuoteReader {
+public class ServiceRequestService implements ServiceRequestQuoteReader, AdminServiceRequestReader {
 
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
@@ -41,6 +46,8 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
 
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
     private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
+    private static final Set<String> SERVICE_REQUEST_STATUS_CD =
+            Set.of("SVCC0001", "SVCC0002", "SVCC0003", "SVCC0004");
 
     private void validateClientStatusCd(String statusCd) {
         if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
@@ -55,6 +62,40 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         List<ServiceRequestResponse> list =
                 serviceRequestMapper.searchServiceRequests(keyword, categorySn, minBudget, maxBudget, sort);
         return PagedResponse.of(new PageInfo<>(list));
+    }
+
+    /** 관리자 도메인에 Mapper를 노출하지 않고 전체 상태의 서비스 요청 목록을 제공한다. */
+    @Override
+    @Transactional(readOnly = true)
+    public AdminServiceRequestPage readPage(AdminServiceRequestSearchCondition condition) {
+        if (condition == null || condition.getPage() <= 0 || condition.getSize() <= 0
+                || (condition.getStatusCode() != null
+                    && !SERVICE_REQUEST_STATUS_CD.contains(condition.getStatusCode()))) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        long totalItems = serviceRequestMapper.countAdminServiceRequests(condition);
+        List<AdminServiceRequestListItem> items = totalItems == 0
+                ? List.of()
+                : serviceRequestMapper.findAdminServiceRequestPage(condition);
+        return AdminServiceRequestPage.builder()
+                .items(items)
+                .page(condition.getPage())
+                .size(condition.getSize())
+                .totalItems(totalItems)
+                .totalPages((int) Math.ceil((double) totalItems / condition.getSize()))
+                .build();
+    }
+
+    /** 관리자 서비스 요청 상세는 논리 삭제되지 않은 서비스요청 소유 필드만 반환한다. */
+    @Override
+    @Transactional(readOnly = true)
+    public AdminServiceRequestDetail readDetail(Long serviceRequestId) {
+        if (serviceRequestId == null || serviceRequestId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return serviceRequestMapper.findAdminServiceRequestDetail(serviceRequestId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
     }
 
     @Transactional

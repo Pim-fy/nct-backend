@@ -43,7 +43,10 @@ public class AbuseReportController {
                 abuseReportService.requestManualReport(reporterUserSn, request)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    // PublicProviderProfilePage.jsx의 신고 버튼이 role 제한 없이 렌더링되어, 제공자 모드
+    // (ROLE_SERVICE)에서 다른 제공자를 신고할 때도 이 API를 호출한다. USR_ROLE_CD는 단일
+    // 값이라 제공자 모드에서는 ROLE_USER 권한이 없어 hasRole('USER')만으로는 403이 발생했다.
+    @PreAuthorize("hasAnyRole('USER','SERVICE')")
     @PostMapping("/customer")
     public ResponseEntity<ApiResponse<ManualAbuseReportResponse>> submitCustomerReport(
             @AuthenticationPrincipal CustomUserDetails userDetails,

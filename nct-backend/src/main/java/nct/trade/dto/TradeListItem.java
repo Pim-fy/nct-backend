@@ -12,6 +12,7 @@ public class TradeListItem {
     private Long tradeId;
     private String userRole;
     private String productName;
+    private String productImageUrl;
     private String counterpartNickname;
     private BigDecimal tradeAmount;
     private LocalDateTime createdAt;

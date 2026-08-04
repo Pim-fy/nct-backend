@@ -81,7 +81,8 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
 
         String actorId = String.valueOf(reporterUserSn);
         String refTypeCode = (request.referenceTypeCode() == null || request.referenceTypeCode().isBlank())
-                ? null : request.referenceTypeCode().trim();
+                ? null
+                : request.referenceTypeCode().trim();
 
         AbuseReport report = AbuseReport.builder()
                 .riskEventSn(null)
@@ -98,7 +99,12 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                 .updatedBy(actorId)
                 .build();
 
-        int inserted = abuseReportMapper.insertCustomerReport(report);
+        int inserted;
+        try {
+            inserted = abuseReportMapper.insertCustomerReport(report);
+        } catch (DuplicateKeyException duplicate) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
+        }
         if (inserted != 1 || report.getReportSn() == null) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
@@ -391,8 +397,8 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                 || command.detectedTypes().stream().anyMatch(type -> type == null)
                 || (command.referenceTypeCode() == null) != (command.referenceSn() == null)
                 || (command.referenceTypeCode() != null
-                    && (command.referenceTypeCode().isBlank()
-                        || command.referenceTypeCode().trim().length() > 30))
+                        && (command.referenceTypeCode().isBlank()
+                                || command.referenceTypeCode().trim().length() > 30))
                 || (command.referenceSn() != null && command.referenceSn() <= 0)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
@@ -503,9 +509,11 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
 
         String adminId = normalizeAdminId(command.adminId());
         String newStatus = command.decision() == AdminReportDecision.PROCESSED
-                ? PROCESSED_STATUS : REJECTED_STATUS;
+                ? PROCESSED_STATUS
+                : REJECTED_STATUS;
         String auditAction = command.decision() == AdminReportDecision.PROCESSED
-                ? "ADMIN_APPROVE" : "ADMIN_REJECT";
+                ? "ADMIN_APPROVE"
+                : "ADMIN_REJECT";
         return new DecisionValues(
                 adminId,
                 command.reason().trim(),

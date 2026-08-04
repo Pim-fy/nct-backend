@@ -103,6 +103,7 @@
                </when>
                <when test="filterType == 'ACTIVE'">
                    AND p.PRD_STATUS_CD = 'PRDC0002'
+                   AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
                </when>
                <when test="filterType == 'WON'">
                    AND a.AUC_STATUS_CD = 'AUCC0003'
@@ -232,6 +233,14 @@
              WHERE PRD_SN = #{prdSn}
                AND AUC_STATUS_CD NOT IN ('AUCC0004', 'AUCC0005')
         )
+    </select>
+
+    <!-- ── 변경사항(F-AUC-007) 등록 가드용 경매 상태 조회 — AUCTION은 조회만(기존 합의된 방식) ─ -->
+    <select id="findAuctionStatus" resultType="java.lang.String">
+        /* ProductMapper.findAuctionStatus */
+        SELECT AUC_STATUS_CD
+          FROM AUCTION
+         WHERE PRD_SN = #{prdSn}
     </select>
 
 </mapper>

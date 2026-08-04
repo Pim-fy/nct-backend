@@ -25,6 +25,8 @@ import nct.global.security.domain.CustomUserDetails;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestFormResponse;
 import nct.servicerequest.dto.ServiceRequestResponse;
+import nct.servicerequest.dto.SvcReqCommentRequest;
+import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.service.ServiceRequestService;
 import nct.servicerequest.service.ServiceRequestFormService;
 
@@ -38,6 +40,8 @@ import nct.servicerequest.service.ServiceRequestFormService;
  *  GET    /api/service-requests/me              일반회원 내 요청서 목록
  *  GET    /api/service-requests/{svcReqSn}       요청자 본인 또는 제공자 상세 조회
  *  DELETE /api/service-requests/{svcReqSn}       일반회원 요청서 삭제 (본인만)
+ *  POST   /api/service-requests/{svcReqSn}/comments  변경사항 추가 (본인만, 최대 3개)
+ *  GET    /api/service-requests/{svcReqSn}/comments  변경사항 목록 조회
  */
 @RestController
 @RequestMapping("/api/service-requests")
@@ -166,5 +170,27 @@ public class ServiceRequestController {
         Long usrSn = userDetails.getMember().getId();
         serviceRequestService.deleteServiceRequest(svcReqSn, usrSn);
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** 요청서 변경사항 추가 (본인만, 견적 요청 정책상 최대 3개) */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
+    @PostMapping("/{svcReqSn}/comments")
+    public ResponseEntity<ApiResponse<SvcReqCommentResponse>> addComment(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "svcReqSn") Long svcReqSn,
+            @Valid @RequestBody SvcReqCommentRequest request) {
+
+        Long usrSn = userDetails.getMember().getId();
+        SvcReqCommentResponse response = serviceRequestService.addComment(svcReqSn, usrSn, request);
+        return ResponseEntity.status(201).body(ApiResponse.created(response));
+    }
+
+    /** 요청서 변경사항 목록 조회 — 요청자 본인 또는 제공자 */
+    @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
+    @GetMapping("/{svcReqSn}/comments")
+    public ResponseEntity<ApiResponse<List<SvcReqCommentResponse>>> getComments(
+            @PathVariable(name = "svcReqSn") Long svcReqSn) {
+
+        return ResponseEntity.ok(ApiResponse.success(serviceRequestService.getComments(svcReqSn)));
     }
 }

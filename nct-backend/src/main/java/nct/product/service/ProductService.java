@@ -309,6 +309,13 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
+        // 경매가 진행 중(AUCC0002)일 때만 변경사항 등록 허용 — 유찰·낙찰·취소 등으로 이미 종료된 경매에는
+        // 입찰자에게 알릴 이유가 없어 막는다
+        String aucStatusCd = productMapper.findAuctionStatus(prdSn).orElse(null);
+        if (!"AUCC0002".equals(aucStatusCd)) {
+            throw new CustomException(ErrorCode.CONFLICT, "진행 중인 경매에만 변경사항을 등록할 수 있습니다.");
+        }
+
         if (productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE).size() >= 3) {
             throw new CustomException(ErrorCode.CONFLICT, "변경 내역은 최대 3개까지 등록할 수 있습니다.");
         }

@@ -18,11 +18,15 @@ import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestResponse;
+import nct.servicerequest.dto.SvcReqCommentRequest;
+import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
@@ -36,8 +40,13 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
     private final SvcReqImageMapper svcReqImageMapper;
+    private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
+
+    // 변경사항 추가는 공개·매칭완료 상태(요청서가 이미 노출된 상태)에서만, 최대 3개까지
+    private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002", "SVCC0003");
+    private static final int MAX_COMMENT_COUNT = 3;
 
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
     private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
@@ -334,6 +343,45 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         serviceRequestMapper.deleteServiceRequest(svcReqSn, usrSn);
     }
 
+    /** 요청서 변경사항 추가 — 등록 후 본문 수정은 불가하므로 별도 이력으로 최대 3개까지 (견적 요청 정책) */
+    @Transactional
+    public SvcReqCommentResponse addComment(Long svcReqSn, Long usrSn, SvcReqCommentRequest req) {
+        ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+
+        if (!serviceRequest.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (!COMMENTABLE_STATUS_CD.contains(serviceRequest.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "공개 또는 매칭완료 상태의 요청서에만 변경사항을 추가할 수 있습니다.");
+        }
+        if (svcReqCommentMapper.findLatestComments(svcReqSn, Integer.MAX_VALUE).size() >= MAX_COMMENT_COUNT) {
+            throw new CustomException(ErrorCode.CONFLICT, "변경사항은 최대 " + MAX_COMMENT_COUNT + "개까지 등록할 수 있습니다.");
+        }
+
+        SvcReqComment comment = SvcReqComment.builder()
+                .svcReqSn(svcReqSn)
+                .usrSn(usrSn)
+                .svcReqCmtTtl(req.getTtl())
+                .svcReqCmtCn(req.getCn())
+                .svcReqCmtRegId(String.valueOf(usrSn))
+                .build();
+        svcReqCommentMapper.insertComment(comment);
+
+        return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT).stream()
+                .filter(c -> c.getSvcReqCmtSn().equals(comment.getSvcReqCmtSn()))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    /** 요청서 변경사항 목록 조회 — 최신순 최대 3개 */
+    @Transactional(readOnly = true)
+    public List<SvcReqCommentResponse> getComments(Long svcReqSn) {
+        serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT);
+    }
+
     // 요청 항목 목록을 순서대로 SVC_REQ_ITEM에 저장
     private void saveItems(Long svcReqSn, List<String> items) {
         if (items == null || items.isEmpty()) return;
@@ -349,7 +397,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         svcReqItemMapper.insertAll(rows);
     }
 
-    // 업로드된 파일 id 목록을 SVC_REQ_IMAGE로 연결 — 대표이미지 개념 없이 순서만 정렬순서로 보존
+    // 업로드된 파일 id 목록을 SVC_REQ_IMAGE로 연결 — 순서를 정렬순서로 보존(0번이 대표이미지)
     private void saveImages(Long svcReqSn, Long usrSn, List<Long> flSnList) {
         if (flSnList == null || flSnList.isEmpty()) return;
 

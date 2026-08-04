@@ -109,10 +109,15 @@ public class NotificationService {
         notificationMapper.insert(n);
         eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
 
-        String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
-        boolean sent = email != null
-                && mailSender.send(email, "[에누리컷] " + title, content
-                        + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
+        boolean sent = false;
+        try {
+            String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
+            sent = email != null
+                    && mailSender.send(email, "[에누리컷] " + title, content
+                            + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
+        } catch (RuntimeException ignored) {
+            // 이메일 복호화·발송 실패는 인앱 알림과 원래 업무 트랜잭션을 취소하지 않는다.
+        }
         notificationMapper.updateEmailStatus(n.getNtfSn(),
                 (sent ? NotificationEmailStatus.SENT : NotificationEmailStatus.FAILED).getCode());
     }
@@ -248,10 +253,15 @@ public class NotificationService {
         notificationMapper.insert(n);
         eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
 
-        String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
-        boolean sent = email != null
-                && mailSender.send(email, "[에누리컷] " + title, content
-                        + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
+        boolean sent = false;
+        try {
+            String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
+            sent = email != null
+                    && mailSender.send(email, "[에누리컷] " + title, content
+                            + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
+        } catch (RuntimeException ignored) {
+            // 이메일 복호화·발송 실패는 인앱 알림과 원래 업무 트랜잭션을 취소하지 않는다.
+        }
         notificationMapper.updateEmailStatus(n.getNtfSn(),
                 (sent ? NotificationEmailStatus.SENT : NotificationEmailStatus.FAILED).getCode());
     }

@@ -129,7 +129,7 @@ class ProductFavoriteServiceTest {
         jdbc.update("""
                 INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);
         return id;

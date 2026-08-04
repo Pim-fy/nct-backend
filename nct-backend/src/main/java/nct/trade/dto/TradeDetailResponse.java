@@ -13,6 +13,7 @@ public class TradeDetailResponse {
     private Long tradeId;
     private String userRole;
     private String productName;
+    private String productImageUrl;
     private Long counterpartUserId;
     private String counterpartNickname;
     private BigDecimal tradeAmount;

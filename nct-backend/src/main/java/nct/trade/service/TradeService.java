@@ -155,6 +155,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             throw new CustomException(ErrorCode.CONFLICT,
                     "거래 상태가 변경되어 거래 문제를 접수할 수 없습니다.");
         }
+        chatService.closeServiceTradeChatRoom(tradeId);
         tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 접수되었습니다.");
     }
 
@@ -276,6 +277,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         long settlementId = settlementService.createPending(
                 target.getTradeId(), target.getProviderUserId(), settlementAmount);
         settlementService.completeAutomatically(settlementId);
+        chatService.closeServiceTradeChatRoom(target.getTradeId());
         tradeMapper.insertStatusHistory(target.getTradeId(), COMPLETED, historyReason);
         notificationService.notifyTradeComplete(
                 target.getRequesterUserId(), target.getTradeId(), automaticallyCompleted);

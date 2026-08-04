@@ -17,6 +17,7 @@
         <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
         <result property="svcReqUpdtDt"   column="SVC_REQ_UPDT_DT"  />
         <result property="repImageUrl"    column="REP_IMAGE_URL"    />
+        <result property="thumbnailUrl"   column="THUMBNAIL_URL"    />
     </resultMap>
 
     <resultMap id="ServiceRequestEntityMap" type="nct.servicerequest.domain.ServiceRequest">
@@ -89,7 +90,16 @@
         /* ServiceRequestMapper.searchServiceRequests */
         SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
                s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
-               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT,
+               (
+                   SELECT CONCAT('/api/service-requests/', image.SVC_REQ_SN, '/images/', image.FL_SN)
+                     FROM SVC_REQ_IMAGE image
+                     JOIN FILES file ON file.FL_SN = image.FL_SN
+                    WHERE image.SVC_REQ_SN = s.SVC_REQ_SN
+                      AND file.FL_USE_YN = 'Y'
+                    ORDER BY image.SVC_REQ_IMG_SORT_NO ASC, image.FL_SN ASC
+                    LIMIT 1
+               ) AS THUMBNAIL_URL
           FROM SERVICE_REQUEST s
           JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
          WHERE s.SVC_REQ_STATUS_CD = 'SVCC0002'

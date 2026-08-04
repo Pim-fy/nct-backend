@@ -27,6 +27,7 @@ public class ServiceRequestResponse {
     private String svcReqStatusCd;
     private LocalDateTime svcReqRegDt;
     private LocalDateTime svcReqUpdtDt;
+    private String thumbnailUrl;
 
     // 목록 대표이미지(정렬순번 최소값 1장) — findMyServiceRequests에서만 세팅
     private String repImageUrl;

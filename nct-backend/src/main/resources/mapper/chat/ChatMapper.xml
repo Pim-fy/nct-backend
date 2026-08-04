@@ -14,6 +14,16 @@
         FOR UPDATE
     </select>
 
+    <!-- 서비스 거래는 보관금 예치 성공을 확인한 상위 트랜잭션에서만 이 잠금 조회 뒤 채팅방을 생성한다. -->
+    <select id="findServiceTradeIdForUpdate" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
+          AND t.TRD_STATUS_CD = 'TRDC0003'
+        FOR UPDATE
+    </select>
+
     <select id="findChatRoomIdByTradeId" resultType="long">
         SELECT CH_RM_SN
         FROM CHAT_ROOM
@@ -44,18 +54,33 @@
           AND r.CH_RM_STATUS_CD = 'CHRC0001'
     </update>
 
-    <!-- 대면 거래의 판매자·구매자만 본인 채팅방 목록에 포함한다. -->
+    <!-- 완료·취소·분쟁 접수로 확정된 서비스 거래만 기존 메시지 열람용으로 닫는다. -->
+    <update id="closeServiceTradeChatRoom">
+        UPDATE CHAT_ROOM r
+        JOIN TRADE t
+          ON t.TRD_SN = r.TRD_SN
+        SET r.CH_RM_STATUS_CD = 'CHRC0002'
+        WHERE r.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
+          AND t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008')
+          AND r.CH_RM_STATUS_CD = 'CHRC0001'
+    </update>
+
+    <!-- 물건·서비스 거래의 당사자만 본인 채팅방 목록에 포함한다. -->
     <select id="findMyChatRooms" resultType="nct.chat.dto.ChatRoomResponse">
         SELECT
             r.CH_RM_SN AS roomId,
             t.TRD_SN AS tradeId,
             CASE
-                WHEN t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
-                ELSE buyer.USR_NM
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' AND t.BYPR_USR_SN = #{userId} THEN seller.USR_NM
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' THEN buyer.USR_NM
+                WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
+                ELSE requester.USR_NM
             END AS counterpartNickname,
+            COALESCE(p.PRD_NM, sr.SVC_REQ_TTL) AS tradeTitle,
             p.PRD_NM AS productName,
             CASE
-                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN 'CHRC0002'
+                WHEN t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008') THEN 'CHRC0002'
                 ELSE r.CH_RM_STATUS_CD
             END AS roomStatus,
             (
@@ -82,22 +107,32 @@
         FROM CHAT_ROOM r
         JOIN TRADE t
           ON t.TRD_SN = r.TRD_SN
-        JOIN PRODUCT p
+        LEFT JOIN PRODUCT p
           ON p.PRD_SN = t.PRD_SN
-        JOIN USERS seller
+        LEFT JOIN SERVICE_REQUEST sr
+          ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        LEFT JOIN USERS seller
           ON seller.USR_SN = t.SLLR_USR_SN
-        JOIN USERS buyer
+        LEFT JOIN USERS buyer
           ON buyer.USR_SN = t.BYPR_USR_SN
-        WHERE t.TRD_TYPE_CD = 'TRDC0001'
-          AND t.TRD_METHOD_CD = 'TRDC0010'
-          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        LEFT JOIN USERS requester
+          ON requester.USR_SN = t.REQ_USR_SN
+        LEFT JOIN USERS provider
+          ON provider.USR_SN = t.PRV_USR_SN
+        WHERE (
+            (t.TRD_TYPE_CD = 'TRDC0001'
+             AND t.TRD_METHOD_CD = 'TRDC0010'
+             AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId}))
+            OR (t.TRD_TYPE_CD = 'TRDC0002'
+                AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId}))
+        )
         <if test="tradeId != null">
           AND t.TRD_SN = #{tradeId}
         </if>
         ORDER BY latestMessageAt DESC, r.CH_RM_SN DESC
     </select>
 
-    <!-- URL의 채팅방 번호만으로는 접근하지 못하도록 거래 당사자와 거래방식을 함께 확인한다. -->
+    <!-- URL의 채팅방 번호만으로는 접근하지 못하도록 거래 유형별 당사자를 함께 확인한다. -->
     <select id="findMyChatRoom" resultType="nct.chat.dto.ChatRoomAccess">
         SELECT
             r.CH_RM_SN AS roomId,
@@ -108,9 +143,13 @@
         JOIN TRADE t
           ON t.TRD_SN = r.TRD_SN
         WHERE r.CH_RM_SN = #{roomId}
-          AND t.TRD_TYPE_CD = 'TRDC0001'
-          AND t.TRD_METHOD_CD = 'TRDC0010'
-          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+          AND (
+              (t.TRD_TYPE_CD = 'TRDC0001'
+               AND t.TRD_METHOD_CD = 'TRDC0010'
+               AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId}))
+              OR (t.TRD_TYPE_CD = 'TRDC0002'
+                  AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId}))
+          )
     </select>
 
     <select id="findMyChatMessages" resultType="nct.chat.dto.ChatMessageResponse">

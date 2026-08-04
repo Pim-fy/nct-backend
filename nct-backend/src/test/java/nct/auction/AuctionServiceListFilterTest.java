@@ -61,8 +61,35 @@ class AuctionServiceListFilterTest {
 
         assertThat(request.isStatusReady()).isTrue();
         assertThat(request.isStatusActive()).isFalse();
+        assertThat(request.isStatusEnded()).isFalse();
         assertThat(request.isStatusEndingSoon()).isFalse();
         assertThat(request.getEndingSoonOnly()).isTrue();
+    }
+
+    @Test
+    void includesEndedAuctionsWhenNoStatusFilterIsSelected() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.isStatusReady()).isTrue();
+        assertThat(request.isStatusActive()).isTrue();
+        assertThat(request.isStatusEnded()).isTrue();
+    }
+
+    @Test
+    void supportsEndedAuctionStatusFilter() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setStatus(List.of(AuctionStatusCode.ENDED));
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.isStatusReady()).isFalse();
+        assertThat(request.isStatusActive()).isFalse();
+        assertThat(request.isStatusEnded()).isTrue();
+        assertThat(request.isStatusEndingSoon()).isFalse();
     }
 
     @Test
@@ -102,6 +129,17 @@ class AuctionServiceListFilterTest {
         auctionService.findAuctions(request);
 
         assertThat(request.getSort()).isEqualTo("popular");
+    }
+
+    @Test
+    void keepsFavoriteCountSortForMapper() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setSort("favoritesDesc");
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.getSort()).isEqualTo("favoritesDesc");
     }
 
     @Test

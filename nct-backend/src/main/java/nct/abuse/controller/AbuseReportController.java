@@ -43,7 +43,7 @@ public class AbuseReportController {
                 abuseReportService.requestManualReport(reporterUserSn, request)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/customer")
     public ResponseEntity<ApiResponse<ManualAbuseReportResponse>> submitCustomerReport(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -54,7 +54,7 @@ public class AbuseReportController {
                 abuseReportService.submitCustomerReport(reporterUserSn, request)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PageResponse<MyAbuseReportResponse>>> getMyReports(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -67,7 +67,7 @@ public class AbuseReportController {
                 abuseReportService.getMyReports(reporterUserSn, status, page, size)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me/{reportSn}")
     public ResponseEntity<ApiResponse<MyAbuseReportResponse>> getMyReportDetail(
             @AuthenticationPrincipal CustomUserDetails userDetails,

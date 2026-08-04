@@ -51,7 +51,7 @@ public class QuoteController {
     @PutMapping("/{quoteId}")
     public ResponseEntity<ApiResponse<Void>> updateQuote(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long quoteId,
+            @PathVariable(name = "quoteId") Long quoteId,
             @Valid @RequestBody QuoteUpdateRequest request) {
 
         Long usrSn = userDetails.getMember().getId();
@@ -64,7 +64,7 @@ public class QuoteController {
     @DeleteMapping("/{quoteId}")
     public ResponseEntity<ApiResponse<Void>> withdrawQuote(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long quoteId) {
+            @PathVariable(name = "quoteId") Long quoteId) {
 
         Long usrSn = userDetails.getMember().getId();
         quoteService.withdrawQuote(usrSn, quoteId);
@@ -76,8 +76,8 @@ public class QuoteController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PageResponse<QuoteResponse>>> getMyQuotes(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
@@ -89,7 +89,7 @@ public class QuoteController {
     @GetMapping("/service-request/{svcReqSn}")
     public ResponseEntity<ApiResponse<List<ReceivedQuoteResponse>>> getReceivedQuotes(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long svcReqSn) {
+            @PathVariable(name = "svcReqSn") Long svcReqSn) {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
@@ -101,7 +101,7 @@ public class QuoteController {
     @GetMapping("/{quoteId}/history")
     public ResponseEntity<ApiResponse<List<QuoteHistoryResponse>>> getQuoteHistory(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long quoteId) {
+            @PathVariable(name = "quoteId") Long quoteId) {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(

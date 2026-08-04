@@ -28,6 +28,7 @@ public class AuctionListRequest {
     private List<String> tradeMethodCodes = new ArrayList<>();
     private boolean statusReady;
     private boolean statusActive;
+    private boolean statusEnded;
     private boolean statusEndingSoon;
     private boolean hasStatusFilter;
 

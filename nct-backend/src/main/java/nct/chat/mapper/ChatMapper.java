@@ -18,12 +18,18 @@ public interface ChatMapper {
     /** 물건 직거래만 잠가 채팅방 생성과 중복 생성 검사가 같은 거래를 기준으로 이뤄지게 한다. */
     Long findOfflineMaterialTradeIdForUpdate(@Param("tradeId") long tradeId);
 
+    /** 진행 중인 서비스 거래만 잠가 채팅방 생성·중복 검사를 같은 거래 기준으로 직렬화한다. */
+    Long findServiceTradeIdForUpdate(@Param("tradeId") long tradeId);
+
     Long findChatRoomIdByTradeId(@Param("tradeId") long tradeId);
 
     int insertChatRoom(ChatRoom chatRoom);
 
     /** 거래가 완료되면 직거래 채팅방을 읽기 전용 상태로 전환한다. */
     int closeOfflineTradeChatRoom(@Param("tradeId") long tradeId);
+
+    /** 서비스 거래가 완료·취소·분쟁 상태가 되면 채팅방을 읽기 전용으로 전환한다. */
+    int closeServiceTradeChatRoom(@Param("tradeId") long tradeId);
 
     List<ChatRoomResponse> findMyChatRooms(
             @Param("userId") long userId,

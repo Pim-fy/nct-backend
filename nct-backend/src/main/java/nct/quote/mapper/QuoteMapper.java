@@ -19,9 +19,6 @@ public interface QuoteMapper {
 
     Quote findQuoteByIdForUpdate(@Param("qutSn") Long qutSn);
 
-    // SERVICE_REQUEST.USR_SN 직접 조회 — 담당자2(신현석) 서비스 요청 계약 완성 시 교체 예정
-    Long findRequesterUsrSn(@Param("svcReqSn") Long svcReqSn);
-
     int updateQuote(
             @Param("qutSn") Long qutSn,
             @Param("req") QuoteUpdateRequest req,
@@ -42,7 +39,5 @@ public interface QuoteMapper {
 
     List<QuoteHistoryResponse> findQuoteHistory(@Param("qutSn") Long qutSn);
 
-    List<ReceivedQuoteResponse> findQuotesBySvcReqSn(
-            @Param("usrSn") Long usrSn,
-            @Param("svcReqSn") Long svcReqSn);
+    List<ReceivedQuoteResponse> findQuotesBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
 }

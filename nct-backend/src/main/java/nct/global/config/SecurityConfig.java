@@ -143,6 +143,11 @@ public class SecurityConfig {
                 // 구매자 문의 목록 — 비로그인 조회 허용 (F-AUC-012)
                 .requestMatchers(HttpMethod.GET, "/api/products/*/inquiries")
                     .permitAll()
+                // 상품 추가 공지(댓글) 목록 조회 — 비로그인 조회 허용, 등록(POST)은 컨트롤러의
+                // @PreAuthorize("hasRole('USER')")로 별도 보호 (F-AUC-007). 원래 properties의
+                // permit-all-paths에 있었으나 메서드 구분이 안 돼 POST까지 함께 열려 있어 이곳으로 이전.
+                .requestMatchers(HttpMethod.GET, "/api/products/*/comments")
+                    .permitAll()
                 // 신고 접수 상태 — 공개 문의 목록의 검토 중 표시용 읽기 계약
                 .requestMatchers(HttpMethod.GET, "/api/abuse-reports/references/statuses")
                     .permitAll()
@@ -150,10 +155,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/auctions/*/stream")
                     .permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/*")
-                    .permitAll()
-                // 담당자 2 · F-COM-002/F-SVC: 공개 서비스 요청 목록·상세는 비로그인 탐색도 허용.
-                // /me(내 목록)는 컨트롤러 @PreAuthorize("isAuthenticated()")로 별도 보호.
-                .requestMatchers(HttpMethod.GET, "/api/service-requests", "/api/service-requests/*")
                     .permitAll()
                 // 첨부파일 서빙(WebConfig 정적 핸들러) - 상품 이미지·리뷰 사진은 비로그인 탐색에서도 보여야 한다.
                 //   업로드/삭제/교체(POST·DELETE·PUT)는 인증 필요라 GET만 연다.

@@ -3,6 +3,7 @@ package nct.servicerequest.dto;
 import java.math.BigDecimal;
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -29,7 +30,22 @@ public class ServiceRequestRegisterRequest {
     // SVCC0001(임시저장) | SVCC0002(공개) — 미전송 시 공개로 처리
     private String svcReqStatusCd;
 
+    // F-SVC-002: 화면이 조회한 폼 버전과 서버 검증 기준을 고정한다.
+    private Long formTemplateSn;
+
+    @Valid
+    @Size(max = 300, message = "구조화 답변은 최대 300개까지 등록할 수 있습니다.")
+    private List<ServiceRequestAnswerRequest> structuredAnswers;
+
+    @Valid
+    @Size(max = 10, message = "주소는 최대 10개까지 등록할 수 있습니다.")
+    private List<ServiceRequestAddressRequest> addressList;
+
     // 요청 조건/체크리스트 — 항목 순서 = 정렬순서
     @Size(max = 20, message = "요청 항목은 최대 20개까지 등록할 수 있습니다.")
     private List<@Size(max = 500, message = "요청 항목은 500자 이내로 입력해주세요.") String> items;
+
+    // 첨부사진 flSn 목록 — 순서 = 정렬순서. null이면 수정 시 기존 이미지 유지, 등록 시 사진 없음
+    @Size(max = 5, message = "사진은 최대 5장까지 첨부할 수 있습니다.")
+    private List<Long> flSnList;
 }

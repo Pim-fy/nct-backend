@@ -212,6 +212,7 @@ class TradeServiceTest {
         verify(tradeMapper).insertTradeDispute(
                 81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.", "11");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
+        verify(chatService).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0007", "거래 문제가 접수되었습니다.");
     }
 
@@ -320,9 +321,26 @@ class TradeServiceTest {
 
         verify(settlementService).createPending(81L, 22L, 150000L);
         verify(settlementService).completeAutomatically(61L);
+        verify(chatService).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
         verify(notificationService).notifyTradeComplete(11L, 81L, false);
         verify(notificationService).notifyTradeComplete(22L, 81L, false);
+    }
+
+    @Test
+    void expiredServiceConfirmationClosesChatRoomAfterAutomaticCompletion() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", LocalDateTime.now().minusMinutes(1));
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(tradeMapper.completeServiceTrade(81L, "SYSTEM")).thenReturn(1);
+        when(settlementService.createPending(81L, 22L, 150000L)).thenReturn(61L);
+
+        boolean completed = tradeService.completeExpiredServiceConfirmation(81L, LocalDateTime.now());
+
+        assertThat(completed).isTrue();
+        verify(chatService).closeServiceTradeChatRoom(81L);
+        verify(notificationService).notifyTradeComplete(11L, 81L, true);
+        verify(notificationService).notifyTradeComplete(22L, 81L, true);
     }
 
     @Test
@@ -841,6 +859,8 @@ class TradeServiceTest {
         when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 20L))
                 .thenReturn(target);
         when(systemSettingMapper.selectOne()).thenReturn(setting);
+        when(tradeMapper.startCompletionConfirmation(
+                eq(91L), any(LocalDateTime.class), eq("20"))).thenReturn(1);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.requestCompletionConfirmation(91L, 20L);

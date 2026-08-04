@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.servicerequest.mapper.SvcReqImageMapper">
+
+    <!-- 요청서 이미지 전체 삭제 — 수정 시 재삽입 전 호출 -->
+    <delete id="deleteBySvcReqSn">
+        /* SvcReqImageMapper.deleteBySvcReqSn */
+        DELETE FROM SVC_REQ_IMAGE WHERE SVC_REQ_SN = #{svcReqSn}
+    </delete>
+
+    <!-- 요청서 이미지 목록 조회 — 원본 정적 경로 대신 역할 검증이 있는 보호 API URL을 반환한다. -->
+    <select id="findImagesBySvcReqSn" resultType="nct.servicerequest.dto.SvcReqImageItem">
+        /* SvcReqImageMapper.findImagesBySvcReqSn */
+        SELECT
+            i.FL_SN  AS flSn,
+            CONCAT('/api/service-requests/', i.SVC_REQ_SN, '/images/', i.FL_SN) AS url
+        FROM SVC_REQ_IMAGE i
+        JOIN FILES f ON f.FL_SN = i.FL_SN
+        WHERE i.SVC_REQ_SN = #{svcReqSn}
+          AND f.FL_USE_YN = 'Y'
+        ORDER BY i.SVC_REQ_IMG_SORT_NO ASC
+    </select>
+
+    <select id="countImageLink" resultType="int">
+        /* SvcReqImageMapper.countImageLink */
+        SELECT COUNT(*)
+          FROM SVC_REQ_IMAGE i
+          JOIN FILES f ON f.FL_SN = i.FL_SN
+         WHERE i.SVC_REQ_SN = #{svcReqSn}
+           AND i.FL_SN = #{flSn}
+           AND f.FL_USE_YN = 'Y'
+    </select>
+
+    <!-- 요청서 이미지 목록 일괄 추가 -->
+    <insert id="insertAll">
+        /* SvcReqImageMapper.insertAll */
+        INSERT INTO SVC_REQ_IMAGE (SVC_REQ_SN, FL_SN, SVC_REQ_IMG_SORT_NO)
+        VALUES
+        <foreach collection="images" item="img" separator=",">
+            (#{img.svcReqSn}, #{img.flSn}, #{img.svcReqImgSortNo})
+        </foreach>
+    </insert>
+
+</mapper>

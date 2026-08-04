@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,12 +40,10 @@ public class QuoteController {
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     @PostMapping
     public ResponseEntity<ApiResponse<QuoteCreateResponse>> submitQuote(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
+            Authentication authentication,
             @Valid @RequestBody QuoteSubmitRequest request) {
-
-        Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.status(201).body(ApiResponse.created(
-                quoteService.submitQuote(usrSn, request)));
+                quoteService.submitQuote(authentication, request)));
     }
 
     /** F-SVC-006: 견적 수정 (3회 제한) */
@@ -52,7 +51,7 @@ public class QuoteController {
     @PutMapping("/{quoteId}")
     public ResponseEntity<ApiResponse<Void>> updateQuote(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long quoteId,
+            @PathVariable(name = "quoteId") Long quoteId,
             @Valid @RequestBody QuoteUpdateRequest request) {
 
         Long usrSn = userDetails.getMember().getId();
@@ -65,7 +64,7 @@ public class QuoteController {
     @DeleteMapping("/{quoteId}")
     public ResponseEntity<ApiResponse<Void>> withdrawQuote(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long quoteId) {
+            @PathVariable(name = "quoteId") Long quoteId) {
 
         Long usrSn = userDetails.getMember().getId();
         quoteService.withdrawQuote(usrSn, quoteId);
@@ -77,8 +76,8 @@ public class QuoteController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PageResponse<QuoteResponse>>> getMyQuotes(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
@@ -90,7 +89,7 @@ public class QuoteController {
     @GetMapping("/service-request/{svcReqSn}")
     public ResponseEntity<ApiResponse<List<ReceivedQuoteResponse>>> getReceivedQuotes(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long svcReqSn) {
+            @PathVariable(name = "svcReqSn") Long svcReqSn) {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
@@ -102,7 +101,7 @@ public class QuoteController {
     @GetMapping("/{quoteId}/history")
     public ResponseEntity<ApiResponse<List<QuoteHistoryResponse>>> getQuoteHistory(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long quoteId) {
+            @PathVariable(name = "quoteId") Long quoteId) {
 
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(

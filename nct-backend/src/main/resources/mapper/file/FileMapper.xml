@@ -127,4 +127,12 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 삭제 가드: 서비스 요청서 첨부사진으로 연결된 파일인지 (F-SVC-001, SVC_REQ_IMAGE는 담당자2 소유) -->
+    <select id="countServiceRequestImageRefs" resultType="int">
+        /* 파일: 서비스요청 첨부사진 참조 수 */
+        SELECT COUNT(*)
+          FROM SVC_REQ_IMAGE
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

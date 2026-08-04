@@ -19,6 +19,7 @@ public class ServiceRequestResponse {
     private Long svcReqSn;
     private Long usrSn;
     private Long catSn;
+    private Long formTemplateSn;
     private String catNm;
     private String svcReqTtl;
     private String svcReqCn;
@@ -26,7 +27,15 @@ public class ServiceRequestResponse {
     private String svcReqStatusCd;
     private LocalDateTime svcReqRegDt;
     private LocalDateTime svcReqUpdtDt;
+    private String thumbnailUrl;
 
     // 요청 항목 목록 — 상세 조회 시에만 세팅. 목록 조회(me)에서는 null
     @Setter private List<String> items;
+
+    // 첨부사진 목록 — 상세 조회 시에만 세팅. 목록 조회(me)에서는 null
+    @Setter private List<SvcReqImageItem> imageList;
+
+    // 요청자 수정 화면에서만 세팅한다. 공개 상세에서는 null이다.
+    @Setter private List<ServiceRequestAnswerItem> structuredAnswers;
+    @Setter private List<ServiceRequestAddressItem> addressList;
 }

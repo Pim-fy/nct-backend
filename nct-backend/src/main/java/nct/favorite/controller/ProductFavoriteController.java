@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import nct.favorite.dto.FavoriteAuctionListResponse;
 import nct.favorite.dto.FavoriteStatusResponse;
 import nct.favorite.service.ProductFavoriteService;
+import nct.global.idempotency.SkipIdempotency;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
@@ -26,6 +27,7 @@ public class ProductFavoriteController {
     private final ProductFavoriteService productFavoriteService;
 
     @PutMapping("/{auctionId}/favorite")
+    @SkipIdempotency
     public ApiResponse<FavoriteStatusResponse> addFavorite(
             @PathVariable("auctionId") Long auctionId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
@@ -33,6 +35,7 @@ public class ProductFavoriteController {
     }
 
     @DeleteMapping("/{auctionId}/favorite")
+    @SkipIdempotency
     public ApiResponse<FavoriteStatusResponse> removeFavorite(
             @PathVariable("auctionId") Long auctionId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {

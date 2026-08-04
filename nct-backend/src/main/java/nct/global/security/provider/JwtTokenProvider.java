@@ -62,6 +62,10 @@ public class JwtTokenProvider {
                    .compact();
     }
 
+    // @ai_generated: 활동 기반 세션 연장(refresh 시 refresh token도 재발급) 시, 재발급할 때 원래
+    // rememberMe 종류(30분/1일)를 그대로 유지하기 위해 토큰 자체에 심어두는 클레임.
+    private static final String CLAIM_REMEMBER_ME = "rememberMe";
+
     /**
      * Refresh Token 생성 (권한 미포함 - 재발급 전용)
      * @param rememberMe true면 CookieUtil의 쿠키 유지기간(기본 14일)과 맞춘 만료를,
@@ -71,10 +75,16 @@ public class JwtTokenProvider {
         long expiry = rememberMe ? refreshTokenExpiryRememberMe : refreshTokenExpiry;
         return Jwts.builder()
                    .subject(String.valueOf(usrSn))
+                   .claim(CLAIM_REMEMBER_ME, rememberMe)
                    .issuedAt(new Date())
                    .expiration(new Date(System.currentTimeMillis() + expiry))
                    .signWith(getSigningKey())
                    .compact();
+    }
+
+    /** Refresh Token의 rememberMe 클레임 추출 - 재발급 시 같은 종류(30분/1일)로 다시 발급하기 위함 */
+    public boolean getRememberMe(String token) {
+        return Boolean.TRUE.equals(parseClaims(token).get(CLAIM_REMEMBER_ME, Boolean.class));
     }
 
     // @ai_generated: 레드팀 3-A 대응 - subject가 숫자 형식이 아니면(예: 구버전 email subject 토큰)

@@ -22,6 +22,7 @@ import nct.chat.dto.ChatMessageResponse;
 import nct.chat.dto.ChatMessageSendRequest;
 import nct.chat.dto.ChatRoomAccess;
 import nct.chat.dto.OfflineTradeChatRoomCreateResult;
+import nct.chat.dto.ServiceTradeChatRoomCreateResult;
 import nct.chat.mapper.ChatMapper;
 import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
@@ -99,6 +100,49 @@ class ChatServiceTest {
     }
 
     @Test
+    void createsActiveChatRoomForServiceTrade() {
+        when(chatMapper.findServiceTradeIdForUpdate(92L)).thenReturn(92L);
+        when(chatMapper.findChatRoomIdByTradeId(92L)).thenReturn(null);
+        doAnswer(invocation -> {
+            ChatRoom chatRoom = invocation.getArgument(0);
+            chatRoom.setRoomId(12L);
+            return 1;
+        }).when(chatMapper).insertChatRoom(any(ChatRoom.class));
+
+        ServiceTradeChatRoomCreateResult result = chatService.createOrGetServiceTradeChatRoom(92L);
+
+        assertThat(result.getRoomId()).isEqualTo(12L);
+        assertThat(result.isCreated()).isTrue();
+        ArgumentCaptor<ChatRoom> roomCaptor = ArgumentCaptor.forClass(ChatRoom.class);
+        verify(chatMapper).insertChatRoom(roomCaptor.capture());
+        assertThat(roomCaptor.getValue().getTradeId()).isEqualTo(92L);
+        assertThat(roomCaptor.getValue().getRoomStatus()).isEqualTo("CHRC0001");
+    }
+
+    @Test
+    void returnsExistingChatRoomForRepeatedServiceTradeCreation() {
+        when(chatMapper.findServiceTradeIdForUpdate(92L)).thenReturn(92L);
+        when(chatMapper.findChatRoomIdByTradeId(92L)).thenReturn(12L);
+
+        ServiceTradeChatRoomCreateResult result = chatService.createOrGetServiceTradeChatRoom(92L);
+
+        assertThat(result.getRoomId()).isEqualTo(12L);
+        assertThat(result.isCreated()).isFalse();
+        verify(chatMapper, never()).insertChatRoom(any(ChatRoom.class));
+    }
+
+    @Test
+    void rejectsChatRoomCreationForNonServiceTrade() {
+        when(chatMapper.findServiceTradeIdForUpdate(92L)).thenReturn(null);
+
+        assertThatThrownBy(() -> chatService.createOrGetServiceTradeChatRoom(92L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+        verify(chatMapper, never()).insertChatRoom(any(ChatRoom.class));
+    }
+
+    @Test
     void savesMaskedMessageForActiveChatRoom() {
         ChatRoomAccess chatRoom = chatRoom(11L, 91L, "CHRC0001");
         ChatMessageSendRequest request = new ChatMessageSendRequest();
@@ -151,6 +195,23 @@ class ChatServiceTest {
                 any(),
                 any(),
                 any());
+    }
+
+    @Test
+    void rejectsWebSocketSubscriptionForClosedChatRoom() {
+        when(chatMapper.findMyChatRoom(11L, 10L)).thenReturn(chatRoom(11L, 91L, "CHRC0002"));
+
+        assertThatThrownBy(() -> chatService.requireMyActiveChatRoom(11L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+    }
+
+    @Test
+    void closesServiceTradeChatRoom() {
+        chatService.closeServiceTradeChatRoom(92L);
+
+        verify(chatMapper).closeServiceTradeChatRoom(92L);
     }
 
     @Test

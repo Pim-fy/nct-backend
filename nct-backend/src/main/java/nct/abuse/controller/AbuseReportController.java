@@ -54,7 +54,9 @@ public class AbuseReportController {
                 abuseReportService.submitCustomerReport(reporterUserSn, request)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    // 마이페이지 사이드바의 "내 신고 목록"이 제공자 모드 메뉴에도 있어(MyPageSidebar.jsx
+    // PROVIDER_MENU_ITEMS), 일반회원일 때 넣은 신고를 제공자 모드에서도 조회할 수 있어야 한다.
+    @PreAuthorize("hasAnyRole('USER','SERVICE')")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PageResponse<MyAbuseReportResponse>>> getMyReports(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -67,7 +69,8 @@ public class AbuseReportController {
                 abuseReportService.getMyReports(reporterUserSn, status, page, size)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    // 목록과 같은 이유로 제공자 모드에서도 조회 허용
+    @PreAuthorize("hasAnyRole('USER','SERVICE')")
     @GetMapping("/me/{reportSn}")
     public ResponseEntity<ApiResponse<MyAbuseReportResponse>> getMyReportDetail(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -78,7 +81,8 @@ public class AbuseReportController {
                 abuseReportService.getMyReportDetail(reporterUserSn, reportSn)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    // 목록과 같은 이유로 제공자 모드에서도 조회 허용
+    @PreAuthorize("hasAnyRole('USER','SERVICE')")
     @GetMapping("/me/references")
     public ResponseEntity<ApiResponse<List<ManualAbuseReportStatusResponse>>> getMyReportReferences(
             @AuthenticationPrincipal CustomUserDetails userDetails,

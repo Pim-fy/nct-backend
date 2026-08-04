@@ -260,6 +260,7 @@
                 ELSE 'SELLER'
             END AS userRole,
             p.PRD_NM AS productName,
+            productImage.productImageUrl AS productImageUrl,
             CASE
                 WHEN t.BYPR_USR_SN = #{userId} THEN t.SLLR_USR_SN
                 ELSE t.BYPR_USR_SN
@@ -292,6 +293,25 @@
           ON seller.USR_SN = t.SLLR_USR_SN
         JOIN USERS buyer
           ON buyer.USR_SN = t.BYPR_USR_SN
+        LEFT JOIN (
+            SELECT
+                pi.PRD_SN,
+                f.FL_PATH AS productImageUrl
+            FROM PRODUCT_IMAGE pi
+            JOIN FILES f
+              ON f.FL_SN = pi.FL_SN
+             AND f.FL_USE_YN = 'Y'
+            JOIN (
+                SELECT
+                    PRD_SN,
+                    MIN(CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) AS sortKey
+                FROM PRODUCT_IMAGE
+                GROUP BY PRD_SN
+            ) picked
+              ON picked.PRD_SN = pi.PRD_SN
+             AND picked.sortKey = CASE WHEN pi.PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + pi.PRD_IMG_SORT_NO
+        ) productImage
+          ON productImage.PRD_SN = p.PRD_SN
         LEFT JOIN TRADE_OFFLINE o
           ON o.TRD_SN = t.TRD_SN
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
@@ -367,6 +387,7 @@
                 ELSE 'SELLER'
             END AS userRole,
             p.PRD_NM AS productName,
+            productImage.productImageUrl AS productImageUrl,
             CASE
                 WHEN t.BYPR_USR_SN = #{userId} THEN t.SLLR_USR_SN
                 ELSE t.BYPR_USR_SN
@@ -406,6 +427,25 @@
           ON seller.USR_SN = t.SLLR_USR_SN
         JOIN USERS buyer
           ON buyer.USR_SN = t.BYPR_USR_SN
+        LEFT JOIN (
+            SELECT
+                pi.PRD_SN,
+                f.FL_PATH AS productImageUrl
+            FROM PRODUCT_IMAGE pi
+            JOIN FILES f
+              ON f.FL_SN = pi.FL_SN
+             AND f.FL_USE_YN = 'Y'
+            JOIN (
+                SELECT
+                    PRD_SN,
+                    MIN(CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) AS sortKey
+                FROM PRODUCT_IMAGE
+                GROUP BY PRD_SN
+            ) picked
+              ON picked.PRD_SN = pi.PRD_SN
+             AND picked.sortKey = CASE WHEN pi.PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + pi.PRD_IMG_SORT_NO
+        ) productImage
+          ON productImage.PRD_SN = p.PRD_SN
         LEFT JOIN TRADE_DELIVERY d
           ON d.TRD_SN = t.TRD_SN
         LEFT JOIN TRADE_OFFLINE o

@@ -20,8 +20,9 @@ public class OauthOnboardingRequest {
     @Size(max = 100, message = "닉네임은 100자 이하여야 합니다.")
     private String nickname;
 
-    // @ai_generated: OAuth 온보딩도 로컬 가입과 같은 선택 개인정보 제약을 적용한다.
-    @Pattern(regexp = "^$|^0\\d{10}$", message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
+    // @ai_generated: ISS-023 - OAuth 온보딩도 로컬 가입과 동일하게 전화번호를 필수로 전환.
+    @NotBlank(message = "전화번호는 필수입니다.")
+    @Pattern(regexp = "^0\\d{10}$", message = "전화번호는 0으로 시작하는 11자리 숫자여야 합니다.")
     private String telno;
 
     @Size(max = 200, message = "주소는 200자 이하여야 합니다.")

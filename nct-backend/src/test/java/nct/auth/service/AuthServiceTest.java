@@ -106,10 +106,14 @@ class AuthServiceTest {
         hyphenated.setTelno("010-1234-5678");
         SignUpRequest shortNumber = validRequest();
         shortNumber.setTelno("0212345678");
+        SignUpRequest blank = validRequest();
+        blank.setTelno("");
 
         assertThat(validator.validate(valid)).noneMatch(v -> v.getPropertyPath().toString().equals("telno"));
         assertThat(validator.validate(hyphenated)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
         assertThat(validator.validate(shortNumber)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
+        // @ai_generated: ISS-023 - 전화번호가 선택에서 필수로 전환됐으므로 공백 입력도 검증에 걸려야 한다.
+        assertThat(validator.validate(blank)).anyMatch(v -> v.getPropertyPath().toString().equals("telno"));
     }
 
     @Test
@@ -450,16 +454,21 @@ class AuthServiceTest {
     }
 
     @Test
-    void 재발급은_요청토큰을_해시화한뒤_DB저장값과_일치해야_성공한다() {
+    void 재발급은_요청토큰을_해시화한뒤_DB저장값과_일치해야_성공하고_리프레시_토큰도_회전한다() {
         AuthMember member = activeMemberWithRefreshHash("stored-hash");
         when(jwtTokenProvider.getUsrSn("raw-refresh-token")).thenReturn(101L);
         when(authMemberPort.findById(101L)).thenReturn(java.util.Optional.of(member));
         when(tokenHashUtil.hash("raw-refresh-token")).thenReturn("stored-hash");
+        when(jwtTokenProvider.getRememberMe("raw-refresh-token")).thenReturn(true);
         when(jwtTokenProvider.createAccessToken(101L)).thenReturn("new-access-token");
+        when(jwtTokenProvider.createRefreshToken(101L, true)).thenReturn("new-refresh-token");
 
-        String accessToken = authService.refresh("raw-refresh-token");
+        AuthSessionResult session = authService.refresh("raw-refresh-token");
 
-        assertThat(accessToken).isEqualTo("new-access-token");
+        assertThat(session.getAccessToken()).isEqualTo("new-access-token");
+        assertThat(session.getRefreshToken()).isEqualTo("new-refresh-token");
+        assertThat(session.isRememberMe()).isTrue();
+        verify(authMemberPort).updateRefreshToken(101L, "new-refresh-token");
     }
 
     @Test
@@ -598,6 +607,7 @@ class AuthServiceTest {
         request.setPassword("Password1!");
         request.setNickname("구매자");
         request.setEmail("user@example.com");
+        request.setTelno("01012345678");
         request.setVerificationId(77L);
         request.setAgreements(List.of(agreement("AGRC0001", true),
                                      agreement("AGRC0002", true),

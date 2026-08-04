@@ -154,8 +154,9 @@
     </update>
 
     <!-- @ai_generated: F-AUTH-010 - POL-AUTH-014 대상 필드(닉네임·프로필사진·연락이메일·계좌번호)만 갱신.
-         닉네임·이메일은 DTO에서 @NotBlank라 항상 값이 온다. 프로필사진·계좌번호는 선택 필드라
-         COALESCE로 값이 안 온(null) 경우 기존 값을 유지한다(안 그러면 다른 필드만 고칠 때 같이 지워짐). -->
+         닉네임·이메일·전화번호는 DTO에서 @NotBlank라 항상 값이 온다(전화번호는 ISS-023으로 필수 전환).
+         프로필사진·계좌번호·주소 등은 선택 필드라 COALESCE로 값이 안 온(null) 경우 기존 값을 유지한다
+         (안 그러면 다른 필드만 고칠 때 같이 지워짐). -->
     <update id="updateProfile">
         /* 프로필 기본 정보 수정 */
         UPDATE USERS
@@ -165,7 +166,7 @@
                USR_EML_HMAC = #{emailHmac},
                USR_BANK_NM_ENC = COALESCE(#{bankNameCiphertext}, USR_BANK_NM_ENC),
                USR_ACNT_NO_ENC = COALESCE(#{accountNoCiphertext}, USR_ACNT_NO_ENC),
-               USR_TELNO_ENC = COALESCE(#{telnoCiphertext}, USR_TELNO_ENC),
+               USR_TELNO_ENC = #{telnoCiphertext},
                USR_ZIP_ENC = COALESCE(#{zipCiphertext}, USR_ZIP_ENC),
                USR_ADDR_ENC = COALESCE(#{addressCiphertext}, USR_ADDR_ENC),
                USR_DADDR_ENC = COALESCE(#{addressDetailCiphertext}, USR_DADDR_ENC)

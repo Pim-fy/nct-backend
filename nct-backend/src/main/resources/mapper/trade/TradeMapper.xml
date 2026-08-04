@@ -356,7 +356,8 @@
         SELECT
             t.PRD_SN AS prdSn,
             t.TRD_SN AS tradeSn,
-            t.TRD_STATUS_CD AS tradeStatusCd
+            t.TRD_STATUS_CD AS tradeStatusCd,
+            t.TRD_METHOD_CD AS tradeMethodCd
         FROM TRADE t
         WHERE t.SLLR_USR_SN = #{sellerUserId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
@@ -368,7 +369,8 @@
         SELECT
             t.PRD_SN AS prdSn,
             t.TRD_SN AS tradeSn,
-            t.TRD_STATUS_CD AS tradeStatusCd
+            t.TRD_STATUS_CD AS tradeStatusCd,
+            t.TRD_METHOD_CD AS tradeMethodCd
         FROM TRADE t
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
           AND t.PRD_SN IN
@@ -611,6 +613,7 @@
     <update id="completeConfirmationByCounterpart">
         UPDATE TRADE
         SET TRD_STATUS_CD = 'TRDC0006',
+            TRD_AUTO_CMPL_DT = NULL,
             TRD_UPDT_ID = #{updaterId}
         WHERE TRD_SN = #{tradeId}
           AND TRD_STATUS_CD = 'TRDC0005'
@@ -650,6 +653,7 @@
     <update id="completeExpiredConfirmation">
         UPDATE TRADE
         SET TRD_STATUS_CD = 'TRDC0006',
+            TRD_AUTO_CMPL_DT = NULL,
             TRD_UPDT_ID = #{updaterId}
         WHERE TRD_SN = #{tradeId}
           AND TRD_STATUS_CD = 'TRDC0005'

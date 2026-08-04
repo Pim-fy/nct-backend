@@ -4,7 +4,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.domain.Notification;
+import nct.notification.domain.NotificationEmailStatus;
 import nct.notification.mapper.NotificationMapper;
 import nct.notification.mapper.UserNotificationEventSettingMapper;
 import nct.notification.mapper.UserNotificationSettingMapper;
@@ -73,7 +76,7 @@ class NotificationEventEmailDecryptTest {
         });
         when(notificationMapper.selectUserEmail(USR_SN)).thenReturn(ENCRYPTED_EMAIL);
         when(fieldCryptoService.decrypt(ENCRYPTED_EMAIL)).thenReturn(DECRYPTED_EMAIL);
-        when(mailSender.send(anyString(), anyString(), anyString())).thenReturn(true);
+        lenient().when(mailSender.send(anyString(), anyString(), anyString())).thenReturn(true);
     }
 
     @Test
@@ -83,5 +86,19 @@ class NotificationEventEmailDecryptTest {
 
         verify(mailSender).send(eq(DECRYPTED_EMAIL), anyString(), anyString());
         verify(mailSender, never()).send(eq(ENCRYPTED_EMAIL), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("이메일 복호화가 실패해도 인앱 알림과 원래 업무 처리는 계속된다")
+    void notifyDeliveryStartKeepsBusinessFlowWhenEmailDecryptionFails() {
+        when(fieldCryptoService.decrypt(ENCRYPTED_EMAIL))
+                .thenThrow(new IllegalArgumentException("복호화 실패"));
+
+        assertDoesNotThrow(() -> notificationService.notifyDeliveryStart(USR_SN, TRADE_ID));
+
+        verify(notificationMapper).insert(any(Notification.class));
+        verify(notificationMapper).updateEmailStatus(
+                999L, NotificationEmailStatus.FAILED.getCode());
+        verify(mailSender, never()).send(anyString(), anyString(), anyString());
     }
 }

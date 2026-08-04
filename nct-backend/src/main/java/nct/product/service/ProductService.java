@@ -294,6 +294,7 @@ public class ProductService {
             if (tradeStatus != null) {
                 p.setTradeSn(tradeStatus.getTradeSn());
                 p.setTradeStatusCd(tradeStatus.getTradeStatusCd());
+                p.setTradeMethodCd(tradeStatus.getTradeMethodCd());
             }
         });
 

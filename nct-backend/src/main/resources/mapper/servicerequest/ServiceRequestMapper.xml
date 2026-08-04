@@ -36,6 +36,96 @@
         <result property="svcReqUpdtId"   column="SVC_REQ_UPDT_ID"  />
     </resultMap>
 
+    <resultMap id="AdminServiceRequestListItemMap"
+               type="nct.servicerequest.dto.AdminServiceRequestListItem">
+        <id property="serviceRequestId" column="SVC_REQ_SN" />
+        <result property="title" column="SVC_REQ_TTL" />
+        <result property="categoryId" column="CAT_SN" />
+        <result property="categoryName" column="CAT_NM" />
+        <result property="requesterUserId" column="USR_SN" />
+        <result property="requesterName" column="USR_NM" />
+        <result property="budgetAmount" column="SVC_REQ_BDGT_AMT" />
+        <result property="statusCode" column="SVC_REQ_STATUS_CD" />
+        <result property="statusName" column="SVC_REQ_STATUS_NM" />
+        <result property="registeredAt" column="SVC_REQ_REG_DT" />
+        <result property="updatedAt" column="SVC_REQ_UPDT_DT" />
+    </resultMap>
+
+    <resultMap id="AdminServiceRequestDetailMap"
+               type="nct.servicerequest.dto.AdminServiceRequestDetail">
+        <id property="serviceRequestId" column="SVC_REQ_SN" />
+        <result property="title" column="SVC_REQ_TTL" />
+        <result property="content" column="SVC_REQ_CN" />
+        <result property="categoryId" column="CAT_SN" />
+        <result property="categoryName" column="CAT_NM" />
+        <result property="formTemplateId" column="SVC_REQ_FORM_TMPL_SN" />
+        <result property="requesterUserId" column="USR_SN" />
+        <result property="requesterName" column="USR_NM" />
+        <result property="budgetAmount" column="SVC_REQ_BDGT_AMT" />
+        <result property="statusCode" column="SVC_REQ_STATUS_CD" />
+        <result property="statusName" column="SVC_REQ_STATUS_NM" />
+        <result property="registeredAt" column="SVC_REQ_REG_DT" />
+        <result property="updatedAt" column="SVC_REQ_UPDT_DT" />
+    </resultMap>
+
+    <!-- 담당자 7: 관리자 검색도 서비스요청 소유 Mapper 안에서만 SERVICE_REQUEST를 조회한다. -->
+    <sql id="AdminServiceRequestFromWhere">
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY category ON category.CAT_SN = s.CAT_SN
+          JOIN USERS requester ON requester.USR_SN = s.USR_SN
+          JOIN CMM_CODE status_code ON status_code.CMM_CD = s.SVC_REQ_STATUS_CD
+         WHERE s.SVC_REQ_USE_YN = 'Y'
+        <if test="condition.keyword != null">
+           AND (s.SVC_REQ_TTL LIKE CONCAT('%', #{condition.keyword}, '%')
+            OR requester.USR_NM LIKE CONCAT('%', #{condition.keyword}, '%')
+            OR CAST(s.SVC_REQ_SN AS CHAR) LIKE CONCAT('%', #{condition.keyword}, '%')
+            OR CONCAT('#', s.SVC_REQ_SN) LIKE CONCAT('%', #{condition.keyword}, '%'))
+        </if>
+        <if test="condition.categorySn != null">
+           AND s.CAT_SN = #{condition.categorySn}
+        </if>
+        <if test="condition.statusCode != null">
+           AND s.SVC_REQ_STATUS_CD = #{condition.statusCode}
+        </if>
+        <if test="condition.registeredFrom != null">
+           AND s.SVC_REQ_REG_DT &gt;= #{condition.registeredFrom}
+        </if>
+        <if test="condition.registeredTo != null">
+           AND s.SVC_REQ_REG_DT &lt; DATE_ADD(#{condition.registeredTo}, INTERVAL 1 DAY)
+        </if>
+    </sql>
+
+    <select id="countAdminServiceRequests" resultType="long">
+        /* ServiceRequestMapper.countAdminServiceRequests */
+        SELECT COUNT(*)
+        <include refid="AdminServiceRequestFromWhere" />
+    </select>
+
+    <select id="findAdminServiceRequestPage" resultMap="AdminServiceRequestListItemMap">
+        /* ServiceRequestMapper.findAdminServiceRequestPage */
+        SELECT s.SVC_REQ_SN, s.SVC_REQ_TTL, s.CAT_SN, category.CAT_NM,
+               s.USR_SN, requester.USR_NM, s.SVC_REQ_BDGT_AMT,
+               s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+        <include refid="AdminServiceRequestFromWhere" />
+         ORDER BY s.SVC_REQ_REG_DT DESC, s.SVC_REQ_SN DESC
+         LIMIT #{condition.size} OFFSET #{condition.offset}
+    </select>
+
+    <select id="findAdminServiceRequestDetail" resultMap="AdminServiceRequestDetailMap">
+        /* ServiceRequestMapper.findAdminServiceRequestDetail */
+        SELECT s.SVC_REQ_SN, s.SVC_REQ_TTL, s.SVC_REQ_CN, s.CAT_SN, category.CAT_NM,
+               s.SVC_REQ_FORM_TMPL_SN, s.USR_SN, requester.USR_NM, s.SVC_REQ_BDGT_AMT,
+               s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY category ON category.CAT_SN = s.CAT_SN
+          JOIN USERS requester ON requester.USR_SN = s.USR_SN
+          JOIN CMM_CODE status_code ON status_code.CMM_CD = s.SVC_REQ_STATUS_CD
+         WHERE s.SVC_REQ_SN = #{serviceRequestId}
+           AND s.SVC_REQ_USE_YN = 'Y'
+    </select>
+
     <!-- ── 요청서 등록 ───────────────────────────────────── -->
     <insert id="saveServiceRequest" useGeneratedKeys="true" keyProperty="svcReqSn">
         /* ServiceRequestMapper.saveServiceRequest */

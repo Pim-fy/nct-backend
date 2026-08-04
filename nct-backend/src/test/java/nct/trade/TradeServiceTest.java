@@ -859,6 +859,8 @@ class TradeServiceTest {
         when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 20L))
                 .thenReturn(target);
         when(systemSettingMapper.selectOne()).thenReturn(setting);
+        when(tradeMapper.startCompletionConfirmation(
+                eq(91L), any(LocalDateTime.class), eq("20"))).thenReturn(1);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.requestCompletionConfirmation(91L, 20L);

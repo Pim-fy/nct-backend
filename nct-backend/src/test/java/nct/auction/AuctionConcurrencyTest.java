@@ -281,7 +281,7 @@ class AuctionConcurrencyTest {
                     USR_ZIP_ENC
                 )
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?, ?)
-                """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
                 fieldCryptoService.encrypt("테스트 주소"), fieldCryptoService.encrypt("101호"), fieldCryptoService.encrypt("12345"));
         long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);

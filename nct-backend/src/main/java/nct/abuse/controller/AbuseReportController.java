@@ -78,7 +78,7 @@ public class AbuseReportController {
                 abuseReportService.getMyReportDetail(reporterUserSn, reportSn)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me/references")
     public ResponseEntity<ApiResponse<List<ManualAbuseReportStatusResponse>>> getMyReportReferences(
             @AuthenticationPrincipal CustomUserDetails userDetails,

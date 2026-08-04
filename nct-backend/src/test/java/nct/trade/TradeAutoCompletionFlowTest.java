@@ -86,7 +86,10 @@ class TradeAutoCompletionFlowTest {
                 trade.tradeId()))
                 .isEqualTo(1);
         assertThat(notificationService.getUnreadCount(buyerUserId)).isEqualTo(1);
-        assertThat(notificationService.getUnreadCount(sellerUserId)).isEqualTo(4);
+        // 판매자 알림 3건: 정산 대기(createPending) + 정산 가능 포인트 적립(creditEscrowToSettleable)
+        // + 거래 자동 완료(notifyTradeComplete). 예전엔 4건이었으나 알림 흐름이 정리되며 3건으로
+        // 줄었는데 이 기댓값만 갱신이 안 되어 있었다.
+        assertThat(notificationService.getUnreadCount(sellerUserId)).isEqualTo(3);
         assertThat(jdbc.queryForObject(
                 "SELECT COALESCE(SUM(PT_LDG_AMT), 0) FROM POINT_LEDGER WHERE USR_SN = ? AND PT_LDG_PT_TYPE_CD = 'PTLC0003'",
                 Long.class,

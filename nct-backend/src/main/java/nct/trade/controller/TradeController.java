@@ -19,6 +19,7 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.ServiceTradeCompletionRequest;
+import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
@@ -66,6 +67,17 @@ public class TradeController {
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 서비스 거래 당사자만 역할별 서비스 거래 상세를 조회한다. */
+    @GetMapping("/{tradeId}/service-detail")
+    public ResponseEntity<ApiResponse<ServiceTradeDetailResponse>> getMyServiceTradeDetail(
+            @PathVariable(name = "tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyServiceTradeDetail(tradeId, userId)));
     }
 
     /** 판매자가 본인 직거래의 일시·장소·상세 주소를 저장한다. */

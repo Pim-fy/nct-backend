@@ -52,6 +52,11 @@ public interface AbuseReportMapper {
 
     AdminAbuseReportResponse findReportDetailById(@Param("reportSn") Long reportSn);
 
+    /** 담당자 7 · F-OPS-002: 회원 상세 화면에 표시할 신고 이력입니다. */
+    List<AdminAbuseReportResponse> findReportsByReportedUser(
+            @Param("reportedUserSn") Long reportedUserSn,
+            @Param("limit") int limit);
+
     int insertCustomerReport(AbuseReport report);
 
     List<MyAbuseReportResponse> findMyReports(

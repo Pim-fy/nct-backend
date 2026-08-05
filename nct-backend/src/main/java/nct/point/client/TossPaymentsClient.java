@@ -45,13 +45,19 @@ public class TossPaymentsClient {
             .build();
 
     /**
+     * 토스 API Basic 인증 헤더 — 시크릿 키를 아이디, 비밀번호는 빈 값으로 쓰는 토스 규격.
+     * confirm/cancel/lookupByOrderId 세 곳에 같은 생성 코드가 반복돼 있던 것을 통합 (2026-08-05 점검 정리).
+     */
+    private String authHeader() {
+        return "Basic " + Base64.getEncoder()
+                .encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
      * 결제 승인 확정.
      * amount는 항상 서버가 사전 기록해 둔 금액을 넘겨야 한다(호출부 책임) — 프론트가 보낸 금액을 신뢰하지 않는다.
      */
     public TossConfirmResult confirm(String paymentKey, String orderId, long amount) {
-        String authHeader = "Basic " + Base64.getEncoder()
-                .encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
-
         String body;
         try {
             body = objectMapper.writeValueAsString(Map.of(
@@ -65,7 +71,7 @@ public class TossPaymentsClient {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(confirmUrl))
                 .timeout(Duration.ofSeconds(10))
-                .header("Authorization", authHeader)
+                .header("Authorization", authHeader())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
@@ -115,9 +121,6 @@ public class TossPaymentsClient {
      * 성공/실패에 따라 실패 사유 문구만 다르게 기록하면 되기 때문.
      */
     public boolean cancel(String paymentKey, String cancelReason) {
-        String authHeader = "Basic " + Base64.getEncoder()
-                .encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
-
         try {
             String body = objectMapper.writeValueAsString(Map.of("cancelReason", cancelReason));
 
@@ -127,7 +130,7 @@ public class TossPaymentsClient {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(cancelUrl))
                     .timeout(Duration.ofSeconds(10))
-                    .header("Authorization", authHeader)
+                    .header("Authorization", authHeader())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
@@ -147,16 +150,13 @@ public class TossPaymentsClient {
      * 잘못 실패 처리할 수 있다({@link TossOrderLookupResult} 참고).
      */
     public TossOrderLookupResult lookupByOrderId(String orderId) {
-        String authHeader = "Basic " + Base64.getEncoder()
-                .encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
-
         // 조회 주소도 취소 주소와 같은 API 뿌리를 쓴다: .../v1/payments/orders/{orderId}
         String lookupUrl = confirmUrl.replace("/confirm", "") + "/orders/" + orderId;
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(lookupUrl))
                 .timeout(Duration.ofSeconds(10))
-                .header("Authorization", authHeader)
+                .header("Authorization", authHeader())
                 .GET()
                 .build();
 

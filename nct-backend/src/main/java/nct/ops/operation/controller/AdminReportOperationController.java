@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
@@ -19,9 +20,10 @@ import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
+import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.service.AdminReportOperationService;
 
-/** 담당자 7 · F-OPS-007: 관리자 신고 처리·반려 API입니다. */
+/** 담당자 7 · F-OPS-007: 관리자 신고 조회·처리·반려 API입니다. */
 @RestController
 @RequestMapping("/api/admin/reports")
 @RequiredArgsConstructor
@@ -32,6 +34,16 @@ public class AdminReportOperationController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<AdminAbuseReportResponse>>> getPendingReports() {
         return ResponseEntity.ok(ApiResponse.success(adminReportOperationService.getPendingReports()));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<AdminReportPageResponse>> getReports(
+            @RequestParam(name = "statusCode", required = false) String statusCode,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success(
+                adminReportOperationService.getReports(statusCode, keyword, page, size)));
     }
 
     @GetMapping("/{reportSn}")

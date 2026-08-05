@@ -24,19 +24,34 @@ public class AdminRiskEventService {
 
     private static final String RISK_EVENT_GROUP = "RSKG01";
     private static final int MAX_PAGE_SIZE = 50;
+    private static final int MAX_KEYWORD_LENGTH = 100;
 
     private final RiskEventMapper riskEventMapper;
     private final ReferenceDataService referenceDataService;
 
     @Transactional(readOnly = true)
-    public AdminRiskEventPageResponse getRiskEvents(String typeCode, String processed, int page, int size) {
+    public AdminRiskEventPageResponse getRiskEvents(
+            String typeCode,
+            String processed,
+            String keyword,
+            int page,
+            int size) {
         validatePage(page, size);
         String normalizedType = normalizeType(typeCode);
         String processedYn = normalizeProcessed(processed);
-        long totalItems = riskEventMapper.countAdminRiskEvents(normalizedType, processedYn);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long totalItems = riskEventMapper.countAdminRiskEvents(
+                normalizedType,
+                processedYn,
+                normalizedKeyword);
         List<AdminRiskEventListItemResponse> items = totalItems == 0 || (long) (page - 1) * size >= totalItems
                 ? List.of()
-                : riskEventMapper.findAdminRiskEvents(normalizedType, processedYn, (long) (page - 1) * size, size);
+                : riskEventMapper.findAdminRiskEvents(
+                        normalizedType,
+                        processedYn,
+                        normalizedKeyword,
+                        (long) (page - 1) * size,
+                        size);
         return AdminRiskEventPageResponse.builder().items(items).page(page).size(size)
                 .totalItems(totalItems).totalPages(totalItems == 0 ? 0 : (int) ((totalItems + size - 1) / size)).build();
     }
@@ -57,6 +72,17 @@ public class AdminRiskEventService {
         if (processed == null || processed.isBlank()) return null;
         String normalized = processed.trim().toUpperCase();
         if (!"Y".equals(normalized) && !"N".equals(normalized)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return normalized;
+    }
+
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        String normalized = keyword.trim();
+        if (normalized.length() > MAX_KEYWORD_LENGTH) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         return normalized;

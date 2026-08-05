@@ -12,6 +12,7 @@ import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
+import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.port.AdminReportDecision;
 import nct.ops.operation.service.AdminReportOperationService;
 
@@ -41,6 +42,24 @@ class AdminReportOperationControllerTest {
         controller.getPendingReports();
 
         verify(service).getPendingReports();
+    }
+
+    @Test
+    void forwardsAdminReportSearchConditions() {
+        AdminReportOperationService service = mock(AdminReportOperationService.class);
+        AdminReportOperationController controller = new AdminReportOperationController(service);
+        AdminReportPageResponse page = AdminReportPageResponse.builder()
+                .items(List.of())
+                .page(2)
+                .size(20)
+                .totalItems(21)
+                .totalPages(2)
+                .build();
+        when(service.getReports("ABRC0007", "신고", 2, 20)).thenReturn(page);
+
+        controller.getReports("ABRC0007", "신고", 2, 20);
+
+        verify(service).getReports("ABRC0007", "신고", 2, 20);
     }
 
     @Test

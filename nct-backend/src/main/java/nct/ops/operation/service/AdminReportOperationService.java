@@ -14,11 +14,13 @@ import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.service.AbuseReportService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.response.PageResponse;
+import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.port.AdminReportDecision;
 import nct.ops.operation.port.AdminReportDecisionCommand;
 import nct.ops.operation.port.AdminReportDecisionPort;
 
-/** 담당자 7 · F-OPS-007: 관리자 신고 처리 API와 담당자5 신고 서비스 계약을 연결합니다. */
+/** 담당자 7 · F-OPS-007: 관리자 신고 관리 API와 담당자 3 신고 서비스 계약을 연결합니다. */
 @Service
 @RequiredArgsConstructor
 public class AdminReportOperationService {
@@ -29,6 +31,24 @@ public class AdminReportOperationService {
     @Transactional(readOnly = true)
     public List<AdminAbuseReportResponse> getPendingReports() {
         return abuseReportService.getPendingReports();
+    }
+
+    @Transactional(readOnly = true)
+    public AdminReportPageResponse getReports(String statusCode, String keyword, int page, int size) {
+        PageResponse<AdminAbuseReportResponse> result = abuseReportService.getAdminReports(
+                statusCode,
+                keyword,
+                page,
+                size);
+        return AdminReportPageResponse.builder()
+                .items(result.getContent())
+                .page(result.getPage())
+                .size(result.getSize())
+                .totalItems(result.getTotalCount())
+                .totalPages(result.getTotalCount() == 0
+                        ? 0
+                        : (int) ((result.getTotalCount() + result.getSize() - 1) / result.getSize()))
+                .build();
     }
 
     @Transactional(readOnly = true)

@@ -8,6 +8,7 @@ public class ChatRoomAccess {
 
     private Long roomId;
     private Long tradeId;
+    private Long counterpartUserId;
     private String roomStatus;
     // 채팅방 상태가 이전 데이터로 ACTIVE여도 완료 거래의 전송을 막기 위한 원본 거래 상태다.
     private String tradeStatus;

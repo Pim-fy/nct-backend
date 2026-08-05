@@ -3,6 +3,7 @@ package nct.chat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,6 +28,7 @@ import nct.chat.mapper.ChatMapper;
 import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.security.port.SensitiveContentInspectionUseCase;
 import nct.ops.security.service.SensitiveDataInspectionResult;
 
@@ -34,13 +36,15 @@ class ChatServiceTest {
 
     private ChatMapper chatMapper;
     private SensitiveContentInspectionUseCase inspectionUseCase;
+    private NotificationService notificationService;
     private ChatService chatService;
 
     @BeforeEach
     void setUp() {
         chatMapper = mock(ChatMapper.class);
         inspectionUseCase = mock(SensitiveContentInspectionUseCase.class);
-        chatService = new ChatService(chatMapper, inspectionUseCase);
+        notificationService = mock(NotificationService.class);
+        chatService = new ChatService(chatMapper, inspectionUseCase, notificationService);
     }
 
     @Test
@@ -145,6 +149,7 @@ class ChatServiceTest {
     @Test
     void savesMaskedMessageForActiveChatRoom() {
         ChatRoomAccess chatRoom = chatRoom(11L, 91L, "CHRC0001");
+        chatRoom.setCounterpartUserId(20L);
         ChatMessageSendRequest request = new ChatMessageSendRequest();
         request.setContent("010-1234-5678로 연락 주세요.");
         request.setDetectionKey("6253b951-a8c6-4e1d-9047-2d2c4139b444");
@@ -174,6 +179,7 @@ class ChatServiceTest {
         ArgumentCaptor<ChatMessage> messageCaptor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(chatMapper).insertChatMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getContent()).isEqualTo("[연락처 마스킹]로 연락 주세요.");
+        verify(notificationService).notifyChatMessage(20L);
         assertThat(result).isSameAs(savedMessage);
     }
 
@@ -195,6 +201,7 @@ class ChatServiceTest {
                 any(),
                 any(),
                 any());
+        verify(notificationService, never()).notifyChatMessage(anyLong());
     }
 
     @Test

@@ -54,6 +54,7 @@ class ServiceTradeDetailAssemblerTest {
                 "깨끗한 청소 · 150,000원",
                 "2026. 08. 03. 오전 10:00",
                 "ESCROW_HELD",
-                "보관금이 안전하게 보관 중입니다.");
+                "보관금이 안전하게 보관 중입니다.",
+                true);
     }
 }

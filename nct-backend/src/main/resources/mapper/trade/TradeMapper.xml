@@ -481,7 +481,17 @@
                 WHEN st.STLM_STATUS_CD = 'STLC0003' THEN '정산이 완료되었습니다.'
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
                 ELSE NULL
-            END AS escrowStatusLabel
+            END AS escrowStatusLabel,
+            CASE
+                WHEN t.TRD_STATUS_CD = 'TRDC0003'
+                 AND EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
+                      AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                 ) THEN TRUE
+                ELSE FALSE
+            END AS chatAvailable
         FROM TRADE t
         JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
         JOIN QUOTE q ON q.QUT_SN = t.QUT_SN

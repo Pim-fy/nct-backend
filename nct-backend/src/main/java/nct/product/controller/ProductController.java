@@ -88,9 +88,9 @@ public class ProductController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PagedResponse<ProductResponse>>> getMyProducts(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam(defaultValue = "1")  int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false)    String filterType) {
+            @RequestParam(name = "page", defaultValue = "1")  int page,
+            @RequestParam(name = "size", defaultValue = "10") int size,
+            @RequestParam(name = "filterType", required = false) String filterType) {
 
         Long usrSn = userDetails.getMember().getId();
         PagedResponse<ProductResponse> response = productService.getMyProducts(usrSn, page, size, filterType);

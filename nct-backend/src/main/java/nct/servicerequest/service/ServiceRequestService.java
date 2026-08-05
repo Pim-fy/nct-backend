@@ -372,6 +372,8 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
     }
 
+    // 삭제는 임시저장 상태만 허용 — 공개 이후에는 제공자가 이미 견적을 냈을 수 있어 셀프 삭제로
+    // 기록을 지우면 안 되고, 더 이상 견적을 받고 싶지 않을 땐 마감(closeServiceRequest)을 쓴다.
     @Transactional
     public void deleteServiceRequest(Long svcReqSn, Long usrSn) {
         ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
@@ -379,6 +381,9 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
 
         if (!serviceRequest.getUsrSn().equals(usrSn)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (!"SVCC0001".equals(serviceRequest.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "임시저장 상태의 요청서만 삭제할 수 있습니다.");
         }
 
         serviceRequestMapper.deleteServiceRequest(svcReqSn, usrSn);

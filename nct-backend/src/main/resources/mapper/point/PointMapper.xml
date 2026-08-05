@@ -143,13 +143,32 @@
         FROM POINT_LEDGER
     </select>
 
-    <!-- 대사 배치: 시스템 경계를 넘나드는 원장 유형(충전·환전) + 그 취소분(보정/ADJUST, D-027 충전
-         회수 전용) 합계 (항등식의 우변). ADJUST 누락 시 D-027 보상 건마다 거짓 불일치 발생 -->
+    <!-- 대사 배치 (항등식의 우변): 충전·환전(경계이동) + 보정(ADJUST, D-027 충전 회수 전용) +
+         보관금전환·정산·환불(ESCROW/SETTLE/REFUND). ADJUST 누락 시 D-027 보상 건마다 거짓 불일치 발생.
+
+         ESCROW/SETTLE/REFUND를 넣는 이유(2026-08-05, 조우진 실DB 진단으로 발견한 오탐 수정):
+         홀딩(HOLD)·반환(RELEASE)·전환(CONVERT)은 PointService에서 항상 같은 트랜잭션 안에
+         두 행(−/+)을 함께 기록해서 어느 시점에 봐도 합이 0이다. 반면 보관금전환(ESCROW)은
+         낙찰 시점에 단식 1행(−)만 기록하고(convertHoldToEscrow 주석 참고 — 총 보유가 그
+         순간 줄어드는 게 의도된 동작), 짝이 되는 정산(SETTLE)이나 환불(REFUND)은 거래가
+         완료되거나 분쟁이 판정 나야 나중에 별도로 기록된다. 그래서 진행 중인 거래가 있으면
+         ESCROW만 있고 SETTLE/REFUND가 아직 없는 상태가 항상 존재하고, 이 셋을 "내부 이동이라
+         항상 0"으로 보고 빼뒀던 예전 계산식은 진행 중 거래 금액만큼 매번 거짓 불일치를 냈다.
+         이 셋을 우변에 포함시키면(=좌변과 동일하게 취급) HOLD/RELEASE/CONVERT가 항상 0이라는
+         진짜 불변식만 검증하게 되어, 진행 중 거래 유무와 무관하게 정상적으로 항등식이 성립한다. -->
     <select id="selectBoundaryCrossingSum" resultType="long">
-        /* 포인트: 대사 배치 - 충전·환전(경계이동)+보정 합계 */
+        /* 포인트: 대사 배치 - 충전·환전(경계이동)+보정+보관금전환·정산·환불 합계 */
         SELECT COALESCE(SUM(PT_LDG_AMT), 0)
         FROM POINT_LEDGER
-        WHERE PT_LDG_TYPE_CD IN ('PTLC0004', 'PTLC0009', 'PTLC0010', 'PTLC0011')
+        WHERE PT_LDG_TYPE_CD IN (
+            'PTLC0004', -- 충전
+            'PTLC0007', -- 보관금전환
+            'PTLC0008', -- 정산
+            'PTLC0009', -- 보정
+            'PTLC0010', -- 환전출금
+            'PTLC0011', -- 환전복원
+            'PTLC0013'  -- 보관금환불
+        )
     </select>
 
 </mapper>

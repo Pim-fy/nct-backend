@@ -491,6 +491,48 @@
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
     </select>
 
+    <!-- 서비스 거래 당사자가 재진입할 목록이다. 요청서 주소·세부 항목 같은 민감 정보는 포함하지 않는다. -->
+    <select id="findMyServiceTrades" resultType="nct.trade.dto.ServiceTradeListItem">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.SVC_REQ_SN AS serviceRequestId,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN 'REQUESTER'
+                ELSE 'PROVIDER'
+            END AS viewerRole,
+            t.TRD_STATUS_CD AS tradeStatusCode,
+            t.TRD_AMT AS tradeAmount,
+            sr.SVC_REQ_TTL AS serviceRequestTitle,
+            q.QUT_CN AS quoteSummary,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
+                ELSE requester.USR_NM
+            END AS counterpartNickname,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            t.TRD_REG_DT AS createdAt
+        FROM TRADE t
+        JOIN SERVICE_REQUEST sr
+          ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN QUOTE q
+          ON q.QUT_SN = t.QUT_SN
+        JOIN USERS requester
+          ON requester.USR_SN = t.REQ_USR_SN
+        JOIN USERS provider
+          ON provider.USR_SN = t.PRV_USR_SN
+        WHERE t.TRD_TYPE_CD = 'TRDC0002'
+          AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+        <if test="role == 'REQUESTER'">
+          AND t.REQ_USR_SN = #{userId}
+        </if>
+        <if test="role == 'PROVIDER'">
+          AND t.PRV_USR_SN = #{userId}
+        </if>
+        <if test="statusCode != null">
+          AND t.TRD_STATUS_CD = #{statusCode}
+        </if>
+        ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+    </select>
+
     <!-- 사진 원문은 파일 API가 권한 검사 후 내려준다. 상세에는 식별자와 정렬 순서만 반환한다. -->
     <select id="findTradeDeliveryProofFiles" resultType="nct.trade.dto.TradeDeliveryProofFile">
         SELECT

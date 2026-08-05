@@ -32,6 +32,7 @@ import nct.member.dto.BuyerAddressSnapshot;
 import nct.member.service.MemberService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
+import nct.ops.reference.service.ReferenceDataService;
 import nct.point.service.PointService;
 import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
@@ -47,6 +48,7 @@ import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceTradeListItem;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
@@ -73,6 +75,7 @@ class TradeServiceTest {
     private SettlementService settlementService;
     private ChatService chatService;
     private PointService pointService;
+    private ReferenceDataService referenceDataService;
     private FieldCryptoService fieldCryptoService;
     private TradeService tradeService;
 
@@ -86,6 +89,7 @@ class TradeServiceTest {
         settlementService = mock(SettlementService.class);
         chatService = mock(ChatService.class);
         pointService = mock(PointService.class);
+        referenceDataService = mock(ReferenceDataService.class);
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -98,6 +102,7 @@ class TradeServiceTest {
                 settlementService,
                 chatService,
                 pointService,
+                referenceDataService,
                 fieldCryptoService);
     }
 
@@ -160,10 +165,32 @@ class TradeServiceTest {
 
         assertThat(response.tradeId()).isEqualTo(91L);
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
-        assertThat(response.availableActions()).containsExactly(
-                "REQUEST_SCHEDULE_CHANGE",
-                "REQUEST_SCHEDULE_CANCELLATION",
-                "SUBMIT_DISPUTE");
+        assertThat(response.availableActions()).containsExactly("SUBMIT_DISPUTE");
+    }
+
+    @Test
+    void returnsMyServiceTradesWithRoleAndStatusFilters() {
+        ServiceTradeListItem item = new ServiceTradeListItem();
+        item.setTradeId(91L);
+        item.setViewerRole("REQUESTER");
+        when(tradeMapper.findMyServiceTrades(10L, "REQUESTER", "TRDC0003"))
+                .thenReturn(List.of(item));
+
+        List<ServiceTradeListItem> result = tradeService.getMyServiceTrades(
+                10L, "requester", "in_progress");
+
+        assertThat(result).containsExactly(item);
+        verify(tradeMapper).findMyServiceTrades(10L, "REQUESTER", "TRDC0003");
+    }
+
+    @Test
+    void rejectsMaterialRoleWhenFilteringMyServiceTrades() {
+        assertThatThrownBy(() -> tradeService.getMyServiceTrades(10L, "BUYER", null))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any());
     }
 
     @Test
@@ -248,6 +275,7 @@ class TradeServiceTest {
 
         verify(tradeMapper).insertTradeDispute(
                 81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.", "11");
+        verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
         verify(chatService).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0007", "거래 문제가 접수되었습니다.");
@@ -272,6 +300,31 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ALREADY_PROCESSED);
 
+        verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void rejectsInactiveOrWrongGroupServiceTradeDisputeTypeBeforeInsert() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("INVALID_CODE");
+        request.setContent("유형 검증 실패");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        org.mockito.Mockito.doThrow(new CustomException(ErrorCode.INVALID_INPUT_VALUE))
+                .when(referenceDataService).requireActiveCode("TRDG04", "INVALID_CODE");
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(tradeMapper, never()).insertTradeDispute(anyLong(), anyLong(), any(), any(), any());
         verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
     }
 

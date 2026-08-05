@@ -3,6 +3,7 @@ package nct.notification.service;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -11,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.domain.Notification;
 import nct.notification.domain.NotificationAudience;
@@ -182,9 +185,23 @@ public class NotificationService {
                 .toList();
     }
 
-    /** 내 이벤트별 설정 저장 — 화면이 보낸 항목만큼 업서트(누락된 이벤트는 손대지 않음) */
+    /**
+     * 내 이벤트별 설정 저장 — 화면이 보낸 항목만큼 업서트(누락된 이벤트는 손대지 않음).
+     * USER_NOTIFICATION_EVENT_SETTING.NTF_EVT_CD는 CMM_CODE FK가 걸려 있어, 모르는 코드로
+     * upsert하면 FK 위반이 SQL 예외(500)로 그대로 터진다 — 등록 안 된 이벤트 코드를 enum에 먼저
+     * 넣고 배포했다가 전체 회원 저장이 막혔던 사고(2026-08-04) 재발 방지로, DB까지 가기 전에
+     * 알려진 이벤트 코드인지 앱 계층에서 먼저 검증한다(D-009 원칙 그대로 적용).
+     */
     @Transactional
     public void saveEventSettings(long usrSn, List<UserNotificationEventSetting> settings) {
+        Set<String> knownCodes = Arrays.stream(NotificationEvent.values())
+                .map(NotificationEvent::getCode)
+                .collect(Collectors.toSet());
+        settings.forEach(s -> {
+            if (!knownCodes.contains(s.getNtfEvtCd())) {
+                throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+            }
+        });
         settings.forEach(s -> {
             s.setUsrSn(usrSn);
             eventSettingMapper.upsert(s);
@@ -316,6 +333,22 @@ public class NotificationService {
                 "판매자가 문의에 답변했습니다",
                 "등록하신 문의에 판매자가 답변 하였습니다.",
                 RefType.PRODUCT, prdCmtSn);
+    }
+
+    /**
+     * 새 채팅 메시지 — 채팅 담당(4, 정민재)이 메시지 저장 후 호출 (대상: 상대방).
+     * "새 채팅 메시지"(NTFC0032) 이벤트로 게이팅한다. CMM_CODE(NTFG05, CMM_SN=233) 반영 완료
+     * 확인(조우진, 2026-08-04) 후 재반영 — 실제 호출 연결은 여전히 채팅 담당 몫, 미호출 상태.
+     * refType/refSn은 일부러 비워둔다 — TRADE+tradeId로 잡으면 notifyForEvent의 (회원·이벤트·참조)
+     * 멱등 체크가 같은 거래방의 두 번째 메시지부터 계속 막아버린다(거래당 1회성 이벤트인
+     * DELIVERY_START류와 달리 채팅은 같은 참조로 반복 발생). 메시지 단위로 멱등 키를 잡으려면
+     * CHAT_MESSAGE 참조유형(RefType) 신설이 필요해 이번 범위에서는 뺐다.
+     */
+    public void notifyChatMessage(long usrSn) {
+        notifyForEvent(usrSn, NotificationEvent.NEW_CHAT_MESSAGE, NotificationAudience.GENERAL,
+                "새 채팅 메시지",
+                "채팅방에 새 메시지가 도착했습니다.",
+                null, null);
     }
 
     /** 배송 시작 — 거래/배송 담당(4)이 배송 상태 전이 시 호출 (대상: 구매자) */

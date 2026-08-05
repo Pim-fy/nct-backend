@@ -19,7 +19,7 @@
         LEFT JOIN AUCTION_CANCEL_REQUEST cancel_request ON cancel_request.AUC_CNL_REQ_SN = (
             SELECT r.AUC_CNL_REQ_SN FROM AUCTION_CANCEL_REQUEST r
              WHERE r.AUC_SN = a.AUC_SN AND r.AUC_CNL_REQ_APRV_YN IS NULL
-             ORDER BY r.AUC_CNL_REQ_SN DESC LIMIT 1
+             ORDER BY r.AUC_CNL_REQ_REG_DT DESC, r.AUC_CNL_REQ_SN DESC LIMIT 1
         )
         WHERE p.PRD_USE_YN = 'Y'
         <if test="condition.keyword != null">
@@ -65,7 +65,29 @@
                cancel_request.AUC_CNL_REQ_REG_DT AS cancelRequestedAt,
                cancel_request.PREV_AUC_STATUS_CD AS previousAuctionStatusCode
         <include refid="fromWhere"/>
-        ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC
+        ORDER BY
+            CASE a.AUC_STATUS_CD
+                WHEN 'AUCC0006' THEN 0
+                WHEN 'AUCC0002' THEN 1
+                WHEN 'AUCC0001' THEN 2
+                WHEN 'AUCC0003' THEN 3
+                WHEN 'AUCC0004' THEN 4
+                WHEN 'AUCC0005' THEN 5
+                ELSE 6
+            END ASC,
+            CASE trade.TRD_STATUS_CD
+                WHEN 'TRDC0003' THEN 0
+                WHEN 'TRDC0004' THEN 1
+                WHEN 'TRDC0005' THEN 2
+                WHEN 'TRDC0006' THEN 3
+                WHEN 'TRDC0007' THEN 4
+                WHEN 'TRDC0008' THEN 5
+                ELSE 6
+            END ASC,
+            CASE WHEN a.AUC_STATUS_CD = 'AUCC0006'
+                 THEN cancel_request.AUC_CNL_REQ_REG_DT END DESC,
+            a.AUC_REG_DT DESC,
+            a.AUC_SN DESC
         LIMIT #{condition.size} OFFSET #{condition.offset}
     </select>
 </mapper>

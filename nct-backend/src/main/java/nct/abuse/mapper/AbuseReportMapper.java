@@ -40,6 +40,16 @@ public interface AbuseReportMapper {
             @Param("receivedStatusCode") String receivedStatusCode,
             @Param("processingStatusCode") String processingStatusCode);
 
+    List<AdminAbuseReportResponse> findAdminReports(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    long countAdminReports(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
+
     AdminAbuseReportResponse findReportDetailById(@Param("reportSn") Long reportSn);
 
     int insertCustomerReport(AbuseReport report);

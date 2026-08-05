@@ -107,7 +107,16 @@
                s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
         <include refid="AdminServiceRequestFromWhere" />
-         ORDER BY s.SVC_REQ_REG_DT DESC, s.SVC_REQ_SN DESC
+         ORDER BY
+               CASE s.SVC_REQ_STATUS_CD
+                   WHEN 'SVCC0002' THEN 0
+                   WHEN 'SVCC0001' THEN 1
+                   WHEN 'SVCC0003' THEN 2
+                   WHEN 'SVCC0004' THEN 3
+                   ELSE 4
+               END ASC,
+               s.SVC_REQ_REG_DT DESC,
+               s.SVC_REQ_SN DESC
          LIMIT #{condition.size} OFFSET #{condition.offset}
     </select>
 

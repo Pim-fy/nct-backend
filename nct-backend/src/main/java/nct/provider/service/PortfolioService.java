@@ -12,25 +12,21 @@ import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.global.security.port.AuthMember;
-import nct.global.security.port.AuthMemberPort;
-import nct.ops.sanction.port.SanctionStatusReader;
 import nct.provider.domain.PortfolioRecord;
 import nct.provider.dto.PortfolioRequest;
 import nct.provider.dto.PortfolioResponse;
 import nct.provider.mapper.PortfolioMapper;
 
-/** 담당자 7, F-PROV-005: 활성 제공자의 포트폴리오와 이미지 연결을 한 트랜잭션으로 관리한다. */
+/** 담당자 6, F-PROV-005: 활성 제공자의 포트폴리오와 이미지 연결을 한 트랜잭션으로 관리한다.
+ *  (헤더의 "담당자 7" 표기는 업무분장 변경 전 잔재라 정정 — 2026-08-05) */
 @Service
 @RequiredArgsConstructor
 public class PortfolioService {
     private static final String PORTFOLIO_PATH_PREFIX = "/api/attachment/portfolio/";
 
     private final PortfolioMapper mapper;
-    private final ProviderApplicationService providerApplicationService;
-    private final SanctionStatusReader sanctionStatusReader;
+    private final ActiveProviderGuard activeProviderGuard;
     private final FileStorageService fileStorageService;
-    private final AuthMemberPort authMemberPort;
 
     @Transactional(readOnly = true)
     public List<PortfolioResponse> getMine(Long userSn) {
@@ -111,17 +107,9 @@ public class PortfolioService {
         }
     }
 
+    // 활성 제공자 검사는 프로필 서비스와 공용 가드(ActiveProviderGuard)로 통합 (2026-08-05 중복 정리)
     private void requireActiveProvider(Long userSn) {
-        if (userSn == null || userSn <= 0) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED);
-        }
-        AuthMember member = authMemberPort.findById(userSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
-        if (!"USRC0001".equals(member.getStatus())) {
-            throw new CustomException(ErrorCode.NOT_FOUND);
-        }
-        providerApplicationService.requireAnyActivePermission(userSn);
-        sanctionStatusReader.requireNoActiveSanction(userSn);
+        activeProviderGuard.requireActive(userSn);
     }
 
     private String trimToNull(String value) {

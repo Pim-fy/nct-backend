@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.servicerequest.mapper.SvcReqCommentMapper">
+
+    <insert id="insertComment" useGeneratedKeys="true" keyProperty="svcReqCmtSn">
+        /* SvcReqCommentMapper.insertComment */
+        INSERT INTO SVC_REQ_COMMENT (
+            SVC_REQ_SN,
+            USR_SN,
+            SVC_REQ_CMT_TTL,
+            SVC_REQ_CMT_CN,
+            SVC_REQ_CMT_REG_ID
+        ) VALUES (
+            #{svcReqSn},
+            #{usrSn},
+            #{svcReqCmtTtl},
+            #{svcReqCmtCn},
+            #{svcReqCmtRegId}
+        )
+    </insert>
+
+    <select id="findLatestComments" resultType="nct.servicerequest.dto.SvcReqCommentResponse">
+        /* SvcReqCommentMapper.findLatestComments */
+        SELECT SVC_REQ_CMT_SN   AS svcReqCmtSn,
+               SVC_REQ_CMT_TTL  AS svcReqCmtTtl,
+               SVC_REQ_CMT_CN   AS svcReqCmtCn,
+               SVC_REQ_CMT_REG_DT AS svcReqCmtRegDt
+          FROM SVC_REQ_COMMENT
+         WHERE SVC_REQ_SN = #{svcReqSn}
+         ORDER BY SVC_REQ_CMT_SN DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

@@ -36,8 +36,8 @@ public class ServiceRequestImageController {
     @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
     @GetMapping("/{svcReqSn}/images/{flSn}")
     public ResponseEntity<Resource> view(
-            @PathVariable Long svcReqSn,
-            @PathVariable Long flSn,
+            @PathVariable(name = "svcReqSn") Long svcReqSn,
+            @PathVariable(name = "flSn") Long flSn,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         Long viewerUsrSn = userDetails.getMember().getId();
         boolean providerViewer = userDetails.getAuthorities().stream()

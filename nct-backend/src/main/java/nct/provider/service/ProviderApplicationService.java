@@ -1,5 +1,6 @@
 package nct.provider.service;
 
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,8 +22,9 @@ import nct.provider.dto.ProviderApplicationResponse;
 import nct.provider.mapper.ProviderApplicationMapper;
 
 /**
- * 담당자 7 · F-PROV-002/003/006/007/012~014.
+ * 담당자 6 · F-PROV-002/003/006/007/012~014.
  * 제공자 신청 화면과 관리자 심사 화면에서 사용하며, 승인될 때만 카테고리별 권한을 만든다.
+ * (헤더의 "담당자 7" 표기는 업무분장 변경 전 잔재라 정정 — 2026-08-05)
  */
 @Service
 @RequiredArgsConstructor
@@ -31,6 +33,11 @@ public class ProviderApplicationService {
     private static final String PENDING = "PRVC0002";
     private static final String APPROVED = "PRVC0003";
     private static final String REJECTED = "PRVC0004";
+    // 상태이력(PROVIDER_APPLY_STATUS_HIST) 기록용 코드 — 신청/승인/반려 시점마다 한 행씩 남긴다.
+    // 위 신청 상태 코드는 상수인데 이력 코드만 리터럴로 흩어져 있던 것을 통일 (2026-08-05 점검 정리)
+    private static final String HIST_REQUESTED = "PRVC0016";
+    private static final String HIST_APPROVED = "PRVC0017";
+    private static final String HIST_REJECTED = "PRVC0018";
     private static final Set<String> FILE_TYPES = Set.of("PRVC0012", "PRVC0013", "PRVC0014");
     private final ProviderApplicationMapper mapper;
     private final ReferenceDataService referenceDataService;
@@ -80,7 +87,7 @@ public class ProviderApplicationService {
                     .build();
 
             if (mapper.insertApplication(command) != 1 || command.getApplicationSn() == null
-                    || mapper.insertStatus(command.getApplicationSn(), "PRVC0016", null, actorId(userSn)) != 1) {
+                    || mapper.insertStatus(command.getApplicationSn(), HIST_REQUESTED, null, actorId(userSn)) != 1) {
                 throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
             }
 
@@ -112,7 +119,7 @@ public class ProviderApplicationService {
     public ProviderApplicationResponse approve(Long applicationSn, Long actorUserSn) {
         ProviderApplicationResponse application = requirePending(applicationSn);
         if (mapper.changeApplicationStatus(applicationSn, APPROVED, null, actorId(actorUserSn)) != 1
-                || mapper.insertStatus(applicationSn, "PRVC0017", null, actorId(actorUserSn)) != 1
+                || mapper.insertStatus(applicationSn, HIST_APPROVED, null, actorId(actorUserSn)) != 1
                 || mapper.insertActivePermission(
                         application.getUserSn(),
                         application.getCategorySn(),
@@ -131,7 +138,7 @@ public class ProviderApplicationService {
         }
         requirePending(applicationSn);
         if (mapper.changeApplicationStatus(applicationSn, REJECTED, reason.trim(), actorId(actorUserSn)) != 1
-                || mapper.insertStatus(applicationSn, "PRVC0018", reason.trim(), actorId(actorUserSn)) != 1) {
+                || mapper.insertStatus(applicationSn, HIST_REJECTED, reason.trim(), actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
         return enrichFiles(
@@ -197,8 +204,8 @@ public class ProviderApplicationService {
         }
 
         Set<Long> categorySet = Set.copyOf(categories);
-        Set<String> duplicates = new java.util.HashSet<>();
-        Set<Long> fileSns = new java.util.HashSet<>();
+        Set<String> duplicates = new HashSet<>();
+        Set<Long> fileSns = new HashSet<>();
 
         for (ProviderApplicationFileRequest file : files) {
             if (file == null || file.getCategorySn() == null || file.getFlSn() == null || file.getFileTypeCode() == null) {

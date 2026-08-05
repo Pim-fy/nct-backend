@@ -16,6 +16,7 @@
         <result property="svcReqStatusCd" column="SVC_REQ_STATUS_CD"/>
         <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
         <result property="svcReqUpdtDt"   column="SVC_REQ_UPDT_DT"  />
+        <result property="repImageUrl"    column="REP_IMAGE_URL"    />
         <result property="thumbnailUrl"   column="THUMBNAIL_URL"    />
     </resultMap>
 
@@ -228,7 +229,13 @@
         /* ServiceRequestMapper.findMyServiceRequests */
         SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
                s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
-               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT,
+               (SELECT CONCAT('/api/service-requests/', s.SVC_REQ_SN, '/images/', i.FL_SN)
+                  FROM SVC_REQ_IMAGE i
+                  JOIN FILES f ON f.FL_SN = i.FL_SN AND f.FL_USE_YN = 'Y'
+                 WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                 ORDER BY i.SVC_REQ_IMG_SORT_NO ASC
+                 LIMIT 1) AS REP_IMAGE_URL
           FROM SERVICE_REQUEST s
           JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
          WHERE s.USR_SN = #{usrSn}

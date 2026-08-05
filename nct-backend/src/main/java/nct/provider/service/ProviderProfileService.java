@@ -1,26 +1,24 @@
 package nct.provider.service;
 
+import java.math.BigDecimal;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.global.security.port.AuthMember;
-import nct.global.security.port.AuthMemberPort;
-import nct.ops.sanction.port.SanctionStatusReader;
 import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
 import nct.provider.mapper.ProviderProfileMapper;
 
-/** 담당자 7, F-PROV-004: 승인·제재 계약을 소비해 제공자 프로필을 관리한다. */
+/** 담당자 6, F-PROV-004: 승인·제재 계약을 소비해 제공자 프로필을 관리한다.
+ *  (헤더의 "담당자 7" 표기는 업무분장 변경 전 잔재라 정정 — 2026-08-05) */
 @Service
 @RequiredArgsConstructor
 public class ProviderProfileService {
     private final ProviderProfileMapper mapper;
-    private final ProviderApplicationService providerApplicationService;
-    private final SanctionStatusReader sanctionStatusReader;
-    private final AuthMemberPort authMemberPort;
+    private final ActiveProviderGuard activeProviderGuard;
 
     @Transactional(readOnly = true)
     public ProviderProfileResponse getMine(Long userSn) {
@@ -42,19 +40,13 @@ public class ProviderProfileService {
         return mapper.findActiveByUserSn(providerUserSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
     }
 
+    // 활성 제공자 검사는 포트폴리오 서비스와 공용 가드(ActiveProviderGuard)로 통합 (2026-08-05 중복 정리)
     private void requireActiveProvider(Long userSn) {
-        if (userSn == null || userSn <= 0) throw new CustomException(ErrorCode.UNAUTHORIZED);
-        AuthMember member = authMemberPort.findById(userSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
-        if (!"USRC0001".equals(member.getStatus())) {
-            throw new CustomException(ErrorCode.NOT_FOUND);
-        }
-        providerApplicationService.requireAnyActivePermission(userSn);
-        sanctionStatusReader.requireNoActiveSanction(userSn);
+        activeProviderGuard.requireActive(userSn);
     }
 
     private ProviderProfileResponse emptyProfile(Long userSn) {
-        return ProviderProfileResponse.builder().userSn(userSn).reviewAverageScore(java.math.BigDecimal.ZERO).reviewCount(0L).build();
+        return ProviderProfileResponse.builder().userSn(userSn).reviewAverageScore(BigDecimal.ZERO).reviewCount(0L).build();
     }
 
     private String trimToNull(String value) {

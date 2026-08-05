@@ -20,6 +20,8 @@ import nct.trade.dto.TradeListItem;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
 import nct.trade.dto.ServiceTradeCompletionTarget;
+import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceTradeListItem;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -118,6 +120,17 @@ public interface TradeMapper {
     TradeDetailResponse findMyMaterialTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    /** 서비스 거래 당사자만 요청서·선택 견적·정산 상태를 함께 조회한다. */
+    ServiceTradeDetailSource findMyServiceTradeDetail(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
+    /** 서비스 거래 당사자의 목록 조회다. 서비스 요청 주소 등 민감 정보는 조회하지 않는다. */
+    List<ServiceTradeListItem> findMyServiceTrades(
+            @Param("userId") long userId,
+            @Param("role") String role,
+            @Param("statusCode") String statusCode);
 
     List<TradeDeliveryProofFile> findTradeDeliveryProofFiles(
             @Param("deliveryId") long deliveryId);

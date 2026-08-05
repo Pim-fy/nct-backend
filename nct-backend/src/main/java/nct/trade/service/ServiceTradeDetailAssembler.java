@@ -56,8 +56,8 @@ public class ServiceTradeDetailAssembler {
             if ("PROVIDER".equals(viewerRole)) {
                 actions.add("REQUEST_COMPLETION");
             }
-            actions.add("REQUEST_SCHEDULE_CHANGE");
-            actions.add("REQUEST_SCHEDULE_CANCELLATION");
+            // 일정 변경·취소는 입력 검증만 존재하고, 저장·처리 API가 아직 제공되지 않는다.
+            // 구현 전에는 호출 불가능한 행동을 상세 응답에 노출하지 않는다.
             actions.add("SUBMIT_DISPUTE");
         } else if (WAITING_CONFIRMATION.equals(statusCode)) {
             if ("REQUESTER".equals(viewerRole)) {

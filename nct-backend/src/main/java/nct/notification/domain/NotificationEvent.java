@@ -35,7 +35,10 @@ public enum NotificationEvent {
     NOTICE_PUBLISHED("NTFC0029", NotificationDomain.OPS, NotificationType.OPS, "공지사항"),
 
     INQUIRY_RECEIVED("NTFC0030", NotificationDomain.AUCTION, NotificationType.AUCTION, "새 구매자 문의"),
-    INQUIRY_REPLIED("NTFC0031", NotificationDomain.AUCTION, NotificationType.AUCTION, "문의 답변 등록");
+    INQUIRY_REPLIED("NTFC0031", NotificationDomain.AUCTION, NotificationType.AUCTION, "문의 답변 등록"),
+
+    // CMM_CODE(NTFG05, CMM_SN=233) 반영 완료 확인(조우진, 2026-08-04) 후 재반영.
+    NEW_CHAT_MESSAGE("NTFC0032", NotificationDomain.CHAT, NotificationType.TRADE, "새 채팅 메시지");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

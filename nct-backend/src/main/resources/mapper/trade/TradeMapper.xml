@@ -457,6 +457,40 @@
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
     </select>
 
+    <!-- 서비스 거래 당사자에게만 요청서 제목·선택 견적·정산 상태를 제공한다. 주소 등 민감 요청서 정보는 조회하지 않는다. -->
+    <select id="findMyServiceTradeDetail" resultType="nct.trade.dto.ServiceTradeDetailSource">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.SVC_REQ_SN AS serviceRequestId,
+            t.TRD_STATUS_CD AS tradeStatusCode,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            sr.SVC_REQ_TTL AS serviceRequestTitle,
+            q.QUT_CN AS quoteSummary,
+            NULL AS scheduleLabel,
+            CASE
+                WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
+                WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
+                ELSE NULL
+            END AS escrowStatusCode,
+            CASE
+                WHEN st.STLM_STATUS_CD = 'STLC0001' THEN '정산 대기 중입니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0002' THEN '분쟁 처리로 정산이 보류되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0003' THEN '정산이 완료되었습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
+                ELSE NULL
+            END AS escrowStatusLabel
+        FROM TRADE t
+        JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
+        LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
+          AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+    </select>
+
     <!-- 사진 원문은 파일 API가 권한 검사 후 내려준다. 상세에는 식별자와 정렬 순서만 반환한다. -->
     <select id="findTradeDeliveryProofFiles" resultType="nct.trade.dto.TradeDeliveryProofFile">
         SELECT

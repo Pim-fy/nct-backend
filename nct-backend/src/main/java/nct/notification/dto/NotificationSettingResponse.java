@@ -24,7 +24,7 @@ public class NotificationSettingResponse {
     @Builder
     public static class Item {
         private final String eventCode;
-        private final String domain; // NotificationDomain.name() — AUCTION/TRADE/SERVICE/OPS
+        private final String domain; // NotificationDomain.name() — AUCTION/TRADE/CHAT/SERVICE/OPS
         private final String label;
         private final boolean inapp;
         private final boolean email;

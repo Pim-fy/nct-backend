@@ -137,6 +137,12 @@
         SELECT
             r.CH_RM_SN AS roomId,
             t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' AND t.SLLR_USR_SN = #{userId} THEN t.BYPR_USR_SN
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' THEN t.SLLR_USR_SN
+                WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
+                ELSE t.REQ_USR_SN
+            END AS counterpartUserId,
             r.CH_RM_STATUS_CD AS roomStatus,
             t.TRD_STATUS_CD AS tradeStatus
         FROM CHAT_ROOM r

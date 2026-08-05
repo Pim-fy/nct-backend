@@ -45,6 +45,8 @@ import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
+import nct.trade.dto.ServiceTradeDetailResponse;
+import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
@@ -135,6 +137,41 @@ class TradeServiceTest {
                 "01234",
                 "서울시 마포구",
                 "101호");
+    }
+
+    @Test
+    void returnsRoleSpecificServiceTradeDetailForRequester() {
+        ServiceTradeDetailSource source = new ServiceTradeDetailSource(
+                91L,
+                10L,
+                20L,
+                31L,
+                "TRDC0003",
+                BigDecimal.valueOf(150000),
+                null,
+                "입주 청소 요청",
+                "주방과 욕실 청소 · 150,000원",
+                null,
+                "ESCROW_HELD",
+                "보관금이 안전하게 보관 중입니다.");
+        when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(source);
+
+        ServiceTradeDetailResponse response = tradeService.getMyServiceTradeDetail(91L, 10L);
+
+        assertThat(response.tradeId()).isEqualTo(91L);
+        assertThat(response.viewerRole()).isEqualTo("REQUESTER");
+        assertThat(response.availableActions()).containsExactly(
+                "REQUEST_SCHEDULE_CHANGE",
+                "REQUEST_SCHEDULE_CANCELLATION",
+                "SUBMIT_DISPUTE");
+    }
+
+    @Test
+    void rejectsUnavailableServiceTradeDetail() {
+        when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(null);
+
+        assertThatThrownBy(() -> tradeService.getMyServiceTradeDetail(91L, 10L))
+                .isInstanceOf(CustomException.class);
     }
 
     @Test

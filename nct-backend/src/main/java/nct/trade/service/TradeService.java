@@ -38,6 +38,8 @@ import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
+import nct.trade.dto.ServiceTradeDetailResponse;
+import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeConfirmationTarget;
@@ -493,6 +495,23 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         decryptDetailAddresses(detail);
 
         return detail;
+    }
+
+    /** 서비스 거래 당사자에게만 역할별 상세 화면 데이터를 반환한다. */
+    @Transactional(readOnly = true)
+    public ServiceTradeDetailResponse getMyServiceTradeDetail(long tradeId, long userId) {
+        if (tradeId <= 0 || userId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호와 회원번호가 올바르지 않습니다.");
+        }
+
+        ServiceTradeDetailSource source = tradeMapper.findMyServiceTradeDetail(tradeId, userId);
+        if (source == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "존재하지 않거나 접근할 수 없는 서비스 거래입니다.");
+        }
+
+        return new ServiceTradeDetailAssembler().assemble(source, userId);
     }
 
     /**

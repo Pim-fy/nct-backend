@@ -301,6 +301,16 @@
         WHERE ABR_SN = #{reportSn}
     </select>
 
+    <!-- 담당자 7 · F-OPS-002: 회원 상세의 최근 신고 이력. 무제한 조회를 피한다. -->
+    <select id="findReportsByReportedUser" resultType="nct.abuse.dto.AdminAbuseReportResponse">
+        SELECT
+            <include refid="adminReportColumns"/>
+        FROM ABUSE_REPORT
+        WHERE RPTD_USR_SN = #{reportedUserSn}
+        ORDER BY ABR_REG_DT DESC, ABR_SN DESC
+        LIMIT #{limit}
+    </select>
+
     <update id="updateDecision">
         UPDATE ABUSE_REPORT
            SET ABR_STATUS_CD = #{newStatusCode},

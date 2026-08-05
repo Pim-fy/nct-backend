@@ -36,6 +36,7 @@ public class ServiceTradeDetailAssembler {
                 source.scheduleLabel(),
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
+                source.chatAvailable(),
                 resolveAvailableActions(source.tradeStatusCode(), viewerRole));
     }
 

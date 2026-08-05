@@ -158,13 +158,15 @@ class TradeServiceTest {
                 "주방과 욕실 청소 · 150,000원",
                 null,
                 "ESCROW_HELD",
-                "보관금이 안전하게 보관 중입니다.");
+                "보관금이 안전하게 보관 중입니다.",
+                true);
         when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(source);
 
         ServiceTradeDetailResponse response = tradeService.getMyServiceTradeDetail(91L, 10L);
 
         assertThat(response.tradeId()).isEqualTo(91L);
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
+        assertThat(response.chatAvailable()).isTrue();
         assertThat(response.availableActions()).containsExactly("SUBMIT_DISPUTE");
     }
 

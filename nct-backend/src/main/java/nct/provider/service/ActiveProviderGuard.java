@@ -43,4 +43,18 @@ public class ActiveProviderGuard {
         providerApplicationService.requireAnyActivePermission(userSn);
         sanctionStatusReader.requireNoActiveSanction(userSn);
     }
+
+    /** 담당자 7 통합, F-SVC-010: 선택된 견적 제공자가 해당 카테고리에서 현재도 거래 가능한지 확인한다. */
+    public void requireActiveForCategory(Long userSn, Long categorySn) {
+        if (userSn == null || userSn <= 0 || categorySn == null || categorySn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        AuthMember member = authMemberPort.findById(userSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+        if (!"USRC0001".equals(member.getStatus())) {
+            throw new CustomException(ErrorCode.NOT_FOUND);
+        }
+        providerApplicationService.requireCategoryPermission(userSn, categorySn);
+        sanctionStatusReader.requireNoActiveSanction(userSn);
+    }
 }

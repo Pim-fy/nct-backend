@@ -135,4 +135,12 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 견적 첨부 파일이 참조 중이면 업로드 취소용 삭제 API에서 제거하지 않는다. -->
+    <select id="countQuotePhotoRefs" resultType="int">
+        /* FileMapper.countQuotePhotoRefs */
+        SELECT COUNT(*)
+          FROM QUOTE_PHOTO
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

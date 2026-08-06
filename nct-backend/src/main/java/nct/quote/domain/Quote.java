@@ -16,10 +16,8 @@ public class Quote {
     private Long qutSn;
     private Long svcReqSn;
     private Long usrSn;
-    private String qutTtl;
     private Long qutAmt;
     private String qutCn;
-    private String qutEstmDrt;
     private String qutStatusCd;
     private int qutReviseCnt;
     private String qutRegId;

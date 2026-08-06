@@ -310,6 +310,7 @@
             END AS counterpartNickname,
             t.TRD_AMT AS tradeAmount,
             t.TRD_REG_DT AS createdAt,
+            completedHist.completedAt AS completedAt,
             CASE
                 WHEN t.TRD_METHOD_CD = 'TRDC0010'
                     AND t.TRD_STATUS_CD = 'TRDC0003'
@@ -353,6 +354,15 @@
           ON productImage.PRD_SN = p.PRD_SN
         LEFT JOIN TRADE_OFFLINE o
           ON o.TRD_SN = t.TRD_SN
+        <!-- 완료일은 TRADE 행 자체의 갱신일시가 아니라, 완료 처리 시점에 남긴 상태이력에서 가져온다
+             (완료 후 다른 사유로 TRADE가 다시 갱신돼도 완료 시점이 밀리지 않게 하기 위함). -->
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist
+          ON completedHist.TRD_SN = t.TRD_SN
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
         <if test="role == 'BUYER'">
@@ -409,8 +419,20 @@
             t.PRD_SN AS prdSn,
             t.TRD_SN AS tradeSn,
             t.TRD_STATUS_CD AS tradeStatusCd,
-            t.TRD_METHOD_CD AS tradeMethodCd
+            t.TRD_METHOD_CD AS tradeMethodCd,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_REG_DT AS createdAt,
+            completedHist.completedAt AS completedAt
         FROM TRADE t
+        <!-- 완료일은 TRADE 행 자체의 갱신일시가 아니라, 완료 처리 시점에 남긴 상태이력에서 가져온다
+             (완료 후 다른 사유로 TRADE가 다시 갱신돼도 완료 시점이 밀리지 않게 하기 위함). -->
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist
+          ON completedHist.TRD_SN = t.TRD_SN
         WHERE t.TRD_TYPE_CD = 'TRDC0001'
           AND t.PRD_SN IN
         <foreach collection="prdSns" item="prdSn" open="(" separator="," close=")">

@@ -56,11 +56,47 @@ public class ServiceRequestFormService {
     private final FieldCryptoService fieldCryptoService;
     private final ObjectMapper objectMapper;
 
+    // 카테고리별로 5번씩(findSteps/findStepOptions/findFields/findFieldOptions/findFieldRules) 왕복하면
+    // 카테고리가 늘어날수록 DB 왕복 횟수도 비례해서 늘어난다. 템플릿 목록을 한 번에 IN 절로 묶어
+    // 쿼리 5번으로 고정하고, 그룹핑만 여기서 처리한다.
     @Transactional(readOnly = true)
     public List<ServiceRequestFormResponse> getActiveForms() {
-        return formMapper.findActiveFormHeaders().stream()
-                .map(this::attachDefinitions)
-                .toList();
+        List<ServiceRequestFormResponse> forms = formMapper.findActiveFormHeaders();
+        if (forms.isEmpty()) return forms;
+
+        List<Long> formSns = forms.stream().map(ServiceRequestFormResponse::getFormTemplateSn).toList();
+
+        Map<Long, List<ServiceRequestFormStep>> stepsByFormSn = formMapper.findStepsByTemplates(formSns).stream()
+                .collect(Collectors.groupingBy(ServiceRequestFormStep::getFormTemplateSn, LinkedHashMap::new, Collectors.toList()));
+        Map<Long, ServiceRequestFormStep> stepBySn = stepsByFormSn.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toMap(ServiceRequestFormStep::getStepSn, Function.identity()));
+
+        formMapper.findStepOptionsByTemplates(formSns).forEach(option -> {
+            ServiceRequestFormStep step = stepBySn.get(option.getStepSn());
+            if (step != null) step.getOptions().add(option);
+        });
+
+        List<ServiceRequestFormField> fields = formMapper.findFieldsByTemplates(formSns);
+        Map<Long, ServiceRequestFormField> fieldBySn = fields.stream()
+                .collect(Collectors.toMap(ServiceRequestFormField::getFieldSn, Function.identity()));
+        fields.forEach(field -> {
+            ServiceRequestFormStep step = stepBySn.get(field.getStepSn());
+            if (step != null) step.getFields().add(field);
+        });
+
+        formMapper.findFieldOptionsByTemplates(formSns).forEach(option -> {
+            ServiceRequestFormField field = fieldBySn.get(option.getFieldSn());
+            if (field != null) field.getOptions().add(option);
+        });
+        formMapper.findFieldRulesByTemplates(formSns).forEach(rule -> {
+            ServiceRequestFormField field = fieldBySn.get(rule.getTargetFieldSn());
+            if (field != null) field.getRules().add(rule);
+        });
+
+        forms.forEach(form -> form.setSteps(
+                stepsByFormSn.getOrDefault(form.getFormTemplateSn(), List.of())));
+        return forms;
     }
 
     @Transactional(readOnly = true)

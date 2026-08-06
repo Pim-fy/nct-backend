@@ -80,6 +80,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private static final String ON_HOLD = "TRDC0007";
     private static final String TRADE_DISPUTE_TYPE_GROUP = "TRDG04";
     private static final String SCHEDULER_UPDATER = "SYSTEM";
+    private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
 
     private final TradeMapper tradeMapper;
     private final NotificationService notificationService;
@@ -522,15 +523,26 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
     /** 로그인한 의뢰자 또는 제공자가 본인 서비스 거래 상세로 재진입할 목록을 조회한다. */
     @Transactional(readOnly = true)
-    public List<ServiceTradeListItem> getMyServiceTrades(long userId, String role, String status) {
+    public List<ServiceTradeListItem> getMyServiceTrades(
+            long userId,
+            String role,
+            String status,
+            String keyword,
+            int page,
+            int size) {
         if (userId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "회원번호가 올바르지 않습니다.");
         }
+
+        validateServiceTradePage(page, size);
         return tradeMapper.findMyServiceTrades(
                 userId,
                 normalizeServiceTradeRole(role),
-                normalizeTradeStatus(status));
+                normalizeTradeStatus(status),
+                normalizeKeyword(keyword),
+                (long) (page - 1) * size,
+                size);
     }
 
     /**
@@ -1128,6 +1140,13 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         return normalizedKeyword;
+    }
+
+    private void validateServiceTradePage(int page, int size) {
+        if (page < 1 || size < 1 || size > MAX_SERVICE_TRADE_PAGE_SIZE) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "페이지는 1 이상이고 페이지 크기는 1~100 사이여야 합니다.");
+        }
     }
 
     private String normalizeQueryValue(String value) {

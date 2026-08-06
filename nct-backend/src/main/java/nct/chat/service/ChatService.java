@@ -17,6 +17,7 @@ import nct.chat.dto.ServiceTradeChatRoomCreateResult;
 import nct.chat.mapper.ChatMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.security.port.SensitiveContentInspectionUseCase;
 
 /** 대면 거래 당사자만 사용할 수 있는 채팅 메시지 기능을 제공한다. */
@@ -30,6 +31,7 @@ public class ChatService {
 
     private final ChatMapper chatMapper;
     private final SensitiveContentInspectionUseCase sensitiveContentInspectionUseCase;
+    private final NotificationService notificationService;
 
     /**
      * F-AUC-023 공개 계약: 경매 거래 생성 흐름이 직거래에만 호출한다.
@@ -177,6 +179,11 @@ public class ChatService {
         message.setSenderUserId(userId);
         message.setContent(maskedContent);
         chatMapper.insertChatMessage(message);
+
+        if (chatRoom.getCounterpartUserId() != null
+                && chatRoom.getCounterpartUserId() != userId) {
+            notificationService.notifyChatMessage(chatRoom.getCounterpartUserId());
+        }
 
         return chatMapper.findMyChatMessageById(message.getMessageId(), userId);
     }

@@ -16,7 +16,9 @@
         <result property="svcReqStatusCd" column="SVC_REQ_STATUS_CD"/>
         <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
         <result property="svcReqUpdtDt"   column="SVC_REQ_UPDT_DT"  />
+        <result property="repImageUrl"    column="REP_IMAGE_URL"    />
         <result property="thumbnailUrl"   column="THUMBNAIL_URL"    />
+        <result property="quoteCount"     column="QUOTE_CNT"        />
     </resultMap>
 
     <resultMap id="ServiceRequestEntityMap" type="nct.servicerequest.domain.ServiceRequest">
@@ -107,7 +109,16 @@
                s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
         <include refid="AdminServiceRequestFromWhere" />
-         ORDER BY s.SVC_REQ_REG_DT DESC, s.SVC_REQ_SN DESC
+         ORDER BY
+               CASE s.SVC_REQ_STATUS_CD
+                   WHEN 'SVCC0002' THEN 0
+                   WHEN 'SVCC0001' THEN 1
+                   WHEN 'SVCC0003' THEN 2
+                   WHEN 'SVCC0004' THEN 3
+                   ELSE 4
+               END ASC,
+               s.SVC_REQ_REG_DT DESC,
+               s.SVC_REQ_SN DESC
          LIMIT #{condition.size} OFFSET #{condition.offset}
     </select>
 
@@ -219,9 +230,21 @@
         /* ServiceRequestMapper.findMyServiceRequests */
         SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
                s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
-               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT,
+               (SELECT CONCAT('/api/service-requests/', s.SVC_REQ_SN, '/images/', i.FL_SN)
+                  FROM SVC_REQ_IMAGE i
+                  JOIN FILES f ON f.FL_SN = i.FL_SN AND f.FL_USE_YN = 'Y'
+                 WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                 ORDER BY i.SVC_REQ_IMG_SORT_NO ASC
+                 LIMIT 1) AS REP_IMAGE_URL,
+               COALESCE(quoteCount.QUOTE_CNT, 0) AS QUOTE_CNT
           FROM SERVICE_REQUEST s
           JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+          LEFT JOIN (
+              SELECT SVC_REQ_SN, COUNT(*) AS QUOTE_CNT
+                FROM QUOTE
+               GROUP BY SVC_REQ_SN
+          ) quoteCount ON quoteCount.SVC_REQ_SN = s.SVC_REQ_SN
          WHERE s.USR_SN = #{usrSn}
            AND s.SVC_REQ_USE_YN = 'Y'
            <choose>

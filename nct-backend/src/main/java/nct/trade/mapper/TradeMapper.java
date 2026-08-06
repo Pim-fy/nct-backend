@@ -1,6 +1,7 @@
 package nct.trade.mapper;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -8,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeEscrowInfo;
+import nct.trade.dto.AuctionBidTradeReference;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
@@ -17,9 +19,12 @@ import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
+import nct.trade.dto.MemberActiveTradeTarget;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
 import nct.trade.dto.ServiceTradeCompletionTarget;
+import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceTradeListItem;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -34,6 +39,11 @@ public interface TradeMapper {
     /** 경매 취소·환불 흐름이 거래와 원본 입찰 보관금의 연결을 직접 확인한다. */
     AuctionTradeEscrowInfo findAuctionTradeEscrowInfoByProductId(
             @Param("productId") long productId);
+
+    /** 경매 입찰 이력이 본인의 물건 거래 상세로 이동할 수 있도록 BID_SN 기준으로 일괄 연결한다. */
+    List<AuctionBidTradeReference> findAuctionBidTradeReferencesByBuyerAndBidSns(
+            @Param("buyerUserId") long buyerUserId,
+            @Param("bidSns") Collection<Long> bidSns);
 
     /** 정산 도메인에 거래 유형과 원본 입찰 보관금 참조만 제공한다. */
     TradeSettlementReference findSettlementReferenceByTradeId(
@@ -58,6 +68,15 @@ public interface TradeMapper {
     /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
     int holdServiceTradeForDispute(
             @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
+    /** 담당자 7 · F-OPS-020: 제한 대상자의 모든 진행 거래를 잠금 조회합니다. */
+    List<MemberActiveTradeTarget> findActiveTradesByMemberForUpdate(@Param("userSn") long userSn);
+
+    /** 담당자 7 · F-OPS-020: 잠금 시점 상태가 유지된 거래만 보류합니다. */
+    int holdTradeForMemberRestriction(
+            @Param("tradeId") long tradeId,
+            @Param("expectedStatusCode") String expectedStatusCode,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */
@@ -118,6 +137,27 @@ public interface TradeMapper {
     TradeDetailResponse findMyMaterialTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    /** 서비스 거래 당사자만 요청서·선택 견적·정산 상태를 함께 조회한다. */
+    ServiceTradeDetailSource findMyServiceTradeDetail(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
+    /** 서비스 거래 당사자의 목록 조회다. 서비스 요청 주소 등 민감 정보는 조회하지 않는다. */
+    List<ServiceTradeListItem> findMyServiceTrades(
+            @Param("userId") long userId,
+            @Param("role") String role,
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    /** 서비스 거래 목록과 동일한 당사자·필터 조건의 전체 건수다. */
+    long countMyServiceTrades(
+            @Param("userId") long userId,
+            @Param("role") String role,
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
 
     List<TradeDeliveryProofFile> findTradeDeliveryProofFiles(
             @Param("deliveryId") long deliveryId);

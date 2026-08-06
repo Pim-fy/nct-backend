@@ -3,7 +3,7 @@ package nct.provider.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,28 +22,24 @@ import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.global.security.port.AuthMember;
-import nct.global.security.port.AuthMemberPort;
-import nct.ops.sanction.port.SanctionStatusReader;
 import nct.provider.domain.PortfolioRecord;
 import nct.provider.dto.PortfolioRequest;
 import nct.provider.dto.PortfolioResponse;
 import nct.provider.mapper.PortfolioMapper;
 
-/** 담당자 7, F-PROV-005: 소유 파일·활성 제공자·타인 수정 차단 회귀 테스트다. */
+/** 담당자 6, F-PROV-005: 소유 파일·활성 제공자·타인 수정 차단 회귀 테스트다.
+ *  활성 제공자 판정 자체(회원 상태·권한·제재)는 ActiveProviderGuard로 통합돼 그쪽 테스트가
+ *  지키고, 여기서는 가드 호출 여부와 가드 실패 시 차단만 확인한다 (2026-08-05 중복 정리). */
 @ExtendWith(MockitoExtension.class)
 class PortfolioServiceTest {
     @Mock private PortfolioMapper mapper;
-    @Mock private ProviderApplicationService providerApplicationService;
-    @Mock private SanctionStatusReader sanctionStatusReader;
+    @Mock private ActiveProviderGuard activeProviderGuard;
     @Mock private FileStorageService fileStorageService;
-    @Mock private AuthMemberPort authMemberPort;
     @InjectMocks private PortfolioService service;
 
     @Test
     void createConnectsOwnedPortfolioFilesAndReturnsSavedPortfolio() {
         PortfolioRequest request = request(List.of(11L, 12L));
-        when(authMemberPort.findById(101L)).thenReturn(Optional.of(activeMember(101L)));
         when(fileStorageService.requireOwnedActiveFile(11L, 101L)).thenReturn(portfolioFile(11L));
         when(fileStorageService.requireOwnedActiveFile(12L, 101L)).thenReturn(portfolioFile(12L));
         when(mapper.insert(any(PortfolioRecord.class))).thenAnswer(invocation -> {
@@ -59,14 +55,12 @@ class PortfolioServiceTest {
         verify(mapper).insert(recordCaptor.capture());
         assertThat(recordCaptor.getValue().getTitle()).isEqualTo("작업 사례");
         verify(mapper).insertFiles(301L, List.of(11L, 12L), "101");
-        verify(providerApplicationService).requireAnyActivePermission(101L);
-        verify(sanctionStatusReader).requireNoActiveSanction(101L);
+        verify(activeProviderGuard).requireActive(101L);
     }
 
     @Test
     void createRejectsFileUploadedForAnotherService() {
         PortfolioRequest request = request(List.of(11L));
-        when(authMemberPort.findById(101L)).thenReturn(Optional.of(activeMember(101L)));
         when(fileStorageService.requireOwnedActiveFile(11L, 101L)).thenReturn(FileMeta.builder()
                 .flSn(11L)
                 .flPath("/api/attachment/product/20260728/image.png")
@@ -83,7 +77,6 @@ class PortfolioServiceTest {
     @Test
     void updateRejectsPortfolioOwnedByAnotherProvider() {
         PortfolioRequest request = request(List.of(11L));
-        when(authMemberPort.findById(101L)).thenReturn(Optional.of(activeMember(101L)));
         when(mapper.findActiveOwned(301L, 101L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.update(101L, 301L, request))
@@ -98,9 +91,7 @@ class PortfolioServiceTest {
     @Test
     void deleteReleasesFileLinksBeforeSoftDeletingPortfolio() {
         when(mapper.findActiveOwned(301L, 101L)).thenReturn(Optional.of(response(301L, 101L)));
-        when(authMemberPort.findById(101L)).thenReturn(Optional.of(activeMember(101L)));
         when(mapper.softDelete(301L, 101L, "101")).thenReturn(1);
-        doNothing().when(providerApplicationService).requireAnyActivePermission(101L);
 
         service.delete(101L, 301L);
 
@@ -109,9 +100,9 @@ class PortfolioServiceTest {
     }
 
     @Test
-    void withdrawnProviderCannotExposePublicPortfolios() {
-        when(authMemberPort.findById(101L)).thenReturn(Optional.of(
-                AuthMember.builder().id(101L).status("USRC0003").build()));
+    void inactiveProviderCannotExposePublicPortfolios() {
+        // 탈퇴 등 비활성 판정은 가드가 담당(ActiveProviderGuardTest) — 여기선 가드 실패가 조회를 막는 것만 확인
+        doThrow(new CustomException(ErrorCode.NOT_FOUND)).when(activeProviderGuard).requireActive(101L);
 
         assertThatThrownBy(() -> service.getPublic(101L))
                 .isInstanceOf(CustomException.class)
@@ -143,9 +134,5 @@ class PortfolioServiceTest {
         response.setUserSn(userSn);
         response.setTitle("작업 사례");
         return response;
-    }
-
-    private AuthMember activeMember(Long userSn) {
-        return AuthMember.builder().id(userSn).status("USRC0001").build();
     }
 }

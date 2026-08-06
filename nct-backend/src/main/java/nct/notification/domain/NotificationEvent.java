@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
  * Claude Code 작성 (BJN, 2026-07-24)
  *
  * [알림 - 알림 세부 이벤트 코드] (F-COM-012 세분화, 목업 34_notification_settings.html 기준)
- * - USER_NOTIFICATION_EVENT_SETTING.NTF_EVT_CD (NTFG05, 정본 반영 대기 — 팀전달_알림설정_운영이벤트연동및코드신설요청_260724.md)
+ * - USER_NOTIFICATION_EVENT_SETTING.NTF_EVT_CD (NTFG05 — CMM_CODE 정본 반영 완료 확인, 조우진 2026-08-04)
  * - 기존 도메인 단위(경매/거래/서비스, USER_NOTIFICATION_SETTING) 설정 화면은 그대로 두고
  *   이 이벤트 단위 설정은 별도 신규 테이블로 추가한다 — 기존 이메일 발송 계약(F-COM-006, D-031)에
  *   영향 주지 않기 위해서다. 경매/거래(배송시작 제외)/서비스/운영 일부는 알림 발행 호출 자체가
@@ -35,7 +35,10 @@ public enum NotificationEvent {
     NOTICE_PUBLISHED("NTFC0029", NotificationDomain.OPS, NotificationType.OPS, "공지사항"),
 
     INQUIRY_RECEIVED("NTFC0030", NotificationDomain.AUCTION, NotificationType.AUCTION, "새 구매자 문의"),
-    INQUIRY_REPLIED("NTFC0031", NotificationDomain.AUCTION, NotificationType.AUCTION, "문의 답변 등록");
+    INQUIRY_REPLIED("NTFC0031", NotificationDomain.AUCTION, NotificationType.AUCTION, "문의 답변 등록"),
+
+    // CMM_CODE(NTFG05, CMM_SN=233) 반영 완료 확인(조우진, 2026-08-04) 후 재반영.
+    NEW_CHAT_MESSAGE("NTFC0032", NotificationDomain.CHAT, NotificationType.TRADE, "새 채팅 메시지");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

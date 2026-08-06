@@ -19,7 +19,9 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.ServiceTradeCompletionRequest;
+import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDisputeRequest;
+import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -47,6 +49,21 @@ public class TradeController {
                 tradeService.getMyMaterialTrades(userId, role, status, keyword)));
     }
 
+    /** 의뢰자·제공자가 본인 서비스 거래를 조회해 서비스 거래 상세로 이동한다. */
+    @GetMapping("/service")
+    public ResponseEntity<ApiResponse<ServiceTradeListPageResponse>> getMyServiceTrades(
+            @RequestParam(name = "role", required = false) String role,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyServiceTrades(userId, role, status, keyword, page, size)));
+    }
+
     /** F-AUC-005 판매 목록이 경매 상태와 결합할 판매자 본인의 거래 상태를 조회한다. */
     @GetMapping("/seller/status")
     public ResponseEntity<ApiResponse<List<SellerTradeStatusItem>>> getMySellerTradeStatuses(
@@ -66,6 +83,17 @@ public class TradeController {
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 서비스 거래 당사자만 역할별 서비스 거래 상세를 조회한다. */
+    @GetMapping("/{tradeId}/service-detail")
+    public ResponseEntity<ApiResponse<ServiceTradeDetailResponse>> getMyServiceTradeDetail(
+            @PathVariable(name = "tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyServiceTradeDetail(tradeId, userId)));
     }
 
     /** 판매자가 본인 직거래의 일시·장소·상세 주소를 저장한다. */

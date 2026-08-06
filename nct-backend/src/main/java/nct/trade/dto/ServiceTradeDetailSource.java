@@ -19,5 +19,6 @@ public record ServiceTradeDetailSource(
         String quoteSummary,
         String scheduleLabel,
         String escrowStatusCode,
-        String escrowStatusLabel) {
+        String escrowStatusLabel,
+        boolean chatAvailable) {
 }

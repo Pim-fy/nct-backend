@@ -28,6 +28,10 @@ public class ServiceRequestResponse {
     private LocalDateTime svcReqRegDt;
     private LocalDateTime svcReqUpdtDt;
     private String thumbnailUrl;
+    private Long quoteCount;
+
+    // 목록 대표이미지(정렬순번 최소값 1장) — findMyServiceRequests에서만 세팅
+    private String repImageUrl;
 
     // 요청 항목 목록 — 상세 조회 시에만 세팅. 목록 조회(me)에서는 null
     @Setter private List<String> items;

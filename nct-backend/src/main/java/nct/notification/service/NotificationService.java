@@ -3,6 +3,7 @@ package nct.notification.service;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -11,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.common.domain.RefType;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.domain.Notification;
 import nct.notification.domain.NotificationAudience;
@@ -76,9 +79,7 @@ public class NotificationService {
                        NotificationAudience audience, String title, String content,
                        RefType refType, Long refSn) {
         Notification n = build(usrSn, type, domain, audience, title, content, refType, refSn);
-        n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
-        notificationMapper.insert(n);
-        eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
+        insertInappOnly(n, usrSn);
     }
 
     /**
@@ -94,14 +95,33 @@ public class NotificationService {
 
         // 발송 대상이 아니면(스위치·토글·메일 미설정 환경) 미대상으로 기록하고 인앱만 남긴다
         if (!emailEligible(usrSn, domain)) {
-            n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
-            notificationMapper.insert(n);
-            eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
+            insertInappOnly(n, usrSn);
             return;
         }
+        insertWithEmail(n, usrSn, title, content);
+    }
 
-        // 대상이면: 대기 상태로 먼저 기록 → 발송 시도 → 결과(성공/실패)로 갱신.
-        // 발송기(mailSender)는 예외를 던지지 않는 계약이라 이 흐름이 본 트랜잭션을 깨뜨릴 수 없다
+    // 이메일 보조 발송 공통 문구 — notifyImportant/notifyForEvent 두 경로가 같은 형식을 쓴다
+    // (예전엔 두 메서드에 문자열이 하드코딩으로 중복돼 있었다 — 2026-08-05 점검 후속 통합)
+    private static final String EMAIL_SUBJECT_PREFIX = "[에누리컷] ";
+    private static final String EMAIL_FOOTER =
+            "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)";
+
+    /** 이메일 없이 인앱 알림만 기록 — notify()·이메일 미대상 경로 3곳이 공유 (2026-08-05 중복 통합) */
+    private void insertInappOnly(Notification n, long usrSn) {
+        n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
+        notificationMapper.insert(n);
+        eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
+    }
+
+    /**
+     * 알림 행 기록 + 이메일 보조 발송 공통 흐름 — notifyImportant/notifyForEvent가 공유
+     * (같은 20여 줄이 두 메서드에 중복돼 있던 것을 추출, 2026-08-05 점검 후속).
+     * 대기 상태로 먼저 기록 → 발송 시도 → 결과(성공/실패)로 갱신.
+     * 발송기(mailSender)는 예외를 던지지 않는 계약이고, 이메일 복호화 등 예기치 못한 실패도
+     * 여기서 삼켜 인앱 알림과 원래 업무 트랜잭션을 깨뜨리지 않는다 (베스트 에포트).
+     */
+    private void insertWithEmail(Notification n, long usrSn, String title, String content) {
         n.setNtfEmailStatusCd(NotificationEmailStatus.PENDING.getCode());
         notificationMapper.insert(n);
         eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
@@ -110,8 +130,7 @@ public class NotificationService {
         try {
             String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
             sent = email != null
-                    && mailSender.send(email, "[에누리컷] " + title, content
-                            + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
+                    && mailSender.send(email, EMAIL_SUBJECT_PREFIX + title, content + EMAIL_FOOTER);
         } catch (RuntimeException ignored) {
             // 이메일 복호화·발송 실패는 인앱 알림과 원래 업무 트랜잭션을 취소하지 않는다.
         }
@@ -182,9 +201,23 @@ public class NotificationService {
                 .toList();
     }
 
-    /** 내 이벤트별 설정 저장 — 화면이 보낸 항목만큼 업서트(누락된 이벤트는 손대지 않음) */
+    /**
+     * 내 이벤트별 설정 저장 — 화면이 보낸 항목만큼 업서트(누락된 이벤트는 손대지 않음).
+     * USER_NOTIFICATION_EVENT_SETTING.NTF_EVT_CD는 CMM_CODE FK가 걸려 있어, 모르는 코드로
+     * upsert하면 FK 위반이 SQL 예외(500)로 그대로 터진다 — 등록 안 된 이벤트 코드를 enum에 먼저
+     * 넣고 배포했다가 전체 회원 저장이 막혔던 사고(2026-08-04) 재발 방지로, DB까지 가기 전에
+     * 알려진 이벤트 코드인지 앱 계층에서 먼저 검증한다(D-009 원칙 그대로 적용).
+     */
     @Transactional
     public void saveEventSettings(long usrSn, List<UserNotificationEventSetting> settings) {
+        Set<String> knownCodes = Arrays.stream(NotificationEvent.values())
+                .map(NotificationEvent::getCode)
+                .collect(Collectors.toSet());
+        settings.forEach(s -> {
+            if (!knownCodes.contains(s.getNtfEvtCd())) {
+                throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+            }
+        });
         settings.forEach(s -> {
             s.setUsrSn(usrSn);
             eventSettingMapper.upsert(s);
@@ -226,31 +259,17 @@ public class NotificationService {
                 && "Y".equals(systemSettingMapper.selectOne().getEmailYn())
                 && eventEmailEnabled(usrSn, event);
         if (!emailEligible) {
-            n.setNtfEmailStatusCd(NotificationEmailStatus.NONE.getCode());
-            notificationMapper.insert(n);
-            eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
+            insertInappOnly(n, usrSn);
             return;
         }
-
-        n.setNtfEmailStatusCd(NotificationEmailStatus.PENDING.getCode());
-        notificationMapper.insert(n);
-        eventPublisher.publishAfterCommit(usrSn, NotificationResponse.from(n));
-
-        boolean sent = false;
-        try {
-            String email = fieldCryptoService.decrypt(notificationMapper.selectUserEmail(usrSn));
-            sent = email != null
-                    && mailSender.send(email, "[에누리컷] " + title, content
-                            + "\n\n자세한 내용은 에누리컷 알림함에서 확인해 주세요. (본 메일은 발신 전용입니다)");
-        } catch (RuntimeException ignored) {
-            // 이메일 복호화·발송 실패는 인앱 알림과 원래 업무 트랜잭션을 취소하지 않는다.
-        }
-        notificationMapper.updateEmailStatus(n.getNtfSn(),
-                (sent ? NotificationEmailStatus.SENT : NotificationEmailStatus.FAILED).getCode());
+        insertWithEmail(n, usrSn, title, content);
     }
 
     // ---------- 신규 이벤트 발행 계약 (2026-07-24) — 경매(담당자5)·거래(담당자4)·서비스(담당자5)·
-    // 운영(담당자7) 쪽에 호출 추가를 요청함(팀전달_알림설정_*_260724.md 3건). 아직 미호출 상태 ----------
+    // 운영(담당자7) 쪽에 호출 추가를 요청함(팀전달_알림설정_*_260724.md 3건).
+    // 연결 현황 (2026-08-05 확인): 입찰가 갱신·마감임박(경매), 배송 시작·거래 완료(거래),
+    // 새 채팅 메시지(채팅)는 호출 연결 완료. 견적 도착/선택·서비스 완료·제공자 승인 결과·
+    // 공지 발행·분쟁 접수/판정 7종은 아직 담당 파트 호출 대기 상태 ----------
 
     /** 입찰가 갱신 — 경매/입찰 담당(5)이 새 최고 입찰 발생 시 호출 (대상: 밀려난 이전 최고 입찰자 등) */
     public void notifyBidUpdated(long usrSn, long auctionId, long newPrice) {
@@ -316,6 +335,22 @@ public class NotificationService {
                 "판매자가 문의에 답변했습니다",
                 "등록하신 문의에 판매자가 답변 하였습니다.",
                 RefType.PRODUCT, prdCmtSn);
+    }
+
+    /**
+     * 새 채팅 메시지 — 채팅 담당(4, 정민재)이 메시지 저장 후 호출 (대상: 상대방).
+     * "새 채팅 메시지"(NTFC0032) 이벤트로 게이팅한다. CMM_CODE(NTFG05, CMM_SN=233) 반영 완료
+     * 확인(조우진, 2026-08-04) 후 재반영 — 실제 호출 연결은 여전히 채팅 담당 몫, 미호출 상태.
+     * refType/refSn은 일부러 비워둔다 — TRADE+tradeId로 잡으면 notifyForEvent의 (회원·이벤트·참조)
+     * 멱등 체크가 같은 거래방의 두 번째 메시지부터 계속 막아버린다(거래당 1회성 이벤트인
+     * DELIVERY_START류와 달리 채팅은 같은 참조로 반복 발생). 메시지 단위로 멱등 키를 잡으려면
+     * CHAT_MESSAGE 참조유형(RefType) 신설이 필요해 이번 범위에서는 뺐다.
+     */
+    public void notifyChatMessage(long usrSn) {
+        notifyForEvent(usrSn, NotificationEvent.NEW_CHAT_MESSAGE, NotificationAudience.GENERAL,
+                "새 채팅 메시지",
+                "채팅방에 새 메시지가 도착했습니다.",
+                null, null);
     }
 
     /** 배송 시작 — 거래/배송 담당(4)이 배송 상태 전이 시 호출 (대상: 구매자) */

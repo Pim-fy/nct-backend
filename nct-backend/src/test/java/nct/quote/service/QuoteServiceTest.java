@@ -50,7 +50,7 @@ class QuoteServiceTest {
 
     @Test
     void submitsOnlyAfterOpenRequestAndCategoryAccessChecks() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, "작업 범위");
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, "테스트 견적", 100_000L, "작업 범위", null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
@@ -68,7 +68,7 @@ class QuoteServiceTest {
 
     @Test
     void rejectsNonOpenRequestBeforeInsert() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null);
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, "테스트 견적", 100_000L, null, null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenThrow(new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
 
@@ -81,7 +81,7 @@ class QuoteServiceTest {
 
     @Test
     void rejectsSelfTradeAfterProviderAccessCheck() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null);
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, "테스트 견적", 100_000L, null, null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(22L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);

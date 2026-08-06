@@ -18,6 +18,8 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.ops.reference.dto.AdminCategoryOrderRequest;
+import nct.ops.reference.dto.AdminCategoryReorderRequest;
 import nct.ops.reference.dto.AdminCategoryRequest;
 import nct.ops.reference.dto.AdminCategoryResponse;
 import nct.ops.reference.service.AdminCategoryService;
@@ -53,6 +55,25 @@ public class AdminCategoryController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         return ResponseEntity.ok(ApiResponse.success(
                 service.updateCategory(domainCode, categorySn, request, actorId(userDetails))));
+    }
+
+    @PutMapping("/{domainCode}/{categorySn}/order")
+    public ResponseEntity<ApiResponse<List<AdminCategoryResponse>>> moveCategory(
+            @PathVariable(name = "domainCode") String domainCode,
+            @PathVariable(name = "categorySn") Long categorySn,
+            @Valid @RequestBody AdminCategoryOrderRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(
+                service.moveCategory(domainCode, categorySn, request, actorId(userDetails))));
+    }
+
+    @PutMapping("/{domainCode}/reorder")
+    public ResponseEntity<ApiResponse<List<AdminCategoryResponse>>> reorderCategories(
+            @PathVariable(name = "domainCode") String domainCode,
+            @Valid @RequestBody AdminCategoryReorderRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(
+                service.reorderCategories(domainCode, request, actorId(userDetails))));
     }
 
     private Long actorId(CustomUserDetails userDetails) {

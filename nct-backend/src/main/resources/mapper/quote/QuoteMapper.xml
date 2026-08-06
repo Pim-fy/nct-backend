@@ -33,8 +33,10 @@
         <id     property="qutSn"        column="QUT_SN"         />
         <result property="svcReqSn"     column="SVC_REQ_SN"     />
         <result property="usrSn"        column="USR_SN"         />
+        <result property="qutTtl"       column="QUT_TTL"        />
         <result property="qutAmt"       column="QUT_AMT"        />
         <result property="qutCn"        column="QUT_CN"         />
+        <result property="qutEstmDrt"   column="QUT_ESTM_DRT"   />
         <result property="qutStatusCd"  column="QUT_STATUS_CD"  />
         <result property="qutReviseCnt" column="QUT_REVISE_CNT" />
         <result property="qutRegId"     column="QUT_REG_ID"     />
@@ -53,17 +55,26 @@
     <insert id="insertQuote" useGeneratedKeys="true" keyProperty="qutSn">
         /* QuoteMapper.insertQuote */
         INSERT INTO QUOTE
-            (SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_STATUS_CD, QUT_REVISE_CNT,
+            (SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_STATUS_CD, QUT_REVISE_CNT,
              QUT_REG_ID, QUT_UPDT_ID)
         VALUES
-            (#{svcReqSn}, #{usrSn}, #{qutAmt}, #{qutCn}, #{qutStatusCd}, 0,
+            (#{svcReqSn}, #{usrSn}, #{qutTtl}, #{qutAmt}, #{qutCn}, #{qutStatusCd}, 0,
              #{qutRegId}, #{qutUpdtId})
     </insert>
+
+    <!-- ── 견적 단건 조회 (읽기 전용: 소유권 확인·이력 조회 용도) ── -->
+    <select id="findQuoteById" resultMap="QuoteEntityMap">
+        /* QuoteMapper.findQuoteById */
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_ESTM_DRT,
+               QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
+          FROM QUOTE
+         WHERE QUT_SN = #{qutSn}
+    </select>
 
     <!-- ── 견적 단건 조회 (FOR UPDATE: 수정·철회 시 동시성 제어) ── -->
     <select id="findQuoteByIdForUpdate" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteByIdForUpdate */
-        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN,
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_ESTM_DRT,
                QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
           FROM QUOTE
          WHERE QUT_SN = #{qutSn}
@@ -74,7 +85,8 @@
     <update id="updateQuote">
         /* QuoteMapper.updateQuote */
         UPDATE QUOTE
-           SET QUT_AMT        = #{req.amount},
+           SET QUT_TTL        = #{req.title},
+               QUT_AMT        = #{req.amount},
                QUT_CN         = #{req.content},
                QUT_STATUS_CD  = 'QUTC0002',
                QUT_REVISE_CNT = QUT_REVISE_CNT + 1,
@@ -127,6 +139,39 @@
          WHERE QUT_SN = #{qutSn}
          ORDER BY QUT_HST_REG_DT ASC
     </select>
+
+    <!-- ── 견적 선택 상태 변경 (FOR UPDATE는 서비스 레이어에서 findQuoteByIdForUpdate로 선행) ── -->
+    <update id="selectQuote">
+        /* QuoteMapper.selectQuote — 호출 전 반드시 FOR UPDATE 잠금 선행 */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0004',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE QUT_SN = #{qutSn}
+    </update>
+
+    <!-- ── 경쟁 견적 일괄 철회 (견적 선택 시, F-SVC-009) ── -->
+    <update id="withdrawCompetingQuotes">
+        /* QuoteMapper.withdrawCompetingQuotes */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE SVC_REQ_SN    = #{svcReqSn}
+           AND QUT_SN       != #{excludeQutSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <!-- ── 견적 작업사진 INSERT ──────────────────────── -->
+    <insert id="insertQuotePhoto" useGeneratedKeys="true" keyProperty="qutPhtSn">
+        /* QuoteMapper.insertQuotePhoto */
+        INSERT INTO QUOTE_PHOTO (QUT_SN, FL_SN, SORT_NO)
+        VALUES (#{qutSn}, #{flSn}, #{sortNo})
+    </insert>
+
+    <!-- ── 견적 작업사진 전체 삭제 (수정 시 교체 용도) ── -->
+    <delete id="deleteQuotePhotosByQutSn">
+        /* QuoteMapper.deleteQuotePhotosByQutSn */
+        DELETE FROM QUOTE_PHOTO WHERE QUT_SN = #{qutSn}
+    </delete>
 
     <!-- ── 받은 견적 목록 (요청자용) ─────────────────── -->
     <select id="findQuotesBySvcReqSn" resultMap="ReceivedQuoteResponseMap">

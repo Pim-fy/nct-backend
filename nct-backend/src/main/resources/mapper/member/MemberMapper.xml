@@ -94,6 +94,86 @@
         WHERE USR_SN = #{usrSn}
     </select>
 
+    <!-- 담당자 7 · F-OPS-002/019: 상태 변경 직전 회원 행을 잠가 중복 관리자 요청을 직렬화한다. -->
+    <select id="findMemberByIdForUpdate" parameterType="Long" resultMap="memberMap">
+        SELECT
+            USR_SN, USR_LOGIN_ID, USR_PSWD_HASH, USR_REFRESH_TOKEN_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC,
+            USR_EML_CERT_YN, USR_TELNO_ENC, USR_ADDR_ENC, USR_DADDR_ENC, USR_ZIP_ENC,
+            USR_BANK_NM_ENC, USR_ACNT_NO_ENC, USR_PRFL_FL_SN, USR_STATUS_CD, USR_ROLE_CD,
+            USR_ADULT_CERT_YN, USR_ADULT_CERT_DT, USR_USE_YN, USR_REG_DT, USR_UPDT_DT,
+            USR_REG_ID, USR_UPDT_ID
+        FROM USERS
+        WHERE USR_SN = #{usrSn}
+        FOR UPDATE
+    </select>
+
+    <!-- 담당자 7 · F-OPS-002: 운영 화면에는 개인정보 원문을 포함하지 않는다. -->
+    <sql id="adminMemberFilter">
+        <where>
+            <if test="statusCode != null and statusCode != ''">
+                u.USR_STATUS_CD = #{statusCode}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                <if test="statusCode != null and statusCode != ''">AND</if>
+                (
+                    u.USR_LOGIN_ID LIKE CONCAT('%', #{keyword}, '%')
+                    OR u.USR_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(u.USR_SN AS CHAR) = #{keyword}
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="findAdminMembers" resultType="nct.member.dto.AdminMemberSource">
+        SELECT u.USR_SN AS userSn,
+               u.USR_LOGIN_ID AS loginId,
+               u.USR_NM AS nickname,
+               u.USR_STATUS_CD AS statusCode,
+               status_code.CMM_NM AS statusName,
+               u.USR_ROLE_CD AS roleCode,
+               role_code.CMM_NM AS roleName,
+               u.USR_USE_YN AS useYn,
+               COALESCE(report_count.REPORT_COUNT, 0) AS reportCount,
+               u.USR_REG_DT AS registeredAt,
+               u.USR_UPDT_DT AS updatedAt
+        FROM USERS u
+        LEFT JOIN CMM_CODE status_code ON status_code.CMM_CD = u.USR_STATUS_CD
+        LEFT JOIN CMM_CODE role_code ON role_code.CMM_CD = u.USR_ROLE_CD
+        LEFT JOIN (
+            SELECT RPTD_USR_SN, COUNT(*) AS REPORT_COUNT
+            FROM ABUSE_REPORT
+            WHERE RPTD_USR_SN IS NOT NULL
+            GROUP BY RPTD_USR_SN
+        ) report_count ON report_count.RPTD_USR_SN = u.USR_SN
+        <include refid="adminMemberFilter"/>
+        ORDER BY u.USR_REG_DT DESC, u.USR_SN DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminMembers" resultType="long">
+        SELECT COUNT(*)
+        FROM USERS u
+        <include refid="adminMemberFilter"/>
+    </select>
+
+    <select id="findAdminMemberById" resultType="nct.member.dto.AdminMemberSource">
+        SELECT u.USR_SN AS userSn,
+               u.USR_LOGIN_ID AS loginId,
+               u.USR_NM AS nickname,
+               u.USR_STATUS_CD AS statusCode,
+               status_code.CMM_NM AS statusName,
+               u.USR_ROLE_CD AS roleCode,
+               role_code.CMM_NM AS roleName,
+               u.USR_USE_YN AS useYn,
+               (SELECT COUNT(*) FROM ABUSE_REPORT report WHERE report.RPTD_USR_SN = u.USR_SN) AS reportCount,
+               u.USR_REG_DT AS registeredAt,
+               u.USR_UPDT_DT AS updatedAt
+        FROM USERS u
+        LEFT JOIN CMM_CODE status_code ON status_code.CMM_CD = u.USR_STATUS_CD
+        LEFT JOIN CMM_CODE role_code ON role_code.CMM_CD = u.USR_ROLE_CD
+        WHERE u.USR_SN = #{usrSn}
+    </select>
+
     <!-- @ai_generated: UNIQUE 제약 전 사전 확인은 UX용이며 최종 INSERT 제약도 별도로 처리한다. -->
     <select id="existsByLoginId" parameterType="String" resultType="boolean">
         SELECT EXISTS(SELECT 1 FROM USERS WHERE USR_LOGIN_ID = #{loginId})
@@ -135,6 +215,17 @@
         UPDATE USERS
         SET    USR_REFRESH_TOKEN_HASH = #{refreshTokenHash}
         WHERE  USR_SN = #{usrSn}
+    </update>
+
+    <!-- 담당자 7 · F-OPS-019: 상태 전이와 로그인 세션 폐기를 같은 UPDATE로 보장한다. -->
+    <update id="updateStatusAndInvalidateRefreshToken">
+        UPDATE USERS
+        SET USR_STATUS_CD = #{targetStatusCode},
+            USR_REFRESH_TOKEN_HASH = NULL,
+            USR_UPDT_ID = #{updaterId}
+        WHERE USR_SN = #{usrSn}
+          AND USR_STATUS_CD = #{expectedStatusCode}
+          AND USR_STATUS_CD IN ('USRC0001', 'USRC0002')
     </update>
 
     <!-- @ai_generated: CHG-032/F-PROV-015 - USERS.USR_ROLE_CD는 현재 활성 접근 역할이다. -->

@@ -18,14 +18,12 @@ class ServiceTradeDetailAssemblerTest {
     private final ServiceTradeDetailAssembler assembler = new ServiceTradeDetailAssembler();
 
     @Test
-    void providerInProgressSeesCompletionScheduleAndDisputeActions() {
+    void providerInProgressSeesOnlyImplementedCompletionAndDisputeActions() {
         ServiceTradeDetailResponse response = assembler.assemble(source("TRDC0003"), 22L);
 
         assertThat(response.viewerRole()).isEqualTo("PROVIDER");
         assertThat(response.availableActions()).containsExactly(
                 "REQUEST_COMPLETION",
-                "REQUEST_SCHEDULE_CHANGE",
-                "REQUEST_SCHEDULE_CANCELLATION",
                 "SUBMIT_DISPUTE");
     }
 
@@ -56,6 +54,7 @@ class ServiceTradeDetailAssemblerTest {
                 "깨끗한 청소 · 150,000원",
                 "2026. 08. 03. 오전 10:00",
                 "ESCROW_HELD",
-                "보관금이 안전하게 보관 중입니다.");
+                "보관금이 안전하게 보관 중입니다.",
+                true);
     }
 }

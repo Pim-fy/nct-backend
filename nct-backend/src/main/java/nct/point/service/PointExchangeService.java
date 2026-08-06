@@ -1,6 +1,7 @@
 package nct.point.service;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,10 +11,12 @@ import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
 import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
+import nct.global.response.PageResponse;
 import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationService;
 import nct.point.domain.PointExchangeOrder;
 import nct.point.domain.PointExchangeOrderStatus;
+import nct.point.dto.AdminPointExchangeAccountResponse;
 import nct.point.dto.UserAccount;
 import nct.point.exception.PointException;
 import nct.point.mapper.PointExchangeOrderMapper;
@@ -32,6 +35,13 @@ import nct.point.mapper.PointExchangeOrderMapper;
 @Service
 @RequiredArgsConstructor
 public class PointExchangeService {
+
+    private static final int MAX_ADMIN_PAGE_SIZE = 50;
+    private static final int MAX_ADMIN_KEYWORD_LENGTH = 100;
+    private static final Set<String> ADMIN_STATUS_CODES = Set.of(
+            PointExchangeOrderStatus.REQUESTED.getCode(),
+            PointExchangeOrderStatus.COMPLETED.getCode(),
+            PointExchangeOrderStatus.REJECTED.getCode());
 
     private final PointExchangeOrderMapper exchangeMapper;
     private final PointService pointService;
@@ -54,12 +64,14 @@ public class PointExchangeService {
 
         // 계좌 미등록이면 신청 차단 — 관리자가 이체할 곳이 없으므로.
         // (계좌 등록 화면은 마이페이지(담당자3) 소유 — 여기서는 읽기만 한다)
+        // 미등록 검증을 먼저 하고 통과한 계좌만 복호화한다 — 예전엔 복호화가 null 검사보다
+        // 먼저라 헬퍼 안에 별도 null 가드가 필요했다 (2026-08-05 점검 정리로 순서 정돈)
         UserAccount account = exchangeMapper.selectUserAccount(usrSn);
-        decryptAccount(account);
         if (account == null || !account.isRegistered()) {
             throw new PointException(ErrorCode.EXCHANGE_ACCOUNT_NOT_REGISTERED,
                     "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요.");
         }
+        decryptAccount(account);
 
         // 잔액 검증 + 즉시 차감 — 회원 행 잠금 안에서 직렬화 (동시 신청 이중 차감 차단)
         long deductLdgSn = pointService.debitExchange(usrSn, amt, "환전 신청 차감");
@@ -103,6 +115,80 @@ public class PointExchangeService {
         return exchangeMapper.countRequestedForAdmin();
     }
 
+    /** 담당자 7 · F-PAY-012: 신청·완료·반려 주문을 상태·검색 조건으로 페이지 조회합니다. */
+    @Transactional(readOnly = true)
+    public PageResponse<PointExchangeOrder> getAdminOrderPage(
+            String statusCode,
+            String keyword,
+            int page,
+            int size) {
+        if (page < 1 || size < 1 || size > MAX_ADMIN_PAGE_SIZE) {
+            throw new PointException(ErrorCode.INVALID_INPUT_VALUE, "페이지 요청값이 올바르지 않습니다.");
+        }
+
+        String normalizedStatus = trimToNull(statusCode);
+        String normalizedKeyword = trimToNull(keyword);
+        if (normalizedStatus != null && !ADMIN_STATUS_CODES.contains(normalizedStatus)) {
+            throw new PointException(ErrorCode.INVALID_INPUT_VALUE, "환전 처리 상태가 올바르지 않습니다.");
+        }
+        if (normalizedKeyword != null && normalizedKeyword.length() > MAX_ADMIN_KEYWORD_LENGTH) {
+            throw new PointException(ErrorCode.INVALID_INPUT_VALUE, "검색어는 100자 이하여야 합니다.");
+        }
+
+        long offset = (long) (page - 1) * size;
+        long total = exchangeMapper.countAdminList(normalizedStatus, normalizedKeyword);
+        List<PointExchangeOrder> content = total == 0 || offset >= total
+                ? List.of()
+                : exchangeMapper.selectAdminList(normalizedStatus, normalizedKeyword, offset, size);
+        content.forEach(this::decryptOrderAccount);
+        return PageResponse.<PointExchangeOrder>builder()
+                .content(content)
+                .totalCount(total)
+                .page(page)
+                .size(size)
+                .hasNext(offset + content.size() < total)
+                .build();
+    }
+
+    /**
+     * 담당자 7 · F-PAY-012/F-OPS-015: 지급 전 신청 건의 계좌 원문만 제한 조회합니다.
+     * 감사로그를 먼저 기록하므로 기록 실패 시 복호화와 원문 반환도 실행되지 않습니다.
+     */
+    @Transactional
+    public AdminPointExchangeAccountResponse getRequestedAccountForAdmin(
+            long ptExcOrdSn,
+            long adminUsrSn,
+            String ipAddr) {
+        if (ptExcOrdSn <= 0 || adminUsrSn <= 0) {
+            throw new PointException(ErrorCode.INVALID_INPUT_VALUE, "환전 신청 또는 관리자 정보가 올바르지 않습니다.");
+        }
+
+        PointExchangeOrder order = exchangeMapper.selectForUpdateBySn(ptExcOrdSn);
+        if (order == null) {
+            throw new PointException(ErrorCode.EXCHANGE_ORDER_NOT_FOUND,
+                    "존재하지 않는 환전 신청입니다: " + ptExcOrdSn);
+        }
+        if (!PointExchangeOrderStatus.REQUESTED.getCode().equals(order.getPtExcOrdStatusCd())) {
+            throw new PointException(ErrorCode.EXCHANGE_ORDER_ALREADY_PROCESSED,
+                    "처리된 환전 신청의 계좌 원문은 조회할 수 없습니다: " + ptExcOrdSn);
+        }
+
+        requireOrderAccountSnapshot(order);
+        auditLogService.record(
+                adminUsrSn,
+                AuditLogType.SENSITIVE_VIEW,
+                RefType.MEMBER,
+                order.getUsrSn(),
+                String.format("환전 신청 %d번 지급 계좌 조회", ptExcOrdSn),
+                ipAddr);
+        decryptOrderAccount(order);
+        requireOrderAccountSnapshot(order);
+        return new AdminPointExchangeAccountResponse(
+                order.getPtExcOrdSn(),
+                order.getPtExcOrdBankNm(),
+                order.getPtExcOrdAcntNo());
+    }
+
     /**
      * 지급 완료 처리 — 관리자가 실제 계좌 이체를 마친 뒤 호출한다.
      * 포인트는 신청 때 이미 차감돼 있으므로 여기서는 상태·처리자만 기록하고 알림을 보낸다.
@@ -110,6 +196,9 @@ public class PointExchangeService {
     @Transactional
     public void complete(long ptExcOrdSn, long adminUsrSn) {
         PointExchangeOrder order = requireRequested(ptExcOrdSn);
+        requireOrderAccountSnapshot(order);
+        decryptOrderAccount(order);
+        requireOrderAccountSnapshot(order);
         exchangeMapper.complete(ptExcOrdSn, PointExchangeOrderStatus.COMPLETED.getCode(), adminUsrSn);
         notificationService.notifyExchangeComplete(order.getUsrSn(), order.getPtExcOrdAmt());
         // 관리자 조치 감사로그 (F-OPS-015) — 신청자를 참조로 남겨 "누가 누구 건을 처리했나"를 추적
@@ -123,15 +212,23 @@ public class PointExchangeService {
      */
     @Transactional
     public void reject(long ptExcOrdSn, long adminUsrSn, String reason) {
+        if (reason == null || reason.isBlank() || reason.trim().length() > 500) {
+            throw new PointException(ErrorCode.INVALID_INPUT_VALUE, "반려 사유는 1자 이상 500자 이하여야 합니다.");
+        }
+        String normalizedReason = reason.trim();
         PointExchangeOrder order = requireRequested(ptExcOrdSn);
         long restoreLdgSn = pointService.restoreExchange(order.getUsrSn(), order.getPtExcOrdAmt(),
                 "환전 반려 복원 (신청번호 " + ptExcOrdSn + ")");
         exchangeMapper.reject(ptExcOrdSn, PointExchangeOrderStatus.REJECTED.getCode(),
-                adminUsrSn, restoreLdgSn, reason);
-        notificationService.notifyExchangeReject(order.getUsrSn(), order.getPtExcOrdAmt(), reason);
+                adminUsrSn, restoreLdgSn, normalizedReason);
+        notificationService.notifyExchangeReject(order.getUsrSn(), order.getPtExcOrdAmt(), normalizedReason);
         // 관리자 조치 감사로그 (F-OPS-015)
         auditLogService.record(adminUsrSn, AuditLogType.ADMIN_REJECT, RefType.MEMBER, order.getUsrSn(),
-                String.format("환전 신청 %d번 반려 (%,dP) — 사유: %s", ptExcOrdSn, order.getPtExcOrdAmt(), reason), null);
+                String.format("환전 신청 %d번 반려 (%,dP) — 사유: %s",
+                        ptExcOrdSn,
+                        order.getPtExcOrdAmt(),
+                        normalizedReason),
+                null);
     }
 
     /** 상태 전이 사전 검증 — 행 잠금 후 '신청' 상태인지 확인 (이중 처리·동시 처리 차단) */
@@ -160,5 +257,23 @@ public class PointExchangeService {
     private void decryptOrderAccount(PointExchangeOrder order) {
         order.setPtExcOrdBankNm(fieldCryptoService.decrypt(order.getPtExcOrdBankNm()));
         order.setPtExcOrdAcntNo(fieldCryptoService.decrypt(order.getPtExcOrdAcntNo()));
+    }
+
+    private void requireOrderAccountSnapshot(PointExchangeOrder order) {
+        if (order.getPtExcOrdBankNm() == null
+                || order.getPtExcOrdBankNm().isBlank()
+                || order.getPtExcOrdAcntNo() == null
+                || order.getPtExcOrdAcntNo().isBlank()) {
+            throw new PointException(
+                    ErrorCode.EXCHANGE_ACCOUNT_NOT_REGISTERED,
+                    "환전 신청의 지급 계좌 정보가 없어 처리할 수 없습니다: " + order.getPtExcOrdSn());
+        }
+    }
+
+    private String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

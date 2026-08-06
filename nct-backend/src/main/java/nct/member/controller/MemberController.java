@@ -112,7 +112,7 @@ public class MemberController {
     @DeleteMapping("/oauth-links/{provider}")
     public ResponseEntity<ApiResponse<Void>> unlinkOauth(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable String provider) {
+            @PathVariable(name = "provider") String provider) {
         memberOauthLinkService.unlink(userDetails.getMember().getId(), provider);
         return ResponseEntity.ok(ApiResponse.success());
     }

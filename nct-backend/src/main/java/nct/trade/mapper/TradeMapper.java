@@ -17,9 +17,12 @@ import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
+import nct.trade.dto.MemberActiveTradeTarget;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
 import nct.trade.dto.ServiceTradeCompletionTarget;
+import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceTradeListItem;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -58,6 +61,15 @@ public interface TradeMapper {
     /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
     int holdServiceTradeForDispute(
             @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
+    /** 담당자 7 · F-OPS-020: 제한 대상자의 모든 진행 거래를 잠금 조회합니다. */
+    List<MemberActiveTradeTarget> findActiveTradesByMemberForUpdate(@Param("userSn") long userSn);
+
+    /** 담당자 7 · F-OPS-020: 잠금 시점 상태가 유지된 거래만 보류합니다. */
+    int holdTradeForMemberRestriction(
+            @Param("tradeId") long tradeId,
+            @Param("expectedStatusCode") String expectedStatusCode,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */
@@ -118,6 +130,17 @@ public interface TradeMapper {
     TradeDetailResponse findMyMaterialTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    /** 서비스 거래 당사자만 요청서·선택 견적·정산 상태를 함께 조회한다. */
+    ServiceTradeDetailSource findMyServiceTradeDetail(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
+    /** 서비스 거래 당사자의 목록 조회다. 서비스 요청 주소 등 민감 정보는 조회하지 않는다. */
+    List<ServiceTradeListItem> findMyServiceTrades(
+            @Param("userId") long userId,
+            @Param("role") String role,
+            @Param("statusCode") String statusCode);
 
     List<TradeDeliveryProofFile> findTradeDeliveryProofFiles(
             @Param("deliveryId") long deliveryId);

@@ -56,4 +56,5 @@ public class ProductResponse {
     // F-AUC-005 거래 상태 연계 — 정민재(4) TradeService 일괄 조회로 세팅
     @Setter private Long tradeSn;
     @Setter private String tradeStatusCd;
+    @Setter private String tradeMethodCd;
 }

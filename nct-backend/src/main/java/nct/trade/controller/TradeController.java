@@ -19,7 +19,9 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.ServiceTradeCompletionRequest;
+import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDisputeRequest;
+import nct.trade.dto.ServiceTradeListItem;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -37,14 +39,26 @@ public class TradeController {
     /** 구매·판매 역할을 함께 포함한 내 물건 거래 목록을 조회한다. */
     @GetMapping
     public ResponseEntity<ApiResponse<List<TradeListItem>>> getMyTrades(
-            @RequestParam(value = "role", required = false) String role,
-            @RequestParam(value = "status", required = false) String status,
-            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(name = "role", required = false) String role,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "keyword", required = false) String keyword,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 tradeService.getMyMaterialTrades(userId, role, status, keyword)));
+    }
+
+    /** 의뢰자·제공자가 본인 서비스 거래를 조회해 서비스 거래 상세로 이동한다. */
+    @GetMapping("/service")
+    public ResponseEntity<ApiResponse<List<ServiceTradeListItem>>> getMyServiceTrades(
+            @RequestParam(name = "role", required = false) String role,
+            @RequestParam(name = "status", required = false) String status,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyServiceTrades(userId, role, status)));
     }
 
     /** F-AUC-005 판매 목록이 경매 상태와 결합할 판매자 본인의 거래 상태를 조회한다. */
@@ -60,7 +74,7 @@ public class TradeController {
     /** URL 거래번호와 로그인 사용자 정보를 함께 검증해 상세를 조회한다. */
     @GetMapping("/{tradeId}")
     public ResponseEntity<ApiResponse<TradeDetailResponse>> getMyTradeDetail(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long userId = userDetails.getMember().getId();
@@ -68,10 +82,21 @@ public class TradeController {
                 tradeService.getMyMaterialTradeDetail(tradeId, userId)));
     }
 
+    /** 서비스 거래 당사자만 역할별 서비스 거래 상세를 조회한다. */
+    @GetMapping("/{tradeId}/service-detail")
+    public ResponseEntity<ApiResponse<ServiceTradeDetailResponse>> getMyServiceTradeDetail(
+            @PathVariable(name = "tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyServiceTradeDetail(tradeId, userId)));
+    }
+
     /** 판매자가 본인 직거래의 일시·장소·상세 주소를 저장한다. */
     @PutMapping("/{tradeId}/offline-schedule")
     public ResponseEntity<ApiResponse<TradeDetailResponse>> saveMyOfflineSchedule(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @Valid @RequestBody TradeOfflineScheduleRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
@@ -83,7 +108,7 @@ public class TradeController {
     /** 판매자가 올린 인증사진과 메모를 하나의 발송 처리로 확정한다. */
     @PostMapping("/{tradeId}/delivery-proofs")
     public ResponseEntity<ApiResponse<TradeDetailResponse>> submitDeliveryProof(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @Valid @RequestBody TradeDeliveryProofSubmitRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
@@ -95,7 +120,7 @@ public class TradeController {
     /** 구매자 또는 판매자가 거래 완료를 확인한다. 상대방 확인까지 끝나면 즉시 완료된다. */
     @PostMapping("/{tradeId}/completion-requests")
     public ResponseEntity<ApiResponse<TradeDetailResponse>> requestCompletionConfirmation(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long userId = userDetails.getMember().getId();
@@ -106,7 +131,7 @@ public class TradeController {
     /** 서비스 거래 당사자가 거래 문제를 접수하면 거래·정산을 같은 트랜잭션으로 보류한다. */
     @PostMapping("/{tradeId}/service-disputes")
     public ResponseEntity<ApiResponse<Void>> registerServiceTradeDispute(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @Valid @RequestBody ServiceTradeDisputeRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
@@ -117,7 +142,7 @@ public class TradeController {
     /** 서비스 제공자가 완료 요청을 등록하고 의뢰자 확인 기한을 시작한다. */
     @PostMapping("/{tradeId}/service-completion-requests")
     public ResponseEntity<ApiResponse<Void>> requestServiceCompletion(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @Valid @RequestBody ServiceTradeCompletionRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
@@ -129,7 +154,7 @@ public class TradeController {
     /** 서비스 의뢰자가 완료를 확인하면 정산과 정산가능 포인트 적립을 함께 처리한다. */
     @PostMapping("/{tradeId}/service-completions")
     public ResponseEntity<ApiResponse<Void>> confirmServiceCompletion(
-            @PathVariable("tradeId") long tradeId,
+            @PathVariable(name = "tradeId") long tradeId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         tradeService.confirmServiceCompletion(tradeId, userDetails.getMember().getId());

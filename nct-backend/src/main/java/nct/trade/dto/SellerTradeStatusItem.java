@@ -9,4 +9,5 @@ public class SellerTradeStatusItem {
     private Long prdSn;
     private Long tradeSn;
     private String tradeStatusCd;
+    private String tradeMethodCd;
 }

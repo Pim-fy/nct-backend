@@ -71,14 +71,14 @@ public class AbuseReportController {
     @GetMapping("/me/{reportSn}")
     public ResponseEntity<ApiResponse<MyAbuseReportResponse>> getMyReportDetail(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @PathVariable Long reportSn) {
+            @PathVariable(name = "reportSn") Long reportSn) {
 
         Long reporterUserSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 abuseReportService.getMyReportDetail(reporterUserSn, reportSn)));
     }
 
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me/references")
     public ResponseEntity<ApiResponse<List<ManualAbuseReportStatusResponse>>> getMyReportReferences(
             @AuthenticationPrincipal CustomUserDetails userDetails,

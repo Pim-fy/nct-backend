@@ -18,13 +18,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.dto.AdminServiceRequestListItem;
+import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
 import nct.servicerequest.service.ServiceRequestFormService.ValidatedSubmission;
@@ -40,6 +42,8 @@ class ServiceRequestServiceTest {
     @Mock
     private SvcReqImageMapper imageMapper;
     @Mock
+    private SvcReqCommentMapper commentMapper;
+    @Mock
     private ServiceRequestFormService formService;
     @Mock
     private FileStorageService fileStorageService;
@@ -52,6 +56,7 @@ class ServiceRequestServiceTest {
                 serviceRequestMapper,
                 itemMapper,
                 imageMapper,
+                commentMapper,
                 formService,
                 fileStorageService);
     }
@@ -302,6 +307,37 @@ class ServiceRequestServiceTest {
 
         verify(fileStorageService).requireOwnedServiceRequestFile(9L, 7L);
         verify(imageMapper).insertAll(any());
+    }
+
+    @Test
+    void returnsServerPagedAdminServiceRequests() {
+        AdminServiceRequestSearchCondition condition = AdminServiceRequestSearchCondition.builder()
+                .page(2)
+                .size(20)
+                .statusCode("SVCC0002")
+                .build();
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(1256L)
+                .title("입주 청소")
+                .build();
+        when(serviceRequestMapper.countAdminServiceRequests(condition)).thenReturn(21L);
+        when(serviceRequestMapper.findAdminServiceRequestPage(condition)).thenReturn(List.of(item));
+
+        var result = service.readPage(condition);
+
+        assertThat(result.getItems()).containsExactly(item);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getTotalItems()).isEqualTo(21L);
+        assertThat(result.getTotalPages()).isEqualTo(2);
+    }
+
+    @Test
+    void rejectsMissingAdminServiceRequestDetail() {
+        when(serviceRequestMapper.findAdminServiceRequestDetail(1256L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.readDetail(1256L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("존재하지 않는 서비스 요청");
     }
 
     private ServiceRequest draft(Long svcReqSn, Long catSn, Long formTemplateSn) {

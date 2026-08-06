@@ -3,6 +3,7 @@ package nct.abuse.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -32,12 +34,16 @@ import org.springframework.dao.DuplicateKeyException;
 
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.dto.CustomerAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.response.PageResponse;
+import nct.global.security.port.AuthMember;
+import nct.global.security.port.AuthMemberPort;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
@@ -58,6 +64,7 @@ class AbuseReportServiceTest {
     private NotificationService notificationService;
     private ProductService productService;
     private ObjectProvider<ProductService> productServiceProvider;
+    private AuthMemberPort authMemberPort;
     private AbuseReportService service;
 
     @BeforeEach
@@ -68,6 +75,7 @@ class AbuseReportServiceTest {
         notificationService = mock(NotificationService.class);
         productService = mock(ProductService.class);
         productServiceProvider = mock(ObjectProvider.class);
+        authMemberPort = mock(AuthMemberPort.class);
         when(productServiceProvider.getObject()).thenReturn(productService);
         when(abuseReportMapper.findManualReportId(any(), any(), any())).thenReturn(null);
         service = new AbuseReportService(
@@ -75,7 +83,38 @@ class AbuseReportServiceTest {
                 referenceDataService,
                 auditLogPort,
                 notificationService,
-                productServiceProvider);
+                productServiceProvider,
+                authMemberPort);
+    }
+
+    @Test
+    void rejectsCustomerReportForSelfOrMissingReportedUser() {
+        CustomerAbuseReportRequest selfReport = customerReportRequest(10L);
+        assertThatThrownBy(() -> service.submitCustomerReport(10L, selfReport))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+
+        when(authMemberPort.findById(20L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.submitCustomerReport(10L, customerReportRequest(20L)))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND));
+
+        verify(abuseReportMapper, never()).insertCustomerReport(any(AbuseReport.class));
+    }
+
+    @Test
+    void createsCustomerReportForExistingReportedUser() {
+        when(authMemberPort.findById(20L)).thenReturn(Optional.of(mock(AuthMember.class)));
+        doAnswer(invocation -> {
+            AbuseReport report = invocation.getArgument(0);
+            report.setReportSn(501L);
+            return 1;
+        }).when(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
+
+        ManualAbuseReportResponse result = service.submitCustomerReport(10L, customerReportRequest(20L));
+
+        assertThat(result.reportSn()).isEqualTo(501L);
+        verify(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
     }
 
     @Test
@@ -239,6 +278,58 @@ class AbuseReportServiceTest {
         verify(abuseReportMapper).findPendingReports(
                 AbuseReportService.RECEIVED_STATUS,
                 AbuseReportService.PROCESSING_STATUS);
+    }
+
+    @Test
+    void returnsFilteredAdminReportPage() {
+        AdminAbuseReportResponse processedReport = adminReport(
+                101L,
+                77L,
+                null,
+                AbuseReportService.PROCESSED_STATUS);
+        when(abuseReportMapper.countAdminReports(
+                AbuseReportService.PROCESSED_STATUS,
+                "회원 20"))
+                .thenReturn(21L);
+        when(abuseReportMapper.findAdminReports(
+                AbuseReportService.PROCESSED_STATUS,
+                "회원 20",
+                20L,
+                20))
+                .thenReturn(List.of(processedReport));
+
+        PageResponse<AdminAbuseReportResponse> result = service.getAdminReports(
+                " " + AbuseReportService.PROCESSED_STATUS + " ",
+                " 회원 20 ",
+                2,
+                20);
+
+        assertThat(result.getContent()).containsExactly(processedReport);
+        assertThat(result.getTotalCount()).isEqualTo(21L);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.isHasNext()).isFalse();
+        verify(referenceDataService).requireActiveCode(
+                "ABRG02",
+                AbuseReportService.PROCESSED_STATUS);
+        verify(abuseReportMapper).findAdminReports(
+                AbuseReportService.PROCESSED_STATUS,
+                "회원 20",
+                20L,
+                20);
+    }
+
+    @Test
+    void rejectsInvalidAdminReportPageRequest() {
+        assertThatThrownBy(() -> service.getAdminReports(null, null, 0, 20))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+        assertThatThrownBy(() -> service.getAdminReports(null, "x".repeat(101), 1, 20))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+
+        verify(abuseReportMapper, never()).countAdminReports(any(), any());
+        verify(abuseReportMapper, never()).findAdminReports(any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -538,6 +629,17 @@ class AbuseReportServiceTest {
                 "SYSTEM");
     }
 
+    private CustomerAbuseReportRequest customerReportRequest(Long reportedUserSn) {
+        return new CustomerAbuseReportRequest(
+                AbuseReportService.CONTENT_REPORT_TYPE,
+                reportedUserSn,
+                null,
+                null,
+                null,
+                "report title",
+                "report content");
+    }
+
     private InquiryReportTarget inquiryTarget(
             Long inquirySn,
             Long writerUserSn,
@@ -585,6 +687,7 @@ class AbuseReportServiceTest {
                 "REFC0005",
                 31L,
                 AbuseReportService.PROCESSED_STATUS.equals(statusCode) ? "처리 완료" : null,
+                AbuseReportService.PROCESSED_STATUS.equals(statusCode) ? "7" : null,
                 LocalDateTime.of(2026, 7, 23, 9, 0),
                 AbuseReportService.PROCESSED_STATUS.equals(statusCode)
                         ? LocalDateTime.of(2026, 7, 23, 10, 0)

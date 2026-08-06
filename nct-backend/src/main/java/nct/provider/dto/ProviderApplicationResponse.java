@@ -6,7 +6,9 @@ import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 
-/** 담당자 7 · 신청자/관리자 화면이 함께 사용하는 제공자 카테고리별 심사 조회 결과입니다. */
+/** 담당자 6 · 신청자/관리자 화면이 함께 사용하는 제공자 카테고리별 심사 조회 결과입니다.
+ *  (헤더의 "담당자 7" 표기는 업무분장 변경 전 잔재라 정정 — 2026-08-05)
+ *  decidedAt 필드는 매퍼 resultMap에 매핑이 없어 항상 null로만 직렬화되던 죽은 필드라 제거(2026-08-05 점검 정리). */
 @Getter @Setter
 public class ProviderApplicationResponse {
     private Long applicationSn;
@@ -19,6 +21,5 @@ public class ProviderApplicationResponse {
     private String rejectReason;
     private String applicationTypeCode;
     private LocalDateTime requestedAt;
-    private LocalDateTime decidedAt;
     private List<ProviderApplicationFileResponse> files = List.of();
 }

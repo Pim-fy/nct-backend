@@ -18,29 +18,45 @@ import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
+import nct.servicerequest.dto.AdminServiceRequestDetail;
+import nct.servicerequest.dto.AdminServiceRequestListItem;
+import nct.servicerequest.dto.AdminServiceRequestPage;
+import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestResponse;
+import nct.servicerequest.dto.SvcReqCommentRequest;
+import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
+import nct.servicerequest.port.AdminServiceRequestReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 import nct.servicerequest.service.ServiceRequestFormService.ValidatedSubmission;
 
 @Service
 @RequiredArgsConstructor
-public class ServiceRequestService implements ServiceRequestQuoteReader {
+public class ServiceRequestService implements ServiceRequestQuoteReader, AdminServiceRequestReader {
 
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
     private final SvcReqImageMapper svcReqImageMapper;
+    private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
 
+    // 변경사항 추가는 공개·매칭완료 상태(요청서가 이미 노출된 상태)에서만, 최대 3개까지
+    private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002", "SVCC0003");
+    private static final int MAX_COMMENT_COUNT = 3;
+
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
     private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
+    private static final Set<String> SERVICE_REQUEST_STATUS_CD =
+            Set.of("SVCC0001", "SVCC0002", "SVCC0003", "SVCC0004");
 
     private void validateClientStatusCd(String statusCd) {
         if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
@@ -55,6 +71,40 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         List<ServiceRequestResponse> list =
                 serviceRequestMapper.searchServiceRequests(keyword, categorySn, minBudget, maxBudget, sort);
         return PagedResponse.of(new PageInfo<>(list));
+    }
+
+    /** 관리자 도메인에 Mapper를 노출하지 않고 전체 상태의 서비스 요청 목록을 제공한다. */
+    @Override
+    @Transactional(readOnly = true)
+    public AdminServiceRequestPage readPage(AdminServiceRequestSearchCondition condition) {
+        if (condition == null || condition.getPage() <= 0 || condition.getSize() <= 0
+                || (condition.getStatusCode() != null
+                    && !SERVICE_REQUEST_STATUS_CD.contains(condition.getStatusCode()))) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        long totalItems = serviceRequestMapper.countAdminServiceRequests(condition);
+        List<AdminServiceRequestListItem> items = totalItems == 0
+                ? List.of()
+                : serviceRequestMapper.findAdminServiceRequestPage(condition);
+        return AdminServiceRequestPage.builder()
+                .items(items)
+                .page(condition.getPage())
+                .size(condition.getSize())
+                .totalItems(totalItems)
+                .totalPages((int) Math.ceil((double) totalItems / condition.getSize()))
+                .build();
+    }
+
+    /** 관리자 서비스 요청 상세는 논리 삭제되지 않은 서비스요청 소유 필드만 반환한다. */
+    @Override
+    @Transactional(readOnly = true)
+    public AdminServiceRequestDetail readDetail(Long serviceRequestId) {
+        if (serviceRequestId == null || serviceRequestId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return serviceRequestMapper.findAdminServiceRequestDetail(serviceRequestId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
     }
 
     @Transactional
@@ -322,6 +372,8 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         }
     }
 
+    // 삭제는 임시저장 상태만 허용 — 공개 이후에는 제공자가 이미 견적을 냈을 수 있어 셀프 삭제로
+    // 기록을 지우면 안 되고, 더 이상 견적을 받고 싶지 않을 땐 마감(closeServiceRequest)을 쓴다.
     @Transactional
     public void deleteServiceRequest(Long svcReqSn, Long usrSn) {
         ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
@@ -330,8 +382,50 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         if (!serviceRequest.getUsrSn().equals(usrSn)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
+        if (!"SVCC0001".equals(serviceRequest.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "임시저장 상태의 요청서만 삭제할 수 있습니다.");
+        }
 
         serviceRequestMapper.deleteServiceRequest(svcReqSn, usrSn);
+    }
+
+    /** 요청서 변경사항 추가 — 등록 후 본문 수정은 불가하므로 별도 이력으로 최대 3개까지 (견적 요청 정책) */
+    @Transactional
+    public SvcReqCommentResponse addComment(Long svcReqSn, Long usrSn, SvcReqCommentRequest req) {
+        ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+
+        if (!serviceRequest.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (!COMMENTABLE_STATUS_CD.contains(serviceRequest.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "공개 또는 매칭완료 상태의 요청서에만 변경사항을 추가할 수 있습니다.");
+        }
+        if (svcReqCommentMapper.findLatestComments(svcReqSn, Integer.MAX_VALUE).size() >= MAX_COMMENT_COUNT) {
+            throw new CustomException(ErrorCode.CONFLICT, "변경사항은 최대 " + MAX_COMMENT_COUNT + "개까지 등록할 수 있습니다.");
+        }
+
+        SvcReqComment comment = SvcReqComment.builder()
+                .svcReqSn(svcReqSn)
+                .usrSn(usrSn)
+                .svcReqCmtTtl(req.getTtl())
+                .svcReqCmtCn(req.getCn())
+                .svcReqCmtRegId(String.valueOf(usrSn))
+                .build();
+        svcReqCommentMapper.insertComment(comment);
+
+        return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT).stream()
+                .filter(c -> c.getSvcReqCmtSn().equals(comment.getSvcReqCmtSn()))
+                .findFirst()
+                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    /** 요청서 변경사항 목록 조회 — 최신순 최대 3개 */
+    @Transactional(readOnly = true)
+    public List<SvcReqCommentResponse> getComments(Long svcReqSn) {
+        serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT);
     }
 
     // 요청 항목 목록을 순서대로 SVC_REQ_ITEM에 저장
@@ -349,7 +443,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader {
         svcReqItemMapper.insertAll(rows);
     }
 
-    // 업로드된 파일 id 목록을 SVC_REQ_IMAGE로 연결 — 대표이미지 개념 없이 순서만 정렬순서로 보존
+    // 업로드된 파일 id 목록을 SVC_REQ_IMAGE로 연결 — 순서를 정렬순서로 보존(0번이 대표이미지)
     private void saveImages(Long svcReqSn, Long usrSn, List<Long> flSnList) {
         if (flSnList == null || flSnList.isEmpty()) return;
 

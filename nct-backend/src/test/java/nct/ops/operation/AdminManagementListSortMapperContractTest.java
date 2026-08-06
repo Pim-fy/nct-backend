@@ -95,6 +95,20 @@ class AdminManagementListSortMapperContractTest {
         assertOrderBeforeLimit(select);
     }
 
+    @Test
+    @DisplayName("관리자 신고 조회는 신고 제목과 대상명을 반환하고 검색한다")
+    void reportsExposeAndSearchCustomerReportContext() throws IOException {
+        String columns = loadNormalizedSql("mapper/abuse/AbuseReportMapper.xml", "adminReportColumns");
+        String searchWhere = loadNormalizedSql("mapper/abuse/AbuseReportMapper.xml", "adminReportSearchWhere");
+
+        assertThat(columns)
+                .contains("ABR_TITLE_NM AS title")
+                .contains("ABR_TRG_NM AS targetName");
+        assertThat(searchWhere)
+                .contains("ABR_TITLE_NM LIKE CONCAT('%', #{keyword}, '%')")
+                .contains("ABR_TRG_NM LIKE CONCAT('%', #{keyword}, '%')");
+    }
+
     private void assertOrderBeforeLimit(String select) {
         assertThat(select.indexOf("ORDER BY"))
                 .isGreaterThanOrEqualTo(0)

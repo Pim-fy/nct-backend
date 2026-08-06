@@ -12,7 +12,9 @@
         F.FORM_VER_NO AS formVersion,
         FIRST_STEP.SVC_REQ_STEP_KEY AS firstStepKey,
         F.FORM_SUBTTL AS subtitle,
-        CAST(F.FORM_UI_META_JSON AS CHAR) AS uiMetaJson
+        CAST(F.FORM_UI_META_JSON AS CHAR) AS uiMetaJson,
+        F.FORM_ACTV_YN AS activeYn,
+        F.FORM_USE_YN AS useYn
     </sql>
 
     <select id="findActiveFormHeaders" resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
@@ -55,6 +57,222 @@
          WHERE F.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
            AND F.FORM_USE_YN = 'Y'
     </select>
+
+    <select id="findLatestFormHeaderByCategory"
+            resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
+        /* ServiceRequestFormMapper.findLatestFormHeaderByCategory */
+        SELECT <include refid="formHeaderColumns" />
+          FROM SVC_REQ_FORM_TMPL F
+          JOIN CATEGORY C ON C.CAT_SN = F.CAT_SN
+          LEFT JOIN SVC_REQ_STEP_DEF FIRST_STEP
+            ON FIRST_STEP.SVC_REQ_FORM_TMPL_SN = F.SVC_REQ_FORM_TMPL_SN
+           AND FIRST_STEP.SVC_REQ_STEP_SN = F.FIRST_STEP_SN
+         WHERE F.CAT_SN = #{catSn}
+           AND F.FORM_USE_YN = 'Y'
+         ORDER BY F.FORM_VER_NO DESC
+         LIMIT 1
+    </select>
+
+    <select id="findActiveFormHeaderByCategory"
+            resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
+        /* ServiceRequestFormMapper.findActiveFormHeaderByCategory */
+        SELECT <include refid="formHeaderColumns" />
+          FROM SVC_REQ_FORM_TMPL F
+          JOIN CATEGORY C ON C.CAT_SN = F.CAT_SN
+          LEFT JOIN SVC_REQ_STEP_DEF FIRST_STEP
+            ON FIRST_STEP.SVC_REQ_FORM_TMPL_SN = F.SVC_REQ_FORM_TMPL_SN
+           AND FIRST_STEP.SVC_REQ_STEP_SN = F.FIRST_STEP_SN
+         WHERE F.CAT_SN = #{catSn}
+           AND F.FORM_ACTV_YN = 'Y'
+           AND F.FORM_USE_YN = 'Y'
+         LIMIT 1
+    </select>
+
+    <select id="findFormHeaderForUpdate"
+            resultType="nct.servicerequest.dto.ServiceRequestFormResponse">
+        /* ServiceRequestFormMapper.findFormHeaderForUpdate */
+        SELECT <include refid="formHeaderColumns" />
+          FROM SVC_REQ_FORM_TMPL F
+          JOIN CATEGORY C ON C.CAT_SN = F.CAT_SN
+          LEFT JOIN SVC_REQ_STEP_DEF FIRST_STEP
+            ON FIRST_STEP.SVC_REQ_FORM_TMPL_SN = F.SVC_REQ_FORM_TMPL_SN
+           AND FIRST_STEP.SVC_REQ_STEP_SN = F.FIRST_STEP_SN
+         WHERE F.CAT_SN = #{catSn}
+           AND F.SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND F.FORM_USE_YN = 'Y'
+         FOR UPDATE
+    </select>
+
+    <select id="findMaxVersion" resultType="int">
+        SELECT COALESCE(MAX(FORM_VER_NO), 0)
+          FROM SVC_REQ_FORM_TMPL
+         WHERE CAT_SN = #{catSn}
+    </select>
+
+    <select id="findActiveVersion" resultType="int">
+        SELECT COALESCE(MAX(FORM_VER_NO), 0)
+          FROM SVC_REQ_FORM_TMPL
+         WHERE CAT_SN = #{catSn}
+           AND FORM_ACTV_YN = 'Y'
+           AND FORM_USE_YN = 'Y'
+    </select>
+
+    <select id="countActiveForm" resultType="int">
+        SELECT COUNT(*)
+          FROM SVC_REQ_FORM_TMPL
+         WHERE CAT_SN = #{catSn}
+           AND FORM_ACTV_YN = 'Y'
+           AND FORM_USE_YN = 'Y'
+    </select>
+
+    <update id="disableUnpublishedDrafts">
+        UPDATE SVC_REQ_FORM_TMPL
+           SET FORM_USE_YN = 'N',
+               FORM_UPDT_DT = CURRENT_TIMESTAMP,
+               FORM_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{catSn}
+           AND FORM_ACTV_YN = 'N'
+           AND FORM_USE_YN = 'Y'
+           AND FORM_VER_NO &gt; #{activeVersion}
+    </update>
+
+    <insert id="insertTemplate" useGeneratedKeys="true"
+            keyProperty="form.formTemplateSn" keyColumn="SVC_REQ_FORM_TMPL_SN">
+        INSERT INTO SVC_REQ_FORM_TMPL (
+            CAT_SN, FORM_VER_NO, FIRST_STEP_SN, FORM_SUBTTL, FORM_UI_META_JSON,
+            FORM_ACTV_YN, FORM_USE_YN, FORM_REG_ID, FORM_UPDT_ID
+        ) VALUES (
+            #{form.catSn}, #{form.formVersion}, NULL, #{form.subtitle},
+            <choose>
+                <when test="form.uiMetaJson != null">CAST(#{form.uiMetaJson} AS JSON)</when>
+                <otherwise>NULL</otherwise>
+            </choose>,
+            'N', 'Y', #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <insert id="insertStep" useGeneratedKeys="true"
+            keyProperty="step.stepSn" keyColumn="SVC_REQ_STEP_SN">
+        INSERT INTO SVC_REQ_STEP_DEF (
+            SVC_REQ_FORM_TMPL_SN, SVC_REQ_STEP_KEY, SVC_REQ_STEP_TTL,
+            SVC_REQ_STEP_EXPLN, SVC_REQ_STEP_TYPE_CD, NEXT_STEP_SN,
+            SVC_REQ_STEP_SNSTV_YN, SVC_REQ_STEP_PBLC_YN,
+            SVC_REQ_STEP_SORT_NO, SVC_REQ_STEP_USE_YN,
+            SVC_REQ_STEP_REG_ID, SVC_REQ_STEP_UPDT_ID
+        ) VALUES (
+            #{formTemplateSn}, #{step.stepKey}, #{step.title},
+            #{step.description}, #{step.type}, NULL,
+            #{step.sensitiveYn}, #{step.publicYn},
+            #{step.sortNo}, 'Y', #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <update id="updateStepNext">
+        UPDATE SVC_REQ_STEP_DEF
+           SET NEXT_STEP_SN = #{nextStepSn},
+               SVC_REQ_STEP_UPDT_DT = CURRENT_TIMESTAMP,
+               SVC_REQ_STEP_UPDT_ID = #{actorId}
+         WHERE SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND SVC_REQ_STEP_SN = #{stepSn}
+    </update>
+
+    <update id="updateTemplateFirstStep">
+        UPDATE SVC_REQ_FORM_TMPL
+           SET FIRST_STEP_SN = #{firstStepSn},
+               FORM_UPDT_DT = CURRENT_TIMESTAMP,
+               FORM_UPDT_ID = #{actorId}
+         WHERE SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+    </update>
+
+    <insert id="insertStepOption" useGeneratedKeys="true"
+            keyProperty="option.optionSn" keyColumn="SVC_REQ_STEP_OPT_SN">
+        INSERT INTO SVC_REQ_STEP_OPT_DEF (
+            SVC_REQ_FORM_TMPL_SN, SVC_REQ_STEP_SN, SVC_REQ_STEP_OPT_KEY,
+            SVC_REQ_STEP_OPT_VAL, SVC_REQ_STEP_OPT_LABEL, SVC_REQ_STEP_OPT_SUBTTL,
+            NEXT_STEP_SN, SVC_REQ_STEP_OPT_SORT_NO, SVC_REQ_STEP_OPT_USE_YN,
+            SVC_REQ_STEP_OPT_REG_ID, SVC_REQ_STEP_OPT_UPDT_ID
+        ) VALUES (
+            #{formTemplateSn}, #{option.stepSn}, #{option.optionKey},
+            #{option.value}, #{option.label}, #{option.subtitle},
+            #{option.nextStepSn}, #{option.sortNo}, 'Y', #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <insert id="insertField" useGeneratedKeys="true"
+            keyProperty="field.fieldSn" keyColumn="SVC_REQ_FIELD_SN">
+        INSERT INTO SVC_REQ_FIELD_DEF (
+            SVC_REQ_FORM_TMPL_SN, SVC_REQ_STEP_SN, SVC_REQ_FIELD_KEY,
+            SVC_REQ_FIELD_LABEL, SVC_REQ_FIELD_TYPE_CD, SVC_REQ_FIELD_PH,
+            SVC_REQ_FIELD_EXPLN, SVC_REQ_FIELD_REQ_YN, SVC_REQ_FIELD_DIGIT_YN,
+            SVC_REQ_FIELD_SNSTV_YN, SVC_REQ_FIELD_PBLC_YN,
+            SVC_REQ_FIELD_MAX_CNT, SVC_REQ_FIELD_SORT_NO, SVC_REQ_FIELD_UI_META_JSON,
+            SVC_REQ_FIELD_USE_YN, SVC_REQ_FIELD_REG_ID, SVC_REQ_FIELD_UPDT_ID
+        ) VALUES (
+            #{formTemplateSn}, #{field.stepSn}, #{field.fieldKey},
+            #{field.label}, #{field.type}, #{field.placeholder},
+            #{field.description}, #{field.requiredYn}, #{field.requireDigitYn},
+            #{field.sensitiveYn}, #{field.publicYn},
+            #{field.maxSelections}, #{field.sortNo},
+            <choose>
+                <when test="field.uiMetaJson != null">CAST(#{field.uiMetaJson} AS JSON)</when>
+                <otherwise>NULL</otherwise>
+            </choose>,
+            'Y', #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <insert id="insertFieldOption" useGeneratedKeys="true"
+            keyProperty="option.optionSn" keyColumn="SVC_REQ_FIELD_OPT_SN">
+        INSERT INTO SVC_REQ_FIELD_OPT_DEF (
+            SVC_REQ_FORM_TMPL_SN, SVC_REQ_FIELD_SN, SVC_REQ_FIELD_OPT_KEY,
+            SVC_REQ_FIELD_OPT_VAL, SVC_REQ_FIELD_OPT_LABEL,
+            SVC_REQ_FIELD_OPT_SORT_NO, SVC_REQ_FIELD_OPT_USE_YN,
+            SVC_REQ_FIELD_OPT_REG_ID, SVC_REQ_FIELD_OPT_UPDT_ID
+        ) VALUES (
+            #{formTemplateSn}, #{option.fieldSn}, #{option.optionKey},
+            #{option.value}, #{option.label}, #{option.sortNo}, 'Y',
+            #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <insert id="insertFieldRule" useGeneratedKeys="true"
+            keyProperty="rule.ruleSn" keyColumn="SVC_REQ_FIELD_RULE_SN">
+        INSERT INTO SVC_REQ_FIELD_RULE_DEF (
+            SVC_REQ_FORM_TMPL_SN, TARGET_STEP_SN, TARGET_FIELD_SN,
+            SOURCE_STEP_SN, SOURCE_FIELD_STEP_SN, SOURCE_FIELD_SN,
+            COMPARE_STEP_OPT_SN, COMPARE_FIELD_OPT_SN,
+            RULE_OPERATOR_CD, RULE_ACTION_CD, SVC_REQ_FIELD_RULE_SORT_NO,
+            SVC_REQ_FIELD_RULE_USE_YN, SVC_REQ_FIELD_RULE_REG_ID,
+            SVC_REQ_FIELD_RULE_UPDT_ID
+        ) VALUES (
+            #{formTemplateSn}, #{rule.targetStepSn}, #{rule.targetFieldSn},
+            #{rule.sourceStepSn}, #{rule.sourceFieldStepSn}, #{rule.sourceFieldSn},
+            #{rule.compareStepOptionSn}, #{rule.compareFieldOptionSn},
+            #{rule.operator}, #{rule.action}, #{rule.sortNo}, 'Y',
+            #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <update id="deactivateActiveTemplate">
+        UPDATE SVC_REQ_FORM_TMPL
+           SET FORM_ACTV_YN = 'N',
+               FORM_UPDT_DT = CURRENT_TIMESTAMP,
+               FORM_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{catSn}
+           AND FORM_ACTV_YN = 'Y'
+           AND FORM_USE_YN = 'Y'
+    </update>
+
+    <update id="activateTemplate">
+        UPDATE SVC_REQ_FORM_TMPL
+           SET FORM_ACTV_YN = 'Y',
+               FORM_UPDT_DT = CURRENT_TIMESTAMP,
+               FORM_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{catSn}
+           AND SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND FORM_ACTV_YN = 'N'
+           AND FORM_USE_YN = 'Y'
+    </update>
 
     <select id="findSteps" resultType="nct.servicerequest.dto.ServiceRequestFormStep">
         /* ServiceRequestFormMapper.findSteps */
@@ -256,8 +474,15 @@
     <select id="findFieldRules" resultType="nct.servicerequest.dto.ServiceRequestFormRule">
         /* ServiceRequestFormMapper.findFieldRules */
         SELECT R.SVC_REQ_FIELD_RULE_SN AS ruleSn,
+               R.TARGET_STEP_SN AS targetStepSn,
                R.TARGET_FIELD_SN AS targetFieldSn,
+               R.SOURCE_STEP_SN AS sourceStepSn,
+               R.SOURCE_FIELD_STEP_SN AS sourceFieldStepSn,
+               R.SOURCE_FIELD_SN AS sourceFieldSn,
+               R.COMPARE_STEP_OPT_SN AS compareStepOptionSn,
+               R.COMPARE_FIELD_OPT_SN AS compareFieldOptionSn,
                SOURCE_STEP.SVC_REQ_STEP_KEY AS sourceStepKey,
+               SOURCE_FIELD_STEP.SVC_REQ_STEP_KEY AS sourceFieldStepKey,
                SOURCE_FIELD.SVC_REQ_FIELD_KEY AS sourceFieldKey,
                SOURCE_FIELD.SVC_REQ_FIELD_LABEL AS sourceFieldLabel,
                COALESCE(STEP_OPT.SVC_REQ_STEP_OPT_VAL, FIELD_OPT.SVC_REQ_FIELD_OPT_VAL) AS compareValue,
@@ -271,6 +496,9 @@
           LEFT JOIN SVC_REQ_FIELD_DEF SOURCE_FIELD
             ON SOURCE_FIELD.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
            AND SOURCE_FIELD.SVC_REQ_FIELD_SN = R.SOURCE_FIELD_SN
+          LEFT JOIN SVC_REQ_STEP_DEF SOURCE_FIELD_STEP
+            ON SOURCE_FIELD_STEP.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND SOURCE_FIELD_STEP.SVC_REQ_STEP_SN = R.SOURCE_FIELD_STEP_SN
           LEFT JOIN SVC_REQ_STEP_OPT_DEF STEP_OPT
             ON STEP_OPT.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
            AND STEP_OPT.SVC_REQ_STEP_OPT_SN = R.COMPARE_STEP_OPT_SN

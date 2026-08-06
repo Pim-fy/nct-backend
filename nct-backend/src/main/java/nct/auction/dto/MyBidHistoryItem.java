@@ -15,12 +15,16 @@ import nct.auction.constant.BidStatusCode;
 public class MyBidHistoryItem {
 
     private Long bidSn;
+    private Long tradeId;
     private Long aucSn;
     private Long prdSn;
     private String auctionTitle;
     private String thumbnailPath;
     private BigDecimal bidAmount;
     private BigDecimal currentPrice;
+    private BigDecimal instantBuyPrice;
+    private String tradeMethodCode;
+    private String tradeMethodName;
     private String bidStatusCode;
     private String auctionStatusCode;
     private LocalDateTime bidDateTime;

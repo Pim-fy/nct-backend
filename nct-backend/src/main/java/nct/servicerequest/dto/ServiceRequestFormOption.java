@@ -17,6 +17,7 @@ public class ServiceRequestFormOption {
     private String value;
     private String label;
     private String subtitle;
+    private Long nextStepSn;
     private String nextStepKey;
     private Integer sortNo;
 }

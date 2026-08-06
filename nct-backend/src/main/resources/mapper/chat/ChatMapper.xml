@@ -77,8 +77,21 @@
                 WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
                 ELSE requester.USR_NM
             END AS counterpartNickname,
+            CASE
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' AND t.SLLR_USR_SN = #{userId} THEN t.BYPR_USR_SN
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' THEN t.SLLR_USR_SN
+                WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
+                ELSE t.REQ_USR_SN
+            END AS counterpartUserId,
             COALESCE(p.PRD_NM, sr.SVC_REQ_TTL) AS tradeTitle,
             p.PRD_NM AS productName,
+            t.TRD_TYPE_CD AS tradeTypeCode,
+            CASE
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' AND t.BYPR_USR_SN = #{userId} THEN 'BUYER'
+                WHEN t.TRD_TYPE_CD = 'TRDC0001' THEN 'SELLER'
+                WHEN t.REQ_USR_SN = #{userId} THEN 'REQUESTER'
+                ELSE 'PROVIDER'
+            END AS viewerRole,
             CASE
                 WHEN t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008') THEN 'CHRC0002'
                 ELSE r.CH_RM_STATUS_CD

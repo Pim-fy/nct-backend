@@ -23,6 +23,7 @@ public class AdminAbuseReportResponse {
     private String referenceTypeCode;
     private Long referenceSn;
     private String processReason;
+    private String processedBy;
     private LocalDateTime registeredAt;
     private LocalDateTime processedAt;
 }

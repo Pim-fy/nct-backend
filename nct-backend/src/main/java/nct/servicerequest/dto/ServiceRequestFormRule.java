@@ -11,8 +11,15 @@ import lombok.Setter;
 public class ServiceRequestFormRule {
 
     private Long ruleSn;
+    private Long targetStepSn;
     private Long targetFieldSn;
+    private Long sourceStepSn;
+    private Long sourceFieldStepSn;
+    private Long sourceFieldSn;
+    private Long compareStepOptionSn;
+    private Long compareFieldOptionSn;
     private String sourceStepKey;
+    private String sourceFieldStepKey;
     private String sourceFieldKey;
     private String sourceFieldLabel;
     private String compareValue;

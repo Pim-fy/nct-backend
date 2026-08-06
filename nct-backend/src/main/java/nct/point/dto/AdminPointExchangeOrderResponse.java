@@ -9,9 +9,9 @@ import nct.point.domain.PointExchangeOrder;
 /**
  * Claude Code 작성 (BJN, 2026-07-17)
  *
- * [포인트 환전 - 관리자 처리 대기 행 응답 DTO] (F-PAY-012)
- * - GET /api/admin/point/exchange/orders 응답 본문의 배열 원소
- * - 관리자가 "누구에게(이름), 어디로(계좌), 얼마를(금액) 보내야 하나"를 한 줄에서 보게 한다
+ * [포인트 환전 - 관리자 목록 행 응답 DTO] (F-PAY-012)
+ * - 처리 전후 이력 목록에는 마스킹 계좌만 반환한다.
+ * - 신청 상태의 계좌 원문은 감사형 단건 조회 API로만 제공한다.
  */
 @Getter
 @Builder
@@ -32,9 +32,13 @@ public class AdminPointExchangeOrderResponse {
     private final String bankName;
     private final String accountNo;
 
+    private final String statusCode;
     private final String status;
+    private final Long processedBy;
+    private final String processedDate;
+    private final String rejectReason;
 
-    /** 도메인 모델 → 응답 DTO 변환 */
+    /** 담당자 7 · F-PAY-012: 도메인 모델을 계좌번호가 마스킹된 관리자 목록 응답으로 변환합니다. */
     public static AdminPointExchangeOrderResponse from(PointExchangeOrder o) {
         return AdminPointExchangeOrderResponse.builder()
                 .id(o.getPtExcOrdSn())
@@ -43,8 +47,24 @@ public class AdminPointExchangeOrderResponse {
                 .userSn(o.getUsrSn())
                 .amount(o.getPtExcOrdAmt())
                 .bankName(o.getPtExcOrdBankNm())
-                .accountNo(o.getPtExcOrdAcntNo())
+                .accountNo(maskAccount(o.getPtExcOrdAcntNo()))
+                .statusCode(o.getPtExcOrdStatusCd())
                 .status(o.getStatusNm())
+                .processedBy(o.getPtExcOrdProcUsrSn())
+                .processedDate(o.getPtExcOrdProcDt() != null
+                        ? o.getPtExcOrdProcDt().format(DATE_FMT)
+                        : null)
+                .rejectReason(o.getPtExcOrdRjctRsnCn())
                 .build();
+    }
+
+    private static String maskAccount(String accountNo) {
+        if (accountNo == null || accountNo.isBlank()) {
+            return null;
+        }
+        String normalized = accountNo.replaceAll("\\s", "");
+        int visibleLength = normalized.length() > 4 ? 4 : 0;
+        String visible = normalized.substring(normalized.length() - visibleLength);
+        return "*".repeat(Math.max(normalized.length() - visibleLength, 4)) + visible;
     }
 }

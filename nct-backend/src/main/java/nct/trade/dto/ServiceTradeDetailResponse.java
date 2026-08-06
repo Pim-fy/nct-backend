@@ -17,5 +17,6 @@ public record ServiceTradeDetailResponse(
         String scheduleLabel,
         String escrowStatusCode,
         String escrowStatusLabel,
+        boolean chatAvailable,
         List<String> availableActions) {
 }

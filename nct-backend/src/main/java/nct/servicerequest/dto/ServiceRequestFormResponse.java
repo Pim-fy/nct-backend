@@ -23,5 +23,7 @@ public class ServiceRequestFormResponse {
     private String firstStepKey;
     private String subtitle;
     private String uiMetaJson;
+    private String activeYn;
+    private String useYn;
     private List<ServiceRequestFormStep> steps = new ArrayList<>();
 }

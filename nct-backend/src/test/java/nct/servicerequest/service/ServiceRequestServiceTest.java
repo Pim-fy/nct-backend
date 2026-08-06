@@ -18,11 +18,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.servicerequest.domain.ServiceRequest;
-import nct.servicerequest.dto.AdminServiceRequestDetail;
 import nct.servicerequest.dto.AdminServiceRequestListItem;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;

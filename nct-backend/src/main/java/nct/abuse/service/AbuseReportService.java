@@ -18,6 +18,7 @@ import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.dto.MyAbuseReportResponse;
+import nct.global.security.port.AuthMemberPort;
 import nct.global.response.PageResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
@@ -55,6 +56,8 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private static final int MAX_PROCESS_REASON_LENGTH = 4000;
     private static final int MAX_REQUEST_ID_LENGTH = 200;
     private static final int MAX_PUBLIC_REFERENCE_LOOKUP_SIZE = 100;
+    private static final int MAX_ADMIN_REPORT_PAGE_SIZE = 50;
+    private static final int MAX_ADMIN_REPORT_KEYWORD_LENGTH = 100;
     private static final Set<String> DECIDABLE_STATUSES = Set.of(
             RECEIVED_STATUS,
             PROCESSING_STATUS);
@@ -64,6 +67,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private final AuditLogPort auditLogPort;
     private final NotificationService notificationService;
     private final ObjectProvider<ProductService> productServiceProvider;
+    private final AuthMemberPort authMemberPort;
 
     /** F-COM-018: 로그인 사용자가 고객센터형 신고를 접수한다. */
     @Transactional
@@ -73,6 +77,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
         if (reporterUserSn == null || reporterUserSn <= 0 || request == null) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        validateCustomerReportedUser(reporterUserSn, request.reportedUserSn());
         referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, request.reportTypeCode());
         referenceDataService.requireActiveCode(REPORT_STATUS_GROUP, RECEIVED_STATUS);
         if (request.referenceTypeCode() != null && !request.referenceTypeCode().isBlank()) {
@@ -374,6 +379,44 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
         return abuseReportMapper.findPendingReports(RECEIVED_STATUS, PROCESSING_STATUS);
     }
 
+    /** 담당자 7 · F-OPS-007: 처리 전후 신고를 상태·검색 조건으로 페이지 조회한다. */
+    @Transactional(readOnly = true)
+    public PageResponse<AdminAbuseReportResponse> getAdminReports(
+            String statusCode,
+            String keyword,
+            int page,
+            int size) {
+        if (page < 1 || size < 1 || size > MAX_ADMIN_REPORT_PAGE_SIZE) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        String normalizedStatus = trimToNull(statusCode);
+        String normalizedKeyword = trimToNull(keyword);
+        if (normalizedKeyword != null && normalizedKeyword.length() > MAX_ADMIN_REPORT_KEYWORD_LENGTH) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (normalizedStatus != null) {
+            referenceDataService.requireActiveCode(REPORT_STATUS_GROUP, normalizedStatus);
+        }
+
+        long offset = (long) (page - 1) * size;
+        long total = abuseReportMapper.countAdminReports(normalizedStatus, normalizedKeyword);
+        List<AdminAbuseReportResponse> content = total == 0 || offset >= total
+                ? List.of()
+                : abuseReportMapper.findAdminReports(
+                        normalizedStatus,
+                        normalizedKeyword,
+                        offset,
+                        size);
+        return PageResponse.<AdminAbuseReportResponse>builder()
+                .content(content)
+                .totalCount(total)
+                .page(page)
+                .size(size)
+                .hasNext(offset + content.size() < total)
+                .build();
+    }
+
     /** 관리자 화면에서 처리 전후의 신고 상세를 조회한다. */
     @Transactional(readOnly = true)
     public AdminAbuseReportResponse getReportDetail(Long reportSn) {
@@ -401,6 +444,18 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                                 || command.referenceTypeCode().trim().length() > 30))
                 || (command.referenceSn() != null && command.referenceSn() <= 0)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private void validateCustomerReportedUser(Long reporterUserSn, Long reportedUserSn) {
+        if (reportedUserSn == null) {
+            return;
+        }
+        if (reportedUserSn <= 0 || reporterUserSn.equals(reportedUserSn)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (authMemberPort.findById(reportedUserSn).isEmpty()) {
+            throw new CustomException(ErrorCode.USER_NOT_FOUND);
         }
     }
 

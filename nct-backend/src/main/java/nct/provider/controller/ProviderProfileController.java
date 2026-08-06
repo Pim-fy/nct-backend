@@ -41,7 +41,8 @@ public class ProviderProfileController {
     }
 
     @GetMapping("/{providerUserSn}/profile")
-    public ResponseEntity<ApiResponse<ProviderProfileResponse>> publicProfile(@PathVariable Long providerUserSn) {
+    public ResponseEntity<ApiResponse<ProviderProfileResponse>> publicProfile(
+            @PathVariable(name = "providerUserSn") Long providerUserSn) {
         return ResponseEntity.ok(ApiResponse.success(service.getPublic(providerUserSn)));
     }
 

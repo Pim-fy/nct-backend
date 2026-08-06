@@ -14,6 +14,7 @@ import nct.global.response.PageResponse;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
+import nct.quote.domain.QuotePhoto;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
@@ -21,12 +22,14 @@ import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.quote.port.QuoteSelectionPort;
+import nct.quote.port.SelectedServiceQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 
 @Service
 @RequiredArgsConstructor
-public class QuoteService {
+public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -56,6 +59,7 @@ public class QuoteService {
         Quote quote = Quote.builder()
                 .svcReqSn(request.svcReqSn())
                 .usrSn(usrSn)
+                .qutTtl(request.title())
                 .qutAmt(request.amount())
                 .qutCn(request.content())
                 .qutStatusCd(STATUS_SUBMITTED)
@@ -67,6 +71,8 @@ public class QuoteService {
         if (inserted != 1 || quote.getQutSn() == null) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
+
+        savePhotos(quote.getQutSn(), request.photoFlSns());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 
@@ -106,6 +112,9 @@ public class QuoteService {
         if (updated != 1) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
+
+        quoteMapper.deleteQuotePhotosByQutSn(qutSn);
+        savePhotos(qutSn, request.photoFlSns());
     }
 
     /** F-SVC-008: 견적 철회. 요청자 선택(QUTC0004) 이후 불가. */
@@ -170,19 +179,121 @@ public class QuoteService {
         return quoteMapper.findQuotesBySvcReqSn(svcReqSn);
     }
 
-    /** 견적 수정 이력 조회. 본인 견적만 허용. */
+    /**
+     * 견적 수정 이력 조회 (F-SVC-007).
+     * 견적 작성자(제공자) 또는 해당 서비스 요청 소유자(요청자) 모두 조회 가능.
+     */
     @Transactional(readOnly = true)
     public List<QuoteHistoryResponse> getQuoteHistory(Long usrSn, Long qutSn) {
         if (usrSn == null || usrSn <= 0 || qutSn == null || qutSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        Quote quote = quoteMapper.findQuoteByIdForUpdate(qutSn);
+        Quote quote = quoteMapper.findQuoteById(qutSn);
         if (quote == null) {
             throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
         }
-        if (!usrSn.equals(quote.getUsrSn())) {
-            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+
+        boolean isProvider = usrSn.equals(quote.getUsrSn());
+        if (!isProvider) {
+            // 요청자 케이스: 이 견적이 달린 서비스 요청의 소유자인지 확인
+            try {
+                serviceRequestQuoteReader.requireOwner(quote.getSvcReqSn(), usrSn);
+            } catch (CustomException e) {
+                throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+            }
         }
+
         return quoteMapper.findQuoteHistory(qutSn);
+    }
+
+    /**
+     * QuoteSelectionPort 구현 (F-SVC-009) — 신현석(담당자2) 트랜잭션에서 호출.
+     * 선택된 견적 QUTC0004 전이 + 경쟁 견적 QUTC0005 일괄 철회.
+     * @Transactional 기본 전파(REQUIRED)로 호출자 트랜잭션에 참여.
+     */
+    @Override
+    @Transactional
+    public SelectedQuoteResult selectQuote(Long quoteId, Long svcReqSn, Long requesterUsrSn) {
+        if (quoteId == null || quoteId <= 0
+                || svcReqSn == null || svcReqSn <= 0
+                || requesterUsrSn == null || requesterUsrSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        Quote quote = quoteMapper.findQuoteByIdForUpdate(quoteId);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!svcReqSn.equals(quote.getSvcReqSn())) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_IN_SERVICE_REQUEST);
+        }
+        // 요청자 소유권 검증 — ServiceRequestQuoteReader 재사용
+        serviceRequestQuoteReader.requireOwner(svcReqSn, requesterUsrSn);
+
+        // 동일 견적 재호출 멱등 처리 — 이미 선택 완료된 견적이면 기존 결과 반환
+        if (STATUS_SELECTED.equals(quote.getQutStatusCd())) {
+            return new SelectedQuoteResult(quote.getQutSn(), quote.getUsrSn(), quote.getQutAmt());
+        }
+        if (!STATUS_SUBMITTED.equals(quote.getQutStatusCd())
+                && !STATUS_REVISED.equals(quote.getQutStatusCd())) {
+            throw new CustomException(ErrorCode.QUOTE_INVALID_STATUS);
+        }
+
+        String actorId = String.valueOf(requesterUsrSn);
+        int updated = quoteMapper.selectQuote(quoteId, actorId);
+        if (updated != 1) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+        quoteMapper.withdrawCompetingQuotes(svcReqSn, quoteId, actorId);
+
+        return new SelectedQuoteResult(quote.getQutSn(), quote.getUsrSn(), quote.getQutAmt());
+    }
+
+    /**
+     * SelectedServiceQuoteReader 구현 — 정민재(담당자4) 거래 생성 트랜잭션에서 호출.
+     * 이미 QUTC0004인 견적을 FOR UPDATE로 잠그고 검증 후 반환.
+     */
+    @Override
+    @Transactional
+    public SelectedServiceQuoteTarget lockSelectedQuoteForTradeCreation(
+            Long requesterUserId, Long serviceRequestId, Long quoteId) {
+
+        if (requesterUserId == null || requesterUserId <= 0
+                || serviceRequestId == null || serviceRequestId <= 0
+                || quoteId == null || quoteId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        Quote quote = quoteMapper.findQuoteByIdForUpdate(quoteId);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!serviceRequestId.equals(quote.getSvcReqSn())) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_IN_SERVICE_REQUEST);
+        }
+        serviceRequestQuoteReader.requireOwner(serviceRequestId, requesterUserId);
+
+        if (!STATUS_SELECTED.equals(quote.getQutStatusCd())) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_SELECTED);
+        }
+
+        return new SelectedServiceQuoteTarget(
+                quote.getSvcReqSn(),
+                quote.getQutSn(),
+                requesterUserId,
+                quote.getUsrSn(),
+                quote.getQutAmt(),
+                quote.getQutStatusCd());
+    }
+
+    private void savePhotos(Long qutSn, List<Long> photoFlSns) {
+        if (photoFlSns == null || photoFlSns.isEmpty()) return;
+        for (int i = 0; i < photoFlSns.size(); i++) {
+            quoteMapper.insertQuotePhoto(QuotePhoto.builder()
+                    .qutSn(qutSn)
+                    .flSn(photoFlSns.get(i))
+                    .sortNo(i)
+                    .build());
+        }
     }
 }

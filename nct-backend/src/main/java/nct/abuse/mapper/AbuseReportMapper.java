@@ -40,7 +40,22 @@ public interface AbuseReportMapper {
             @Param("receivedStatusCode") String receivedStatusCode,
             @Param("processingStatusCode") String processingStatusCode);
 
+    List<AdminAbuseReportResponse> findAdminReports(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    long countAdminReports(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
+
     AdminAbuseReportResponse findReportDetailById(@Param("reportSn") Long reportSn);
+
+    /** 담당자 7 · F-OPS-002: 회원 상세 화면에 표시할 신고 이력입니다. */
+    List<AdminAbuseReportResponse> findReportsByReportedUser(
+            @Param("reportedUserSn") Long reportedUserSn,
+            @Param("limit") int limit);
 
     int insertCustomerReport(AbuseReport report);
 

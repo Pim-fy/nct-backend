@@ -495,8 +495,11 @@ public class ServiceRequestFormService {
                         .filter(answer -> answer.getFieldKey() == null)
                         .anyMatch(answer -> Objects.equals(answer.getOptionValue(), rule.getCompareValue()));
             } else {
-                List<ServiceRequestAnswerRequest> sourceAnswers = answersByStep.values().stream()
-                        .flatMap(List::stream)
+                List<ServiceRequestAnswerRequest> sourceAnswers = Optional
+                        .ofNullable(rule.getSourceFieldStepKey())
+                        .map(stepKey -> answersByStep.getOrDefault(stepKey, List.of()))
+                        .orElseGet(() -> answersByStep.values().stream().flatMap(List::stream).toList())
+                        .stream()
                         .filter(answer -> Objects.equals(answer.getFieldKey(), rule.getSourceFieldKey()))
                         .toList();
                 if ("NOT_EMPTY".equals(rule.getOperator())) {

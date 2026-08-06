@@ -126,6 +126,30 @@
           AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005')
     </update>
 
+    <!-- 담당자 7 · F-OPS-020: 완료·취소·기존 보류를 건드리지 않고 진행 거래만 일관된 순서로 잠근다. -->
+    <select id="findActiveTradesByMemberForUpdate"
+            resultType="nct.trade.dto.MemberActiveTradeTarget">
+        SELECT TRD_SN AS tradeId,
+               SLLR_USR_SN AS sellerUserId,
+               BYPR_USR_SN AS buyerUserId,
+               TRD_STATUS_CD AS tradeStatusCode
+        FROM TRADE
+        WHERE (SLLR_USR_SN = #{userSn} OR BYPR_USR_SN = #{userSn})
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+        ORDER BY TRD_SN ASC
+        FOR UPDATE
+    </select>
+
+    <update id="holdTradeForMemberRestriction">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0007',
+            TRD_AUTO_CMPL_DT = NULL,
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_STATUS_CD = #{expectedStatusCode}
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+    </update>
+
     <!-- 서비스 완료 요청·확인·자동 완료가 같은 TRADE 행 잠금 기준으로 경합한다. -->
     <select id="findServiceTradeCompletionTargetForUpdate"
             resultType="nct.trade.dto.ServiceTradeCompletionTarget">

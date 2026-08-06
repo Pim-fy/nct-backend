@@ -42,6 +42,25 @@
     </insert>
 
     <!-- 담당자 7 · F-OPS-011: 다른 도메인 테이블 없이 RISK_EVENT만 조회한다. -->
+    <sql id="adminRiskEventSearchWhere">
+        <where>
+            <if test="typeCode != null">
+                event.RSK_EVT_TYPE_CD = #{typeCode}
+            </if>
+            <if test="processedYn != null">
+                AND event.RSK_EVT_PROC_YN = #{processedYn}
+            </if>
+            <if test="keyword != null">
+                AND (
+                    CAST(event.RSK_EVT_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR typeCode.CMM_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR event.RSK_EVT_REF_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
+                    OR event.RSK_EVT_CN LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+        </where>
+    </sql>
+
     <select id="findAdminRiskEvents" resultType="nct.ops.risk.dto.AdminRiskEventListItemResponse">
         SELECT event.RSK_EVT_SN AS riskEventId,
                event.RSK_EVT_TYPE_CD AS typeCode,
@@ -53,13 +72,7 @@
                event.RSK_EVT_REG_DT AS registeredAt
           FROM RISK_EVENT event
           JOIN CMM_CODE typeCode ON typeCode.CMM_CD = event.RSK_EVT_TYPE_CD
-         <where>
-             <if test="typeCode != null">event.RSK_EVT_TYPE_CD = #{typeCode}</if>
-             <if test="processedYn != null">
-                 <if test="typeCode != null">AND</if>
-                 event.RSK_EVT_PROC_YN = #{processedYn}
-             </if>
-         </where>
+         <include refid="adminRiskEventSearchWhere"/>
          ORDER BY event.RSK_EVT_REG_DT DESC, event.RSK_EVT_SN DESC
          LIMIT #{size} OFFSET #{offset}
     </select>
@@ -67,13 +80,8 @@
     <select id="countAdminRiskEvents" resultType="long">
         SELECT COUNT(*)
           FROM RISK_EVENT event
-         <where>
-             <if test="typeCode != null">event.RSK_EVT_TYPE_CD = #{typeCode}</if>
-             <if test="processedYn != null">
-                 <if test="typeCode != null">AND</if>
-                 event.RSK_EVT_PROC_YN = #{processedYn}
-             </if>
-         </where>
+          JOIN CMM_CODE typeCode ON typeCode.CMM_CD = event.RSK_EVT_TYPE_CD
+         <include refid="adminRiskEventSearchWhere"/>
     </select>
 
     <select id="countAdminRiskEventsByType" resultType="nct.ops.risk.dto.AdminRiskEventTypeSummaryResponse">

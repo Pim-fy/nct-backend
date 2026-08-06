@@ -3,6 +3,9 @@ package nct.ops.operation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,8 @@ import nct.ops.operation.port.AdminReportDecisionCommand;
 import nct.ops.operation.port.AdminReportDecisionPort;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.service.AbuseReportService;
+import nct.global.response.PageResponse;
+import nct.ops.operation.dto.AdminReportPageResponse;
 
 /** 담당자 7 · F-OPS-007: 신고 처리 계약에 관리자·사유·결정값을 전달하는지 검증합니다. */
 class AdminReportOperationServiceTest {
@@ -49,6 +54,26 @@ class AdminReportOperationServiceTest {
         service.getPendingReports();
 
         verify(abuseReportService).getPendingReports();
+    }
+
+    @Test
+    void mapsFilteredReportPageFromAbuseReportService() {
+        AdminAbuseReportResponse report = new AdminAbuseReportResponse();
+        when(abuseReportService.getAdminReports("ABRC0007", "신고", 2, 20))
+                .thenReturn(PageResponse.<AdminAbuseReportResponse>builder()
+                        .content(List.of(report))
+                        .totalCount(21)
+                        .page(2)
+                        .size(20)
+                        .hasNext(false)
+                        .build());
+
+        AdminReportPageResponse result = service.getReports("ABRC0007", "신고", 2, 20);
+
+        assertThat(result.items()).containsExactly(report);
+        assertThat(result.totalItems()).isEqualTo(21);
+        assertThat(result.totalPages()).isEqualTo(2);
+        verify(abuseReportService).getAdminReports("ABRC0007", "신고", 2, 20);
     }
 
     @Test

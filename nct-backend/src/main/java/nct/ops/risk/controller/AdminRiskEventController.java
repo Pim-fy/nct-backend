@@ -26,10 +26,11 @@ public class AdminRiskEventController {
     public ResponseEntity<ApiResponse<AdminRiskEventPageResponse>> getRiskEvents(
             @RequestParam(name = "typeCode", required = false) String typeCode,
             @RequestParam(name = "processed", required = false) String processed,
+            @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                adminRiskEventService.getRiskEvents(typeCode, processed, page, size)));
+                adminRiskEventService.getRiskEvents(typeCode, processed, keyword, page, size)));
     }
 
     @GetMapping("/summary")

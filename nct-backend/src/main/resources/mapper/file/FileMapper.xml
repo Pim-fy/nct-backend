@@ -135,4 +135,12 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 삭제 가드: 견적 작업사진으로 연결된 파일인지 (QUOTE_PHOTO는 담당자3 소유 — 읽기 전용) -->
+    <select id="countQuotePhotoRefs" resultType="int">
+        /* 파일: 견적작업사진 참조 수 */
+        SELECT COUNT(*)
+          FROM QUOTE_PHOTO
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

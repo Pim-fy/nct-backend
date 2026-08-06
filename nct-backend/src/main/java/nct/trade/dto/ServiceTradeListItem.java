@@ -13,10 +13,13 @@ public class ServiceTradeListItem {
     private Long serviceRequestId;
     private String viewerRole;
     private String tradeStatusCode;
+    private String tradeStatusName;
     private BigDecimal tradeAmount;
     private String serviceRequestTitle;
     private String quoteSummary;
+    private Long counterpartUserId;
     private String counterpartNickname;
     private LocalDateTime autoCompleteAt;
     private LocalDateTime createdAt;
+    private boolean hasActiveDispute;
 }

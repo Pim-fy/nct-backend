@@ -42,6 +42,7 @@ import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeConfirmationTarget;
@@ -80,6 +81,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private static final String ON_HOLD = "TRDC0007";
     private static final String TRADE_DISPUTE_TYPE_GROUP = "TRDG04";
     private static final String SCHEDULER_UPDATER = "SYSTEM";
+    private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
 
     private final TradeMapper tradeMapper;
     private final NotificationService notificationService;
@@ -522,15 +524,36 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
     /** 로그인한 의뢰자 또는 제공자가 본인 서비스 거래 상세로 재진입할 목록을 조회한다. */
     @Transactional(readOnly = true)
-    public List<ServiceTradeListItem> getMyServiceTrades(long userId, String role, String status) {
+    public ServiceTradeListPageResponse getMyServiceTrades(
+            long userId,
+            String role,
+            String status,
+            String keyword,
+            int page,
+            int size) {
         if (userId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "회원번호가 올바르지 않습니다.");
         }
-        return tradeMapper.findMyServiceTrades(
-                userId,
-                normalizeServiceTradeRole(role),
-                normalizeTradeStatus(status));
+
+        validateServiceTradePage(page, size);
+        String normalizedRole = normalizeServiceTradeRole(role);
+        String normalizedStatus = normalizeTradeStatus(status);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long offset = ((long) page - 1) * size;
+        List<ServiceTradeListItem> content = tradeMapper.findMyServiceTrades(
+                userId, normalizedRole, normalizedStatus, normalizedKeyword, offset, size);
+        long totalCount = tradeMapper.countMyServiceTrades(
+                userId, normalizedRole, normalizedStatus, normalizedKeyword);
+        int totalPages = totalCount == 0 ? 0 : (int) ((totalCount + size - 1) / size);
+
+        return new ServiceTradeListPageResponse(
+                content,
+                page,
+                size,
+                totalCount,
+                totalPages,
+                offset + content.size() < totalCount);
     }
 
     /**
@@ -1128,6 +1151,13 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         return normalizedKeyword;
+    }
+
+    private void validateServiceTradePage(int page, int size) {
+        if (page < 1 || size < 1 || size > MAX_SERVICE_TRADE_PAGE_SIZE) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "페이지는 1 이상이고 페이지 크기는 1~100 사이여야 합니다.");
+        }
     }
 
     private String normalizeQueryValue(String value) {

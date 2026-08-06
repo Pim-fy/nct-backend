@@ -1,6 +1,7 @@
 package nct.trade.mapper;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -8,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeEscrowInfo;
+import nct.trade.dto.AuctionBidTradeReference;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
@@ -37,6 +39,11 @@ public interface TradeMapper {
     /** 경매 취소·환불 흐름이 거래와 원본 입찰 보관금의 연결을 직접 확인한다. */
     AuctionTradeEscrowInfo findAuctionTradeEscrowInfoByProductId(
             @Param("productId") long productId);
+
+    /** 경매 입찰 이력이 본인의 물건 거래 상세로 이동할 수 있도록 BID_SN 기준으로 일괄 연결한다. */
+    List<AuctionBidTradeReference> findAuctionBidTradeReferencesByBuyerAndBidSns(
+            @Param("buyerUserId") long buyerUserId,
+            @Param("bidSns") Collection<Long> bidSns);
 
     /** 정산 도메인에 거래 유형과 원본 입찰 보관금 참조만 제공한다. */
     TradeSettlementReference findSettlementReferenceByTradeId(
@@ -140,7 +147,17 @@ public interface TradeMapper {
     List<ServiceTradeListItem> findMyServiceTrades(
             @Param("userId") long userId,
             @Param("role") String role,
-            @Param("statusCode") String statusCode);
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    /** 서비스 거래 목록과 동일한 당사자·필터 조건의 전체 건수다. */
+    long countMyServiceTrades(
+            @Param("userId") long userId,
+            @Param("role") String role,
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
 
     List<TradeDeliveryProofFile> findTradeDeliveryProofFiles(
             @Param("deliveryId") long deliveryId);

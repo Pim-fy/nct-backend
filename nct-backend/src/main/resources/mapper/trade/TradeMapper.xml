@@ -26,6 +26,21 @@
         LIMIT 1
     </select>
 
+    <!-- 입찰 이력 도메인이 목록 건별 조회 없이 본인 물건 거래 상세 링크를 일괄 구성한다. -->
+    <select id="findAuctionBidTradeReferencesByBuyerAndBidSns"
+            resultType="nct.trade.dto.AuctionBidTradeReference">
+        SELECT
+            t.BID_SN AS bidSn,
+            t.TRD_SN AS tradeId
+        FROM TRADE t
+        WHERE t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.BYPR_USR_SN = #{buyerUserId}
+          AND t.BID_SN IN
+          <foreach collection="bidSns" item="bidSn" open="(" separator="," close=")">
+              #{bidSn}
+          </foreach>
+    </select>
+
     <!-- 경매 도메인이 임의 JOIN 없이 거래·낙찰입찰·구매자 정보를 함께 조회하는 공개 계약이다. -->
     <select id="findAuctionTradeEscrowInfoByProductId"
             resultType="nct.trade.dto.AuctionTradeEscrowInfo">
@@ -535,15 +550,26 @@
                 ELSE 'PROVIDER'
             END AS viewerRole,
             t.TRD_STATUS_CD AS tradeStatusCode,
+            tradeStatus.CMM_NM AS tradeStatusName,
             t.TRD_AMT AS tradeAmount,
             sr.SVC_REQ_TTL AS serviceRequestTitle,
             q.QUT_CN AS quoteSummary,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
+                ELSE t.REQ_USR_SN
+            END AS counterpartUserId,
             CASE
                 WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
                 ELSE requester.USR_NM
             END AS counterpartNickname,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
-            t.TRD_REG_DT AS createdAt
+            t.TRD_REG_DT AS createdAt,
+            EXISTS (
+                SELECT 1
+                FROM TRADE_DISPUTE dispute
+                WHERE dispute.TRD_SN = t.TRD_SN
+                  AND dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+            ) AS hasActiveDispute
         FROM TRADE t
         JOIN SERVICE_REQUEST sr
           ON sr.SVC_REQ_SN = t.SVC_REQ_SN
@@ -553,6 +579,9 @@
           ON requester.USR_SN = t.REQ_USR_SN
         JOIN USERS provider
           ON provider.USR_SN = t.PRV_USR_SN
+        JOIN CMM_CODE tradeStatus
+          ON tradeStatus.CMM_CD = t.TRD_STATUS_CD
+         AND tradeStatus.CMM_USE_YN = 'Y'
         WHERE t.TRD_TYPE_CD = 'TRDC0002'
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
         <if test="role == 'REQUESTER'">
@@ -564,7 +593,54 @@
         <if test="statusCode != null">
           AND t.TRD_STATUS_CD = #{statusCode}
         </if>
+        <if test="keyword != null">
+          AND (
+              sr.SVC_REQ_TTL LIKE CONCAT('%', #{keyword}, '%')
+              OR CASE
+                    WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
+                    ELSE requester.USR_NM
+                 END LIKE CONCAT('%', #{keyword}, '%')
+          )
+        </if>
         ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!-- 목록 조회와 같은 당사자·역할·상태·검색 조건으로 전체 건수를 구한다. -->
+    <select id="countMyServiceTrades" resultType="long">
+        SELECT COUNT(*)
+        FROM TRADE t
+        JOIN SERVICE_REQUEST sr
+          ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN QUOTE q
+          ON q.QUT_SN = t.QUT_SN
+        JOIN USERS requester
+          ON requester.USR_SN = t.REQ_USR_SN
+        JOIN USERS provider
+          ON provider.USR_SN = t.PRV_USR_SN
+        JOIN CMM_CODE tradeStatus
+          ON tradeStatus.CMM_CD = t.TRD_STATUS_CD
+         AND tradeStatus.CMM_USE_YN = 'Y'
+        WHERE t.TRD_TYPE_CD = 'TRDC0002'
+          AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+        <if test="role == 'REQUESTER'">
+          AND t.REQ_USR_SN = #{userId}
+        </if>
+        <if test="role == 'PROVIDER'">
+          AND t.PRV_USR_SN = #{userId}
+        </if>
+        <if test="statusCode != null">
+          AND t.TRD_STATUS_CD = #{statusCode}
+        </if>
+        <if test="keyword != null">
+          AND (
+              sr.SVC_REQ_TTL LIKE CONCAT('%', #{keyword}, '%')
+              OR CASE
+                    WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
+                    ELSE requester.USR_NM
+                 END LIKE CONCAT('%', #{keyword}, '%')
+          )
+        </if>
     </select>
 
     <!-- 사진 원문은 파일 API가 권한 검사 후 내려준다. 상세에는 식별자와 정렬 순서만 반환한다. -->

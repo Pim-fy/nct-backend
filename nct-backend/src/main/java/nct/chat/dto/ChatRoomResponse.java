@@ -11,6 +11,8 @@ public class ChatRoomResponse {
     private Long roomId;
     private Long tradeId;
     private String counterpartNickname;
+    /** 신고·신뢰 조회에 사용하는 거래 상대방 회원 번호다. */
+    private Long counterpartUserId;
     /** 물건명 또는 서비스 요청 제목이다. 기존 화면 호환을 위해 productName도 함께 제공한다. */
     private String tradeTitle;
     private String productName;

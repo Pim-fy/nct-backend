@@ -49,6 +49,7 @@ import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
@@ -175,24 +176,42 @@ class TradeServiceTest {
         ServiceTradeListItem item = new ServiceTradeListItem();
         item.setTradeId(91L);
         item.setViewerRole("REQUESTER");
-        when(tradeMapper.findMyServiceTrades(10L, "REQUESTER", "TRDC0003"))
+        when(tradeMapper.findMyServiceTrades(10L, "REQUESTER", "TRDC0003", "청소", 10L, 10))
                 .thenReturn(List.of(item));
+        when(tradeMapper.countMyServiceTrades(10L, "REQUESTER", "TRDC0003", "청소"))
+                .thenReturn(21L);
 
-        List<ServiceTradeListItem> result = tradeService.getMyServiceTrades(
-                10L, "requester", "in_progress");
+        ServiceTradeListPageResponse result = tradeService.getMyServiceTrades(
+                10L, "requester", "in_progress", " 청소 ", 2, 10);
 
-        assertThat(result).containsExactly(item);
-        verify(tradeMapper).findMyServiceTrades(10L, "REQUESTER", "TRDC0003");
+        assertThat(result.content()).containsExactly(item);
+        assertThat(result.page()).isEqualTo(2);
+        assertThat(result.size()).isEqualTo(10);
+        assertThat(result.totalCount()).isEqualTo(21L);
+        assertThat(result.totalPages()).isEqualTo(3);
+        assertThat(result.hasNext()).isTrue();
+        verify(tradeMapper).findMyServiceTrades(10L, "REQUESTER", "TRDC0003", "청소", 10L, 10);
+        verify(tradeMapper).countMyServiceTrades(10L, "REQUESTER", "TRDC0003", "청소");
     }
 
     @Test
     void rejectsMaterialRoleWhenFilteringMyServiceTrades() {
-        assertThatThrownBy(() -> tradeService.getMyServiceTrades(10L, "BUYER", null))
+        assertThatThrownBy(() -> tradeService.getMyServiceTrades(10L, "BUYER", null, null, 1, 10))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any());
+        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+    }
+
+    @Test
+    void rejectsInvalidServiceTradePage() {
+        assertThatThrownBy(() -> tradeService.getMyServiceTrades(10L, null, null, null, 0, 10))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
     }
 
     @Test

@@ -22,6 +22,9 @@ public class MyBidHistoryItem {
     private String thumbnailPath;
     private BigDecimal bidAmount;
     private BigDecimal currentPrice;
+    private BigDecimal instantBuyPrice;
+    private String tradeMethodCode;
+    private String tradeMethodName;
     private String bidStatusCode;
     private String auctionStatusCode;
     private LocalDateTime bidDateTime;

@@ -42,6 +42,7 @@ import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeConfirmationTarget;
@@ -523,7 +524,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
     /** 로그인한 의뢰자 또는 제공자가 본인 서비스 거래 상세로 재진입할 목록을 조회한다. */
     @Transactional(readOnly = true)
-    public List<ServiceTradeListItem> getMyServiceTrades(
+    public ServiceTradeListPageResponse getMyServiceTrades(
             long userId,
             String role,
             String status,
@@ -536,13 +537,23 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         validateServiceTradePage(page, size);
-        return tradeMapper.findMyServiceTrades(
-                userId,
-                normalizeServiceTradeRole(role),
-                normalizeTradeStatus(status),
-                normalizeKeyword(keyword),
-                (long) (page - 1) * size,
-                size);
+        String normalizedRole = normalizeServiceTradeRole(role);
+        String normalizedStatus = normalizeTradeStatus(status);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long offset = ((long) page - 1) * size;
+        List<ServiceTradeListItem> content = tradeMapper.findMyServiceTrades(
+                userId, normalizedRole, normalizedStatus, normalizedKeyword, offset, size);
+        long totalCount = tradeMapper.countMyServiceTrades(
+                userId, normalizedRole, normalizedStatus, normalizedKeyword);
+        int totalPages = totalCount == 0 ? 0 : (int) ((totalCount + size - 1) / size);
+
+        return new ServiceTradeListPageResponse(
+                content,
+                page,
+                size,
+                totalCount,
+                totalPages,
+                offset + content.size() < totalCount);
     }
 
     /**

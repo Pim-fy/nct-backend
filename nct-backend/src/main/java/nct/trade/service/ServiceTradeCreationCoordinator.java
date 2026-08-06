@@ -3,6 +3,7 @@ package nct.trade.service;
 import java.math.BigDecimal;
 
 import lombok.RequiredArgsConstructor;
+import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.quote.port.SelectedServiceQuoteReader;
@@ -25,6 +26,7 @@ public class ServiceTradeCreationCoordinator {
     private final SelectedServiceQuoteReader selectedServiceQuoteReader;
     private final ServiceTradeCreator serviceTradeCreator;
     private final ServiceEscrowCreator serviceEscrowCreator;
+    private final ChatService chatService;
 
     public ServiceTradeCreateResult create(
             long requesterUserId,
@@ -44,6 +46,7 @@ public class ServiceTradeCreationCoordinator {
         if (result.isCreated()) {
             serviceEscrowCreator.createEscrow(new ServiceEscrowCreateCommand(
                     result.getTradeId(), quote.requesterUserId(), quote.quoteAmount()));
+            chatService.createOrGetServiceTradeChatRoom(result.getTradeId());
         }
         return result;
     }

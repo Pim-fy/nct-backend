@@ -25,15 +25,43 @@
         RPTD_USR_SN AS reportedUserSn,
         ABR_TYPE_CD AS reportTypeCode,
         ABR_STATUS_CD AS statusCode,
+        ABR_TITLE_NM AS title,
+        ABR_TRG_NM AS targetName,
         ABR_CN AS content,
         ABR_REF_TYPE_CD AS referenceTypeCode,
         ABR_REF_SN AS referenceSn,
         ABR_PROC_RSN_CN AS processReason,
+        CASE
+            WHEN ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008') THEN ABR_UPDT_ID
+            ELSE NULL
+        END AS processedBy,
         ABR_REG_DT AS registeredAt,
         CASE
             WHEN ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008') THEN ABR_UPDT_DT
             ELSE NULL
         END AS processedAt
+    </sql>
+
+    <sql id="adminReportSearchWhere">
+        <where>
+            <if test="statusCode != null">
+                AND ABR_STATUS_CD = #{statusCode}
+            </if>
+            <if test="keyword != null">
+                AND (
+                    CAST(ABR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(RPRT_USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(RPTD_USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_REF_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(ABR_REF_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_TITLE_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_TRG_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_CN LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_PROC_RSN_CN LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+        </where>
     </sql>
 
     <insert id="insertAutomaticReport"
@@ -246,11 +274,45 @@
         ORDER BY ABR_REG_DT ASC, ABR_SN ASC
     </select>
 
+    <select id="findAdminReports" resultType="nct.abuse.dto.AdminAbuseReportResponse">
+        SELECT
+            <include refid="adminReportColumns"/>
+        FROM ABUSE_REPORT
+        <include refid="adminReportSearchWhere"/>
+        ORDER BY
+            CASE ABR_STATUS_CD
+                WHEN 'ABRC0005' THEN 0
+                WHEN 'ABRC0006' THEN 1
+                WHEN 'ABRC0007' THEN 2
+                WHEN 'ABRC0008' THEN 3
+                ELSE 4
+            END ASC,
+            ABR_REG_DT DESC,
+            ABR_SN DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminReports" resultType="long">
+        SELECT COUNT(*)
+        FROM ABUSE_REPORT
+        <include refid="adminReportSearchWhere"/>
+    </select>
+
     <select id="findReportDetailById" resultType="nct.abuse.dto.AdminAbuseReportResponse">
         SELECT
             <include refid="adminReportColumns"/>
         FROM ABUSE_REPORT
         WHERE ABR_SN = #{reportSn}
+    </select>
+
+    <!-- 담당자 7 · F-OPS-002: 회원 상세의 최근 신고 이력. 무제한 조회를 피한다. -->
+    <select id="findReportsByReportedUser" resultType="nct.abuse.dto.AdminAbuseReportResponse">
+        SELECT
+            <include refid="adminReportColumns"/>
+        FROM ABUSE_REPORT
+        WHERE RPTD_USR_SN = #{reportedUserSn}
+        ORDER BY ABR_REG_DT DESC, ABR_SN DESC
+        LIMIT #{limit}
     </select>
 
     <update id="updateDecision">

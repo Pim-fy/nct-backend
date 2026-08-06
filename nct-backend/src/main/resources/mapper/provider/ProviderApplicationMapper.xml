@@ -50,10 +50,19 @@
       JOIN CATEGORY c ON c.CAT_SN = a.CAT_SN
       JOIN CMM_CODE status_code ON status_code.CMM_CD = a.PRV_APLY_STATUS_CD
     WHERE a.PRV_APLY_ACTV_YN = 'Y'
+      AND a.PRV_APLY_STATUS_CD IN ('PRVC0002', 'PRVC0003', 'PRVC0004')
     <if test="statusCode != null">
       AND a.PRV_APLY_STATUS_CD = #{statusCode}
     </if>
-    ORDER BY a.PRV_APLY_REG_DT ASC
+    ORDER BY
+      CASE a.PRV_APLY_STATUS_CD
+        WHEN 'PRVC0002' THEN 0
+        WHEN 'PRVC0003' THEN 1
+        WHEN 'PRVC0004' THEN 2
+        ELSE 3
+      END ASC,
+      a.PRV_APLY_REG_DT DESC,
+      a.PRV_APLY_SN DESC
   </select>
 
   <select id="findForUpdate" resultMap="application">

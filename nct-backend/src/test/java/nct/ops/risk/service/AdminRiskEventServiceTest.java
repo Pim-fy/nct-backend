@@ -34,11 +34,11 @@ class AdminRiskEventServiceTest {
     void filtersByActiveTypeAndUnprocessedStatus() {
         AdminRiskEventListItemResponse item = new AdminRiskEventListItemResponse();
         item.setRiskEventId(11L);
-        when(riskEventMapper.countAdminRiskEvents("RSKC0001", "N")).thenReturn(1L);
-        when(riskEventMapper.findAdminRiskEvents("RSKC0001", "N", 0L, 20))
+        when(riskEventMapper.countAdminRiskEvents("RSKC0001", "N", "keyword")).thenReturn(1L);
+        when(riskEventMapper.findAdminRiskEvents("RSKC0001", "N", "keyword", 0L, 20))
                 .thenReturn(List.of(item));
 
-        var result = service.getRiskEvents(" RSKC0001 ", "n", 1, 20);
+        var result = service.getRiskEvents(" RSKC0001 ", "n", " keyword ", 1, 20);
 
         assertThat(result.items()).containsExactly(item);
         verify(referenceDataService).requireActiveCode("RSKG01", "RSKC0001");
@@ -46,7 +46,13 @@ class AdminRiskEventServiceTest {
 
     @Test
     void rejectsInvalidProcessedFilter() {
-        assertThatThrownBy(() -> service.getRiskEvents(null, "waiting", 1, 20))
+        assertThatThrownBy(() -> service.getRiskEvents(null, "waiting", null, 1, 20))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsExcessiveKeyword() {
+        assertThatThrownBy(() -> service.getRiskEvents(null, null, "x".repeat(101), 1, 20))
                 .isInstanceOf(CustomException.class);
     }
 }

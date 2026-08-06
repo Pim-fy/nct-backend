@@ -60,6 +60,15 @@
              #{qutRegId}, #{qutUpdtId})
     </insert>
 
+    <!-- ── 견적 단건 조회 (읽기 전용: 소유권 확인·이력 조회 용도) ── -->
+    <select id="findQuoteById" resultMap="QuoteEntityMap">
+        /* QuoteMapper.findQuoteById */
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN,
+               QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
+          FROM QUOTE
+         WHERE QUT_SN = #{qutSn}
+    </select>
+
     <!-- ── 견적 단건 조회 (FOR UPDATE: 수정·철회 시 동시성 제어) ── -->
     <select id="findQuoteByIdForUpdate" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteByIdForUpdate */
@@ -111,6 +120,20 @@
     </select>
 
     <!-- ── 견적 수정 이력 INSERT ─────────────────────── -->
+    <!-- 제공자가 요청 상세와 견적 수정 화면에서 사용할 활성 견적 1건 조회 -->
+    <select id="findMyActiveQuote" resultMap="QuoteResponseMap">
+        /* QuoteMapper.findMyActiveQuote */
+        SELECT q.QUT_SN, q.SVC_REQ_SN,
+               q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
+               q.QUT_REG_DT, q.QUT_UPDT_DT
+          FROM QUOTE q
+         WHERE q.USR_SN = #{usrSn}
+           AND q.SVC_REQ_SN = #{svcReqSn}
+           AND q.QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+         ORDER BY q.QUT_UPDT_DT DESC, q.QUT_SN DESC
+         LIMIT 1
+    </select>
+
     <insert id="insertQuoteHistory" useGeneratedKeys="true" keyProperty="qutHstSn">
         /* QuoteMapper.insertQuoteHistory */
         INSERT INTO QUOTE_HISTORY
@@ -126,6 +149,60 @@
           FROM QUOTE_HISTORY
          WHERE QUT_SN = #{qutSn}
          ORDER BY QUT_HST_REG_DT ASC
+    </select>
+
+    <!-- ── 견적 선택 상태 변경 (FOR UPDATE는 서비스 레이어에서 findQuoteByIdForUpdate로 선행) ── -->
+    <update id="selectQuote">
+        /* QuoteMapper.selectQuote — 호출 전 반드시 FOR UPDATE 잠금 선행 */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0004',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE QUT_SN = #{qutSn}
+    </update>
+
+    <!-- ── 경쟁 견적 일괄 철회 (견적 선택 시, F-SVC-009) ── -->
+    <update id="withdrawCompetingQuotes">
+        /* QuoteMapper.withdrawCompetingQuotes */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE SVC_REQ_SN    = #{svcReqSn}
+           AND QUT_SN       != #{excludeQutSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <!-- ── 견적 작업사진 INSERT ──────────────────────── -->
+    <insert id="insertQuotePhoto" useGeneratedKeys="true" keyProperty="qutPhtSn">
+        /* QuoteMapper.insertQuotePhoto */
+        INSERT INTO QUOTE_PHOTO (QUT_SN, FL_SN, SORT_NO)
+        VALUES (#{qutSn}, #{flSn}, #{sortNo})
+    </insert>
+
+    <!-- ── 견적 작업사진 전체 삭제 (수정 시 교체 용도) ── -->
+    <delete id="deleteQuotePhotosByQutSn">
+        /* QuoteMapper.deleteQuotePhotosByQutSn */
+        DELETE FROM QUOTE_PHOTO WHERE QUT_SN = #{qutSn}
+    </delete>
+
+    <!-- 견적 첨부: 실제 파일 경로는 API 응답에서 만들고 DB에서는 파일 식별자와 원본명만 조회한다. -->
+    <select id="findQuoteAttachments" resultType="nct.quote.dto.QuoteAttachmentResponse">
+        /* QuoteMapper.findQuoteAttachments */
+        SELECT qp.FL_SN AS flSn,
+               f.FL_ORG_NM AS fileName
+          FROM QUOTE_PHOTO qp
+          JOIN FILES f ON f.FL_SN = qp.FL_SN
+         WHERE qp.QUT_SN = #{qutSn}
+           AND f.FL_USE_YN = 'Y'
+         ORDER BY qp.SORT_NO ASC, qp.QUT_PHT_SN ASC
+    </select>
+
+    <!-- URL의 quoteId와 flSn 조합이 실제 연결된 첨부인지 확인해 다른 견적 파일 열람을 막는다. -->
+    <select id="countQuoteAttachment" resultType="int">
+        /* QuoteMapper.countQuoteAttachment */
+        SELECT COUNT(*)
+          FROM QUOTE_PHOTO
+         WHERE QUT_SN = #{qutSn}
+           AND FL_SN = #{flSn}
     </select>
 
     <!-- ── 받은 견적 목록 (요청자용) ─────────────────── -->

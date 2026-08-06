@@ -3,6 +3,7 @@ package nct.quote.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -18,10 +19,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 
+import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
+import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.mapper.QuoteMapper;
@@ -39,18 +42,24 @@ class QuoteServiceTest {
     @Mock
     private ProviderAccessGuard providerAccessGuard;
     @Mock
+    private FileStorageService fileStorageService;
+    @Mock
     private Authentication authentication;
 
     private QuoteService service;
 
     @BeforeEach
     void setUp() {
-        service = new QuoteService(quoteMapper, serviceRequestQuoteReader, providerAccessGuard);
+        service = new QuoteService(
+                quoteMapper,
+                serviceRequestQuoteReader,
+                providerAccessGuard,
+                fileStorageService);
     }
 
     @Test
     void submitsOnlyAfterOpenRequestAndCategoryAccessChecks() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, "작업 범위");
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, "작업 범위", List.of(88L));
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
@@ -64,11 +73,13 @@ class QuoteServiceTest {
 
         assertThat(result.qutSn()).isEqualTo(99L);
         verify(providerAccessGuard).requireServiceAccess(authentication, 20L);
+        verify(fileStorageService).requireOwnedQuoteFile(88L, 22L);
+        verify(quoteMapper).insertQuotePhoto(any());
     }
 
     @Test
     void rejectsNonOpenRequestBeforeInsert() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null);
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null, null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenThrow(new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
 
@@ -81,7 +92,7 @@ class QuoteServiceTest {
 
     @Test
     void rejectsSelfTradeAfterProviderAccessCheck() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null);
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null, null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(22L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
@@ -114,5 +125,40 @@ class QuoteServiceTest {
         var result = service.getMyQuotes(7L, 1, 10);
 
         assertThat(result.getContent().getFirst().getSvcReqTitle()).isEqualTo("이사 요청");
+    }
+
+    @Test
+    void activeQuoteReturnsOnlyProtectedAttachmentUrls() {
+        QuoteResponse quote = new QuoteResponse();
+        quote.setQutSn(99L);
+        QuoteAttachmentResponse attachment = new QuoteAttachmentResponse();
+        attachment.setFlSn(88L);
+        attachment.setFileName("견적서.pdf");
+        when(quoteMapper.findMyActiveQuote(7L, 10L)).thenReturn(quote);
+        when(quoteMapper.findQuoteAttachments(99L)).thenReturn(List.of(attachment));
+
+        QuoteResponse result = service.getMyActiveQuote(7L, 10L);
+
+        assertThat(result.getAttachments()).singleElement()
+                .extracting(QuoteAttachmentResponse::getUrl)
+                .isEqualTo("/api/quotes/99/attachments/88");
+    }
+
+    @Test
+    void blocksQuoteAttachmentWhenViewerIsNeitherProviderNorRequester() {
+        Quote quote = Quote.builder()
+                .qutSn(99L)
+                .svcReqSn(10L)
+                .usrSn(22L)
+                .build();
+        when(quoteMapper.findQuoteById(99L)).thenReturn(quote);
+        when(quoteMapper.countQuoteAttachment(99L, 88L)).thenReturn(1);
+        doThrow(new CustomException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(serviceRequestQuoteReader).requireOwner(10L, 7L);
+
+        assertThatThrownBy(() -> service.requireAttachmentAccess(7L, 99L, 88L))
+                .isInstanceOf(CustomException.class);
+
+        verify(serviceRequestQuoteReader).requireOwner(10L, 7L);
     }
 }

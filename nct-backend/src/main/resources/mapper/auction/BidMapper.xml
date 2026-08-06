@@ -13,6 +13,9 @@
             thumb.THUMBNAIL_PATH AS thumbnailPath,
             b.BID_AMT AS bidAmount,
             a.AUC_CUR_AMT AS currentPrice,
+            p.PRD_IBY_AMT AS instantBuyPrice,
+            p.PRD_TRD_METHOD_CD AS tradeMethodCode,
+            tradeMethod.CMM_NM AS tradeMethodName,
             b.BID_STATUS_CD AS bidStatusCode,
             a.AUC_STATUS_CD AS auctionStatusCode,
             b.BID_REG_DT AS bidDateTime,
@@ -26,6 +29,8 @@
           ON p.PRD_SN = a.PRD_SN
         JOIN USERS u
           ON u.USR_SN = p.USR_SN
+        LEFT JOIN CMM_CODE tradeMethod
+          ON tradeMethod.CMM_CD = p.PRD_TRD_METHOD_CD
         LEFT JOIN (
             SELECT
                 pi.PRD_SN,

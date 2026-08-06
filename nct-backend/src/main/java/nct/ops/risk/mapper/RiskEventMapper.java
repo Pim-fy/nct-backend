@@ -29,10 +29,12 @@ public interface RiskEventMapper {
     /** 담당자 7 · F-OPS-011: 관리자용 위험 이벤트 목록을 최신 등록순으로 조회한다. */
     List<AdminRiskEventListItemResponse> findAdminRiskEvents(
             @Param("typeCode") String typeCode, @Param("processedYn") String processedYn,
+            @Param("keyword") String keyword,
             @Param("offset") long offset, @Param("size") int size);
 
     long countAdminRiskEvents(@Param("typeCode") String typeCode,
-                              @Param("processedYn") String processedYn);
+                              @Param("processedYn") String processedYn,
+                              @Param("keyword") String keyword);
 
     /** 대시보드가 재사용할 수 있는 위험 유형별 발생 건수다. */
     List<AdminRiskEventTypeSummaryResponse> countAdminRiskEventsByType(

@@ -1,11 +1,13 @@
 package nct.member.mapper;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.member.domain.Member;
+import nct.member.dto.AdminMemberSource;
 
 @Mapper
 public interface MemberMapper {
@@ -23,6 +25,29 @@ public interface MemberMapper {
 
     // @ai_generated: JWT subject(usrSn) 기반 조회 - 로그인 필터·재발급이 가변 필드(email) 대신 사용
     Optional<Member> findMemberById(Long usrSn);
+
+    /** 담당자 7 · F-OPS-002: 관리자 회원 상세/상태 변경의 행 잠금 조회입니다. */
+    Optional<Member> findMemberByIdForUpdate(Long usrSn);
+
+    /** 담당자 7 · F-OPS-002: 개인정보 원문을 제외한 관리자 회원 목록 계약입니다. */
+    List<AdminMemberSource> findAdminMembers(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    Optional<AdminMemberSource> findAdminMemberById(@Param("usrSn") Long usrSn);
+
+    long countAdminMembers(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
+
+    /** 담당자 7 · F-OPS-019: 상태를 조건부 변경하며 기존 리프레시 토큰을 즉시 폐기합니다. */
+    int updateStatusAndInvalidateRefreshToken(
+            @Param("usrSn") Long usrSn,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("targetStatusCode") String targetStatusCode,
+            @Param("updaterId") String updaterId);
 
     boolean existsByLoginId(String loginId);
 

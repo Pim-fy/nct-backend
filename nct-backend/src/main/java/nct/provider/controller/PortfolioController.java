@@ -53,7 +53,7 @@ public class PortfolioController {
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     public ResponseEntity<ApiResponse<PortfolioResponse>> update(
             @AuthenticationPrincipal CustomUserDetails user,
-            @PathVariable Long portfolioSn,
+            @PathVariable(name = "portfolioSn") Long portfolioSn,
             @Valid @RequestBody PortfolioRequest request) {
         return ResponseEntity.ok(ApiResponse.success(service.update(userId(user), portfolioSn, request)));
     }
@@ -62,14 +62,14 @@ public class PortfolioController {
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     public ResponseEntity<ApiResponse<Void>> delete(
             @AuthenticationPrincipal CustomUserDetails user,
-            @PathVariable Long portfolioSn) {
+            @PathVariable(name = "portfolioSn") Long portfolioSn) {
         service.delete(userId(user), portfolioSn);
         return ResponseEntity.ok(ApiResponse.success());
     }
 
     @GetMapping("/{providerUserSn}/portfolios")
     public ResponseEntity<ApiResponse<List<PortfolioResponse>>> publicList(
-            @PathVariable Long providerUserSn) {
+            @PathVariable(name = "providerUserSn") Long providerUserSn) {
         return ResponseEntity.ok(ApiResponse.success(service.getPublic(providerUserSn)));
     }
 

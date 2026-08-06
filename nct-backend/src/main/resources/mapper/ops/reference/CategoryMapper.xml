@@ -80,6 +80,22 @@
          ORDER BY c.CAT_SORT_NO, c.CAT_SN
     </select>
 
+    <select id="findAllChildrenByDomainForUpdate" resultMap="categoryMap">
+        SELECT <include refid="categoryColumns"/>
+          FROM CATEGORY c
+         WHERE c.CAT_DOMAIN_CD = #{domainCode}
+           AND c.CAT_PARENT_SN IS NOT NULL
+         ORDER BY c.CAT_SORT_NO, c.CAT_SN
+         FOR UPDATE
+    </select>
+
+    <select id="findMaxChildSortNoByDomain" resultType="java.math.BigDecimal">
+        SELECT MAX(c.CAT_SORT_NO)
+          FROM CATEGORY c
+         WHERE c.CAT_DOMAIN_CD = #{domainCode}
+           AND c.CAT_PARENT_SN IS NOT NULL
+    </select>
+
     <select id="findRootByDomainForUpdate" resultMap="categoryMap">
         SELECT <include refid="categoryColumns"/>
           FROM CATEGORY c
@@ -97,6 +113,15 @@
            AND c.CAT_DOMAIN_CD = #{domainCode}
            AND c.CAT_PARENT_SN IS NOT NULL
          FOR UPDATE
+    </select>
+
+    <select id="findChildByIdAndDomain" resultMap="categoryMap">
+        SELECT <include refid="categoryColumns"/>
+          FROM CATEGORY c
+         WHERE c.CAT_SN = #{categorySn}
+           AND c.CAT_DOMAIN_CD = #{domainCode}
+           AND c.CAT_PARENT_SN IS NOT NULL
+         LIMIT 1
     </select>
 
     <select id="countByName" resultType="int">
@@ -130,6 +155,26 @@
                CAT_UPDT_ID = #{actorId}
          WHERE CAT_SN = #{category.categorySn}
            AND CAT_DOMAIN_CD = #{category.domainCode}
+           AND CAT_PARENT_SN IS NOT NULL
+    </update>
+
+    <update id="updateSortNo">
+        UPDATE CATEGORY
+           SET CAT_SORT_NO = #{sortNo},
+               CAT_UPDT_DT = CURRENT_TIMESTAMP,
+               CAT_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{categorySn}
+           AND CAT_DOMAIN_CD = #{domainCode}
+           AND CAT_PARENT_SN IS NOT NULL
+    </update>
+
+    <update id="updateUseYn">
+        UPDATE CATEGORY
+           SET CAT_USE_YN = #{useYn},
+               CAT_UPDT_DT = CURRENT_TIMESTAMP,
+               CAT_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{categorySn}
+           AND CAT_DOMAIN_CD = #{domainCode}
            AND CAT_PARENT_SN IS NOT NULL
     </update>
 </mapper>

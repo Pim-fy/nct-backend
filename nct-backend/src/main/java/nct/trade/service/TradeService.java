@@ -27,6 +27,7 @@ import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.operation.port.SellerCancellationDecisionPort;
+import nct.ops.reference.service.ReferenceDataService;
 import nct.point.service.PointService;
 import nct.settlement.service.SettlementService;
 import nct.trade.domain.Trade;
@@ -40,6 +41,8 @@ import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeAutoCompletionTarget;
 import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeConfirmationTarget;
@@ -76,7 +79,9 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private static final String COMPLETED = "TRDC0006";
     private static final String CANCELED = "TRDC0008";
     private static final String ON_HOLD = "TRDC0007";
+    private static final String TRADE_DISPUTE_TYPE_GROUP = "TRDG04";
     private static final String SCHEDULER_UPDATER = "SYSTEM";
+    private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
 
     private final TradeMapper tradeMapper;
     private final NotificationService notificationService;
@@ -86,6 +91,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private final SettlementService settlementService;
     private final ChatService chatService;
     private final PointService pointService;
+    private final ReferenceDataService referenceDataService;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
 
@@ -145,11 +151,13 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     "이미 처리 중인 거래 문제가 있습니다.");
         }
 
+        String disputeTypeCode = request.getDisputeTypeCode().trim();
+        referenceDataService.requireActiveCode(TRADE_DISPUTE_TYPE_GROUP, disputeTypeCode);
         String updaterId = String.valueOf(userId);
         tradeMapper.insertTradeDispute(
                 tradeId,
                 userId,
-                request.getDisputeTypeCode().trim(),
+                disputeTypeCode,
                 request.getContent().trim(),
                 updaterId);
         settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
@@ -512,6 +520,40 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         return new ServiceTradeDetailAssembler().assemble(source, userId);
+    }
+
+    /** 로그인한 의뢰자 또는 제공자가 본인 서비스 거래 상세로 재진입할 목록을 조회한다. */
+    @Transactional(readOnly = true)
+    public ServiceTradeListPageResponse getMyServiceTrades(
+            long userId,
+            String role,
+            String status,
+            String keyword,
+            int page,
+            int size) {
+        if (userId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "회원번호가 올바르지 않습니다.");
+        }
+
+        validateServiceTradePage(page, size);
+        String normalizedRole = normalizeServiceTradeRole(role);
+        String normalizedStatus = normalizeTradeStatus(status);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long offset = ((long) page - 1) * size;
+        List<ServiceTradeListItem> content = tradeMapper.findMyServiceTrades(
+                userId, normalizedRole, normalizedStatus, normalizedKeyword, offset, size);
+        long totalCount = tradeMapper.countMyServiceTrades(
+                userId, normalizedRole, normalizedStatus, normalizedKeyword);
+        int totalPages = totalCount == 0 ? 0 : (int) ((totalCount + size - 1) / size);
+
+        return new ServiceTradeListPageResponse(
+                content,
+                page,
+                size,
+                totalCount,
+                totalPages,
+                offset + content.size() < totalCount);
     }
 
     /**
@@ -1061,6 +1103,20 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "거래 역할 값이 올바르지 않습니다.");
     }
 
+    // 서비스 거래 목록은 의뢰자·제공자 역할만 허용한다.
+    private String normalizeServiceTradeRole(String role) {
+        String normalizedRole = normalizeQueryValue(role);
+
+        if (normalizedRole == null || "ALL".equals(normalizedRole)) {
+            return null;
+        }
+        if ("REQUESTER".equals(normalizedRole) || "PROVIDER".equals(normalizedRole)) {
+            return normalizedRole;
+        }
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                "서비스 거래 역할 값이 올바르지 않습니다.");
+    }
+
     // 화면 상태값을 DB 공통코드로 변환해, 화면이 테이블 코드를 직접 알지 않게 한다.
     private String normalizeTradeStatus(String status) {
         String normalizedStatus = normalizeQueryValue(status);
@@ -1095,6 +1151,13 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         return normalizedKeyword;
+    }
+
+    private void validateServiceTradePage(int page, int size) {
+        if (page < 1 || size < 1 || size > MAX_SERVICE_TRADE_PAGE_SIZE) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "페이지는 1 이상이고 페이지 크기는 1~100 사이여야 합니다.");
+        }
     }
 
     private String normalizeQueryValue(String value) {

@@ -19,10 +19,13 @@ public class AdminAbuseReportResponse {
     private Long reportedUserSn;
     private String reportTypeCode;
     private String statusCode;
+    private String title;
+    private String targetName;
     private String content;
     private String referenceTypeCode;
     private Long referenceSn;
     private String processReason;
+    private String processedBy;
     private LocalDateTime registeredAt;
     private LocalDateTime processedAt;
 }

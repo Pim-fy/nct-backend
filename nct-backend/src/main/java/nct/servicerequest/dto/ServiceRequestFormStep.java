@@ -14,6 +14,9 @@ import lombok.Setter;
 public class ServiceRequestFormStep {
 
     private Long stepSn;
+    // 여러 템플릿을 한 번에 조회(findStepsByTemplates)할 때 결과를 템플릿별로 묶는 데 사용 —
+    // 단건 조회(findSteps)에서는 항상 같은 값이라 안 채워도 무방.
+    private Long formTemplateSn;
     private String stepKey;
     private String title;
     private String description;

@@ -96,6 +96,65 @@
         LIMIT 100
     </select>
 
+    <!-- 담당자 7 · F-PAY-012: 계좌번호는 검색 조건에 넣지 않아 암호문·원문 검색을 모두 차단한다. -->
+    <sql id="adminOrderSearchWhere">
+        WHERE 1 = 1
+        <if test="statusCode != null">
+            AND O.PT_EXC_ORD_STATUS_CD = #{statusCode}
+        </if>
+        <if test="keyword != null">
+            AND (
+                CAST(O.PT_EXC_ORD_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                OR CAST(O.USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                OR U.USR_NM LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <sql id="adminOrderColumns">
+        O.PT_EXC_ORD_SN             AS ptExcOrdSn,
+        O.USR_SN                    AS usrSn,
+        U.USR_NM                    AS usrNm,
+        O.PT_EXC_ORD_AMT            AS ptExcOrdAmt,
+        O.PT_EXC_ORD_STATUS_CD      AS ptExcOrdStatusCd,
+        O.PT_EXC_ORD_PROC_USR_SN    AS ptExcOrdProcUsrSn,
+        O.PT_EXC_ORD_PROC_DT        AS ptExcOrdProcDt,
+        O.PT_EXC_ORD_RJCT_RSN_CN    AS ptExcOrdRjctRsnCn,
+        O.PT_EXC_ORD_BANK_NM_ENC    AS ptExcOrdBankNm,
+        O.PT_EXC_ORD_ACNT_NO_ENC    AS ptExcOrdAcntNo,
+        O.PT_EXC_ORD_REG_DT         AS ptExcOrdRegDt,
+        O.PT_EXC_ORD_UPDT_DT        AS ptExcOrdUpdtDt,
+        S.CMM_NM                    AS statusNm
+    </sql>
+
+    <select id="countAdminList" resultType="long">
+        /* 담당자 7 · F-PAY-012: 관리자 환전 전체·상태별 목록 건수 */
+        SELECT COUNT(*)
+        FROM POINT_EXCHANGE_ORDER O
+        JOIN USERS U ON U.USR_SN = O.USR_SN
+        <include refid="adminOrderSearchWhere" />
+    </select>
+
+    <select id="selectAdminList" resultType="nct.point.domain.PointExchangeOrder">
+        /* 담당자 7 · F-PAY-012: 신청을 우선하고 상태별 최신 신청부터 조회 */
+        SELECT
+            <include refid="adminOrderColumns" />
+        FROM POINT_EXCHANGE_ORDER O
+        JOIN USERS U ON U.USR_SN = O.USR_SN
+        JOIN CMM_CODE S ON S.CMM_CD = O.PT_EXC_ORD_STATUS_CD
+        <include refid="adminOrderSearchWhere" />
+        ORDER BY
+            CASE O.PT_EXC_ORD_STATUS_CD
+                WHEN 'PEOC0001' THEN 0
+                WHEN 'PEOC0002' THEN 1
+                WHEN 'PEOC0003' THEN 2
+                ELSE 3
+            END ASC,
+            O.PT_EXC_ORD_REG_DT DESC,
+            O.PT_EXC_ORD_SN DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
     <!-- 지급 완료 처리: 관리자가 실제 이체를 마친 뒤 호출 -->
     <update id="complete">
         /* 포인트 환전 주문: 지급 완료 처리 */

@@ -34,6 +34,18 @@ public interface PointExchangeOrderMapper {
     /** 관리자 대시보드용 — 계좌 정보를 조회하지 않고 신청 상태 건수만 반환 */
     long countRequestedForAdmin();
 
+    /** 담당자 7 · F-PAY-012: 처리 전후 환전 주문을 상태·검색 조건으로 페이지 조회 */
+    List<PointExchangeOrder> selectAdminList(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    /** 담당자 7 · F-PAY-012: 관리자 환전 목록의 전체 건수 조회 */
+    long countAdminList(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
+
     /** 지급 완료 처리 — 상태·처리자·처리일시 기록 */
     int complete(@Param("ptExcOrdSn") long ptExcOrdSn, @Param("statusCd") String statusCd,
                  @Param("procUsrSn") long procUsrSn);

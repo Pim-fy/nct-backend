@@ -349,6 +349,128 @@
          ORDER BY O.SVC_REQ_FIELD_SN, O.SVC_REQ_FIELD_OPT_SORT_NO, O.SVC_REQ_FIELD_OPT_SN
     </select>
 
+    <!-- ── 전체 활성 폼 로드용 일괄 조회 (getActiveForms) — 템플릿 목록을 IN 절로 묶어 왕복 횟수를 고정한다 -->
+
+    <select id="findStepsByTemplates" resultType="nct.servicerequest.dto.ServiceRequestFormStep">
+        /* ServiceRequestFormMapper.findStepsByTemplates */
+        SELECT S.SVC_REQ_FORM_TMPL_SN AS formTemplateSn,
+               S.SVC_REQ_STEP_SN AS stepSn,
+               S.SVC_REQ_STEP_KEY AS stepKey,
+               S.SVC_REQ_STEP_TTL AS title,
+               S.SVC_REQ_STEP_EXPLN AS description,
+               S.SVC_REQ_STEP_TYPE_CD AS type,
+               N.SVC_REQ_STEP_KEY AS nextStepKey,
+               S.SVC_REQ_STEP_SNSTV_YN AS sensitiveYn,
+               S.SVC_REQ_STEP_PBLC_YN AS publicYn,
+               CAST(S.SVC_REQ_STEP_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_STEP_DEF S
+          LEFT JOIN SVC_REQ_STEP_DEF N
+            ON N.SVC_REQ_FORM_TMPL_SN = S.SVC_REQ_FORM_TMPL_SN
+           AND N.SVC_REQ_STEP_SN = S.NEXT_STEP_SN
+         WHERE S.SVC_REQ_FORM_TMPL_SN IN
+        <foreach collection="formTemplateSnList" item="formTemplateSn" open="(" separator="," close=")">
+            #{formTemplateSn}
+        </foreach>
+           AND S.SVC_REQ_STEP_USE_YN = 'Y'
+         ORDER BY S.SVC_REQ_FORM_TMPL_SN, S.SVC_REQ_STEP_SORT_NO, S.SVC_REQ_STEP_SN
+    </select>
+
+    <select id="findStepOptionsByTemplates" resultType="nct.servicerequest.dto.ServiceRequestFormOption">
+        /* ServiceRequestFormMapper.findStepOptionsByTemplates */
+        SELECT O.SVC_REQ_STEP_OPT_SN AS optionSn,
+               O.SVC_REQ_STEP_SN AS stepSn,
+               O.SVC_REQ_STEP_OPT_KEY AS optionKey,
+               O.SVC_REQ_STEP_OPT_VAL AS value,
+               O.SVC_REQ_STEP_OPT_LABEL AS label,
+               O.SVC_REQ_STEP_OPT_SUBTTL AS subtitle,
+               N.SVC_REQ_STEP_KEY AS nextStepKey,
+               CAST(O.SVC_REQ_STEP_OPT_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_STEP_OPT_DEF O
+          LEFT JOIN SVC_REQ_STEP_DEF N
+            ON N.SVC_REQ_FORM_TMPL_SN = O.SVC_REQ_FORM_TMPL_SN
+           AND N.SVC_REQ_STEP_SN = O.NEXT_STEP_SN
+         WHERE O.SVC_REQ_FORM_TMPL_SN IN
+        <foreach collection="formTemplateSnList" item="formTemplateSn" open="(" separator="," close=")">
+            #{formTemplateSn}
+        </foreach>
+           AND O.SVC_REQ_STEP_OPT_USE_YN = 'Y'
+         ORDER BY O.SVC_REQ_STEP_SN, O.SVC_REQ_STEP_OPT_SORT_NO, O.SVC_REQ_STEP_OPT_SN
+    </select>
+
+    <select id="findFieldsByTemplates" resultType="nct.servicerequest.dto.ServiceRequestFormField">
+        /* ServiceRequestFormMapper.findFieldsByTemplates */
+        SELECT D.SVC_REQ_FIELD_SN AS fieldSn,
+               D.SVC_REQ_STEP_SN AS stepSn,
+               D.SVC_REQ_FIELD_KEY AS fieldKey,
+               D.SVC_REQ_FIELD_LABEL AS label,
+               D.SVC_REQ_FIELD_TYPE_CD AS type,
+               D.SVC_REQ_FIELD_PH AS placeholder,
+               D.SVC_REQ_FIELD_EXPLN AS description,
+               D.SVC_REQ_FIELD_REQ_YN AS requiredYn,
+               D.SVC_REQ_FIELD_DIGIT_YN AS requireDigitYn,
+               D.SVC_REQ_FIELD_SNSTV_YN AS sensitiveYn,
+               D.SVC_REQ_FIELD_PBLC_YN AS publicYn,
+               D.SVC_REQ_FIELD_MAX_CNT AS maxSelections,
+               CAST(D.SVC_REQ_FIELD_SORT_NO AS SIGNED) AS sortNo,
+               CAST(D.SVC_REQ_FIELD_UI_META_JSON AS CHAR) AS uiMetaJson
+          FROM SVC_REQ_FIELD_DEF D
+         WHERE D.SVC_REQ_FORM_TMPL_SN IN
+        <foreach collection="formTemplateSnList" item="formTemplateSn" open="(" separator="," close=")">
+            #{formTemplateSn}
+        </foreach>
+           AND D.SVC_REQ_FIELD_USE_YN = 'Y'
+         ORDER BY D.SVC_REQ_STEP_SN, D.SVC_REQ_FIELD_SORT_NO, D.SVC_REQ_FIELD_SN
+    </select>
+
+    <select id="findFieldOptionsByTemplates" resultType="nct.servicerequest.dto.ServiceRequestFormOption">
+        /* ServiceRequestFormMapper.findFieldOptionsByTemplates */
+        SELECT O.SVC_REQ_FIELD_OPT_SN AS optionSn,
+               O.SVC_REQ_FIELD_SN AS fieldSn,
+               O.SVC_REQ_FIELD_OPT_KEY AS optionKey,
+               O.SVC_REQ_FIELD_OPT_VAL AS value,
+               O.SVC_REQ_FIELD_OPT_LABEL AS label,
+               CAST(O.SVC_REQ_FIELD_OPT_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_FIELD_OPT_DEF O
+         WHERE O.SVC_REQ_FORM_TMPL_SN IN
+        <foreach collection="formTemplateSnList" item="formTemplateSn" open="(" separator="," close=")">
+            #{formTemplateSn}
+        </foreach>
+           AND O.SVC_REQ_FIELD_OPT_USE_YN = 'Y'
+         ORDER BY O.SVC_REQ_FIELD_SN, O.SVC_REQ_FIELD_OPT_SORT_NO, O.SVC_REQ_FIELD_OPT_SN
+    </select>
+
+    <select id="findFieldRulesByTemplates" resultType="nct.servicerequest.dto.ServiceRequestFormRule">
+        /* ServiceRequestFormMapper.findFieldRulesByTemplates */
+        SELECT R.SVC_REQ_FIELD_RULE_SN AS ruleSn,
+               R.TARGET_FIELD_SN AS targetFieldSn,
+               SOURCE_STEP.SVC_REQ_STEP_KEY AS sourceStepKey,
+               SOURCE_FIELD.SVC_REQ_FIELD_KEY AS sourceFieldKey,
+               SOURCE_FIELD.SVC_REQ_FIELD_LABEL AS sourceFieldLabel,
+               COALESCE(STEP_OPT.SVC_REQ_STEP_OPT_VAL, FIELD_OPT.SVC_REQ_FIELD_OPT_VAL) AS compareValue,
+               R.RULE_OPERATOR_CD AS operator,
+               R.RULE_ACTION_CD AS action,
+               CAST(R.SVC_REQ_FIELD_RULE_SORT_NO AS SIGNED) AS sortNo
+          FROM SVC_REQ_FIELD_RULE_DEF R
+          LEFT JOIN SVC_REQ_STEP_DEF SOURCE_STEP
+            ON SOURCE_STEP.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND SOURCE_STEP.SVC_REQ_STEP_SN = R.SOURCE_STEP_SN
+          LEFT JOIN SVC_REQ_FIELD_DEF SOURCE_FIELD
+            ON SOURCE_FIELD.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND SOURCE_FIELD.SVC_REQ_FIELD_SN = R.SOURCE_FIELD_SN
+          LEFT JOIN SVC_REQ_STEP_OPT_DEF STEP_OPT
+            ON STEP_OPT.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND STEP_OPT.SVC_REQ_STEP_OPT_SN = R.COMPARE_STEP_OPT_SN
+          LEFT JOIN SVC_REQ_FIELD_OPT_DEF FIELD_OPT
+            ON FIELD_OPT.SVC_REQ_FORM_TMPL_SN = R.SVC_REQ_FORM_TMPL_SN
+           AND FIELD_OPT.SVC_REQ_FIELD_OPT_SN = R.COMPARE_FIELD_OPT_SN
+         WHERE R.SVC_REQ_FORM_TMPL_SN IN
+        <foreach collection="formTemplateSnList" item="formTemplateSn" open="(" separator="," close=")">
+            #{formTemplateSn}
+        </foreach>
+           AND R.SVC_REQ_FIELD_RULE_USE_YN = 'Y'
+         ORDER BY R.SVC_REQ_FIELD_RULE_SORT_NO, R.SVC_REQ_FIELD_RULE_SN
+    </select>
+
     <select id="findFieldRules" resultType="nct.servicerequest.dto.ServiceRequestFormRule">
         /* ServiceRequestFormMapper.findFieldRules */
         SELECT R.SVC_REQ_FIELD_RULE_SN AS ruleSn,

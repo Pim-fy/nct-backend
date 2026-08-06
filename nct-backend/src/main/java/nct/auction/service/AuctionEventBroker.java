@@ -23,18 +23,29 @@ public class AuctionEventBroker {
     private final Map<Long, Channel> channels = new ConcurrentHashMap<>();
 
     public Flux<ServerSentEvent<AuctionRealtimeEvent>> subscribe(long auctionId) {
-        Channel channel = channels.computeIfAbsent(auctionId, key -> new Channel());
-        channel.subscriberCount.incrementAndGet();
+        return Flux.defer(() -> {
+            Channel channel = channels.compute(auctionId, (key, current) -> {
+                Channel activeChannel = current == null ? new Channel() : current;
+                activeChannel.subscriberCount.incrementAndGet();
+                return activeChannel;
+            });
 
-        Flux<ServerSentEvent<AuctionRealtimeEvent>> heartbeat = Flux.interval(HEARTBEAT_INTERVAL)
-                .map(tick -> ServerSentEvent.<AuctionRealtimeEvent>builder().comment("ping").build());
+            Flux<ServerSentEvent<AuctionRealtimeEvent>> heartbeat = Flux.interval(HEARTBEAT_INTERVAL)
+                    .map(tick -> ServerSentEvent.<AuctionRealtimeEvent>builder().comment("ping").build());
 
-        return Flux.merge(channel.sink.asFlux(), heartbeat)
-                .doFinally(signal -> {
-                    if (channel.subscriberCount.decrementAndGet() <= 0) {
-                        channels.remove(auctionId, channel);
-                    }
-                });
+            return Flux.merge(channel.sink.asFlux(), heartbeat)
+                    .doFinally(signal -> releaseChannel(auctionId, channel));
+        });
+    }
+
+    private void releaseChannel(long auctionId, Channel channel) {
+        channels.computeIfPresent(auctionId, (key, current) -> {
+            if (current != channel) {
+                return current;
+            }
+
+            return channel.subscriberCount.decrementAndGet() <= 0 ? null : channel;
+        });
     }
 
     public void publish(AuctionRealtimeEvent event) {

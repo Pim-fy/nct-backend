@@ -15,6 +15,7 @@ import nct.auction.constant.BidStatusCode;
 public class MyBidHistoryItem {
 
     private Long bidSn;
+    private Long tradeId;
     private Long aucSn;
     private Long prdSn;
     private String auctionTitle;

@@ -28,6 +28,7 @@ import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
 import nct.servicerequest.service.ServiceRequestFormService.ValidatedSubmission;
@@ -43,6 +44,8 @@ class ServiceRequestServiceTest {
     @Mock
     private SvcReqImageMapper imageMapper;
     @Mock
+    private SvcReqCommentMapper commentMapper;
+    @Mock
     private ServiceRequestFormService formService;
     @Mock
     private FileStorageService fileStorageService;
@@ -55,6 +58,7 @@ class ServiceRequestServiceTest {
                 serviceRequestMapper,
                 itemMapper,
                 imageMapper,
+                commentMapper,
                 formService,
                 fileStorageService);
     }

@@ -8,10 +8,10 @@ import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
 import nct.global.exception.CustomException;
+import nct.quote.port.SelectedServiceQuoteReader;
+import nct.quote.port.SelectedServiceQuoteReader.SelectedServiceQuoteTarget;
 import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
-import nct.trade.port.SelectedServiceQuote;
-import nct.trade.port.SelectedServiceQuoteReader;
 import nct.trade.port.ServiceEscrowCreateCommand;
 import nct.trade.port.ServiceEscrowCreator;
 import nct.trade.port.ServiceTradeCreator;
@@ -22,7 +22,7 @@ class ServiceTradeCreationCoordinatorTest {
     @Test
     void createsTradeWithServerSelectedQuoteThenCreatesEscrow() {
         FakeSelectedQuoteReader quoteReader = new FakeSelectedQuoteReader(
-                new SelectedServiceQuote(31L, 41L, 11L, 22L, BigDecimal.valueOf(150000)));
+                new SelectedServiceQuoteTarget(31L, 41L, 11L, 22L, 150000L, "QUTC0004"));
         FakeServiceTradeCreator tradeCreator = new FakeServiceTradeCreator(
                 new ServiceTradeCreateResult(91L, "TRDC0003", true));
         FakeServiceEscrowCreator escrowCreator = new FakeServiceEscrowCreator();
@@ -42,7 +42,7 @@ class ServiceTradeCreationCoordinatorTest {
     void rejectsQuoteReaderResultThatDoesNotMatchRequestedQuote() {
         ServiceTradeCreationCoordinator coordinator = new ServiceTradeCreationCoordinator(
                 (requesterUserId, serviceRequestId, quoteId) ->
-                        new SelectedServiceQuote(31L, 42L, 11L, 22L, BigDecimal.valueOf(150000)),
+                        new SelectedServiceQuoteTarget(31L, 42L, 11L, 22L, 150000L, "QUTC0004"),
                 command -> new ServiceTradeCreateResult(91L, "TRDC0003", true),
                 command -> { });
 
@@ -79,20 +79,20 @@ class ServiceTradeCreationCoordinatorTest {
                 .hasMessageContaining("보관금 생성에 실패했습니다.");
     }
 
-    private SelectedServiceQuote selectedQuote() {
-        return new SelectedServiceQuote(31L, 41L, 11L, 22L, BigDecimal.valueOf(150000));
+    private SelectedServiceQuoteTarget selectedQuote() {
+        return new SelectedServiceQuoteTarget(31L, 41L, 11L, 22L, 150000L, "QUTC0004");
     }
 
     private static final class FakeSelectedQuoteReader implements SelectedServiceQuoteReader {
-        private final SelectedServiceQuote quote;
+        private final SelectedServiceQuoteTarget quote;
 
-        private FakeSelectedQuoteReader(SelectedServiceQuote quote) {
+        private FakeSelectedQuoteReader(SelectedServiceQuoteTarget quote) {
             this.quote = quote;
         }
 
         @Override
-        public SelectedServiceQuote lockSelectedQuoteForTradeCreation(
-                long requesterUserId, long serviceRequestId, long quoteId) {
+        public SelectedServiceQuoteTarget lockSelectedQuoteForTradeCreation(
+                Long requesterUserId, Long serviceRequestId, Long quoteId) {
             return quote;
         }
     }

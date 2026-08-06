@@ -34,4 +34,16 @@ public interface ServiceRequestFormMapper {
     List<ServiceRequestFormOption> findFieldOptions(@Param("formTemplateSn") Long formTemplateSn);
 
     List<ServiceRequestFormRule> findFieldRules(@Param("formTemplateSn") Long formTemplateSn);
+
+    // ── 전체 활성 폼 로드(getActiveForms)용 일괄 조회 — 템플릿마다 5번씩 왕복하지 않도록
+    //    템플릿 목록을 한 번에 IN 절로 묶어서 가져온다. 그룹핑은 서비스 계층에서 처리.
+    List<ServiceRequestFormStep> findStepsByTemplates(@Param("formTemplateSnList") List<Long> formTemplateSnList);
+
+    List<ServiceRequestFormOption> findStepOptionsByTemplates(@Param("formTemplateSnList") List<Long> formTemplateSnList);
+
+    List<ServiceRequestFormField> findFieldsByTemplates(@Param("formTemplateSnList") List<Long> formTemplateSnList);
+
+    List<ServiceRequestFormOption> findFieldOptionsByTemplates(@Param("formTemplateSnList") List<Long> formTemplateSnList);
+
+    List<ServiceRequestFormRule> findFieldRulesByTemplates(@Param("formTemplateSnList") List<Long> formTemplateSnList);
 }

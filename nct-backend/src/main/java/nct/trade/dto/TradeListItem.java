@@ -16,6 +16,7 @@ public class TradeListItem {
     private String counterpartNickname;
     private BigDecimal tradeAmount;
     private LocalDateTime createdAt;
+    private LocalDateTime completedAt;
     private String tradeStatus;
     private String tradeMethod;
     private LocalDateTime meetingDateTime;

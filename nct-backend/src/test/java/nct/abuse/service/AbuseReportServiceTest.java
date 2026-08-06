@@ -683,6 +683,8 @@ class AbuseReportServiceTest {
                 20L,
                 AbuseReportService.CONTENT_REPORT_TYPE,
                 statusCode,
+                "[허위 정보] 테스트 경매 상품",
+                "테스트 경매 상품",
                 "신고 내용",
                 "REFC0005",
                 31L,

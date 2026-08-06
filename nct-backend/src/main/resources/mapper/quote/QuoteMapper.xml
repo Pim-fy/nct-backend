@@ -33,6 +33,7 @@
         <id     property="qutSn"        column="QUT_SN"         />
         <result property="svcReqSn"     column="SVC_REQ_SN"     />
         <result property="usrSn"        column="USR_SN"         />
+        <result property="qutTtl"       column="QUT_TTL"        />
         <result property="qutAmt"       column="QUT_AMT"        />
         <result property="qutCn"        column="QUT_CN"         />
         <result property="qutEstmDrt"   column="QUT_ESTM_DRT"   />
@@ -54,17 +55,17 @@
     <insert id="insertQuote" useGeneratedKeys="true" keyProperty="qutSn">
         /* QuoteMapper.insertQuote */
         INSERT INTO QUOTE
-            (SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_ESTM_DRT, QUT_STATUS_CD, QUT_REVISE_CNT,
+            (SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_STATUS_CD, QUT_REVISE_CNT,
              QUT_REG_ID, QUT_UPDT_ID)
         VALUES
-            (#{svcReqSn}, #{usrSn}, #{qutAmt}, #{qutCn}, #{qutEstmDrt}, #{qutStatusCd}, 0,
+            (#{svcReqSn}, #{usrSn}, #{qutTtl}, #{qutAmt}, #{qutCn}, #{qutStatusCd}, 0,
              #{qutRegId}, #{qutUpdtId})
     </insert>
 
     <!-- ── 견적 단건 조회 (읽기 전용: 소유권 확인·이력 조회 용도) ── -->
     <select id="findQuoteById" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteById */
-        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_ESTM_DRT,
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_ESTM_DRT,
                QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
           FROM QUOTE
          WHERE QUT_SN = #{qutSn}
@@ -73,7 +74,7 @@
     <!-- ── 견적 단건 조회 (FOR UPDATE: 수정·철회 시 동시성 제어) ── -->
     <select id="findQuoteByIdForUpdate" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteByIdForUpdate */
-        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_ESTM_DRT,
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_ESTM_DRT,
                QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
           FROM QUOTE
          WHERE QUT_SN = #{qutSn}
@@ -84,9 +85,9 @@
     <update id="updateQuote">
         /* QuoteMapper.updateQuote */
         UPDATE QUOTE
-           SET QUT_AMT        = #{req.amount},
+           SET QUT_TTL        = #{req.title},
+               QUT_AMT        = #{req.amount},
                QUT_CN         = #{req.content},
-               QUT_ESTM_DRT   = #{req.duration},
                QUT_STATUS_CD  = 'QUTC0002',
                QUT_REVISE_CNT = QUT_REVISE_CNT + 1,
                QUT_UPDT_ID    = #{updtId}

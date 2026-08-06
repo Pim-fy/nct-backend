@@ -28,6 +28,7 @@ import nct.product.domain.Product;
 import nct.product.domain.ProductImage;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
+import nct.product.dto.ProductSummaryResponse;
 import nct.product.domain.ProductComment;
 import nct.product.dto.ProductCommentRequest;
 import nct.product.dto.ProductCommentResponse;
@@ -258,6 +259,12 @@ public class ProductService {
         product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
         product.setTradeRegions(productTradeRegionMapper.findByPrdSn(prdSn));
         return product;
+    }
+
+    /** 내 판매 목록 필터 탭 개수 — 목록 조회(getMyProducts)와 달리 경매·거래 상태 enrichment 없이 개수만 집계 */
+    @Transactional(readOnly = true)
+    public ProductSummaryResponse getMyProductsSummary(Long usrSn) {
+        return productMapper.countMyProductsSummary(usrSn);
     }
 
     @Transactional(readOnly = true)

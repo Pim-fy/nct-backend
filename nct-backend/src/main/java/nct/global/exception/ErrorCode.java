@@ -75,6 +75,8 @@ public enum ErrorCode {
     QUOTE_ALREADY_SELECTED(HttpStatus.CONFLICT, "이미 선택된 견적은 철회할 수 없습니다."),
     QUOTE_SELF_TRADE(HttpStatus.FORBIDDEN, "본인이 등록한 서비스 요청에는 견적을 제출할 수 없습니다."),
     QUOTE_INVALID_STATUS(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 견적 처리입니다."),
+    QUOTE_NOT_SELECTED(HttpStatus.CONFLICT, "선택 완료된 견적이 아닙니다."),
+    QUOTE_NOT_IN_SERVICE_REQUEST(HttpStatus.CONFLICT, "해당 서비스 요청에 속하지 않는 견적입니다."),
 
     // ---- 리뷰 도메인 (F-COM-007, REVIEW 테이블 고정 기술 소유 - 09_기능단위_7인_업무분장 v10) ----
     REVIEW_TRADE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "리뷰를 작성할 수 없는 거래입니다."),

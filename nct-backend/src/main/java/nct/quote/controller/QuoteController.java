@@ -97,7 +97,7 @@ public class QuoteController {
     }
 
     /** 견적 수정 이력 (F-SVC-007 요청자 비교 화면용 계약 제공) */
-    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
     @GetMapping("/{quoteId}/history")
     public ResponseEntity<ApiResponse<List<QuoteHistoryResponse>>> getQuoteHistory(
             @AuthenticationPrincipal CustomUserDetails userDetails,

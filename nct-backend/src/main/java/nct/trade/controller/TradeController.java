@@ -54,11 +54,14 @@ public class TradeController {
     public ResponseEntity<ApiResponse<List<ServiceTradeListItem>>> getMyServiceTrades(
             @RequestParam(name = "role", required = false) String role,
             @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
-                tradeService.getMyServiceTrades(userId, role, status)));
+                tradeService.getMyServiceTrades(userId, role, status, keyword, page, size)));
     }
 
     /** F-AUC-005 판매 목록이 경매 상태와 결합할 판매자 본인의 거래 상태를 조회한다. */

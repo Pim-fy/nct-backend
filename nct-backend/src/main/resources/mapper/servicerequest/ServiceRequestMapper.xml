@@ -281,6 +281,18 @@
            AND SVC_REQ_USE_YN = 'Y'
     </update>
 
+    <!-- F-SVC-010: 견적 선택 직후 매칭 완료로 전이한다. 이후 거래·보관금·채팅방 실패 시 상위 트랜잭션이 함께 롤백한다. -->
+    <update id="markServiceRequestMatched">
+        /* ServiceRequestMapper.markServiceRequestMatched */
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0003',
+               SVC_REQ_UPDT_ID   = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN = #{usrSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND SVC_REQ_USE_YN = 'Y'
+    </update>
+
     <!-- ── 요청서 마감 (SVCC0002 → SVCC0004) ──────────────── -->
     <update id="closeServiceRequest">
         /* ServiceRequestMapper.closeServiceRequest */

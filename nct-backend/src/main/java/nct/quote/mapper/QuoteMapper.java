@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
+import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteUpdateRequest;
@@ -40,6 +41,10 @@ public interface QuoteMapper {
 
     int countMyQuotes(@Param("usrSn") Long usrSn);
 
+    QuoteResponse findMyActiveQuote(
+            @Param("usrSn") Long usrSn,
+            @Param("svcReqSn") Long svcReqSn);
+
     int insertQuoteHistory(QuoteHistory history);
 
     List<QuoteHistoryResponse> findQuoteHistory(@Param("qutSn") Long qutSn);
@@ -49,6 +54,12 @@ public interface QuoteMapper {
     int insertQuotePhoto(QuotePhoto quotePhoto);
 
     int deleteQuotePhotosByQutSn(@Param("qutSn") Long qutSn);
+
+    List<QuoteAttachmentResponse> findQuoteAttachments(@Param("qutSn") Long qutSn);
+
+    int countQuoteAttachment(
+            @Param("qutSn") Long qutSn,
+            @Param("flSn") Long flSn);
 
     /** 견적 선택 상태 전이 — 서비스 레이어에서 FOR UPDATE 잠금 선행 필수 (F-SVC-009) */
     int selectQuote(@Param("qutSn") Long qutSn, @Param("updtId") String updtId);

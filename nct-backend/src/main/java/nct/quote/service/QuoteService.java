@@ -1,13 +1,16 @@
 package nct.quote.service;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
@@ -15,6 +18,7 @@ import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
+import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
@@ -37,10 +41,12 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private static final String STATUS_WITHDRAWN = "QUTC0005";
 
     private static final int MAX_REVISE_CNT = 3;
+    private static final int MAX_ATTACHMENT_COUNT = 5;
 
     private final QuoteMapper quoteMapper;
     private final ServiceRequestQuoteReader serviceRequestQuoteReader;
     private final ProviderAccessGuard providerAccessGuard;
+    private final FileStorageService fileStorageService;
 
     /** F-SVC-005: 견적 제출. 자기거래 차단 포함. */
     @Transactional
@@ -59,7 +65,6 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         Quote quote = Quote.builder()
                 .svcReqSn(request.svcReqSn())
                 .usrSn(usrSn)
-                .qutTtl(request.title())
                 .qutAmt(request.amount())
                 .qutCn(request.content())
                 .qutStatusCd(STATUS_SUBMITTED)
@@ -72,7 +77,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
 
-        savePhotos(quote.getQutSn(), request.photoFlSns());
+        savePhotos(quote.getQutSn(), usrSn, request.photoFlSns());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 
@@ -114,7 +119,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         }
 
         quoteMapper.deleteQuotePhotosByQutSn(qutSn);
-        savePhotos(qutSn, request.photoFlSns());
+        savePhotos(qutSn, usrSn, request.photoFlSns());
     }
 
     /** F-SVC-008: 견적 철회. 요청자 선택(QUTC0004) 이후 불가. */
@@ -158,7 +163,10 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .distinct()
                 .toList();
         Map<Long, String> titles = serviceRequestQuoteReader.findTitles(svcReqSnList);
-        content.forEach(quote -> quote.setSvcReqTitle(titles.get(quote.getSvcReqSn())));
+        content.forEach(quote -> {
+            quote.setSvcReqTitle(titles.get(quote.getSvcReqSn()));
+            populateAttachments(quote);
+        });
         int total = quoteMapper.countMyQuotes(usrSn);
         return PageResponse.<QuoteResponse>builder()
                 .content(content)
@@ -169,6 +177,19 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .build();
     }
 
+    /** 제공자가 특정 서비스 요청에 이미 제출한 수정 가능한 견적을 조회한다. */
+    @Transactional(readOnly = true)
+    public QuoteResponse getMyActiveQuote(Long usrSn, Long svcReqSn) {
+        if (usrSn == null || usrSn <= 0 || svcReqSn == null || svcReqSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        QuoteResponse quote = quoteMapper.findMyActiveQuote(usrSn, svcReqSn);
+        if (quote != null) {
+            populateAttachments(quote);
+        }
+        return quote;
+    }
+
     /** 받은 견적 목록 조회 (요청자용). 본인 서비스 요청에 달린 견적만 허용. */
     @Transactional(readOnly = true)
     public List<ReceivedQuoteResponse> getReceivedQuotes(Long usrSn, Long svcReqSn) {
@@ -176,7 +197,37 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         serviceRequestQuoteReader.requireOwner(svcReqSn, usrSn);
-        return quoteMapper.findQuotesBySvcReqSn(svcReqSn);
+        List<ReceivedQuoteResponse> quotes = quoteMapper.findQuotesBySvcReqSn(svcReqSn);
+        quotes.forEach(this::populateAttachments);
+        return quotes;
+    }
+
+    /**
+     * 담당자 7 통합: 견적 작성자 또는 해당 서비스 요청의 의뢰자만 첨부파일을 열람한다.
+     * URL에 다른 파일 번호를 넣어도 QUOTE_PHOTO 연결을 먼저 확인해 우회할 수 없다.
+     */
+    @Transactional(readOnly = true)
+    public void requireAttachmentAccess(Long viewerUsrSn, Long qutSn, Long flSn) {
+        if (viewerUsrSn == null || viewerUsrSn <= 0 || qutSn == null || qutSn <= 0 || flSn == null || flSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        Quote quote = quoteMapper.findQuoteById(qutSn);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (quoteMapper.countQuoteAttachment(qutSn, flSn) != 1) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+        if (viewerUsrSn.equals(quote.getUsrSn())) {
+            return;
+        }
+
+        try {
+            serviceRequestQuoteReader.requireOwner(quote.getSvcReqSn(), viewerUsrSn);
+        } catch (CustomException e) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
     }
 
     /**
@@ -286,14 +337,44 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 quote.getQutStatusCd());
     }
 
-    private void savePhotos(Long qutSn, List<Long> photoFlSns) {
-        if (photoFlSns == null || photoFlSns.isEmpty()) return;
+    private void savePhotos(Long qutSn, Long usrSn, List<Long> photoFlSns) {
+        validateAttachmentFileSns(photoFlSns);
         for (int i = 0; i < photoFlSns.size(); i++) {
+            fileStorageService.requireOwnedQuoteFile(photoFlSns.get(i), usrSn);
             quoteMapper.insertQuotePhoto(QuotePhoto.builder()
                     .qutSn(qutSn)
                     .flSn(photoFlSns.get(i))
                     .sortNo(i)
                     .build());
         }
+    }
+
+    private void validateAttachmentFileSns(List<Long> photoFlSns) {
+        if (photoFlSns == null || photoFlSns.isEmpty() || photoFlSns.size() > MAX_ATTACHMENT_COUNT) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        Set<Long> distinctFileSns = new HashSet<>(photoFlSns);
+        if (distinctFileSns.size() != photoFlSns.size()
+                || photoFlSns.stream().anyMatch(flSn -> flSn == null || flSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private void populateAttachments(QuoteResponse quote) {
+        quote.setAttachments(withAttachmentUrls(quote.getQutSn()));
+    }
+
+    private void populateAttachments(ReceivedQuoteResponse quote) {
+        quote.setAttachments(withAttachmentUrls(quote.getQutSn()));
+    }
+
+    private List<QuoteAttachmentResponse> withAttachmentUrls(Long qutSn) {
+        List<QuoteAttachmentResponse> attachments = quoteMapper.findQuoteAttachments(qutSn);
+        if (attachments == null) {
+            return List.of();
+        }
+        attachments.forEach(attachment -> attachment.setUrl(
+                "/api/quotes/" + qutSn + "/attachments/" + attachment.getFlSn()));
+        return attachments;
     }
 }

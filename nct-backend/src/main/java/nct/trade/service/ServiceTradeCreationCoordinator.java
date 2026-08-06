@@ -2,6 +2,9 @@ package nct.trade.service;
 
 import java.math.BigDecimal;
 
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import lombok.RequiredArgsConstructor;
 import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
@@ -20,6 +23,7 @@ import nct.trade.port.ServiceTradeCreator;
  * 실제 보관금 어댑터 계약이 아직 없으므로 Spring 빈으로 등록하지 않는다.
  * 호출자는 선택 상태 전이까지 포함한 상위 @Transactional 안에서 이 클래스를 사용해야 한다.
  */
+@Service
 @RequiredArgsConstructor
 public class ServiceTradeCreationCoordinator {
 
@@ -28,6 +32,7 @@ public class ServiceTradeCreationCoordinator {
     private final ServiceEscrowCreator serviceEscrowCreator;
     private final ChatService chatService;
 
+    @Transactional
     public ServiceTradeCreateResult create(
             long requesterUserId,
             long serviceRequestId,

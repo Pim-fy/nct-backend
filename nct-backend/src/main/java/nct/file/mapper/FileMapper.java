@@ -73,4 +73,7 @@ public interface FileMapper {
      * - SVC_REQ_IMAGE는 담당자2(신현석) 소유
      */
     int countServiceRequestImageRefs(@Param("flSn") Long flSn);
+
+    /** 견적 첨부 파일이 이미 QUOTE_PHOTO에 연결되어 있는지 확인한다. */
+    int countQuotePhotoRefs(@Param("flSn") Long flSn);
 }

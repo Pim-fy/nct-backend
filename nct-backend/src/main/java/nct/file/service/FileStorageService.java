@@ -85,7 +85,8 @@ public class FileStorageService {
             "review", Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "profile", Set.of("jpg", "jpeg", "png", "webp"),
             "portfolio", Set.of("jpg", "jpeg", "png", "webp"),
-            "service-request", Set.of("jpg", "jpeg", "png", "gif", "webp"));
+            "service-request", Set.of("jpg", "jpeg", "png", "gif", "webp"),
+            "quote", Set.of("pdf", "jpg", "jpeg", "png", "gif", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -142,7 +143,8 @@ public class FileStorageService {
                 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
                 || fileMapper.countReviewImageRefs(flSn) > 0
                 || fileMapper.countPortfolioFileRefs(flSn) > 0
-                || fileMapper.countServiceRequestImageRefs(flSn) > 0) {
+                || fileMapper.countServiceRequestImageRefs(flSn) > 0
+                || fileMapper.countQuotePhotoRefs(flSn) > 0) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 
@@ -294,6 +296,19 @@ public class FileStorageService {
     public FileMeta requireOwnedServiceRequestFile(Long flSn, Long usrSn) {
         FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
         if (!"service-request".equals(extractService(fileMeta.getFlPath()))) {
+            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        return fileMeta;
+    }
+
+    /**
+     * 견적 제출·수정 시 연결할 파일이 현재 제공자가 quote 구분으로 올린 활성 파일인지 검증한다.
+     * QUOTE_PHOTO에 다른 회원 또는 다른 용도의 파일 번호를 연결하는 것을 막는다.
+     */
+    @Transactional(readOnly = true)
+    public FileMeta requireOwnedQuoteFile(Long flSn, Long usrSn) {
+        FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
+        if (!"quote".equals(extractService(fileMeta.getFlPath()))) {
             throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
         }
         return fileMeta;

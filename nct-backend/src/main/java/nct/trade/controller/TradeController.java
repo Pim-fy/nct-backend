@@ -21,7 +21,7 @@ import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.ServiceTradeCompletionRequest;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDisputeRequest;
-import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -51,7 +51,7 @@ public class TradeController {
 
     /** 의뢰자·제공자가 본인 서비스 거래를 조회해 서비스 거래 상세로 이동한다. */
     @GetMapping("/service")
-    public ResponseEntity<ApiResponse<List<ServiceTradeListItem>>> getMyServiceTrades(
+    public ResponseEntity<ApiResponse<ServiceTradeListPageResponse>> getMyServiceTrades(
             @RequestParam(name = "role", required = false) String role,
             @RequestParam(name = "status", required = false) String status,
             @RequestParam(name = "keyword", required = false) String keyword,

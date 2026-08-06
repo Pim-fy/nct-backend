@@ -152,6 +152,13 @@ public interface TradeMapper {
             @Param("offset") long offset,
             @Param("size") int size);
 
+    /** 서비스 거래 목록과 동일한 당사자·필터 조건의 전체 건수다. */
+    long countMyServiceTrades(
+            @Param("userId") long userId,
+            @Param("role") String role,
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
+
     List<TradeDeliveryProofFile> findTradeDeliveryProofFiles(
             @Param("deliveryId") long deliveryId);
 

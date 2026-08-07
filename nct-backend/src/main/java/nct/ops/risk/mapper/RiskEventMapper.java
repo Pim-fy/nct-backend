@@ -7,6 +7,7 @@ import nct.ops.risk.domain.RiskEvent;
 import nct.ops.risk.dto.AdminRiskEventListItemResponse;
 import nct.ops.risk.dto.AdminRiskEventTypeSummaryResponse;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -30,13 +31,21 @@ public interface RiskEventMapper {
     List<AdminRiskEventListItemResponse> findAdminRiskEvents(
             @Param("typeCode") String typeCode, @Param("processedYn") String processedYn,
             @Param("keyword") String keyword,
+            @Param("registeredFrom") LocalDateTime registeredFrom,
+            @Param("registeredTo") LocalDateTime registeredTo,
             @Param("offset") long offset, @Param("size") int size);
 
     long countAdminRiskEvents(@Param("typeCode") String typeCode,
                               @Param("processedYn") String processedYn,
-                              @Param("keyword") String keyword);
+                              @Param("keyword") String keyword,
+                              @Param("registeredFrom") LocalDateTime registeredFrom,
+                              @Param("registeredTo") LocalDateTime registeredTo);
 
     /** 대시보드가 재사용할 수 있는 위험 유형별 발생 건수다. */
     List<AdminRiskEventTypeSummaryResponse> countAdminRiskEventsByType(
-            @Param("processedYn") String processedYn);
+            @Param("typeCode") String typeCode,
+            @Param("processedYn") String processedYn,
+            @Param("keyword") String keyword,
+            @Param("registeredFrom") LocalDateTime registeredFrom,
+            @Param("registeredTo") LocalDateTime registeredTo);
 }

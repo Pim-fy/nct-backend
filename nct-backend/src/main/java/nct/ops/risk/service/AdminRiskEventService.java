@@ -1,5 +1,8 @@
 package nct.ops.risk.service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -34,22 +37,29 @@ public class AdminRiskEventService {
             String typeCode,
             String processed,
             String keyword,
+            LocalDate dateFrom,
+            LocalDate dateTo,
             int page,
             int size) {
         validatePage(page, size);
         String normalizedType = normalizeType(typeCode);
         String processedYn = normalizeProcessed(processed);
         String normalizedKeyword = normalizeKeyword(keyword);
+        DateRange dateRange = normalizeDateRange(dateFrom, dateTo);
         long totalItems = riskEventMapper.countAdminRiskEvents(
                 normalizedType,
                 processedYn,
-                normalizedKeyword);
+                normalizedKeyword,
+                dateRange.registeredFrom(),
+                dateRange.registeredTo());
         List<AdminRiskEventListItemResponse> items = totalItems == 0 || (long) (page - 1) * size >= totalItems
                 ? List.of()
                 : riskEventMapper.findAdminRiskEvents(
                         normalizedType,
                         processedYn,
                         normalizedKeyword,
+                        dateRange.registeredFrom(),
+                        dateRange.registeredTo(),
                         (long) (page - 1) * size,
                         size);
         return AdminRiskEventPageResponse.builder().items(items).page(page).size(size)
@@ -57,8 +67,19 @@ public class AdminRiskEventService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminRiskEventTypeSummaryResponse> getTypeSummary(String processed) {
-        return riskEventMapper.countAdminRiskEventsByType(normalizeProcessed(processed));
+    public List<AdminRiskEventTypeSummaryResponse> getTypeSummary(
+            String typeCode,
+            String processed,
+            String keyword,
+            LocalDate dateFrom,
+            LocalDate dateTo) {
+        DateRange dateRange = normalizeDateRange(dateFrom, dateTo);
+        return riskEventMapper.countAdminRiskEventsByType(
+                normalizeType(typeCode),
+                normalizeProcessed(processed),
+                normalizeKeyword(keyword),
+                dateRange.registeredFrom(),
+                dateRange.registeredTo());
     }
 
     private String normalizeType(String typeCode) {
@@ -92,5 +113,19 @@ public class AdminRiskEventService {
         if (page < 1 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+    }
+
+    private DateRange normalizeDateRange(LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "조회 시작일은 종료일보다 늦을 수 없습니다.");
+        }
+        return new DateRange(
+                dateFrom == null ? null : dateFrom.atStartOfDay(),
+                dateTo == null ? null : dateTo.atTime(LocalTime.MAX));
+    }
+
+    private record DateRange(LocalDateTime registeredFrom, LocalDateTime registeredTo) {
     }
 }

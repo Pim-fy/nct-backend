@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.point.domain.PointBalance;
 import nct.point.domain.PointLedger;
+import nct.point.dto.AdminEscrowSummary;
 
 /**
  * [포인트 - MyBatis 매퍼]
@@ -59,6 +60,9 @@ public interface PointMapper {
     /** 특정 참조 건으로 이미 정산 지급(SETTLE +)된 금액 — 0보다 크면 이중 정산·정산 후 환불을 거부한다 */
     long selectSettledAmtByRef(@Param("refTypeCd") String refTypeCd,
                                @Param("refSn") long refSn);
+
+    /** 담당자 7 · F-OPS-021: 거래 참조별 보관금·정산 원장 합계 배치 조회입니다. */
+    List<AdminEscrowSummary> findAdminEscrowSummaries(@Param("tradeIds") List<Long> tradeIds);
 
     /**
      * 특정 거래의 진행 중 거래 문제 건수 (F-SVC-015 정산 전환 차단 조건 — 거래 단위 버전)

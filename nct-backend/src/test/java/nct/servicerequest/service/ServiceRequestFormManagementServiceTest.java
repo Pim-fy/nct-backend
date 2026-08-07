@@ -3,6 +3,7 @@ package nct.servicerequest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -86,6 +87,23 @@ class ServiceRequestFormManagementServiceTest {
         assertThat(fieldCaptor.getValue().getSensitiveYn()).isEqualTo("N");
         assertThat(fieldCaptor.getValue().getPublicYn()).isEqualTo("Y");
         verify(mapper, never()).deactivateActiveTemplate(anyLong(), anyString());
+    }
+
+    @Test
+    void rejectsNewDraftWhenNormalizedDefinitionDidNotChange() {
+        ServiceRequestFormResponse header = new ServiceRequestFormResponse();
+        header.setFormTemplateSn(9L);
+        ServiceRequestFormResponse stored = storedOneInputForm();
+        when(mapper.findLatestFormHeaderByCategory(12L)).thenReturn(Optional.of(header));
+        when(readService.getFormByTemplateSn(9L)).thenReturn(stored);
+
+        assertThatThrownBy(() -> service.saveDraft(12L, oneInputStep(), "USR:7"))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("변경된 내용이 없어")
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(mapper, never()).disableUnpublishedDrafts(anyLong(), anyInt(), anyString());
+        verify(mapper, never()).insertTemplate(any(ServiceRequestFormResponse.class), anyString());
     }
 
     @Test
@@ -178,20 +196,93 @@ class ServiceRequestFormManagementServiceTest {
         ServiceRequestFormResponse draft = new ServiceRequestFormResponse();
         draft.setFormTemplateSn(33L);
         draft.setCatSn(12L);
+        draft.setFormVersion(2);
         draft.setActiveYn("N");
         draft.setUseYn("Y");
         ServiceRequestFormResponse published = new ServiceRequestFormResponse();
         published.setFormTemplateSn(33L);
         published.setActiveYn("Y");
         when(mapper.findFormHeaderForUpdate(12L, 33L)).thenReturn(Optional.of(draft));
-        when(mapper.activateTemplate(12L, 33L, "USR:7")).thenReturn(1);
+        when(mapper.findActiveVersion(12L)).thenReturn(1);
+        when(mapper.activateTemplate(12L, 33L, 1, "USR:7")).thenReturn(1);
         when(readService.getFormByTemplateSn(33L)).thenReturn(published);
 
         ServiceRequestFormResponse result = service.publish(12L, 33L, "USR:7");
 
         assertThat(result.getActiveYn()).isEqualTo("Y");
         verify(mapper).deactivateActiveTemplate(12L, "USR:7");
-        verify(mapper).activateTemplate(12L, 33L, "USR:7");
+        verify(mapper).activateTemplate(12L, 33L, 1, "USR:7");
+    }
+
+    @Test
+    void rejectsRepublishingPastVersion() {
+        ServiceRequestFormResponse pastPublished = new ServiceRequestFormResponse();
+        pastPublished.setFormTemplateSn(31L);
+        pastPublished.setFormVersion(1);
+        pastPublished.setActiveYn("N");
+        pastPublished.setUseYn("Y");
+        when(mapper.findFormHeaderForUpdate(12L, 31L))
+                .thenReturn(Optional.of(pastPublished));
+        when(mapper.findActiveVersion(12L)).thenReturn(2);
+
+        assertThatThrownBy(() -> service.publish(12L, 31L, "USR:7"))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("다시 발행할 수 없습니다")
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(mapper, never()).deactivateActiveTemplate(anyLong(), anyString());
+        verify(mapper, never()).activateTemplate(anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void discardsOnlyInactiveDraft() {
+        ServiceRequestFormResponse draft = new ServiceRequestFormResponse();
+        draft.setFormTemplateSn(33L);
+        draft.setFormVersion(2);
+        draft.setActiveYn("N");
+        draft.setUseYn("Y");
+        when(mapper.findFormHeaderForUpdate(12L, 33L)).thenReturn(Optional.of(draft));
+        when(mapper.findActiveVersion(12L)).thenReturn(1);
+        when(mapper.discardDraft(12L, 33L, 1, "USR:7")).thenReturn(1);
+
+        ServiceRequestFormResponse result = service.discardDraft(12L, 33L, "USR:7");
+
+        assertThat(result.getUseYn()).isEqualTo("N");
+        verify(mapper).discardDraft(12L, 33L, 1, "USR:7");
+    }
+
+    @Test
+    void rejectsDiscardingPublishedForm() {
+        ServiceRequestFormResponse active = new ServiceRequestFormResponse();
+        active.setFormTemplateSn(33L);
+        active.setActiveYn("Y");
+        active.setUseYn("Y");
+        when(mapper.findFormHeaderForUpdate(12L, 33L)).thenReturn(Optional.of(active));
+
+        assertThatThrownBy(() -> service.discardDraft(12L, 33L, "USR:7"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(mapper, never()).discardDraft(anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void rejectsDiscardingPastPublishedVersion() {
+        ServiceRequestFormResponse pastPublished = new ServiceRequestFormResponse();
+        pastPublished.setFormTemplateSn(31L);
+        pastPublished.setFormVersion(1);
+        pastPublished.setActiveYn("N");
+        pastPublished.setUseYn("Y");
+        when(mapper.findFormHeaderForUpdate(12L, 31L))
+                .thenReturn(Optional.of(pastPublished));
+        when(mapper.findActiveVersion(12L)).thenReturn(2);
+
+        assertThatThrownBy(() -> service.discardDraft(12L, 31L, "USR:7"))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("과거에 발행된")
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(mapper, never()).discardDraft(anyLong(), anyLong(), anyInt(), anyString());
     }
 
     private AdminServiceRequestFormDraftRequest oneInputStep() {
@@ -208,6 +299,27 @@ class ServiceRequestFormManagementServiceTest {
                         false,
                         List.of(),
                         List.of(field("field_1")))));
+    }
+
+    private ServiceRequestFormResponse storedOneInputForm() {
+        ServiceRequestFormField field = new ServiceRequestFormField();
+        field.setFieldKey("field_1");
+        field.setLabel("상세 내용");
+        field.setType("TEXT");
+        field.setRequiredYn("Y");
+        field.setRequireDigitYn("N");
+        field.setSensitiveYn("N");
+        ServiceRequestFormStep step = new ServiceRequestFormStep();
+        step.setStepKey("step_1");
+        step.setTitle("요청 내용");
+        step.setType("FORM");
+        step.setFields(List.of(field));
+        ServiceRequestFormResponse form = new ServiceRequestFormResponse();
+        form.setFormTemplateSn(9L);
+        form.setSubtitle("안내");
+        form.setUiMetaJson("{\"color\":\"#0064ff\"}");
+        form.setSteps(List.of(step));
+        return form;
     }
 
     private FieldRequest field(String key) {

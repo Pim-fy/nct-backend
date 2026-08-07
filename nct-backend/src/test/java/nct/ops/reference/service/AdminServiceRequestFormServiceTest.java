@@ -59,6 +59,35 @@ class AdminServiceRequestFormServiceTest {
         assertThat(historyCaptor.getValue().reason()).contains("폼 발행 v2");
     }
 
+    @Test
+    void discardingDraftKeepsPublishedVersionAndRecordsAudit() {
+        Category category = category();
+        category.setUseYn("Y");
+        ServiceRequestFormResponse discarded = new ServiceRequestFormResponse();
+        discarded.setFormTemplateSn(40L);
+        discarded.setFormVersion(2);
+        discarded.setActiveYn("N");
+        ServiceRequestFormResponse active = new ServiceRequestFormResponse();
+        active.setFormTemplateSn(39L);
+        active.setFormVersion(1);
+        active.setActiveYn("Y");
+        when(categoryMapper.findChildByIdAndDomainForUpdate(16L, "CATC0002"))
+                .thenReturn(Optional.of(category));
+        when(managementService.discardDraft(16L, 40L, "USR:7")).thenReturn(discarded);
+        when(managementService.getLatestForm(16L)).thenReturn(Optional.of(active));
+        when(managementService.getActiveVersion(16L)).thenReturn(1);
+
+        var result = service.discardDraft(16L, 40L, 7L);
+
+        assertThat(result.form()).isSameAs(active);
+        assertThat(result.activeVersion()).isEqualTo(1);
+        assertThat(result.draft()).isFalse();
+        ArgumentCaptor<CategoryChangeHistoryCommand> historyCaptor =
+                ArgumentCaptor.forClass(CategoryChangeHistoryCommand.class);
+        verify(historyPort).record(historyCaptor.capture());
+        assertThat(historyCaptor.getValue().reason()).isEqualTo("서비스 요청 폼 초안 폐기 v2");
+    }
+
     private Category category() {
         Category category = new Category();
         category.setCategorySn(16L);

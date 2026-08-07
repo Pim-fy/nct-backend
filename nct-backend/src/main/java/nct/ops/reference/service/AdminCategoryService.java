@@ -23,6 +23,7 @@ import nct.ops.reference.dto.AdminCategoryResponse;
 import nct.ops.reference.mapper.CategoryMapper;
 import nct.ops.reference.port.CategoryChangeHistoryCommand;
 import nct.ops.reference.port.CategoryChangeHistoryPort;
+import nct.servicerequest.dto.ServiceRequestFormVersionStatus;
 import nct.servicerequest.service.ServiceRequestFormManagementService;
 
 /**
@@ -49,8 +50,7 @@ public class AdminCategoryService {
     @Transactional(readOnly = true)
     public List<AdminCategoryResponse> getCategories(String domainCode) {
         validateDomain(domainCode);
-        return categoryMapper.findAllChildrenByDomain(domainCode).stream()
-                .map(AdminCategoryResponse::from).toList();
+        return responses(domainCode, categoryMapper.findAllChildrenByDomain(domainCode));
     }
 
     @Transactional
@@ -138,7 +138,7 @@ public class AdminCategoryService {
                 ? currentIndex - 1
                 : currentIndex + 1;
         if (destinationIndex < 0 || destinationIndex >= categories.size()) {
-            return categories.stream().map(AdminCategoryResponse::from).toList();
+            return responses(domainCode, categories);
         }
 
         Collections.swap(categories, currentIndex, destinationIndex);
@@ -200,7 +200,7 @@ public class AdminCategoryService {
             audit("REORDER", actorUserId, category,
                     "카테고리 표시 순서 변경", beforeSummary);
         }
-        return categories.stream().map(AdminCategoryResponse::from).toList();
+        return responses(domainCode, categories);
     }
 
     private void validate(String domainCode, AdminCategoryRequest request, Long actorUserId) {
@@ -233,8 +233,27 @@ public class AdminCategoryService {
 
     private void rejectDuplicate(String domainCode, String name, Long excludedId) {
         if (categoryMapper.countByName(domainCode, name, excludedId) > 0) {
-            throw new CustomException(ErrorCode.CONFLICT);
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "같은 분류에 동일한 이름의 카테고리가 이미 있습니다.");
         }
+    }
+
+    private List<AdminCategoryResponse> responses(
+            String domainCode,
+            List<Category> categories) {
+        if (!SERVICE_DOMAIN.equals(domainCode) || categories.isEmpty()) {
+            return categories.stream().map(AdminCategoryResponse::from).toList();
+        }
+        Map<Long, ServiceRequestFormVersionStatus> formStatuses =
+                formManagementService.getVersionStatuses(categories.stream()
+                        .map(Category::getCategorySn)
+                        .toList());
+        return categories.stream()
+                .map(category -> AdminCategoryResponse.from(
+                        category,
+                        formStatuses.get(category.getCategorySn())))
+                .toList();
     }
 
     private Long lockDomain(String domainCode) {

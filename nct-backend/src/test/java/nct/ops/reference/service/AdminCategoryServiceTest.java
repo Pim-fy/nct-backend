@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ import nct.ops.reference.mapper.CategoryMapper;
 import nct.ops.reference.port.CategoryChangeHistoryCommand;
 import nct.ops.reference.port.CategoryChangeHistoryPort;
 import nct.servicerequest.service.ServiceRequestFormManagementService;
+import nct.servicerequest.dto.ServiceRequestFormVersionStatus;
 
 /** 담당자 7 · F-COM-003: 중복, 도메인, 멱등 변경 규칙을 검증한다. */
 class AdminCategoryServiceTest {
@@ -127,6 +129,42 @@ class AdminCategoryServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
         verify(mapper, never()).insert(any(Category.class), any(String.class));
+    }
+
+    @Test
+    void rejectsDuplicateNameBeforeUpdate() {
+        Category stored = category(12L, 10L, "이사", 11, "Y", "Y");
+        when(mapper.findRootByDomainForUpdate("CATC0002"))
+                .thenReturn(Optional.of(category(10L, null, "서비스 거래", 10, "N", "Y")));
+        when(mapper.findChildByIdAndDomainForUpdate(12L, "CATC0002"))
+                .thenReturn(Optional.of(stored));
+        when(mapper.countByName("CATC0002", "청소", 12L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.updateCategory(
+                "CATC0002", 12L, request(" 청소 ", 11, true, true), 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+
+        verify(mapper, never()).update(any(Category.class), any(String.class));
+    }
+
+    @Test
+    void returnsServiceFormVersionsWithCategoryList() {
+        Category moving = category(12L, 10L, "이사", 11, "Y", "Y");
+        ServiceRequestFormVersionStatus status = new ServiceRequestFormVersionStatus();
+        status.setCatSn(12L);
+        status.setActiveVersion(1);
+        status.setDraftVersion(2);
+        when(mapper.findAllChildrenByDomain("CATC0002")).thenReturn(List.of(moving));
+        when(formManagementService.getVersionStatuses(List.of(12L)))
+                .thenReturn(Map.of(12L, status));
+
+        var result = service.getCategories("CATC0002");
+
+        assertThat(result).singleElement().satisfies(category -> {
+            assertThat(category.activeFormVersion()).isEqualTo(1);
+            assertThat(category.draftFormVersion()).isEqualTo(2);
+        });
     }
 
     @Test

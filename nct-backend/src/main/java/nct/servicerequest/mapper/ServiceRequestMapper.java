@@ -47,6 +47,11 @@ public interface ServiceRequestMapper {
 
     int updateServiceRequest(ServiceRequest serviceRequest);
 
+    int markServiceRequestMatched(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("usrSn") Long usrSn,
+            @Param("updtId") String updtId);
+
     int closeServiceRequest(@Param("svcReqSn") Long svcReqSn, @Param("usrSn") Long usrSn, @Param("updtId") String updtId);
 
     void deleteServiceRequest(@Param("svcReqSn") Long svcReqSn, @Param("usrSn") Long usrSn);

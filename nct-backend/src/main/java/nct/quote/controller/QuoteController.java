@@ -85,6 +85,18 @@ public class QuoteController {
     }
 
     /** 받은 견적 목록 (요청자용 — ROLE_USER) */
+    /** 제공자 견적 제출 여부와 수정 대상 견적을 확인하는 화면 연결 API. */
+    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    @GetMapping("/me/service-request/{svcReqSn}")
+    public ResponseEntity<ApiResponse<QuoteResponse>> getMyActiveQuote(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "svcReqSn") Long svcReqSn) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getMyActiveQuote(usrSn, svcReqSn)));
+    }
+
     @PreAuthorize("hasRole('USER')")
     @GetMapping("/service-request/{svcReqSn}")
     public ResponseEntity<ApiResponse<List<ReceivedQuoteResponse>>> getReceivedQuotes(

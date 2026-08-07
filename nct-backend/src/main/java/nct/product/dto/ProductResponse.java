@@ -57,4 +57,7 @@ public class ProductResponse {
     @Setter private Long tradeSn;
     @Setter private String tradeStatusCd;
     @Setter private String tradeMethodCd;
+    @Setter private BigDecimal tradeAmount;
+    @Setter private LocalDateTime tradeCreatedAt;
+    @Setter private LocalDateTime tradeCompletedAt;
 }

@@ -18,6 +18,7 @@
         <result property="svcReqUpdtDt"   column="SVC_REQ_UPDT_DT"  />
         <result property="repImageUrl"    column="REP_IMAGE_URL"    />
         <result property="thumbnailUrl"   column="THUMBNAIL_URL"    />
+        <result property="quoteCount"     column="QUOTE_CNT"        />
     </resultMap>
 
     <resultMap id="ServiceRequestEntityMap" type="nct.servicerequest.domain.ServiceRequest">
@@ -235,9 +236,15 @@
                   JOIN FILES f ON f.FL_SN = i.FL_SN AND f.FL_USE_YN = 'Y'
                  WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
                  ORDER BY i.SVC_REQ_IMG_SORT_NO ASC
-                 LIMIT 1) AS REP_IMAGE_URL
+                 LIMIT 1) AS REP_IMAGE_URL,
+               COALESCE(quoteCount.QUOTE_CNT, 0) AS QUOTE_CNT
           FROM SERVICE_REQUEST s
           JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+          LEFT JOIN (
+              SELECT SVC_REQ_SN, COUNT(*) AS QUOTE_CNT
+                FROM QUOTE
+               GROUP BY SVC_REQ_SN
+          ) quoteCount ON quoteCount.SVC_REQ_SN = s.SVC_REQ_SN
          WHERE s.USR_SN = #{usrSn}
            AND s.SVC_REQ_USE_YN = 'Y'
            <choose>
@@ -271,6 +278,18 @@
          WHERE SVC_REQ_SN  = #{svcReqSn}
            AND USR_SN      = #{usrSn}
            AND SVC_REQ_STATUS_CD = 'SVCC0001'
+           AND SVC_REQ_USE_YN = 'Y'
+    </update>
+
+    <!-- F-SVC-010: 견적 선택 직후 매칭 완료로 전이한다. 이후 거래·보관금·채팅방 실패 시 상위 트랜잭션이 함께 롤백한다. -->
+    <update id="markServiceRequestMatched">
+        /* ServiceRequestMapper.markServiceRequestMatched */
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0003',
+               SVC_REQ_UPDT_ID   = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN = #{usrSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0002'
            AND SVC_REQ_USE_YN = 'Y'
     </update>
 

@@ -295,6 +295,9 @@ public class ProductService {
                 p.setTradeSn(tradeStatus.getTradeSn());
                 p.setTradeStatusCd(tradeStatus.getTradeStatusCd());
                 p.setTradeMethodCd(tradeStatus.getTradeMethodCd());
+                p.setTradeAmount(tradeStatus.getTradeAmount());
+                p.setTradeCreatedAt(tradeStatus.getCreatedAt());
+                p.setTradeCompletedAt(tradeStatus.getCompletedAt());
             }
         });
 

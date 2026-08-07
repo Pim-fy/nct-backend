@@ -15,6 +15,9 @@ import nct.provider.dto.ProviderProfileSearchItem;
 public interface ProviderProfileMapper {
     Optional<ProviderProfileResponse> findActiveByUserSn(@Param("userSn") Long userSn);
 
+    /** 담당자 7 F-PROV-013: 프로필 작성 여부와 무관하게 실제 활성 서비스 분야 권한을 조회한다. */
+    List<String> findActiveCategoryNames(@Param("userSn") Long userSn);
+
     /** 담당자 7 · F-COM-002: 활성 계정·프로필과 승인 서비스 카테고리를 기준으로 검색한다. */
     List<ProviderProfileSearchItem> searchApprovedProfiles(
             @Param("keyword") String keyword,

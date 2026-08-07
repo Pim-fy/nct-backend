@@ -1,6 +1,8 @@
 package nct.ops.servicequery.service;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,7 +12,13 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.reference.service.AdminCategoryService;
 import nct.ops.servicequery.dto.AdminServiceRequestListRequest;
+import nct.ops.servicequery.dto.AdminServiceRequestDetailResponse;
+import nct.ops.servicequery.dto.AdminServiceRequestIntegratedStatus;
+import nct.ops.servicequery.dto.AdminServiceRequestListItemResponse;
+import nct.ops.servicequery.dto.AdminServiceRequestPageResponse;
 import nct.ops.security.service.SensitiveDataMasker;
+import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.port.AdminQuoteSummaryReader;
 import nct.servicerequest.dto.AdminServiceRequestDetail;
 import nct.servicerequest.dto.AdminServiceRequestPage;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
@@ -31,9 +39,10 @@ public class AdminServiceRequestQueryService {
     private final AdminServiceRequestReader reader;
     private final SensitiveDataMasker sensitiveDataMasker;
     private final AdminCategoryService adminCategoryService;
+    private final AdminQuoteSummaryReader quoteSummaryReader;
 
     @Transactional(readOnly = true)
-    public AdminServiceRequestPage getPage(AdminServiceRequestListRequest request) {
+    public AdminServiceRequestPageResponse getPage(AdminServiceRequestListRequest request) {
         AdminServiceRequestListRequest normalized = request == null
                 ? new AdminServiceRequestListRequest()
                 : request;
@@ -48,18 +57,63 @@ public class AdminServiceRequestQueryService {
                 .size(normalized.getSize())
                 .build());
         page.getItems().forEach(item -> item.setTitle(sensitiveDataMasker.maskText(item.getTitle())));
-        return page;
+        List<Long> serviceRequestIds = page.getItems().stream()
+                .map(item -> item.getServiceRequestId())
+                .toList();
+        Map<Long, AdminQuoteSummary> quoteSummaries = quoteSummaryReader.findSummaries(serviceRequestIds);
+        List<AdminServiceRequestListItemResponse> items = page.getItems().stream()
+                .map(item -> {
+                    AdminQuoteSummary quote = quoteSummaries.get(item.getServiceRequestId());
+                    return AdminServiceRequestListItemResponse.from(
+                            item,
+                            quote,
+                            integratedStatus(item.getStatusCode(), quote));
+                })
+                .toList();
+        return new AdminServiceRequestPageResponse(
+                items,
+                page.getPage(),
+                page.getSize(),
+                page.getTotalItems(),
+                page.getTotalPages());
     }
 
     @Transactional(readOnly = true)
-    public AdminServiceRequestDetail getDetail(Long serviceRequestId) {
+    public AdminServiceRequestDetailResponse getDetail(Long serviceRequestId) {
         if (serviceRequestId == null || serviceRequestId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         AdminServiceRequestDetail detail = reader.readDetail(serviceRequestId);
         detail.setTitle(sensitiveDataMasker.maskText(detail.getTitle()));
         detail.setContent(sensitiveDataMasker.maskText(detail.getContent()));
-        return detail;
+        AdminQuoteSummary quote = quoteSummaryReader.findSummaries(List.of(serviceRequestId))
+                .get(serviceRequestId);
+        return AdminServiceRequestDetailResponse.from(
+                detail,
+                quote,
+                integratedStatus(detail.getStatusCode(), quote));
+    }
+
+    private AdminServiceRequestIntegratedStatus integratedStatus(
+            String sourceStatusCode,
+            AdminQuoteSummary quote) {
+        if (sourceStatusCode == null) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "서비스 요청 상태가 없습니다.");
+        }
+        int activeQuoteCount = quote == null ? 0 : quote.getActiveQuoteCount();
+        return switch (sourceStatusCode) {
+            case "SVCC0001" -> new AdminServiceRequestIntegratedStatus("RECEIVED", "접수");
+            case "SVCC0002" -> activeQuoteCount > 0
+                    ? new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "처리중")
+                    : new AdminServiceRequestIntegratedStatus("RECEIVED", "접수");
+            case "SVCC0003" -> new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "처리중");
+            case "SVCC0004" -> new AdminServiceRequestIntegratedStatus("COMPLETED", "완료");
+            default -> throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "알 수 없는 서비스 요청 상태입니다: " + sourceStatusCode);
+        };
     }
 
     private void normalize(AdminServiceRequestListRequest request) {

@@ -24,6 +24,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
+import nct.quote.dto.AdminQuoteSummary;
 import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteSubmitRequest;
@@ -103,6 +104,59 @@ class QuoteServiceTest {
                 .hasMessageContaining("본인이 등록한 서비스 요청");
 
         verify(quoteMapper, never()).insertQuote(any(Quote.class));
+    }
+
+    @Test
+    void returnsAdminSummariesInOneMapperCall() {
+        AdminQuoteSummary first = adminSummary(10L, 2, 1, 0, null);
+        AdminQuoteSummary second = adminSummary(11L, 3, 0, 1, 99L);
+        second.setSelectedProviderUserId(22L);
+        second.setSelectedAmount(120_000L);
+        second.setSelectedQuoteStatusCode("QUTC0004");
+        when(quoteMapper.findAdminSummaries(List.of(10L, 11L))).thenReturn(List.of(first, second));
+
+        Map<Long, AdminQuoteSummary> result = service.findSummaries(List.of(10L, 11L, 10L));
+
+        assertThat(result).containsOnlyKeys(10L, 11L);
+        assertThat(result.get(11L).getSelectedQuoteId()).isEqualTo(99L);
+        verify(quoteMapper).findAdminSummaries(List.of(10L, 11L));
+    }
+
+    @Test
+    void rejectsMultipleSelectedQuotesInAdminSummary() {
+        AdminQuoteSummary inconsistent = adminSummary(10L, 2, 0, 2, 99L);
+        inconsistent.setSelectedProviderUserId(22L);
+        inconsistent.setSelectedAmount(120_000L);
+        inconsistent.setSelectedQuoteStatusCode("QUTC0004");
+        when(quoteMapper.findAdminSummaries(List.of(10L))).thenReturn(List.of(inconsistent));
+
+        assertThatThrownBy(() -> service.findSummaries(List.of(10L)))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsUnsupportedQuoteStatusInAdminSummary() {
+        AdminQuoteSummary inconsistent = adminSummary(10L, 1, 0, 0, null);
+        inconsistent.setUnsupportedQuoteCount(1);
+        when(quoteMapper.findAdminSummaries(List.of(10L))).thenReturn(List.of(inconsistent));
+
+        assertThatThrownBy(() -> service.findSummaries(List.of(10L)))
+                .isInstanceOf(CustomException.class);
+    }
+
+    private AdminQuoteSummary adminSummary(
+            Long serviceRequestId,
+            int totalQuoteCount,
+            int activeQuoteCount,
+            int selectedQuoteCount,
+            Long selectedQuoteId) {
+        AdminQuoteSummary summary = new AdminQuoteSummary();
+        summary.setServiceRequestId(serviceRequestId);
+        summary.setTotalQuoteCount(totalQuoteCount);
+        summary.setActiveQuoteCount(activeQuoteCount);
+        summary.setSelectedQuoteCount(selectedQuoteCount);
+        summary.setSelectedQuoteId(selectedQuoteId);
+        return summary;
     }
 
     @Test

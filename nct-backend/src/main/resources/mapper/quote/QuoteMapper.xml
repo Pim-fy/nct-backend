@@ -27,6 +27,9 @@
         <result property="reviseCnt"      column="QUT_REVISE_CNT"   />
         <result property="registeredAt"   column="QUT_REG_DT"       />
         <result property="updatedAt"      column="QUT_UPDT_DT"      />
+        <result property="catNm"          column="CAT_NM"           />
+        <result property="svcReqBdgtAmt"  column="SVC_REQ_BDGT_AMT" />
+        <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
     </resultMap>
 
     <resultMap id="QuoteEntityMap" type="nct.quote.domain.Quote">
@@ -104,9 +107,15 @@
     <select id="findMyQuotes" resultMap="QuoteResponseMap">
         /* QuoteMapper.findMyQuotes */
         SELECT q.QUT_SN, q.SVC_REQ_SN,
+               sr.SVC_REQ_TTL,
+               c.CAT_NM,
+               sr.SVC_REQ_BDGT_AMT,
+               sr.SVC_REQ_REG_DT,
                q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
                q.QUT_REG_DT, q.QUT_UPDT_DT
           FROM QUOTE q
+          LEFT JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
+          LEFT JOIN CATEGORY c ON c.CAT_SN = sr.CAT_SN
          WHERE q.USR_SN = #{usrSn}
          ORDER BY q.QUT_REG_DT DESC
          LIMIT #{size} OFFSET #{offset}
@@ -124,9 +133,15 @@
     <select id="findMyActiveQuote" resultMap="QuoteResponseMap">
         /* QuoteMapper.findMyActiveQuote */
         SELECT q.QUT_SN, q.SVC_REQ_SN,
+               sr.SVC_REQ_TTL,
+               c.CAT_NM,
+               sr.SVC_REQ_BDGT_AMT,
+               sr.SVC_REQ_REG_DT,
                q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
                q.QUT_REG_DT, q.QUT_UPDT_DT
           FROM QUOTE q
+          LEFT JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
+          LEFT JOIN CATEGORY c ON c.CAT_SN = sr.CAT_SN
          WHERE q.USR_SN = #{usrSn}
            AND q.SVC_REQ_SN = #{svcReqSn}
            AND q.QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')

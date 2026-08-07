@@ -24,4 +24,7 @@ public class QuoteResponse {
     private LocalDateTime registeredAt;
     private LocalDateTime updatedAt;
     private List<QuoteAttachmentResponse> attachments;
+    private String catNm;
+    private Long svcReqBdgtAmt;
+    private LocalDateTime svcReqRegDt;
 }

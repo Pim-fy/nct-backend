@@ -65,6 +65,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         Quote quote = Quote.builder()
                 .svcReqSn(request.svcReqSn())
                 .usrSn(usrSn)
+                .qutTtl(request.title())
                 .qutAmt(request.amount())
                 .qutCn(request.content())
                 .qutStatusCd(STATUS_SUBMITTED)

@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 
 public record QuoteSubmitRequest(
         @NotNull Long svcReqSn,
+        @Size(max = 50) String title,
         @NotNull @Positive Long amount,
         @Size(max = 4000) String content,
         @NotEmpty @Size(max = 5) List<Long> photoFlSns) {

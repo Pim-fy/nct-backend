@@ -23,6 +23,7 @@
         <result property="svcReqTitle"    column="SVC_REQ_TTL"      />
         <result property="amount"         column="QUT_AMT"          />
         <result property="content"        column="QUT_CN"           />
+        <result property="qutTtl"         column="QUT_TTL"          />
         <result property="statusCode"     column="QUT_STATUS_CD"    />
         <result property="reviseCnt"      column="QUT_REVISE_CNT"   />
         <result property="registeredAt"   column="QUT_REG_DT"       />
@@ -30,6 +31,7 @@
         <result property="catNm"          column="CAT_NM"           />
         <result property="svcReqBdgtAmt"  column="SVC_REQ_BDGT_AMT" />
         <result property="svcReqRegDt"    column="SVC_REQ_REG_DT"   />
+        <result property="svcReqHopeDt"   column="HOPE_DT"          />
     </resultMap>
 
     <resultMap id="QuoteEntityMap" type="nct.quote.domain.Quote">
@@ -38,6 +40,7 @@
         <result property="usrSn"        column="USR_SN"         />
         <result property="qutAmt"       column="QUT_AMT"        />
         <result property="qutCn"        column="QUT_CN"         />
+        <result property="qutTtl"       column="QUT_TTL"        />
         <result property="qutStatusCd"  column="QUT_STATUS_CD"  />
         <result property="qutReviseCnt" column="QUT_REVISE_CNT" />
         <result property="qutRegId"     column="QUT_REG_ID"     />
@@ -56,17 +59,17 @@
     <insert id="insertQuote" useGeneratedKeys="true" keyProperty="qutSn">
         /* QuoteMapper.insertQuote */
         INSERT INTO QUOTE
-            (SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_STATUS_CD, QUT_REVISE_CNT,
+            (SVC_REQ_SN, USR_SN, QUT_TTL, QUT_AMT, QUT_CN, QUT_STATUS_CD, QUT_REVISE_CNT,
              QUT_REG_ID, QUT_UPDT_ID)
         VALUES
-            (#{svcReqSn}, #{usrSn}, #{qutAmt}, #{qutCn}, #{qutStatusCd}, 0,
+            (#{svcReqSn}, #{usrSn}, #{qutTtl}, #{qutAmt}, #{qutCn}, #{qutStatusCd}, 0,
              #{qutRegId}, #{qutUpdtId})
     </insert>
 
     <!-- ── 견적 단건 조회 (읽기 전용: 소유권 확인·이력 조회 용도) ── -->
     <select id="findQuoteById" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteById */
-        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN,
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_TTL,
                QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
           FROM QUOTE
          WHERE QUT_SN = #{qutSn}
@@ -75,7 +78,7 @@
     <!-- ── 견적 단건 조회 (FOR UPDATE: 수정·철회 시 동시성 제어) ── -->
     <select id="findQuoteByIdForUpdate" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteByIdForUpdate */
-        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN,
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_TTL,
                QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
           FROM QUOTE
          WHERE QUT_SN = #{qutSn}
@@ -88,6 +91,7 @@
         UPDATE QUOTE
            SET QUT_AMT        = #{req.amount},
                QUT_CN         = #{req.content},
+               QUT_TTL        = #{req.title},
                QUT_STATUS_CD  = 'QUTC0002',
                QUT_REVISE_CNT = QUT_REVISE_CNT + 1,
                QUT_UPDT_ID    = #{updtId}
@@ -111,11 +115,19 @@
                c.CAT_NM,
                sr.SVC_REQ_BDGT_AMT,
                sr.SVC_REQ_REG_DT,
-               q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
+               hope.HOPE_DT,
+               q.QUT_AMT, q.QUT_CN, q.QUT_TTL, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
                q.QUT_REG_DT, q.QUT_UPDT_DT
           FROM QUOTE q
           LEFT JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
           LEFT JOIN CATEGORY c ON c.CAT_SN = sr.CAT_SN
+          LEFT JOIN (
+              SELECT i.SVC_REQ_SN, MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')) AS HOPE_DT
+                FROM SVC_REQ_ITEM i
+                JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+               WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+               GROUP BY i.SVC_REQ_SN
+          ) hope ON hope.SVC_REQ_SN = q.SVC_REQ_SN
          WHERE q.USR_SN = #{usrSn}
          ORDER BY q.QUT_REG_DT DESC
          LIMIT #{size} OFFSET #{offset}
@@ -137,11 +149,19 @@
                c.CAT_NM,
                sr.SVC_REQ_BDGT_AMT,
                sr.SVC_REQ_REG_DT,
-               q.QUT_AMT, q.QUT_CN, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
+               hope.HOPE_DT,
+               q.QUT_AMT, q.QUT_CN, q.QUT_TTL, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
                q.QUT_REG_DT, q.QUT_UPDT_DT
           FROM QUOTE q
           LEFT JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
           LEFT JOIN CATEGORY c ON c.CAT_SN = sr.CAT_SN
+          LEFT JOIN (
+              SELECT i.SVC_REQ_SN, MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')) AS HOPE_DT
+                FROM SVC_REQ_ITEM i
+                JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+               WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+               GROUP BY i.SVC_REQ_SN
+          ) hope ON hope.SVC_REQ_SN = q.SVC_REQ_SN
          WHERE q.USR_SN = #{usrSn}
            AND q.SVC_REQ_SN = #{svcReqSn}
            AND q.QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')

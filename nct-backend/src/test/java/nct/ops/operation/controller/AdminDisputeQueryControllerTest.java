@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import nct.ops.operation.service.AdminDisputeQueryService;
+import nct.ops.operation.service.AdminDisputeDecisionService;
 
 /** 담당자 7 · F-OPS-005: 관리자 권한 선언과 상세 번호 전달을 검증합니다. */
 class AdminDisputeQueryControllerTest {
@@ -23,7 +24,8 @@ class AdminDisputeQueryControllerTest {
     @Test
     void forwardsDisputeNumberToService() {
         AdminDisputeQueryService service = mock(AdminDisputeQueryService.class);
-        AdminDisputeQueryController controller = new AdminDisputeQueryController(service);
+        AdminDisputeDecisionService decisionService = mock(AdminDisputeDecisionService.class);
+        AdminDisputeQueryController controller = new AdminDisputeQueryController(service, decisionService);
 
         var response = controller.getDetail(81L);
 

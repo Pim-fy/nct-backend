@@ -17,6 +17,14 @@ public class AdminDisputeDetailResponse {
     private final String disputeTypeName;
     private final String disputeStatusCode;
     private final String disputeStatusName;
+    private final String disputeContent;
+    private final String disputeResultCode;
+    private final String disputeResultName;
+    private final String processReason;
+    private final Long processorUserSn;
+    private final LocalDateTime processedAt;
+    private final String previousTradeStatusCode;
+    private final String previousTradeStatusName;
     private final String tradeTypeCode;
     private final String tradeTypeName;
     private final String tradeStatusCode;

@@ -18,6 +18,12 @@ public class AdminTradeDisputeRecord {
     private Long disputerUserSn;
     private String disputeTypeCode;
     private String disputeStatusCode;
+    private String disputeContent;
+    private String disputeResultCode;
+    private String processReason;
+    private Long processorUserSn;
+    private LocalDateTime processedAt;
+    private String previousTradeStatusCode;
     private LocalDateTime registeredAt;
     private LocalDateTime updatedAt;
     private String tradeTypeCode;

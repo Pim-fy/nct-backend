@@ -16,6 +16,7 @@ import nct.ops.operation.dto.AdminDisputeListRequest;
 import nct.ops.operation.dto.AdminDisputePageResponse;
 import nct.ops.reference.domain.CommonCode;
 import nct.ops.reference.service.ReferenceDataService;
+import nct.ops.security.service.SensitiveDataMasker;
 import nct.settlement.domain.Settlement;
 import nct.settlement.domain.SettlementStatus;
 import nct.settlement.exception.SettlementException;
@@ -34,6 +35,7 @@ public class AdminDisputeQueryService {
 
     private static final String DISPUTE_TYPE_GROUP = "TRDG04";
     private static final String DISPUTE_STATUS_GROUP = "TRDG05";
+    private static final String DISPUTE_RESULT_GROUP = "TRDG06";
     private static final String TRADE_TYPE_GROUP = "TRDG01";
     private static final String TRADE_STATUS_GROUP = "TRDG02";
     private static final String SETTLEMENT_STATUS_GROUP = "STLG01";
@@ -42,6 +44,7 @@ public class AdminDisputeQueryService {
     private final AdminTradeDisputeReader disputeReader;
     private final SettlementService settlementService;
     private final ReferenceDataService referenceDataService;
+    private final SensitiveDataMasker sensitiveDataMasker;
 
     @Transactional(readOnly = true)
     public AdminDisputePageResponse getPage(AdminDisputeListRequest request) {
@@ -78,6 +81,15 @@ public class AdminDisputeQueryService {
                 .disputeTypeName(names.nameOf(names.disputeTypes(), record.getDisputeTypeCode()))
                 .disputeStatusCode(record.getDisputeStatusCode())
                 .disputeStatusName(names.nameOf(names.disputeStatuses(), record.getDisputeStatusCode()))
+                .disputeContent(sensitiveDataMasker.maskText(record.getDisputeContent()))
+                .disputeResultCode(record.getDisputeResultCode())
+                .disputeResultName(names.nameOf(names.disputeResults(), record.getDisputeResultCode()))
+                .processReason(sensitiveDataMasker.maskText(record.getProcessReason()))
+                .processorUserSn(record.getProcessorUserSn())
+                .processedAt(record.getProcessedAt())
+                .previousTradeStatusCode(record.getPreviousTradeStatusCode())
+                .previousTradeStatusName(names.nameOf(
+                        names.tradeStatuses(), record.getPreviousTradeStatusCode()))
                 .tradeTypeCode(record.getTradeTypeCode())
                 .tradeTypeName(names.nameOf(names.tradeTypes(), record.getTradeTypeCode()))
                 .tradeStatusCode(record.getTradeStatusCode())
@@ -182,6 +194,7 @@ public class AdminDisputeQueryService {
         return new CodeNames(
                 toNameMap(referenceDataService.getActiveCodes(DISPUTE_TYPE_GROUP)),
                 toNameMap(referenceDataService.getActiveCodes(DISPUTE_STATUS_GROUP)),
+                toNameMap(referenceDataService.getActiveCodes(DISPUTE_RESULT_GROUP)),
                 toNameMap(referenceDataService.getActiveCodes(TRADE_TYPE_GROUP)),
                 toNameMap(referenceDataService.getActiveCodes(TRADE_STATUS_GROUP)),
                 toNameMap(referenceDataService.getActiveCodes(SETTLEMENT_STATUS_GROUP)));
@@ -228,6 +241,7 @@ public class AdminDisputeQueryService {
     private record CodeNames(
             Map<String, String> disputeTypes,
             Map<String, String> disputeStatuses,
+            Map<String, String> disputeResults,
             Map<String, String> tradeTypes,
             Map<String, String> tradeStatuses,
             Map<String, String> settlementStatuses) {

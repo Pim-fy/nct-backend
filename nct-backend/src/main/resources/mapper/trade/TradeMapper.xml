@@ -104,6 +104,7 @@
             TRD_DSP_TYPE_CD,
             TRD_DSP_STATUS_CD,
             TRD_DSP_CN,
+            TRD_DSP_PREV_TRD_STATUS_CD,
             TRD_DSP_REG_ID,
             TRD_DSP_UPDT_ID
         ) VALUES (
@@ -112,6 +113,7 @@
             #{disputeTypeCode},
             'TRDC0016',
             #{content},
+            #{previousTradeStatusCode},
             #{updaterId},
             #{updaterId}
         )

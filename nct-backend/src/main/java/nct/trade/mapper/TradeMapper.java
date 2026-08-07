@@ -63,6 +63,7 @@ public interface TradeMapper {
             @Param("disputerUserId") long disputerUserId,
             @Param("disputeTypeCode") String disputeTypeCode,
             @Param("content") String content,
+            @Param("previousTradeStatusCode") String previousTradeStatusCode,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */

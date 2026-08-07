@@ -24,6 +24,7 @@ import nct.global.security.domain.CustomUserDetails;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
+import nct.quote.dto.QuoteStatusResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
@@ -106,6 +107,18 @@ public class QuoteController {
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 quoteService.getReceivedQuotes(usrSn, svcReqSn)));
+    }
+
+    /** 견적 상태 단건 조회 (담당자4·7 소비용) */
+    @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
+    @GetMapping("/{quoteId}/status")
+    public ResponseEntity<ApiResponse<QuoteStatusResponse>> getQuoteStatus(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "quoteId") Long quoteId) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getQuoteStatus(usrSn, quoteId)));
     }
 
     /** 견적 수정 이력 (F-SVC-007 요청자 비교 화면용 계약 제공) */

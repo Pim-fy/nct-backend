@@ -22,6 +22,7 @@ import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
+import nct.quote.dto.QuoteStatusResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
@@ -65,6 +66,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         Quote quote = Quote.builder()
                 .svcReqSn(request.svcReqSn())
                 .usrSn(usrSn)
+                .qutTtl(request.title())
                 .qutAmt(request.amount())
                 .qutCn(request.content())
                 .qutStatusCd(STATUS_SUBMITTED)
@@ -255,6 +257,26 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         }
 
         return quoteMapper.findQuoteHistory(qutSn);
+    }
+
+    /** 견적 상태 단건 조회 — 담당자4·7 소비용. 견적 제공자 또는 서비스 요청 소유자만 허용. */
+    @Transactional(readOnly = true)
+    public QuoteStatusResponse getQuoteStatus(Long usrSn, Long qutSn) {
+        if (usrSn == null || usrSn <= 0 || qutSn == null || qutSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        Quote quote = quoteMapper.findQuoteById(qutSn);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!usrSn.equals(quote.getUsrSn())) {
+            try {
+                serviceRequestQuoteReader.requireOwner(quote.getSvcReqSn(), usrSn);
+            } catch (CustomException e) {
+                throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+            }
+        }
+        return new QuoteStatusResponse(quote.getQutSn(), quote.getQutStatusCd());
     }
 
     /**

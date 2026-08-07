@@ -442,9 +442,18 @@
         ORDER BY t.PRD_SN, t.TRD_REG_DT DESC, t.TRD_SN DESC
     </select>
 
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07): auctionId는 예전에 여기서 AUCTION을 직접
+         JOIN해 채웠으나, 도메인 경계상 TradeService가 AuctionService 계약(findAuctionIdByProductId)
+         으로 productId를 넘겨 채우도록 바꿨다. 부수적으로 AUCTION 행이 없어도(INNER JOIN이었을 때는
+         전체 상세가 404였다) 나머지 상세는 정상 응답된다. -->
     <select id="findMyMaterialTradeDetail" resultType="nct.trade.dto.TradeDetailResponse">
         SELECT
+            p.PRD_SN AS productId,
             t.TRD_SN AS tradeId,
+            CASE
+                WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
+                ELSE 'SELLER'
+            END AS viewerRole,
             CASE
                 WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
                 ELSE 'SELLER'
@@ -473,6 +482,7 @@
                 WHEN 'TRDC0010' THEN 'OFFLINE'
             END AS tradeMethod,
             t.TRD_REG_DT AS createdAt,
+            completedHist.completedAt AS completedAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
             d.TRD_DLVR_RCPNT_NM_ENC AS recipientName,
             d.TRD_DLVR_RCPNT_TELNO_ENC AS recipientPhone,
@@ -513,9 +523,30 @@
           ON d.TRD_SN = t.TRD_SN
         LEFT JOIN TRADE_OFFLINE o
           ON o.TRD_SN = t.TRD_SN
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist
+          ON completedHist.TRD_SN = t.TRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0001'
           AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+    </select>
+
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): auctionId->productId는
+         AuctionService.findProductIdByAuctionId 계약으로 얻은 뒤 이 메서드를 호출한다
+         (여기서는 AUCTION을 직접 JOIN하지 않는다). TRADE.PRD_SN에는 유일 인덱스가 없어
+         findMaterialTradeIdByProductId(20행)와 같은 이유로 방어적으로 LIMIT 1을 둔다. -->
+    <select id="findMyMaterialTradeIdByProductId" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        WHERE t.PRD_SN = #{productId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        ORDER BY t.TRD_SN DESC
+        LIMIT 1
     </select>
 
     <!-- 서비스 거래 당사자에게만 요청서 제목·선택 견적·정산 상태를 제공한다. 주소 등 민감 요청서 정보는 조회하지 않는다. -->

@@ -85,6 +85,17 @@ public class TradeController {
                 tradeService.getMyMaterialTradeDetail(tradeId, userId)));
     }
 
+    // @ai_generated
+    /** auctionId 정식 사용자 경로에서 로그인 당사자의 물건 거래 상세를 조회한다. */
+    @GetMapping("/auction/{auctionId}")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> getMyTradeDetailByAuctionId(
+            @PathVariable(name = "auctionId") long auctionId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyMaterialTradeDetailByAuctionId(auctionId, userId)));
+    }
+
     /** 서비스 거래 당사자만 역할별 서비스 거래 상세를 조회한다. */
     @GetMapping("/{tradeId}/service-detail")
     public ResponseEntity<ApiResponse<ServiceTradeDetailResponse>> getMyServiceTradeDetail(

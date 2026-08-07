@@ -10,10 +10,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.auction.service.AuctionService;
 import nct.common.domain.RefType;
 import nct.chat.service.ChatService;
 import nct.file.domain.FileMeta;
@@ -94,6 +96,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private final ReferenceDataService referenceDataService;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 TradeService를
+    // 주입받고 있어(경매 낙찰 시 거래 생성 호출) 순환 의존을 피하려고 ObjectProvider로 지연 주입한다.
+    // AuctionService.productServiceProvider와 같은 패턴이다.
+    private final ObjectProvider<AuctionService> auctionServiceProvider;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -495,6 +501,12 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 거래입니다.");
         }
 
+        // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AUCTION을 여기서 직접 JOIN하지
+        // 않고 AuctionService 계약으로 auctionId를 채운다. 상품에 대응하는 AUCTION 행이 없는
+        // 예외적인 경우에만 auctionId가 null로 남는다(예전 INNER JOIN처럼 상세 조회 전체를
+        // 실패시키지 않는다).
+        detail.setAuctionId(auctionServiceProvider.getObject().findAuctionIdByProductId(detail.getProductId()));
+
         if (detail.getDeliveryId() != null) {
             detail.setDeliveryProofFiles(
                     tradeMapper.findTradeDeliveryProofFiles(detail.getDeliveryId()));
@@ -503,6 +515,28 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         decryptDetailAddresses(detail);
 
         return detail;
+    }
+
+    /** 정식 auctionId 경로에서 거래 당사자의 기존 물건 거래 상세 계약을 재사용한다. */
+    @Transactional(readOnly = true)
+    // @ai_generated: 외부 경로의 auctionId를 내부 tradeId로 안전하게 변환한다.
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): auctionId->productId 변환은
+    // AuctionService.findProductIdByAuctionId 계약을 쓰고, TRADE 조회는 findMyMaterialTradeIdByProductId
+    // (AUCTION을 직접 JOIN하지 않는 TRADE 전용 쿼리)로 나눴다. 두 단계 모두 실패 시 동일하게
+    // NOT_FOUND만 던지므로, 경매번호 존재 여부가 응답으로 구분되지 않는 인가 안전성은 그대로 유지된다.
+    public TradeDetailResponse getMyMaterialTradeDetailByAuctionId(long auctionId, long userId) {
+        if (auctionId <= 0 || userId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "경매번호와 회원번호가 올바르지 않습니다.");
+        }
+        Long productId = auctionServiceProvider.getObject().findProductIdByAuctionId(auctionId);
+        if (productId == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 경매 거래입니다.");
+        }
+        Long tradeId = tradeMapper.findMyMaterialTradeIdByProductId(productId, userId);
+        if (tradeId == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 경매 거래입니다.");
+        }
+        return getMyMaterialTradeDetail(tradeId, userId);
     }
 
     /** 서비스 거래 당사자에게만 역할별 상세 화면 데이터를 반환한다. */

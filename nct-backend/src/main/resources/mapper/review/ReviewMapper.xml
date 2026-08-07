@@ -11,6 +11,8 @@
           거래" 목록을 판단하기 위해 TRADE, PRODUCT, SERVICE_REQUEST, USERS 테이블을 직접
           SELECT 한다. REVIEW 테이블에는 절대 손대지 않고 읽기만 한다 - 쓰기는 insertReview에서
           REVIEW 테이블에만 한다.
+          (2026-08-07 추가: 실제 거래 완료일 표시를 위해 completedTradeDateJoin에서
+          TRADE_STATUS_HIST도 같은 이유로 읽기 전용 직접 조회한다 - 담당자4 소유.)
 
         무엇을 대신하고 있는가:
           원래대로라면 "TRD_SN이 완료 상태인지, 내가 판매자/구매자/요청자/제공자 중 누구인지,
@@ -48,21 +50,38 @@
         END
     </sql>
 
+    <!-- @ai_generated: 리뷰 목록에서도 거래 목록·상세와 같은 실제 완료 상태이력 시각을 사용한다. -->
+    <sql id="completedTradeDateJoin">
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedDate
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist ON completedHist.TRD_SN = T.TRD_SN
+    </sql>
+
     <!-- 완료된 거래 중 참여자이면서 아직 리뷰를 안 남긴 건 -->
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07): auctionId는 예전에 여기서 AUCTION을 직접
+         JOIN해 채웠으나, 도메인 경계상 ReviewService가 AuctionService 계약으로 P.PRD_SN을 넘겨
+         배치 조회하도록 바꿨다(N+1 방지). 서비스 거래는 P가 NULL이라 productId도 NULL, 즉 auctionId도
+         계속 NULL로 남는다(기존과 동일). -->
     <select id="selectWritableTrades" resultType="nct.review.dto.WritableTradeItem">
         /* 리뷰(임시): 작성 가능한 거래 목록 - TRADE 읽기 전용 조회, 상단 주석 참고 */
         SELECT
             T.TRD_SN                                AS id,
+            P.PRD_SN                                AS productId,
+            T.TRD_SN                                AS tradeId,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN 'goods' ELSE 'service' END AS dealType,
             <include refid="partyLabelCase"/>       AS partyLabel,
             U.USR_NM                                AS partyName,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
-            DATE_FORMAT(T.TRD_UPDT_DT, '%Y-%m-%d')  AS completedDate,
+            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
         LEFT JOIN USERS U ON U.USR_SN = <include refid="counterpartUsrSnCase"/>
+        <include refid="completedTradeDateJoin"/>
         WHERE T.TRD_STATUS_CD = 'TRDC0006'
           AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn}
                OR T.REQ_USR_SN = #{usrSn} OR T.PRV_USR_SN = #{usrSn})
@@ -74,20 +93,26 @@
     </select>
 
     <!-- 리뷰 생성 시 서버 재검증용 단건 조회 (위와 동일 조건, 특정 거래 하나만) -->
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07): selectWritableTrades와 동일한 이유로 AUCTION
+         직접 JOIN을 걷어내고 productId만 채운다. 이 조회는 createReview 재검증용이라 auctionId
+         자체를 쓰지 않으므로 ReviewService가 이 결과에는 auctionId를 채우지 않는다. -->
     <select id="selectWritableTrade" resultType="nct.review.dto.WritableTradeItem">
         /* 리뷰(임시): 작성 가능 여부 재검증(단건) - TRADE 읽기 전용 조회, 상단 주석 참고 */
         SELECT
             T.TRD_SN                                AS id,
+            P.PRD_SN                                AS productId,
+            T.TRD_SN                                AS tradeId,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN 'goods' ELSE 'service' END AS dealType,
             <include refid="partyLabelCase"/>       AS partyLabel,
             U.USR_NM                                AS partyName,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
-            DATE_FORMAT(T.TRD_UPDT_DT, '%Y-%m-%d')  AS completedDate,
+            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
         LEFT JOIN USERS U ON U.USR_SN = <include refid="counterpartUsrSnCase"/>
+        <include refid="completedTradeDateJoin"/>
         WHERE T.TRD_SN = #{tradeId}
           AND T.TRD_STATUS_CD = 'TRDC0006'
           AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn}
@@ -109,10 +134,15 @@
     </insert>
 
     <!-- 내가 작성한 리뷰 목록 (최신순) - REVIEW는 정식 소유(읽기/쓰기 모두 가능), TRADE 조인 부분만 임시 -->
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07): auctionId는 예전에 여기서 AUCTION을 직접
+         JOIN해 채웠으나, ReviewService가 AuctionService 계약으로 P.PRD_SN을 넘겨 배치 조회하도록
+         바꿨다. -->
     <select id="selectMyReviews" resultType="nct.review.dto.MyReviewItem">
         /* 리뷰: 내가 작성한 리뷰 목록 (TRADE 조인 부분은 임시, 상단 주석 참고) */
         SELECT
             R.RVW_SN     AS id,
+            R.RVW_SN     AS reviewId,
+            P.PRD_SN     AS productId,
             R.TRD_SN     AS tradeId,
             R.RVW_SCORE  AS rating,
             R.RVW_CN     AS content,
@@ -125,16 +155,53 @@
                 WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.PRV_USR_SN = #{usrSn} THEN '요청자'
             END          AS partyLabel,
             U.USR_NM     AS partyName,
-            DATE_FORMAT(R.RVW_REG_DT, '%Y-%m-%d') AS completedDate
+            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate
         FROM REVIEW R
         JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
         JOIN USERS U ON U.USR_SN = R.REVWD_USR_SN
+        <include refid="completedTradeDateJoin"/>
         WHERE R.REVWR_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
         ORDER BY R.RVW_REG_DT DESC
         LIMIT 100
+    </select>
+
+    <!-- 거래 참여자의 현재 리뷰 상태 계산용. 삭제 리뷰도 유니크 제약상 재작성 불가 판정에 포함한다. -->
+    <select id="selectMyTradeReviewState" resultType="nct.review.dto.TradeReviewStateSource">
+        SELECT
+            T.TRD_SN        AS tradeId,
+            T.TRD_STATUS_CD AS tradeStatusCode,
+            R.RVW_SN        AS reviewId,
+            R.RVW_USE_YN    AS reviewUseYn,
+            R.RVW_SCORE     AS rating,
+            R.RVW_CN        AS content
+        FROM TRADE T
+        LEFT JOIN REVIEW R
+          ON R.TRD_SN = T.TRD_SN
+         AND R.REVWR_USR_SN = #{usrSn}
+        WHERE T.TRD_SN = #{tradeId}
+          AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn}
+               OR T.REQ_USR_SN = #{usrSn} OR T.PRV_USR_SN = #{usrSn})
+    </select>
+
+    <!-- @ai_generated: 본인의 활성 물건 리뷰만 기존 URL 변환 컨텍스트로 반환한다. -->
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07): auctionId는 예전에 여기서 AUCTION을 직접
+         JOIN해 채웠으나, ReviewService가 AuctionService 계약(findAuctionIdByProductId)으로 채우도록
+         바꿨다. T.TRD_TYPE_CD='TRDC0001' 조건이 이미 있어 T.PRD_SN은 항상 NOT NULL이다. -->
+    <select id="selectMyReviewRouteContext" resultType="nct.review.dto.ReviewRouteContext">
+        SELECT
+            R.RVW_SN AS reviewId,
+            R.TRD_SN AS tradeId,
+            T.PRD_SN AS productId
+        FROM REVIEW R
+        JOIN TRADE T
+          ON T.TRD_SN = R.TRD_SN
+         AND T.TRD_TYPE_CD = 'TRDC0001'
+        WHERE R.RVW_SN = #{reviewId}
+          AND R.REVWR_USR_SN = #{usrSn}
+          AND R.RVW_USE_YN = 'Y'
     </select>
 
     <!-- 리뷰 수정 - 본인 소유 + 미삭제 리뷰만 대상. WHERE 조건에 안 걸리면 영향 행 0건 (서비스 계층에서 예외 처리) -->

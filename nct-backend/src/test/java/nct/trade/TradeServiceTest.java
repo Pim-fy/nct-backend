@@ -3,6 +3,7 @@ package nct.trade;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -21,7 +22,9 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
+import nct.auction.service.AuctionService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
@@ -78,9 +81,13 @@ class TradeServiceTest {
     private PointService pointService;
     private ReferenceDataService referenceDataService;
     private FieldCryptoService fieldCryptoService;
+    // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
+    private AuctionService auctionService;
+    private ObjectProvider<AuctionService> auctionServiceProvider;
     private TradeService tradeService;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         tradeMapper = mock(TradeMapper.class);
         notificationService = mock(NotificationService.class);
@@ -94,6 +101,9 @@ class TradeServiceTest {
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        auctionService = mock(AuctionService.class);
+        auctionServiceProvider = mock(ObjectProvider.class);
+        when(auctionServiceProvider.getObject()).thenReturn(auctionService);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
@@ -104,7 +114,8 @@ class TradeServiceTest {
                 chatService,
                 pointService,
                 referenceDataService,
-                fieldCryptoService);
+                fieldCryptoService,
+                auctionServiceProvider);
     }
 
     @Test
@@ -201,7 +212,10 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+        // @ai_generated (담당자1, 2026-08-07): 마지막 파라미터(size)는 primitive int라 any()는
+        // null을 매칭하려다 실패해 Mockito 매처 스택이 오염되고, 실행 순서상 다음 테스트가 연쇄로
+        // 깨졌다(B-1, 여러 차례 확인됨). anyInt()가 맞는 매처다.
+        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -211,7 +225,10 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+        // @ai_generated (담당자1, 2026-08-07): 마지막 파라미터(size)는 primitive int라 any()는
+        // null을 매칭하려다 실패해 Mockito 매처 스택이 오염되고, 실행 순서상 다음 테스트가 연쇄로
+        // 깨졌다(B-1, 여러 차례 확인됨). anyInt()가 맞는 매처다.
+        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -755,6 +772,64 @@ class TradeServiceTest {
         assertThat(result.getRecipientPhone()).isEqualTo("01012345678");
         assertThat(result.getDeliveryAddress()).isEqualTo("서울시 마포구 101호");
         assertThat(result.getDeliveryDetailAddress()).isEqualTo("101호");
+    }
+
+    // @ai_generated (담당자1, 2026-08-07): auctionId<->productId 왕복 변환(AuctionService 계약
+    // 호출)은 이 테스트가 실제로 검증한다. 반면 viewerRole/userRole/completedAt은 tradeMapper
+    // mock이 그대로 돌려주는 값이라, 이 테스트는 "서비스가 매퍼 결과를 안 건드리고 전달하는지"만
+    // 검증한다 - findMyMaterialTradeDetail의 SQL(CASE 문으로 viewerRole을 계산하는 로직) 자체가
+    // 회귀해도 이 mock 기반 단위 테스트는 잡지 못한다. SQL 계산 로직 자체를 검증하려면 별도의
+    // DB 통합 테스트(예: @MybatisTest)가 필요하며, 이 프로젝트에는 아직 그런 테스트 인프라가 없다.
+    @Test
+    void returnsCurrentUsersTradeDetailByAuctionId() {
+        long productId = 30L;
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setProductId(productId);
+        detail.setTradeId(91L);
+        detail.setViewerRole("BUYER");
+        detail.setUserRole("BUYER");
+        detail.setCompletedAt(LocalDateTime.of(2026, 8, 7, 10, 30));
+        // auctionId<->productId 변환은 AuctionService 계약을 거친다(TradeMapper는 AUCTION을 직접 JOIN하지 않는다).
+        when(auctionService.findProductIdByAuctionId(501L)).thenReturn(productId);
+        when(tradeMapper.findMyMaterialTradeIdByProductId(productId, 10L)).thenReturn(91L);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
+        when(auctionService.findAuctionIdByProductId(productId)).thenReturn(501L);
+
+        TradeDetailResponse result = tradeService.getMyMaterialTradeDetailByAuctionId(501L, 10L);
+
+        assertThat(result).isSameAs(detail);
+        assertThat(result.getAuctionId()).isEqualTo(501L);
+        assertThat(result.getTradeId()).isEqualTo(91L);
+        assertThat(result.getViewerRole()).isEqualTo("BUYER");
+        assertThat(result.getUserRole()).isEqualTo("BUYER");
+        assertThat(result.getCompletedAt()).isEqualTo(LocalDateTime.of(2026, 8, 7, 10, 30));
+    }
+
+    @Test
+    void rejectsAuctionOutsideCurrentUsersTransactions() {
+        when(auctionService.findProductIdByAuctionId(501L)).thenReturn(null);
+
+        assertThatThrownBy(() -> tradeService.getMyMaterialTradeDetailByAuctionId(501L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(tradeMapper, never()).findMyMaterialTradeIdByProductId(anyLong(), anyLong());
+        verify(tradeMapper, never()).findMyMaterialTradeDetail(anyLong(), anyLong());
+    }
+
+    @Test
+    void rejectsAuctionWhenProductHasNoTradeForCurrentUser() {
+        long productId = 30L;
+        when(auctionService.findProductIdByAuctionId(501L)).thenReturn(productId);
+        when(tradeMapper.findMyMaterialTradeIdByProductId(productId, 10L)).thenReturn(null);
+
+        assertThatThrownBy(() -> tradeService.getMyMaterialTradeDetailByAuctionId(501L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(tradeMapper, never()).findMyMaterialTradeDetail(anyLong(), anyLong());
     }
 
     @Test

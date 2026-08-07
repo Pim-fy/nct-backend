@@ -138,6 +138,15 @@ public interface TradeMapper {
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
 
+    /**
+     * @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): auctionId 정식 경로를 기존 tradeId
+     * 상세 계약으로 연결한다. productId는 AuctionService.findProductIdByAuctionId 계약으로 얻은
+     * 값을 넘긴다 - 이 메서드는 AUCTION을 직접 JOIN하지 않는다.
+     */
+    Long findMyMaterialTradeIdByProductId(
+            @Param("productId") long productId,
+            @Param("userId") long userId);
+
     /** 서비스 거래 당사자만 요청서·선택 견적·정산 상태를 함께 조회한다. */
     ServiceTradeDetailSource findMyServiceTradeDetail(
             @Param("tradeId") long tradeId,

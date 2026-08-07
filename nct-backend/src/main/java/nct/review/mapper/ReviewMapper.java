@@ -9,6 +9,8 @@ import org.apache.ibatis.annotations.Param;
 import nct.review.domain.Review;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.TrustScoreResponse;
+import nct.review.dto.TradeReviewStateSource;
+import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 
@@ -36,6 +38,16 @@ public interface ReviewMapper {
 
     /** 로그인 사용자가 작성한 리뷰 목록 (최신순) */
     List<MyReviewItem> selectMyReviews(@Param("usrSn") long usrSn);
+
+    /** 거래 당사자의 거래 상태와 리뷰 이력을 함께 조회한다. 삭제 리뷰도 재작성 차단 판정에 포함한다. */
+    TradeReviewStateSource selectMyTradeReviewState(
+            @Param("tradeId") long tradeId,
+            @Param("usrSn") long usrSn);
+
+    // @ai_generated: 기존 reviewId URL을 정식 auctionId URL로 변환할 때만 사용한다.
+    ReviewRouteContext selectMyReviewRouteContext(
+            @Param("reviewId") long reviewId,
+            @Param("usrSn") long usrSn);
 
     /** 리뷰 평점·내용 수정 (본인 소유·미삭제 리뷰만, 영향 행 0건이면 대상 없음/타인 소유/이미 삭제) */
     int updateReview(@Param("rvwSn") long rvwSn, @Param("usrSn") long usrSn,

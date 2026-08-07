@@ -372,6 +372,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
     }
 
+    /** 견적 요청 기간 만료 대상 조회 (F-SVC-003, 배치 전용) */
+    @Transactional(readOnly = true)
+    public List<Long> findExpiredOpenServiceRequestIds(int limit) {
+        return serviceRequestMapper.findExpiredOpenServiceRequestIds(limit);
+    }
+
+    /** 견적 요청 기간 만료 자동 마감 — 이미 처리됐거나 상태가 바뀐 건은 조용히 넘어간다 (F-SVC-003, 배치 전용) */
+    @Transactional
+    public void autoCloseExpiredServiceRequest(Long svcReqSn) {
+        serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
+    }
+
     // 삭제는 임시저장 상태만 허용 — 공개 이후에는 제공자가 이미 견적을 냈을 수 있어 셀프 삭제로
     // 기록을 지우면 안 되고, 더 이상 견적을 받고 싶지 않을 땐 마감(closeServiceRequest)을 쓴다.
     @Transactional

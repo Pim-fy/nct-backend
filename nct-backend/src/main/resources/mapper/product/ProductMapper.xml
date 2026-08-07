@@ -129,6 +129,26 @@
          ORDER BY p.PRD_REG_DT DESC
     </select>
 
+    <!-- ── 내 판매 목록 필터 탭 개수 — findMyProducts의 filterType별 WHERE 조건을 CASE WHEN 집계로 한 번에 계산 ── -->
+    <select id="countMyProductsSummary" resultType="nct.product.dto.ProductSummaryResponse">
+        /* ProductMapper.countMyProductsSummary */
+        SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0001' THEN 1 ELSE 0 END), 0) AS draft,
+            COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0002'
+                               AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002') THEN 1 ELSE 0 END), 0) AS active,
+            COALESCE(SUM(CASE WHEN a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL THEN 1 ELSE 0 END), 0) AS won,
+            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005') THEN 1 ELSE 0 END), 0) AS trading,
+            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0006'
+                               OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006') THEN 1 ELSE 0 END), 0) AS closed
+          FROM PRODUCT p
+          LEFT JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
+          LEFT JOIN TRADE t ON t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'
+         WHERE p.USR_SN = #{usrSn}
+           AND p.PRD_USE_YN = 'Y'
+           AND p.PRD_STATUS_CD != 'PRDC0004'
+    </select>
+
     <!-- ── 상품 수정 (임시저장 → 등록 전환 포함) ──────────────── -->
     <update id="updateProduct">
         /* ProductMapper.updateProduct */

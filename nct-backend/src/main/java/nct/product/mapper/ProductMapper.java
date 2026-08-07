@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.product.domain.Product;
 import nct.product.dto.ProductResponse;
+import nct.product.dto.ProductSummaryResponse;
 
 @Mapper
 public interface ProductMapper {
@@ -18,6 +19,9 @@ public interface ProductMapper {
     Optional<ProductResponse> findProductById(@Param("prdSn") Long prdSn);
 
     List<ProductResponse> findMyProducts(@Param("usrSn") Long usrSn, @Param("filterType") String filterType);
+
+    /** 내 판매 목록 필터 탭 개수 — findMyProducts와 동일한 WHERE 조건을 CASE WHEN 집계로 한 번에 계산 */
+    ProductSummaryResponse countMyProductsSummary(@Param("usrSn") Long usrSn);
 
     Optional<Product> findProductEntityById(@Param("prdSn") Long prdSn);
 

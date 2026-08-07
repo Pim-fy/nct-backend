@@ -24,6 +24,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
+import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteResponse;
@@ -59,7 +60,7 @@ class QuoteServiceTest {
 
     @Test
     void submitsOnlyAfterOpenRequestAndCategoryAccessChecks() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, "작업 범위", List.of(88L));
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, null, 100_000L, "작업 범위", List.of(88L));
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
@@ -79,7 +80,7 @@ class QuoteServiceTest {
 
     @Test
     void rejectsNonOpenRequestBeforeInsert() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null, null);
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, null, 100_000L, null, null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenThrow(new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
 
@@ -92,7 +93,7 @@ class QuoteServiceTest {
 
     @Test
     void rejectsSelfTradeAfterProviderAccessCheck() {
-        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, 100_000L, null, null);
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, null, 100_000L, null, null);
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(22L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
@@ -142,6 +143,66 @@ class QuoteServiceTest {
         assertThat(result.getAttachments()).singleElement()
                 .extracting(QuoteAttachmentResponse::getUrl)
                 .isEqualTo("/api/quotes/99/attachments/88");
+    }
+
+    @Test
+    void selectQuoteTransitionsToSelectedAndWithdrawsCompetitors() {
+        Quote quote = Quote.builder()
+                .qutSn(1L).svcReqSn(10L).usrSn(22L).qutAmt(100_000L)
+                .qutStatusCd("QUTC0001").build();
+        when(quoteMapper.findQuoteByIdForUpdate(1L)).thenReturn(quote);
+        when(quoteMapper.selectQuote(1L, "7")).thenReturn(1);
+
+        SelectedQuoteResult result = service.selectQuote(1L, 10L, 7L);
+
+        assertThat(result.qutSn()).isEqualTo(1L);
+        assertThat(result.providerUsrSn()).isEqualTo(22L);
+        assertThat(result.amount()).isEqualTo(100_000L);
+        verify(quoteMapper).selectQuote(1L, "7");
+        verify(quoteMapper).withdrawCompetingQuotes(10L, 1L, "7");
+    }
+
+    @Test
+    void selectQuoteIsIdempotentWhenAlreadySelected() {
+        Quote quote = Quote.builder()
+                .qutSn(1L).svcReqSn(10L).usrSn(22L).qutAmt(100_000L)
+                .qutStatusCd("QUTC0004").build();
+        when(quoteMapper.findQuoteByIdForUpdate(1L)).thenReturn(quote);
+
+        SelectedQuoteResult result = service.selectQuote(1L, 10L, 7L);
+
+        assertThat(result.qutSn()).isEqualTo(1L);
+        verify(quoteMapper, never()).selectQuote(any(), any());
+        verify(quoteMapper, never()).withdrawCompetingQuotes(any(), any(), any());
+    }
+
+    @Test
+    void selectQuoteBlocksNonOwnerOfServiceRequest() {
+        Quote quote = Quote.builder()
+                .qutSn(1L).svcReqSn(10L).usrSn(22L)
+                .qutStatusCd("QUTC0001").build();
+        when(quoteMapper.findQuoteByIdForUpdate(1L)).thenReturn(quote);
+        doThrow(new CustomException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(serviceRequestQuoteReader).requireOwner(10L, 7L);
+
+        assertThatThrownBy(() -> service.selectQuote(1L, 10L, 7L))
+                .isInstanceOf(CustomException.class);
+
+        verify(quoteMapper, never()).selectQuote(any(), any());
+    }
+
+    @Test
+    void selectQuoteRejectsWithdrawnQuote() {
+        Quote quote = Quote.builder()
+                .qutSn(1L).svcReqSn(10L).usrSn(22L)
+                .qutStatusCd("QUTC0005").build();
+        when(quoteMapper.findQuoteByIdForUpdate(1L)).thenReturn(quote);
+
+        assertThatThrownBy(() -> service.selectQuote(1L, 10L, 7L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("현재 상태에서 허용되지 않는 견적 처리입니다.");
+
+        verify(quoteMapper, never()).selectQuote(any(), any());
     }
 
     @Test

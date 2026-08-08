@@ -21,6 +21,7 @@ import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
 import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.dto.MyQuoteSummaryResponse;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
@@ -33,6 +34,7 @@ import nct.quote.mapper.QuoteMapper;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
+import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 
@@ -51,6 +53,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private final QuoteMapper quoteMapper;
     private final ServiceRequestQuoteReader serviceRequestQuoteReader;
     private final ProviderAccessGuard providerAccessGuard;
+    private final ActiveProviderGuard activeProviderGuard;
     private final FileStorageService fileStorageService;
 
     /** F-OPS-021: 관리자 목록과 상세가 사용할 견적 요약을 요청 단위로 일괄 제공합니다. */
@@ -223,6 +226,16 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .size(size)
                 .hasNext(offset + content.size() < total)
                 .build();
+    }
+
+    /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 수를 반환합니다. */
+    @Transactional(readOnly = true)
+    public MyQuoteSummaryResponse getMyQuoteSummary(Long usrSn) {
+        if (usrSn == null || usrSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        activeProviderGuard.requireActive(usrSn);
+        return new MyQuoteSummaryResponse(quoteMapper.countMyActiveQuotes(usrSn));
     }
 
     /** 제공자가 특정 서비스 요청에 이미 제출한 수정 가능한 견적을 조회한다. */

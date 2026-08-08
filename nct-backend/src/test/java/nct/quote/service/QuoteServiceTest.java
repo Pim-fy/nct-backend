@@ -30,6 +30,7 @@ import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 
@@ -44,6 +45,8 @@ class QuoteServiceTest {
     @Mock
     private ProviderAccessGuard providerAccessGuard;
     @Mock
+    private ActiveProviderGuard activeProviderGuard;
+    @Mock
     private FileStorageService fileStorageService;
     @Mock
     private Authentication authentication;
@@ -56,6 +59,7 @@ class QuoteServiceTest {
                 quoteMapper,
                 serviceRequestQuoteReader,
                 providerAccessGuard,
+                activeProviderGuard,
                 fileStorageService);
     }
 
@@ -180,6 +184,40 @@ class QuoteServiceTest {
         var result = service.getMyQuotes(7L, 1, 10);
 
         assertThat(result.getContent().getFirst().getSvcReqTitle()).isEqualTo("이사 요청");
+    }
+
+    @Test
+    void myQuoteSummaryReturnsActiveQuoteCount() {
+        when(quoteMapper.countMyActiveQuotes(7L)).thenReturn(2);
+
+        var result = service.getMyQuoteSummary(7L);
+
+        assertThat(result.activeQuoteCount()).isEqualTo(2);
+        verify(activeProviderGuard).requireActive(7L);
+        verify(quoteMapper).countMyActiveQuotes(7L);
+    }
+
+    @Test
+    void myQuoteSummaryRejectsInvalidUserNumber() {
+        assertThatThrownBy(() -> service.getMyQuoteSummary(0L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(activeProviderGuard, quoteMapper);
+    }
+
+    @Test
+    void myQuoteSummaryStopsWhenProviderIsNotActive() {
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(activeProviderGuard).requireActive(7L);
+
+        assertThatThrownBy(() -> service.getMyQuoteSummary(7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verifyNoInteractions(quoteMapper);
     }
 
     @Test

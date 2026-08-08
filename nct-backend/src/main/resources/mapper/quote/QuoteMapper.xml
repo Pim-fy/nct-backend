@@ -140,6 +140,14 @@
          WHERE USR_SN = #{usrSn}
     </select>
 
+    <select id="countMyActiveQuotes" resultType="int">
+        /* QuoteMapper.countMyActiveQuotes */
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE USR_SN = #{usrSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
     <!-- F-OPS-021: 관리자 통합상태 조립용 요청별 견적 요약. 목록 전체를 한 번에 조회한다. -->
     <select id="findAdminSummaries" resultType="nct.quote.dto.AdminQuoteSummary">
         /* QuoteMapper.findAdminSummaries */

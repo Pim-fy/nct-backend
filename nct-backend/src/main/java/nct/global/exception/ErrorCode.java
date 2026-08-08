@@ -42,6 +42,7 @@ public enum ErrorCode {
     SERVICE_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 서비스 요청입니다."),
     CHAT_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 채팅 메시지입니다."),
     ABUSE_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 신고입니다."),
+    CUSTOMER_INQUIRY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 고객 문의입니다."),
 
     // 405 / 409 / 410
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "허용되지 않은 HTTP 메서드입니다."),
@@ -59,6 +60,7 @@ public enum ErrorCode {
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 요청입니다."),
     ABUSE_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신고한 항목입니다."),
     ABUSE_REPORT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 신고입니다."),
+    CUSTOMER_INQUIRY_STATUS_CONFLICT(HttpStatus.CONFLICT, "고객 문의 처리 상태가 이미 변경되었습니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
     // @ai_generated: 작업단위5 작업 2(F-AUTH-016) - 마이페이지 연동 관리 REST API 전용
     OAUTH_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "연동된 계정을 찾을 수 없습니다."),

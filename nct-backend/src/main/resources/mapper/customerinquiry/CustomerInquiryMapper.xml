@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.customerinquiry.mapper.CustomerInquiryMapper">
+
+    <sql id="codeJoins">
+        JOIN CMM_CODE type_code ON type_code.CMM_CD = inquiry.CST_INQ_TYPE_CD
+        JOIN CMM_CODE status_code ON status_code.CMM_CD = inquiry.CST_INQ_STATUS_CD
+    </sql>
+
+    <sql id="userListColumns">
+        inquiry.CST_INQ_SN AS inquirySn,
+        inquiry.CST_INQ_TYPE_CD AS inquiryTypeCode,
+        type_code.CMM_NM AS inquiryTypeName,
+        inquiry.CST_INQ_STATUS_CD AS statusCode,
+        status_code.CMM_NM AS statusName,
+        inquiry.CST_INQ_TTL AS title,
+        inquiry.CST_INQ_REG_DT AS registeredAt,
+        inquiry.CST_INQ_UPDT_DT AS updatedAt,
+        inquiry.CST_INQ_ANS_DT AS answeredAt
+    </sql>
+
+    <sql id="adminListColumns">
+        inquiry.CST_INQ_SN AS inquirySn,
+        inquiry.USR_SN AS userSn,
+        inquiry.CST_INQ_TYPE_CD AS inquiryTypeCode,
+        type_code.CMM_NM AS inquiryTypeName,
+        inquiry.CST_INQ_STATUS_CD AS statusCode,
+        status_code.CMM_NM AS statusName,
+        inquiry.CST_INQ_TTL AS title,
+        inquiry.CST_INQ_PROC_USR_SN AS processorUserSn,
+        inquiry.CST_INQ_REG_DT AS registeredAt,
+        inquiry.CST_INQ_UPDT_DT AS updatedAt,
+        inquiry.CST_INQ_ANS_DT AS answeredAt
+    </sql>
+
+    <insert id="insertPlaceholder"
+            parameterType="nct.customerinquiry.domain.CustomerInquiry"
+            useGeneratedKeys="true"
+            keyProperty="inquirySn"
+            keyColumn="CST_INQ_SN">
+        INSERT INTO CUSTOMER_INQUIRY (
+            USR_SN,
+            CST_INQ_TYPE_CD,
+            CST_INQ_STATUS_CD,
+            CST_INQ_TTL,
+            CST_INQ_CN,
+            CST_INQ_REG_ID,
+            CST_INQ_UPDT_ID
+        ) VALUES (
+            #{userSn},
+            #{typeCode},
+            #{statusCode},
+            #{title},
+            #{content},
+            #{registeredBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <update id="updateMaskedContent">
+        UPDATE CUSTOMER_INQUIRY
+           SET CST_INQ_TTL = #{title},
+               CST_INQ_CN = #{content},
+               CST_INQ_UPDT_ID = #{actorId},
+               CST_INQ_UPDT_DT = NOW()
+         WHERE CST_INQ_SN = #{inquirySn}
+           AND USR_SN = #{userSn}
+           AND CST_INQ_STATUS_CD = 'INQC0007'
+           AND CST_INQ_PROC_USR_SN IS NULL
+           AND CST_INQ_ANS_CN IS NULL
+           AND CST_INQ_ANS_DT IS NULL
+           AND CST_INQ_USE_YN = 'Y'
+    </update>
+
+    <select id="findMyInquiries" resultType="nct.customerinquiry.dto.CustomerInquiryListItemResponse">
+        SELECT <include refid="userListColumns"/>
+          FROM CUSTOMER_INQUIRY inquiry
+          <include refid="codeJoins"/>
+         WHERE inquiry.USR_SN = #{userSn}
+           AND inquiry.CST_INQ_USE_YN = 'Y'
+        <if test="statusCode != null">
+           AND inquiry.CST_INQ_STATUS_CD = #{statusCode}
+        </if>
+         ORDER BY inquiry.CST_INQ_REG_DT DESC, inquiry.CST_INQ_SN DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countMyInquiries" resultType="long">
+        SELECT COUNT(*)
+          FROM CUSTOMER_INQUIRY
+         WHERE USR_SN = #{userSn}
+           AND CST_INQ_USE_YN = 'Y'
+        <if test="statusCode != null">
+           AND CST_INQ_STATUS_CD = #{statusCode}
+        </if>
+    </select>
+
+    <select id="findMyInquiryDetail" resultType="nct.customerinquiry.dto.CustomerInquiryDetailResponse">
+        SELECT inquiry.CST_INQ_SN AS inquirySn,
+               inquiry.CST_INQ_TYPE_CD AS inquiryTypeCode,
+               type_code.CMM_NM AS inquiryTypeName,
+               inquiry.CST_INQ_STATUS_CD AS statusCode,
+               status_code.CMM_NM AS statusName,
+               inquiry.CST_INQ_TTL AS title,
+               inquiry.CST_INQ_CN AS content,
+               inquiry.CST_INQ_ANS_CN AS answer,
+               inquiry.CST_INQ_REG_DT AS registeredAt,
+               inquiry.CST_INQ_UPDT_DT AS updatedAt,
+               inquiry.CST_INQ_ANS_DT AS answeredAt
+          FROM CUSTOMER_INQUIRY inquiry
+          <include refid="codeJoins"/>
+         WHERE inquiry.CST_INQ_SN = #{inquirySn}
+           AND inquiry.USR_SN = #{userSn}
+           AND inquiry.CST_INQ_USE_YN = 'Y'
+    </select>
+
+    <select id="findAdminInquiries" resultType="nct.customerinquiry.dto.AdminCustomerInquiryListItemResponse">
+        SELECT <include refid="adminListColumns"/>
+          FROM CUSTOMER_INQUIRY inquiry
+          <include refid="codeJoins"/>
+         WHERE inquiry.CST_INQ_USE_YN = 'Y'
+        <if test="statusCode != null">
+           AND inquiry.CST_INQ_STATUS_CD = #{statusCode}
+        </if>
+        <if test="inquiryTypeCode != null">
+           AND inquiry.CST_INQ_TYPE_CD = #{inquiryTypeCode}
+        </if>
+        <if test="keyword != null">
+           AND (
+               CAST(inquiry.CST_INQ_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+               OR CAST(inquiry.USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+               OR inquiry.CST_INQ_TTL LIKE CONCAT('%', #{keyword}, '%')
+               OR type_code.CMM_NM LIKE CONCAT('%', #{keyword}, '%')
+           )
+        </if>
+         ORDER BY
+            CASE inquiry.CST_INQ_STATUS_CD
+                WHEN 'INQC0007' THEN 0
+                WHEN 'INQC0008' THEN 1
+                WHEN 'INQC0009' THEN 2
+                ELSE 3
+            END ASC,
+            inquiry.CST_INQ_REG_DT DESC,
+            inquiry.CST_INQ_SN DESC
+         LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminInquiries" resultType="long">
+        SELECT COUNT(*)
+          FROM CUSTOMER_INQUIRY inquiry
+          JOIN CMM_CODE type_code ON type_code.CMM_CD = inquiry.CST_INQ_TYPE_CD
+         WHERE inquiry.CST_INQ_USE_YN = 'Y'
+        <if test="statusCode != null">
+           AND inquiry.CST_INQ_STATUS_CD = #{statusCode}
+        </if>
+        <if test="inquiryTypeCode != null">
+           AND inquiry.CST_INQ_TYPE_CD = #{inquiryTypeCode}
+        </if>
+        <if test="keyword != null">
+           AND (
+               CAST(inquiry.CST_INQ_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+               OR CAST(inquiry.USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+               OR inquiry.CST_INQ_TTL LIKE CONCAT('%', #{keyword}, '%')
+               OR type_code.CMM_NM LIKE CONCAT('%', #{keyword}, '%')
+           )
+        </if>
+    </select>
+
+    <select id="findAdminInquiryDetail"
+            resultType="nct.customerinquiry.dto.AdminCustomerInquiryDetailResponse">
+        SELECT inquiry.CST_INQ_SN AS inquirySn,
+               inquiry.USR_SN AS userSn,
+               inquiry.CST_INQ_TYPE_CD AS inquiryTypeCode,
+               type_code.CMM_NM AS inquiryTypeName,
+               inquiry.CST_INQ_STATUS_CD AS statusCode,
+               status_code.CMM_NM AS statusName,
+               inquiry.CST_INQ_TTL AS title,
+               inquiry.CST_INQ_CN AS content,
+               inquiry.CST_INQ_PROC_USR_SN AS processorUserSn,
+               inquiry.CST_INQ_ANS_CN AS answer,
+               inquiry.CST_INQ_REG_DT AS registeredAt,
+               inquiry.CST_INQ_UPDT_DT AS updatedAt,
+               inquiry.CST_INQ_ANS_DT AS answeredAt
+          FROM CUSTOMER_INQUIRY inquiry
+          <include refid="codeJoins"/>
+         WHERE inquiry.CST_INQ_SN = #{inquirySn}
+           AND inquiry.CST_INQ_USE_YN = 'Y'
+    </select>
+
+    <update id="startProcessing">
+        UPDATE CUSTOMER_INQUIRY
+           SET CST_INQ_STATUS_CD = #{processingStatusCode},
+               CST_INQ_PROC_USR_SN = #{adminUserSn},
+               CST_INQ_UPDT_ID = #{actorId},
+               CST_INQ_UPDT_DT = NOW()
+         WHERE CST_INQ_SN = #{inquirySn}
+           AND CST_INQ_STATUS_CD = #{receivedStatusCode}
+           AND CST_INQ_PROC_USR_SN IS NULL
+           AND CST_INQ_ANS_CN IS NULL
+           AND CST_INQ_ANS_DT IS NULL
+           AND CST_INQ_USE_YN = 'Y'
+    </update>
+
+    <update id="completeAnswer">
+        UPDATE CUSTOMER_INQUIRY
+           SET CST_INQ_STATUS_CD = #{answeredStatusCode},
+               CST_INQ_ANS_CN = #{answer},
+               CST_INQ_ANS_DT = NOW(),
+               CST_INQ_UPDT_ID = #{actorId},
+               CST_INQ_UPDT_DT = NOW()
+         WHERE CST_INQ_SN = #{inquirySn}
+           AND CST_INQ_STATUS_CD = #{processingStatusCode}
+           AND CST_INQ_PROC_USR_SN = #{adminUserSn}
+           AND CST_INQ_ANS_CN IS NULL
+           AND CST_INQ_ANS_DT IS NULL
+           AND CST_INQ_USE_YN = 'Y'
+    </update>
+
+</mapper>

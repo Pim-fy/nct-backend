@@ -262,6 +262,39 @@ class ServiceRequestServiceTest {
     }
 
     @Test
+    void returnsCategoryForProviderAccessRegardlessOfRequestStatus() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(3L)
+                .svcReqStatusCd("SVCC0004")
+                .svcReqUseYn('Y')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(1L)).thenReturn(Optional.of(existing));
+
+        var target = service.requireForProviderAccess(1L);
+
+        assertThat(target.requesterUsrSn()).isEqualTo(7L);
+        assertThat(target.categorySn()).isEqualTo(3L);
+        verify(serviceRequestMapper, never()).findServiceRequestEntityByIdForUpdate(1L);
+    }
+
+    @Test
+    void rejectsUnusedRequestForProviderAccess() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(3L)
+                .svcReqStatusCd("SVCC0002")
+                .svcReqUseYn('N')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(1L)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.requireForProviderAccess(1L))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
     void providerCanReadLinkedImageOnlyFromPublicProjection() {
         ServiceRequest existing = ServiceRequest.builder()
                 .svcReqSn(1L)

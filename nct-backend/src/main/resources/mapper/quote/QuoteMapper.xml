@@ -140,6 +140,34 @@
          WHERE USR_SN = #{usrSn}
     </select>
 
+    <!-- F-OPS-021: 관리자 통합상태 조립용 요청별 견적 요약. 목록 전체를 한 번에 조회한다. -->
+    <select id="findAdminSummaries" resultType="nct.quote.dto.AdminQuoteSummary">
+        /* QuoteMapper.findAdminSummaries */
+        SELECT SVC_REQ_SN AS serviceRequestId,
+               COUNT(*) AS totalQuoteCount,
+               SUM(CASE WHEN QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002') THEN 1 ELSE 0 END)
+                   AS activeQuoteCount,
+               SUM(CASE WHEN QUT_STATUS_CD = 'QUTC0004' THEN 1 ELSE 0 END)
+                   AS selectedQuoteCount,
+               SUM(CASE WHEN QUT_STATUS_CD NOT IN
+                   ('QUTC0001', 'QUTC0002', 'QUTC0003', 'QUTC0004', 'QUTC0005')
+                   THEN 1 ELSE 0 END) AS unsupportedQuoteCount,
+               MAX(CASE WHEN QUT_STATUS_CD = 'QUTC0004' THEN QUT_SN END)
+                   AS selectedQuoteId,
+               MAX(CASE WHEN QUT_STATUS_CD = 'QUTC0004' THEN USR_SN END)
+                   AS selectedProviderUserId,
+               MAX(CASE WHEN QUT_STATUS_CD = 'QUTC0004' THEN QUT_AMT END)
+                   AS selectedAmount,
+               MAX(CASE WHEN QUT_STATUS_CD = 'QUTC0004' THEN QUT_STATUS_CD END)
+                   AS selectedQuoteStatusCode
+          FROM QUOTE
+         WHERE SVC_REQ_SN IN
+        <foreach collection="serviceRequestIds" item="serviceRequestId" open="(" separator="," close=")">
+            #{serviceRequestId}
+        </foreach>
+         GROUP BY SVC_REQ_SN
+    </select>
+
     <!-- ── 견적 수정 이력 INSERT ─────────────────────── -->
     <!-- 제공자가 요청 상세와 견적 수정 화면에서 사용할 활성 견적 1건 조회 -->
     <select id="findMyActiveQuote" resultMap="QuoteResponseMap">

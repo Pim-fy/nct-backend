@@ -4,6 +4,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
+import nct.quote.dto.AdminQuoteSummary;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
@@ -27,6 +30,7 @@ import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
@@ -34,7 +38,7 @@ import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarg
 
 @Service
 @RequiredArgsConstructor
-public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader {
+public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader, AdminQuoteSummaryReader {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -48,6 +52,48 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private final ServiceRequestQuoteReader serviceRequestQuoteReader;
     private final ProviderAccessGuard providerAccessGuard;
     private final FileStorageService fileStorageService;
+
+    /** F-OPS-021: 관리자 목록과 상세가 사용할 견적 요약을 요청 단위로 일괄 제공합니다. */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, AdminQuoteSummary> findSummaries(List<Long> serviceRequestIds) {
+        if (serviceRequestIds == null || serviceRequestIds.isEmpty()) {
+            return Map.of();
+        }
+        if (serviceRequestIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        return quoteMapper.findAdminSummaries(serviceRequestIds.stream().distinct().toList())
+                .stream()
+                .peek(this::validateAdminSummary)
+                .collect(Collectors.toUnmodifiableMap(
+                        AdminQuoteSummary::getServiceRequestId,
+                        Function.identity()));
+    }
+
+    private void validateAdminSummary(AdminQuoteSummary summary) {
+        if (summary.getServiceRequestId() == null
+                || summary.getSelectedQuoteCount() < 0
+                || summary.getSelectedQuoteCount() > 1
+                || summary.getUnsupportedQuoteCount() != 0
+                || summary.getActiveQuoteCount() < 0
+                || summary.getTotalQuoteCount() < summary.getActiveQuoteCount()) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "견적 통합상태 데이터가 일관되지 않습니다.");
+        }
+        boolean hasSelectedQuote = summary.getSelectedQuoteCount() == 1;
+        if (hasSelectedQuote != (summary.getSelectedQuoteId() != null)
+                || hasSelectedQuote != STATUS_SELECTED.equals(summary.getSelectedQuoteStatusCode())
+                || hasSelectedQuote != (summary.getSelectedProviderUserId() != null)
+                || hasSelectedQuote != (summary.getSelectedAmount() != null
+                        && summary.getSelectedAmount() > 0)) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "선택 견적 통합상태 데이터가 일관되지 않습니다.");
+        }
+    }
 
     /** F-SVC-005: 견적 제출. 자기거래 차단 포함. */
     @Transactional

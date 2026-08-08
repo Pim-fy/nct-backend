@@ -25,6 +25,7 @@ import nct.trade.dto.TradeSettlementReference;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.AdminServiceTradeSummary;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -63,6 +64,7 @@ public interface TradeMapper {
             @Param("disputerUserId") long disputerUserId,
             @Param("disputeTypeCode") String disputeTypeCode,
             @Param("content") String content,
+            @Param("previousTradeStatusCode") String previousTradeStatusCode,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
@@ -105,6 +107,10 @@ public interface TradeMapper {
     Long findServiceTradeIdByQuoteId(@Param("quoteId") long quoteId);
 
     int insertServiceTrade(Trade trade);
+
+    /** 담당자 7 · F-OPS-021: 서비스 요청별 거래·진행 중 분쟁 상태를 한 번에 조회합니다. */
+    List<AdminServiceTradeSummary> findAdminServiceTradeSummaries(
+            @Param("serviceRequestIds") Collection<Long> serviceRequestIds);
 
     /** MemberService가 조회한 낙찰자 배송정보를 거래 시점 스냅샷으로 저장한다. */
     int insertDeliverySnapshot(

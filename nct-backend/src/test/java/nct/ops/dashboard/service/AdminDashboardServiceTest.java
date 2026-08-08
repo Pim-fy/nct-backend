@@ -21,7 +21,7 @@ class AdminDashboardServiceTest {
         when(adminDashboardMapper.countPendingProviderApplications()).thenReturn(4L);
         when(adminDashboardMapper.countPendingReports()).thenReturn(5L);
         when(pointExchangeService.countRequestedForAdmin()).thenReturn(2L);
-        when(riskEventMapper.countAdminRiskEvents(null, "N", null)).thenReturn(3L);
+        when(riskEventMapper.countAdminRiskEvents(null, "N", null, null, null)).thenReturn(3L);
 
         AdminDashboardService service = new AdminDashboardService(
                 adminDashboardMapper,

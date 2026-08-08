@@ -159,6 +159,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 userId,
                 disputeTypeCode,
                 request.getContent().trim(),
+                target.getTradeStatusCode(),
                 updaterId);
         settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
         if (tradeMapper.holdServiceTradeForDispute(tradeId, updaterId) == 0) {

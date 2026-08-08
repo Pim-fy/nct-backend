@@ -30,7 +30,7 @@ public class AdminDashboardService {
         response.setPendingExchangeCount(
                 pointExchangeService.countRequestedForAdmin());
         response.setUnprocessedRiskEventCount(
-                riskEventMapper.countAdminRiskEvents(null, "N", null));
+                riskEventMapper.countAdminRiskEvents(null, "N", null, null, null));
         return response;
     }
 }

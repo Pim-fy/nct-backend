@@ -3,6 +3,7 @@ package nct.trade;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -201,7 +202,8 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+        verify(tradeMapper, never()).findMyServiceTrades(
+                anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -211,7 +213,8 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+        verify(tradeMapper, never()).findMyServiceTrades(
+                anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -295,7 +298,8 @@ class TradeServiceTest {
         tradeService.registerServiceTradeDispute(81L, 11L, request);
 
         verify(tradeMapper).insertTradeDispute(
-                81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.", "11");
+                81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.",
+                "TRDC0005", "11");
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
         verify(chatService).closeServiceTradeChatRoom(81L);
@@ -345,7 +349,8 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).insertTradeDispute(anyLong(), anyLong(), any(), any(), any());
+        verify(tradeMapper, never()).insertTradeDispute(
+                anyLong(), anyLong(), any(), any(), any(), any());
         verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
     }
 

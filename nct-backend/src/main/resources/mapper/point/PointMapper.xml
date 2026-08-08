@@ -152,4 +152,25 @@
         WHERE PT_LDG_TYPE_CD IN ('PTLC0004', 'PTLC0009', 'PTLC0010', 'PTLC0011')
     </select>
 
+    <!-- 담당자 7 · F-OPS-021: 서비스 거래 참조별 보관금·정산 원장 합계를 한 번에 조회한다. -->
+    <select id="findAdminEscrowSummaries" resultType="nct.point.dto.AdminEscrowSummary">
+        SELECT PT_LDG_REF_SN AS tradeId,
+               COALESCE(-SUM(CASE WHEN PT_LDG_TYPE_CD = 'PTLC0007'
+                   THEN PT_LDG_AMT ELSE 0 END), 0) AS escrowDebitedAmount,
+               COALESCE(SUM(CASE WHEN PT_LDG_TYPE_CD = 'PTLC0013'
+                   THEN PT_LDG_AMT ELSE 0 END), 0) AS refundedAmount,
+               COALESCE(SUM(CASE WHEN PT_LDG_TYPE_CD IN ('PTLC0007', 'PTLC0013')
+                   THEN PT_LDG_AMT ELSE 0 END), 0) AS escrowLedgerAmount,
+               COALESCE(SUM(CASE WHEN PT_LDG_TYPE_CD = 'PTLC0008'
+                   THEN PT_LDG_AMT ELSE 0 END), 0) AS settledAmount
+          FROM POINT_LEDGER
+         WHERE PT_LDG_REF_TYPE_CD = 'REFC0005'
+           AND PT_LDG_REF_SN IN
+        <foreach collection="tradeIds" item="tradeId" open="(" separator="," close=")">
+            #{tradeId}
+        </foreach>
+           AND PT_LDG_TYPE_CD IN ('PTLC0007', 'PTLC0008', 'PTLC0013')
+         GROUP BY PT_LDG_REF_SN
+    </select>
+
 </mapper>

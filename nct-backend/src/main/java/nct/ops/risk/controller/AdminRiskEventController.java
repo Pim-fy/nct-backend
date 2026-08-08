@@ -1,8 +1,10 @@
 package nct.ops.risk.controller;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -27,15 +29,28 @@ public class AdminRiskEventController {
             @RequestParam(name = "typeCode", required = false) String typeCode,
             @RequestParam(name = "processed", required = false) String processed,
             @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "dateFrom", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(name = "dateTo", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                adminRiskEventService.getRiskEvents(typeCode, processed, keyword, page, size)));
+                adminRiskEventService.getRiskEvents(
+                        typeCode, processed, keyword, dateFrom, dateTo, page, size)));
     }
 
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<List<AdminRiskEventTypeSummaryResponse>>> getTypeSummary(
-            @RequestParam(name = "processed", required = false) String processed) {
-        return ResponseEntity.ok(ApiResponse.success(adminRiskEventService.getTypeSummary(processed)));
+            @RequestParam(name = "typeCode", required = false) String typeCode,
+            @RequestParam(name = "processed", required = false) String processed,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "dateFrom", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(name = "dateTo", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return ResponseEntity.ok(ApiResponse.success(
+                adminRiskEventService.getTypeSummary(
+                        typeCode, processed, keyword, dateFrom, dateTo)));
     }
 }

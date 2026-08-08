@@ -200,6 +200,64 @@ public class SettlementService {
                 String.format("거래대금 %,dP의 정산 보류가 해제되어 대기 상태로 전환되었습니다.", s.getStlmAmt()), s.getTrdSn());
     }
 
+    /**
+     * 담당자 7 · F-OPS-006 소비 계약: 분쟁 완료·반려 시 거래번호 기준으로 보류 정산을 재개한다.
+     * 정산이 아직 없거나 이미 대기이면 멱등하게 false를 반환한다.
+     */
+    @Transactional
+    public boolean resumeByTradeIfOnHold(long trdSn, long adminUsrSn) {
+        validateAdminTradeCommand(trdSn, adminUsrSn);
+        Settlement settlement = settlementMapper.selectByTradeForUpdate(trdSn);
+        if (settlement == null || SettlementStatus.PENDING.getCode().equals(settlement.getStlmStatusCd())) {
+            return false;
+        }
+        if (!SettlementStatus.ON_HOLD.getCode().equals(settlement.getStlmStatusCd())) {
+            throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_STATUS,
+                    "보류 해제할 수 없는 정산 상태입니다. 거래번호: " + trdSn
+                            + ", 현재 상태: " + settlement.getStlmStatusCd());
+        }
+
+        updateStatusOrThrow(
+                settlement.getStlmSn(), SettlementStatus.PENDING,
+                String.valueOf(adminUsrSn), "보류 해제");
+        notificationService.notifySettlement(
+                settlement.getUsrSn(),
+                "정산 보류 해제",
+                String.format("거래대금 %,dP의 정산 보류가 해제되어 대기 상태로 전환되었습니다.",
+                        settlement.getStlmAmt()),
+                trdSn);
+        return true;
+    }
+
+    /**
+     * 담당자 7 · F-OPS-006 소비 계약: 전액 환불 판정 시 미완료 정산을 환불종결한다.
+     * 실제 보관금 반환 원장은 PointService가 같은 상위 트랜잭션에서 기록한다.
+     */
+    @Transactional
+    public boolean closeRefundedByTradeIfOpen(long trdSn, long adminUsrSn) {
+        validateAdminTradeCommand(trdSn, adminUsrSn);
+        Settlement settlement = settlementMapper.selectByTradeForUpdate(trdSn);
+        if (settlement == null || SettlementStatus.REFUNDED.getCode().equals(settlement.getStlmStatusCd())) {
+            return false;
+        }
+        if (!SettlementStatus.PENDING.getCode().equals(settlement.getStlmStatusCd())
+                && !SettlementStatus.ON_HOLD.getCode().equals(settlement.getStlmStatusCd())) {
+            throw new SettlementException(ErrorCode.SETTLEMENT_INVALID_STATUS,
+                    "환불종결할 수 없는 정산 상태입니다. 거래번호: " + trdSn
+                            + ", 현재 상태: " + settlement.getStlmStatusCd());
+        }
+
+        updateStatusOrThrow(
+                settlement.getStlmSn(), SettlementStatus.REFUNDED,
+                String.valueOf(adminUsrSn), "환불종결");
+        notificationService.notifySettlement(
+                settlement.getUsrSn(),
+                "정산 환불종결",
+                "거래 분쟁의 전액 환불 판정으로 정산이 종료되었습니다.",
+                trdSn);
+        return true;
+    }
+
     /** 회원별 정산 목록 (제공자 정산 화면용 — 컨트롤러는 화면 구현 시 추가) */
     public List<Settlement> getListByUser(long usrSn) {
         return settlementMapper.selectListByUser(usrSn);
@@ -231,6 +289,13 @@ public class SettlementService {
                     action + " 처리할 수 없는 상태입니다. 정산번호: " + stlmSn + ", 현재 상태: " + s.getStlmStatusCd());
         }
         return s;
+    }
+
+    private void validateAdminTradeCommand(long trdSn, long adminUsrSn) {
+        if (trdSn <= 0 || adminUsrSn <= 0) {
+            throw new SettlementException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호와 처리 관리자 회원번호가 필요합니다.");
+        }
     }
 
     private void validateSameSettlement(Settlement existing, long usrSn, long amt) {

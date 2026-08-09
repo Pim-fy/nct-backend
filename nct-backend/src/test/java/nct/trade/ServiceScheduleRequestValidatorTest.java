@@ -18,7 +18,7 @@ class ServiceScheduleRequestValidatorTest {
 
     @Test
     void normalizesValidScheduleChangeReason() {
-        LocalDateTime requestedAt = LocalDateTime.of(2026, 8, 3, 10, 0);
+        LocalDateTime requestedAt = LocalDateTime.now().plusDays(1).withNano(0);
 
         ServiceScheduleChangeCommand result = validator.validateChange(
                 new ServiceScheduleChangeCommand(requestedAt, "  오후로 변경 부탁드립니다.  "));
@@ -31,6 +31,13 @@ class ServiceScheduleRequestValidatorTest {
     void rejectsScheduleChangeWithoutRequestedDateTime() {
         assertThatThrownBy(() -> validator.validateChange(
                 new ServiceScheduleChangeCommand(null, "시간 조정이 필요합니다.")))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsScheduleChangeInThePast() {
+        assertThatThrownBy(() -> validator.validateChange(
+                new ServiceScheduleChangeCommand(LocalDateTime.now().minusMinutes(1), "시간 조정이 필요합니다.")))
                 .isInstanceOf(CustomException.class);
     }
 

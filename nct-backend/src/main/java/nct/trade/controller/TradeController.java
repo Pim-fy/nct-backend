@@ -22,6 +22,10 @@ import nct.trade.dto.ServiceTradeCompletionRequest;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.ServiceTradeListPageResponse;
+import nct.trade.dto.ServiceScheduleChangeRequest;
+import nct.trade.dto.ServiceScheduleCancellationRequest;
+import nct.trade.dto.ServiceScheduleChangeCommand;
+import nct.trade.dto.ServiceScheduleCancellationCommand;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -161,6 +165,34 @@ public class TradeController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         tradeService.confirmServiceCompletion(tradeId, userDetails.getMember().getId());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 서비스 거래 당사자가 거래 상태를 바꾸지 않고 일정 변경 요청 이력을 남긴다. */
+    @PostMapping("/{tradeId}/service-schedule-changes")
+    public ResponseEntity<ApiResponse<Void>> requestServiceScheduleChange(
+            @PathVariable(name = "tradeId") long tradeId,
+            @Valid @RequestBody ServiceScheduleChangeRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.requestServiceScheduleChange(
+                tradeId,
+                userDetails.getMember().getId(),
+                new ServiceScheduleChangeCommand(request.getRequestedScheduleAt(), request.getReason()));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 서비스 거래 당사자가 거래 상태를 바꾸지 않고 일정 취소 요청 이력을 남긴다. */
+    @PostMapping("/{tradeId}/service-schedule-cancellations")
+    public ResponseEntity<ApiResponse<Void>> requestServiceScheduleCancellation(
+            @PathVariable(name = "tradeId") long tradeId,
+            @Valid @RequestBody ServiceScheduleCancellationRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.requestServiceScheduleCancellation(
+                tradeId,
+                userDetails.getMember().getId(),
+                new ServiceScheduleCancellationCommand(request.getReason()));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

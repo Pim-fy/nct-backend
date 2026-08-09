@@ -597,6 +597,35 @@
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
     </select>
 
+    <!-- F-SVC-016은 거래 상태를 바꾸지 않아도, 식별 가능한 상태 이력 사유로 요청 내역을 보존한다. -->
+    <select id="findServiceScheduleHistory" resultType="nct.trade.dto.ServiceScheduleHistoryItem">
+        SELECT
+            h.TRD_STS_HST_SN AS id,
+            CASE
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%' THEN 'CHANGE'
+                ELSE 'CANCEL'
+            END AS eventType,
+            h.TRD_STS_HST_REG_DT AS occurredAt,
+            CASE
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
+                    THEN STR_TO_DATE(
+                        SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1),
+                        '%Y-%m-%dT%H:%i:%s')
+                ELSE NULL
+            END AS requestedScheduleAt,
+            SUBSTRING(
+                h.TRD_STS_HST_RSN_CN,
+                LOCATE('|', h.TRD_STS_HST_RSN_CN,
+                    LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1) AS reason
+        FROM TRADE_STATUS_HIST h
+        WHERE h.TRD_SN = #{tradeId}
+          AND (
+              h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
+              OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL|%'
+          )
+        ORDER BY h.TRD_STS_HST_REG_DT DESC, h.TRD_STS_HST_SN DESC
+    </select>
+
     <!-- 서비스 거래 당사자가 재진입할 목록이다. 요청서 주소·세부 항목 같은 민감 정보는 포함하지 않는다. -->
     <select id="findMyServiceTrades" resultType="nct.trade.dto.ServiceTradeListItem">
         SELECT

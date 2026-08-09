@@ -4,6 +4,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,8 @@ import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
+import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.dto.MyQuoteSummaryResponse;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
@@ -27,14 +31,16 @@ import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
+import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 
 @Service
 @RequiredArgsConstructor
-public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader {
+public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader, AdminQuoteSummaryReader {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -47,7 +53,50 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private final QuoteMapper quoteMapper;
     private final ServiceRequestQuoteReader serviceRequestQuoteReader;
     private final ProviderAccessGuard providerAccessGuard;
+    private final ActiveProviderGuard activeProviderGuard;
     private final FileStorageService fileStorageService;
+
+    /** F-OPS-021: 관리자 목록과 상세가 사용할 견적 요약을 요청 단위로 일괄 제공합니다. */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, AdminQuoteSummary> findSummaries(List<Long> serviceRequestIds) {
+        if (serviceRequestIds == null || serviceRequestIds.isEmpty()) {
+            return Map.of();
+        }
+        if (serviceRequestIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        return quoteMapper.findAdminSummaries(serviceRequestIds.stream().distinct().toList())
+                .stream()
+                .peek(this::validateAdminSummary)
+                .collect(Collectors.toUnmodifiableMap(
+                        AdminQuoteSummary::getServiceRequestId,
+                        Function.identity()));
+    }
+
+    private void validateAdminSummary(AdminQuoteSummary summary) {
+        if (summary.getServiceRequestId() == null
+                || summary.getSelectedQuoteCount() < 0
+                || summary.getSelectedQuoteCount() > 1
+                || summary.getUnsupportedQuoteCount() != 0
+                || summary.getActiveQuoteCount() < 0
+                || summary.getTotalQuoteCount() < summary.getActiveQuoteCount()) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "견적 통합상태 데이터가 일관되지 않습니다.");
+        }
+        boolean hasSelectedQuote = summary.getSelectedQuoteCount() == 1;
+        if (hasSelectedQuote != (summary.getSelectedQuoteId() != null)
+                || hasSelectedQuote != STATUS_SELECTED.equals(summary.getSelectedQuoteStatusCode())
+                || hasSelectedQuote != (summary.getSelectedProviderUserId() != null)
+                || hasSelectedQuote != (summary.getSelectedAmount() != null
+                        && summary.getSelectedAmount() > 0)) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "선택 견적 통합상태 데이터가 일관되지 않습니다.");
+        }
+    }
 
     /** F-SVC-005: 견적 제출. 자기거래 차단 포함. */
     @Transactional
@@ -97,6 +146,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (!usrSn.equals(quote.getUsrSn())) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
+        requireCurrentProviderAccess(usrSn, quote.getSvcReqSn());
         if (quote.getQutReviseCnt() >= MAX_REVISE_CNT) {
             throw new CustomException(ErrorCode.QUOTE_REVISION_LIMIT_EXCEEDED);
         }
@@ -138,6 +188,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (!usrSn.equals(quote.getUsrSn())) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
+        requireCurrentProviderAccess(usrSn, quote.getSvcReqSn());
         if (STATUS_SELECTED.equals(quote.getQutStatusCd())) {
             throw new CustomException(ErrorCode.QUOTE_ALREADY_SELECTED);
         }
@@ -152,12 +203,17 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         }
     }
 
-    /** 내 견적 목록 (제공자 본인) */
+    /**
+     * 담당자 7 통합, F-PROV-009: 종료·철회된 과거 견적까지 포함하는 본인 이력이다.
+     * 특정 카테고리의 신규 업무가 아니므로 활성 권한 하나 이상과 제재 여부를 검증하고,
+     * 수정·철회처럼 특정 요청을 변경할 때만 해당 요청 카테고리 권한을 추가 검증한다.
+     */
     @Transactional(readOnly = true)
     public PageResponse<QuoteResponse> getMyQuotes(Long usrSn, int page, int size) {
         if (usrSn == null || usrSn <= 0 || page < 1 || size < 1 || size > 50) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        activeProviderGuard.requireActive(usrSn);
         int offset = (page - 1) * size;
         List<QuoteResponse> content = quoteMapper.findMyQuotes(usrSn, offset, size);
         List<Long> svcReqSnList = content.stream()
@@ -179,17 +235,37 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .build();
     }
 
+    /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 수를 반환합니다. */
+    @Transactional(readOnly = true)
+    public MyQuoteSummaryResponse getMyQuoteSummary(Long usrSn) {
+        if (usrSn == null || usrSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        activeProviderGuard.requireActive(usrSn);
+        return new MyQuoteSummaryResponse(quoteMapper.countMyActiveQuotes(usrSn));
+    }
+
     /** 제공자가 특정 서비스 요청에 이미 제출한 수정 가능한 견적을 조회한다. */
     @Transactional(readOnly = true)
     public QuoteResponse getMyActiveQuote(Long usrSn, Long svcReqSn) {
         if (usrSn == null || usrSn <= 0 || svcReqSn == null || svcReqSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        requireCurrentProviderAccess(usrSn, svcReqSn);
         QuoteResponse quote = quoteMapper.findMyActiveQuote(usrSn, svcReqSn);
         if (quote != null) {
             populateAttachments(quote);
         }
         return quote;
+    }
+
+    /**
+     * 담당자 7 통합, F-PROV-011·F-SVC-006·008: 과거 JWT 표시가 아니라 현재 회원 상태,
+     * 요청 카테고리 승인 권한과 유효 제재 여부를 서비스 계층에서 다시 검증한다.
+     */
+    private void requireCurrentProviderAccess(Long usrSn, Long svcReqSn) {
+        ServiceRequestQuoteTarget target = serviceRequestQuoteReader.requireForProviderAccess(svcReqSn);
+        activeProviderGuard.requireActiveForCategory(usrSn, target.categorySn());
     }
 
     /** 받은 견적 목록 조회 (요청자용). 본인 서비스 요청에 달린 견적만 허용. */

@@ -17,6 +17,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.ops.operation.dto.AdminDisputeListRequest;
 import nct.ops.reference.service.ReferenceDataService;
+import nct.ops.security.service.SensitiveDataMasker;
 import nct.settlement.domain.Settlement;
 import nct.settlement.service.SettlementService;
 import nct.trade.dto.AdminTradeDisputeQuery;
@@ -29,6 +30,7 @@ class AdminDisputeQueryServiceTest {
     private AdminTradeDisputeReader disputeReader;
     private SettlementService settlementService;
     private ReferenceDataService referenceDataService;
+    private SensitiveDataMasker sensitiveDataMasker;
     private AdminDisputeQueryService service;
 
     @BeforeEach
@@ -36,7 +38,11 @@ class AdminDisputeQueryServiceTest {
         disputeReader = mock(AdminTradeDisputeReader.class);
         settlementService = mock(SettlementService.class);
         referenceDataService = mock(ReferenceDataService.class);
-        service = new AdminDisputeQueryService(disputeReader, settlementService, referenceDataService);
+        sensitiveDataMasker = mock(SensitiveDataMasker.class);
+        when(sensitiveDataMasker.maskText(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        service = new AdminDisputeQueryService(
+                disputeReader, settlementService, referenceDataService, sensitiveDataMasker);
     }
 
     @Test
@@ -139,8 +145,12 @@ class AdminDisputeQueryServiceTest {
         assertThat(response.getDisputerUserSn()).isEqualTo(31L);
         assertThat(response.getRequesterUserSn()).isEqualTo(32L);
         assertThat(response.getProviderUserSn()).isEqualTo(33L);
+        assertThat(response.getDisputeContent()).isEqualTo("연락처 010-1234-5678로 안내받았습니다.");
+        assertThat(response.getProcessReason()).isEqualTo("처리자 연락처 010-9876-5432");
         assertThat(response.getSettlementSn()).isNull();
         assertThat(response.isSettlementOnHold()).isFalse();
+        verify(sensitiveDataMasker).maskText("연락처 010-1234-5678로 안내받았습니다.");
+        verify(sensitiveDataMasker).maskText("처리자 연락처 010-9876-5432");
     }
 
     private AdminTradeDisputeRecord record() {
@@ -150,6 +160,8 @@ class AdminDisputeQueryServiceTest {
         record.setDisputerUserSn(31L);
         record.setDisputeTypeCode("TRDC0011");
         record.setDisputeStatusCode("TRDC0016");
+        record.setDisputeContent("연락처 010-1234-5678로 안내받았습니다.");
+        record.setProcessReason("처리자 연락처 010-9876-5432");
         record.setRegisteredAt(LocalDateTime.of(2026, 8, 7, 10, 0));
         record.setUpdatedAt(LocalDateTime.of(2026, 8, 7, 10, 5));
         record.setTradeTypeCode("TRDC0002");

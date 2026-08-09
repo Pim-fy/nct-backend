@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.settlement.domain.Settlement;
+import nct.settlement.dto.AdminSettlementSummary;
 
 /**
  * [정산 - MyBatis 매퍼]
@@ -25,6 +26,9 @@ public interface SettlementMapper {
 
     /** 거래별 정산 생성 경합 처리와 일치 검증을 위한 잠금 조회 */
     Settlement selectByTradeForUpdate(@Param("trdSn") long trdSn);
+
+    /** 담당자 7 · F-OPS-021: 거래별 정산 원본 상태 배치 조회입니다. */
+    List<AdminSettlementSummary> findAdminSummariesByTradeIds(@Param("tradeIds") List<Long> tradeIds);
 
     /** 상태코드 갱신 (requireStatus 검증 통과 후에만 호출) */
     int updateStatus(

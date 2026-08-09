@@ -263,6 +263,26 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         return new ServiceRequestQuoteTarget(existing.getUsrSn(), existing.getCatSn());
     }
 
+    /**
+     * 담당자 7 통합, F-SVC-006·008: 견적 수정·철회·본인 조회에서 현재 카테고리 권한을
+     * 다시 확인할 수 있도록 요청자와 카테고리를 읽기 전용으로 제공한다.
+     * 요청 상태는 견적 상태 검증과 별개이므로 여기서는 사용 여부만 확인한다.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public ServiceRequestQuoteTarget requireForProviderAccess(Long svcReqSn) {
+        if (svcReqSn == null || svcReqSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        ServiceRequest existing = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        if (!Character.valueOf('Y').equals(existing.getSvcReqUseYn())) {
+            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
+        }
+        return new ServiceRequestQuoteTarget(existing.getUsrSn(), existing.getCatSn());
+    }
+
     /** 견적 도메인의 받은 견적 조회용 소유권 계약. */
     @Override
     @Transactional(readOnly = true)

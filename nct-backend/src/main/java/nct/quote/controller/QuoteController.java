@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.response.PageResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.quote.dto.MyQuoteSummaryResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
@@ -83,6 +84,17 @@ public class QuoteController {
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 quoteService.getMyQuotes(usrSn, page, size)));
+    }
+
+    /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 집계입니다. */
+    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    @GetMapping("/me/summary")
+    public ResponseEntity<ApiResponse<MyQuoteSummaryResponse>> getMyQuoteSummary(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getMyQuoteSummary(usrSn)));
     }
 
     /** 받은 견적 목록 (요청자용 — ROLE_USER) */

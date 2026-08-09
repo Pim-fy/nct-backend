@@ -4,10 +4,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.member.port.AdminMemberSummaryReader;
 import nct.ops.dashboard.dto.AdminDashboardSummaryResponse;
 import nct.ops.dashboard.mapper.AdminDashboardMapper;
 import nct.ops.risk.mapper.RiskEventMapper;
 import nct.point.service.PointExchangeService;
+import nct.trade.port.AdminTradeSummaryReader;
 
 /**
  * 담당자 7 · F-OPS-010: 관리자 운영 대시보드 집계 조회 서비스입니다.
@@ -16,6 +18,8 @@ import nct.point.service.PointExchangeService;
 @RequiredArgsConstructor
 public class AdminDashboardService {
 
+    private final AdminMemberSummaryReader memberSummaryReader;
+    private final AdminTradeSummaryReader tradeSummaryReader;
     private final AdminDashboardMapper adminDashboardMapper;
     private final RiskEventMapper riskEventMapper;
     private final PointExchangeService pointExchangeService;
@@ -23,6 +27,8 @@ public class AdminDashboardService {
     @Transactional(readOnly = true)
     public AdminDashboardSummaryResponse getSummary() {
         AdminDashboardSummaryResponse response = new AdminDashboardSummaryResponse();
+        response.setActiveUserCount(memberSummaryReader.countActiveUsers());
+        response.setTotalTradeCount(tradeSummaryReader.countAllTrades());
         response.setPendingProviderApplicationCount(
                 adminDashboardMapper.countPendingProviderApplications());
         response.setPendingReportCount(

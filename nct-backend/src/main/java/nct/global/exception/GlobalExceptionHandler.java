@@ -44,7 +44,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<List<Map<String, String>>>> handleValidation(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
 
-        logException(ex);
+        logValidationException(ex);
 
         List<Map<String, String>> errors =
                 ex.getBindingResult().getFieldErrors().stream()
@@ -163,6 +163,17 @@ public class GlobalExceptionHandler {
             log.error("\n[Exception] {} - message={}", ex.getClass().getSimpleName(),
                       sensitiveDataMasker.maskText(ex.getMessage()));
         }
+    }
+
+    /** 담당자 7 · 검증 예외는 거부된 입력값을 포함할 수 있어 필드명과 규칙 코드만 기록한다. */
+    private void logValidationException(MethodArgumentNotValidException ex) {
+        String violations = ex.getBindingResult().getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField() + ":" + fieldError.getCode())
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining(","));
+        log.warn("\n[Validation] {} - violations={}",
+                ex.getClass().getSimpleName(), violations);
     }
 
     private String safePath(HttpServletRequest request) {

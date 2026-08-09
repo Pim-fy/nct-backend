@@ -32,6 +32,9 @@ import nct.trade.dto.AdminServiceTradeSummary;
 @Mapper
 public interface TradeMapper {
 
+    /** 담당자 7 · F-OPS-010: 관리자 대시보드용 전체 거래 수를 반환합니다. */
+    long countAllTrades();
+
     Long findOwnedProductIdForUpdate(
             @Param("productId") long productId,
             @Param("sellerUserId") long sellerUserId);

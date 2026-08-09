@@ -28,8 +28,10 @@ import nct.quote.dto.AdminQuoteSummary;
 import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteSubmitRequest;
+import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 
@@ -44,6 +46,8 @@ class QuoteServiceTest {
     @Mock
     private ProviderAccessGuard providerAccessGuard;
     @Mock
+    private ActiveProviderGuard activeProviderGuard;
+    @Mock
     private FileStorageService fileStorageService;
     @Mock
     private Authentication authentication;
@@ -56,6 +60,7 @@ class QuoteServiceTest {
                 quoteMapper,
                 serviceRequestQuoteReader,
                 providerAccessGuard,
+                activeProviderGuard,
                 fileStorageService);
     }
 
@@ -104,6 +109,107 @@ class QuoteServiceTest {
                 .hasMessageContaining("본인이 등록한 서비스 요청");
 
         verify(quoteMapper, never()).insertQuote(any(Quote.class));
+    }
+
+    @Test
+    void updateQuoteRevalidatesCurrentCategoryAccessBeforeMutation() {
+        Quote quote = Quote.builder()
+                .qutSn(99L)
+                .svcReqSn(10L)
+                .usrSn(7L)
+                .qutAmt(100_000L)
+                .qutCn("기존 작업 범위")
+                .qutStatusCd("QUTC0001")
+                .qutReviseCnt(0)
+                .build();
+        QuoteUpdateRequest request = new QuoteUpdateRequest(
+                "수정 견적",
+                120_000L,
+                "수정 작업 범위",
+                List.of(88L));
+        when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
+        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
+        when(quoteMapper.updateQuote(99L, request, "7")).thenReturn(1);
+
+        service.updateQuote(7L, 99L, request);
+
+        verify(serviceRequestQuoteReader).requireForProviderAccess(10L);
+        verify(activeProviderGuard).requireActiveForCategory(7L, 20L);
+        verify(quoteMapper).insertQuoteHistory(any());
+        verify(quoteMapper).updateQuote(99L, request, "7");
+        verify(fileStorageService).requireOwnedQuoteFile(88L, 7L);
+    }
+
+    @Test
+    void updateQuoteStopsBeforeMutationWhenCurrentCategoryAccessIsBlocked() {
+        Quote quote = Quote.builder()
+                .qutSn(99L)
+                .svcReqSn(10L)
+                .usrSn(7L)
+                .qutStatusCd("QUTC0001")
+                .build();
+        QuoteUpdateRequest request = new QuoteUpdateRequest(
+                "수정 견적",
+                120_000L,
+                "수정 작업 범위",
+                List.of(88L));
+        when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
+        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(activeProviderGuard).requireActiveForCategory(7L, 20L);
+
+        assertThatThrownBy(() -> service.updateQuote(7L, 99L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(quoteMapper, never()).insertQuoteHistory(any());
+        verify(quoteMapper, never()).updateQuote(any(), any(), any());
+        verify(quoteMapper, never()).deleteQuotePhotosByQutSn(any());
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void withdrawQuoteRevalidatesCurrentCategoryAccess() {
+        Quote quote = Quote.builder()
+                .qutSn(99L)
+                .svcReqSn(10L)
+                .usrSn(7L)
+                .qutStatusCd("QUTC0002")
+                .build();
+        when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
+        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
+        when(quoteMapper.withdrawQuote(99L, "7")).thenReturn(1);
+
+        service.withdrawQuote(7L, 99L);
+
+        verify(activeProviderGuard).requireActiveForCategory(7L, 20L);
+        verify(quoteMapper).withdrawQuote(99L, "7");
+    }
+
+    @Test
+    void withdrawQuoteStopsBeforeMutationWhenCurrentCategoryAccessIsBlocked() {
+        Quote quote = Quote.builder()
+                .qutSn(99L)
+                .svcReqSn(10L)
+                .usrSn(7L)
+                .qutStatusCd("QUTC0001")
+                .build();
+        when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
+        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(activeProviderGuard).requireActiveForCategory(7L, 20L);
+
+        assertThatThrownBy(() -> service.withdrawQuote(7L, 99L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(quoteMapper, never()).withdrawQuote(any(), any());
     }
 
     @Test
@@ -179,7 +285,56 @@ class QuoteServiceTest {
 
         var result = service.getMyQuotes(7L, 1, 10);
 
+        verify(activeProviderGuard).requireActive(7L);
+
         assertThat(result.getContent().getFirst().getSvcReqTitle()).isEqualTo("이사 요청");
+    }
+
+    @Test
+    void myQuotesStopBeforeReadWhenProviderIsNotActive() {
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(activeProviderGuard).requireActive(7L);
+
+        assertThatThrownBy(() -> service.getMyQuotes(7L, 1, 10))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verifyNoInteractions(quoteMapper, serviceRequestQuoteReader, fileStorageService);
+    }
+
+    @Test
+    void myQuoteSummaryReturnsActiveQuoteCount() {
+        when(quoteMapper.countMyActiveQuotes(7L)).thenReturn(2);
+
+        var result = service.getMyQuoteSummary(7L);
+
+        assertThat(result.activeQuoteCount()).isEqualTo(2);
+        verify(activeProviderGuard).requireActive(7L);
+        verify(quoteMapper).countMyActiveQuotes(7L);
+    }
+
+    @Test
+    void myQuoteSummaryRejectsInvalidUserNumber() {
+        assertThatThrownBy(() -> service.getMyQuoteSummary(0L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(activeProviderGuard, quoteMapper);
+    }
+
+    @Test
+    void myQuoteSummaryStopsWhenProviderIsNotActive() {
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(activeProviderGuard).requireActive(7L);
+
+        assertThatThrownBy(() -> service.getMyQuoteSummary(7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verifyNoInteractions(quoteMapper);
     }
 
     @Test
@@ -189,14 +344,33 @@ class QuoteServiceTest {
         QuoteAttachmentResponse attachment = new QuoteAttachmentResponse();
         attachment.setFlSn(88L);
         attachment.setFileName("견적서.pdf");
+        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(quoteMapper.findMyActiveQuote(7L, 10L)).thenReturn(quote);
         when(quoteMapper.findQuoteAttachments(99L)).thenReturn(List.of(attachment));
 
         QuoteResponse result = service.getMyActiveQuote(7L, 10L);
 
+        verify(activeProviderGuard).requireActiveForCategory(7L, 20L);
+
         assertThat(result.getAttachments()).singleElement()
                 .extracting(QuoteAttachmentResponse::getUrl)
                 .isEqualTo("/api/quotes/99/attachments/88");
+    }
+
+    @Test
+    void activeQuoteStopsBeforeReadWhenCurrentCategoryAccessIsBlocked() {
+        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(activeProviderGuard).requireActiveForCategory(7L, 20L);
+
+        assertThatThrownBy(() -> service.getMyActiveQuote(7L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verifyNoInteractions(quoteMapper, fileStorageService);
     }
 
     @Test

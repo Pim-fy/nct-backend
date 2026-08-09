@@ -42,6 +42,9 @@ public interface QuoteMapper {
 
     int countMyQuotes(@Param("usrSn") Long usrSn);
 
+    /** 담당자 7 연동 · F-PROV-009: 제출·수정 상태의 활성 견적만 집계합니다. */
+    int countMyActiveQuotes(@Param("usrSn") Long usrSn);
+
     List<AdminQuoteSummary> findAdminSummaries(
             @Param("serviceRequestIds") List<Long> serviceRequestIds);
 

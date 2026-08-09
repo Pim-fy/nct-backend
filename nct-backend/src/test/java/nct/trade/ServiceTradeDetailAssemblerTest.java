@@ -18,12 +18,25 @@ class ServiceTradeDetailAssemblerTest {
     private final ServiceTradeDetailAssembler assembler = new ServiceTradeDetailAssembler();
 
     @Test
-    void providerInProgressSeesOnlyImplementedCompletionAndDisputeActions() {
+    void providerInProgressSeesCompletionScheduleAndDisputeActions() {
         ServiceTradeDetailResponse response = assembler.assemble(source("TRDC0003"), 22L);
 
         assertThat(response.viewerRole()).isEqualTo("PROVIDER");
         assertThat(response.availableActions()).containsExactly(
                 "REQUEST_COMPLETION",
+                "REQUEST_SCHEDULE_CHANGE",
+                "REQUEST_SCHEDULE_CANCELLATION",
+                "SUBMIT_DISPUTE");
+    }
+
+    @Test
+    void requesterInProgressSeesScheduleAndDisputeActions() {
+        ServiceTradeDetailResponse response = assembler.assemble(source("TRDC0003"), 11L);
+
+        assertThat(response.viewerRole()).isEqualTo("REQUESTER");
+        assertThat(response.availableActions()).containsExactly(
+                "REQUEST_SCHEDULE_CHANGE",
+                "REQUEST_SCHEDULE_CANCELLATION",
                 "SUBMIT_DISPUTE");
     }
 

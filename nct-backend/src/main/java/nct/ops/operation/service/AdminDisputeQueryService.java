@@ -3,6 +3,7 @@ package nct.ops.operation.service;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminDisputeDetailResponse;
 import nct.ops.operation.dto.AdminDisputeListItemResponse;
 import nct.ops.operation.dto.AdminDisputeListRequest;
@@ -45,6 +48,7 @@ public class AdminDisputeQueryService {
     private final SettlementService settlementService;
     private final ReferenceDataService referenceDataService;
     private final SensitiveDataMasker sensitiveDataMasker;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional(readOnly = true)
     public AdminDisputePageResponse getPage(AdminDisputeListRequest request) {
@@ -55,8 +59,11 @@ public class AdminDisputeQueryService {
         }
 
         CodeNames codeNames = loadCodeNames();
-        List<AdminDisputeListItemResponse> items = disputeReader.findPage(query).stream()
-                .map(record -> toListItem(record, codeNames))
+        List<AdminTradeDisputeRecord> records = disputeReader.findPage(query);
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                records.stream().map(AdminTradeDisputeRecord::getDisputerUserSn).toList());
+        List<AdminDisputeListItemResponse> items = records.stream()
+                .map(record -> toListItem(record, codeNames, identities))
                 .toList();
         return pageResponse(query, items, totalItems);
     }
@@ -73,10 +80,21 @@ public class AdminDisputeQueryService {
 
         CodeNames names = loadCodeNames();
         SettlementSnapshot settlement = getSettlement(record.getTradeSn(), names.settlementStatuses());
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                Stream.of(
+                                record.getDisputerUserSn(),
+                                record.getProcessorUserSn(),
+                                record.getSellerUserSn(),
+                                record.getBuyerUserSn(),
+                                record.getRequesterUserSn(),
+                                record.getProviderUserSn())
+                        .filter(userSn -> userSn != null && userSn > 0)
+                        .toList());
         return AdminDisputeDetailResponse.builder()
                 .disputeSn(record.getDisputeSn())
                 .tradeSn(record.getTradeSn())
                 .disputerUserSn(record.getDisputerUserSn())
+                .disputerMember(identityOf(identities, record.getDisputerUserSn()))
                 .disputeTypeCode(record.getDisputeTypeCode())
                 .disputeTypeName(names.nameOf(names.disputeTypes(), record.getDisputeTypeCode()))
                 .disputeStatusCode(record.getDisputeStatusCode())
@@ -86,6 +104,7 @@ public class AdminDisputeQueryService {
                 .disputeResultName(names.nameOf(names.disputeResults(), record.getDisputeResultCode()))
                 .processReason(sensitiveDataMasker.maskText(record.getProcessReason()))
                 .processorUserSn(record.getProcessorUserSn())
+                .processorMember(identityOf(identities, record.getProcessorUserSn()))
                 .processedAt(record.getProcessedAt())
                 .previousTradeStatusCode(record.getPreviousTradeStatusCode())
                 .previousTradeStatusName(names.nameOf(
@@ -95,9 +114,13 @@ public class AdminDisputeQueryService {
                 .tradeStatusCode(record.getTradeStatusCode())
                 .tradeStatusName(names.nameOf(names.tradeStatuses(), record.getTradeStatusCode()))
                 .sellerUserSn(record.getSellerUserSn())
+                .sellerMember(identityOf(identities, record.getSellerUserSn()))
                 .buyerUserSn(record.getBuyerUserSn())
+                .buyerMember(identityOf(identities, record.getBuyerUserSn()))
                 .requesterUserSn(record.getRequesterUserSn())
+                .requesterMember(identityOf(identities, record.getRequesterUserSn()))
                 .providerUserSn(record.getProviderUserSn())
+                .providerMember(identityOf(identities, record.getProviderUserSn()))
                 .productSn(record.getProductSn())
                 .serviceRequestSn(record.getServiceRequestSn())
                 .settlementSn(settlement.settlementSn())
@@ -111,12 +134,14 @@ public class AdminDisputeQueryService {
 
     private AdminDisputeListItemResponse toListItem(
             AdminTradeDisputeRecord record,
-            CodeNames names) {
+            CodeNames names,
+            Map<Long, AdminMemberIdentityResponse> identities) {
         SettlementSnapshot settlement = getSettlement(record.getTradeSn(), names.settlementStatuses());
         return AdminDisputeListItemResponse.builder()
                 .disputeSn(record.getDisputeSn())
                 .tradeSn(record.getTradeSn())
                 .disputerUserSn(record.getDisputerUserSn())
+                .disputerMember(identityOf(identities, record.getDisputerUserSn()))
                 .disputeTypeCode(record.getDisputeTypeCode())
                 .disputeTypeName(names.nameOf(names.disputeTypes(), record.getDisputeTypeCode()))
                 .disputeStatusCode(record.getDisputeStatusCode())
@@ -131,6 +156,12 @@ public class AdminDisputeQueryService {
                 .settlementOnHold(settlement.onHold())
                 .registeredAt(record.getRegisteredAt())
                 .build();
+    }
+
+    private AdminMemberIdentityResponse identityOf(
+            Map<Long, AdminMemberIdentityResponse> identities,
+            Long userSn) {
+        return userSn == null ? null : identities.get(userSn);
     }
 
     private SettlementSnapshot getSettlement(Long tradeSn, Map<String, String> settlementStatusNames) {

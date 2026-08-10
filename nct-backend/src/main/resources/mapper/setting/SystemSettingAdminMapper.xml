@@ -20,7 +20,8 @@
                SYS_SET_MNTNC_BGNG_DT   AS mntncBgngDt,
                SYS_SET_MNTNC_END_DT    AS mntncEndDt,
                SYS_SET_EMAIL_YN        AS emailYn,
-               SYS_SET_UPDT_DT         AS sysSetUpdtDt
+               SYS_SET_UPDT_DT         AS sysSetUpdtDt,
+               SYS_SET_UPDT_ID         AS sysSetUpdtId
         FROM SYSTEM_SETTING
     </sql>
 
@@ -54,7 +55,9 @@
             SYS_SET_MNTNC_YN        = #{mntncYn},
             SYS_SET_MNTNC_BGNG_DT   = #{mntncBgngDt},
             SYS_SET_MNTNC_END_DT    = #{mntncEndDt},
-            SYS_SET_EMAIL_YN        = #{emailYn}
+            SYS_SET_EMAIL_YN        = #{emailYn},
+            SYS_SET_UPDT_ID         = #{sysSetUpdtId},
+            SYS_SET_UPDT_DT         = CURRENT_TIMESTAMP
         WHERE SYS_SET_SN = #{sysSetSn}
     </update>
 

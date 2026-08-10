@@ -7,6 +7,7 @@ import nct.point.dto.AdminEscrowSummary;
 import nct.settlement.dto.AdminSettlementSummary;
 import nct.servicerequest.dto.AdminServiceRequestDetail;
 import nct.trade.dto.AdminServiceTradeSummary;
+import nct.member.dto.AdminMemberIdentityResponse;
 
 /** 담당자 7 · F-OPS-021: 서비스 요청 원본과 선택 견적 요약을 조립한 관리자 상세입니다. */
 public record AdminServiceRequestDetailResponse(
@@ -18,6 +19,7 @@ public record AdminServiceRequestDetailResponse(
         Long formTemplateId,
         Long requesterUserId,
         String requesterName,
+        AdminMemberIdentityResponse requesterMember,
         Long budgetAmount,
         String statusCode,
         String statusName,
@@ -27,6 +29,7 @@ public record AdminServiceRequestDetailResponse(
         int activeQuoteCount,
         Long selectedQuoteId,
         Long selectedProviderUserId,
+        AdminMemberIdentityResponse selectedProviderMember,
         Long selectedAmount,
         String selectedQuoteStatusCode,
         Long tradeId,
@@ -51,7 +54,9 @@ public record AdminServiceRequestDetailResponse(
             AdminServiceTradeSummary trade,
             AdminSettlementSummary settlement,
             AdminEscrowSummary escrow,
-            AdminServiceRequestIntegratedStatus integratedStatus) {
+            AdminServiceRequestIntegratedStatus integratedStatus,
+            AdminMemberIdentityResponse requesterMember,
+            AdminMemberIdentityResponse selectedProviderMember) {
         return new AdminServiceRequestDetailResponse(
                 source.getServiceRequestId(),
                 source.getTitle(),
@@ -61,6 +66,7 @@ public record AdminServiceRequestDetailResponse(
                 source.getFormTemplateId(),
                 source.getRequesterUserId(),
                 source.getRequesterName(),
+                requesterMember,
                 source.getBudgetAmount(),
                 source.getStatusCode(),
                 source.getStatusName(),
@@ -70,6 +76,7 @@ public record AdminServiceRequestDetailResponse(
                 quote == null ? 0 : quote.getActiveQuoteCount(),
                 quote == null ? null : quote.getSelectedQuoteId(),
                 quote == null ? null : quote.getSelectedProviderUserId(),
+                selectedProviderMember,
                 quote == null ? null : quote.getSelectedAmount(),
                 quote == null ? null : quote.getSelectedQuoteStatusCode(),
                 trade == null ? null : trade.getTradeId(),

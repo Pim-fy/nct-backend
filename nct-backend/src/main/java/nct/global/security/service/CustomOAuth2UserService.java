@@ -45,6 +45,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     // @ai_generated: USRG01(회원 상태) 코드값 - AuthService/CustomUserDetailsService와 동일 기준
     private static final String STATUS_SUSPENDED = "USRC0002";
     private static final String STATUS_WITHDRAWN = "USRC0003";
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
 
     private final AuthMemberPort authMemberPort;
     private final OAuthOnboardingTokenProvider onboardingTokenProvider;
@@ -71,9 +72,17 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         }
 
         AuthMember member = existingMember.get();
+        requireOAuthLoginAllowed(member);
         requireActiveStatus(member.getStatus());
 
         return new CustomUserDetails(member, attributes, parsed.nameAttributeKey());
+    }
+
+    /** 담당자 7 · F-OPS-001: 관리자 계정은 사용자용 소셜 로그인으로 세션을 만들 수 없다. */
+    void requireOAuthLoginAllowed(AuthMember member) {
+        if (ROLE_ADMIN.equals(member.getRole())) {
+            throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCode.OAUTH_LOGIN_FAILED));
+        }
     }
 
     /** 파싱된 정보를 온보딩 토큰(쿠키)에 담아 내려주고, 로그인 실패 경로로 온보딩 화면까지 리다이렉트시킨다. */

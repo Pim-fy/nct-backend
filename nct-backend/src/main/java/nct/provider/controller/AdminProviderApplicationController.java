@@ -41,8 +41,10 @@ public class AdminProviderApplicationController {
     @PostMapping("/{applicationSn}/approve")
     public ResponseEntity<ApiResponse<ProviderApplicationResponse>> approve(
             @PathVariable(name = "applicationSn") Long applicationSn,
+            @Valid @RequestBody ProviderDecisionRequest request,
             @AuthenticationPrincipal CustomUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(service.approve(applicationSn, userId(user))));
+        return ResponseEntity.ok(ApiResponse.success(
+                service.approve(applicationSn, request.getReason(), userId(user))));
     }
 
     @PostMapping("/{applicationSn}/reject")

@@ -20,10 +20,12 @@ public record AdminMemberListItemResponse(
         LocalDateTime registeredAt,
         LocalDateTime updatedAt) {
 
+    private static final String SOCIAL_LOGIN_ID_PREFIX = "OAUTH_";
+
     public static AdminMemberListItemResponse from(AdminMemberSource source) {
         return AdminMemberListItemResponse.builder()
                 .userSn(source.getUserSn())
-                .loginId(source.getLoginId())
+                .loginId(safeLoginId(source.getLoginId()))
                 .nickname(source.getNickname())
                 .statusCode(source.getStatusCode())
                 .statusName(source.getStatusName())
@@ -34,5 +36,10 @@ public record AdminMemberListItemResponse(
                 .registeredAt(source.getRegisteredAt())
                 .updatedAt(source.getUpdatedAt())
                 .build();
+    }
+
+    /** 담당자 7 · POL-AUTH-010: 소셜 인증용 시스템 ID는 회원관리 응답에서도 숨깁니다. */
+    private static String safeLoginId(String loginId) {
+        return loginId != null && loginId.startsWith(SOCIAL_LOGIN_ID_PREFIX) ? null : loginId;
     }
 }

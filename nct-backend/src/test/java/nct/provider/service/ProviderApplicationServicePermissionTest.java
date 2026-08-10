@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.dto.ProviderApplicationRequest;
 import nct.provider.mapper.ProviderApplicationMapper;
@@ -26,7 +27,8 @@ class ProviderApplicationServicePermissionTest {
     private final ProviderApplicationService service = new ProviderApplicationService(
             mapper,
             mock(ReferenceDataService.class),
-            mock(FileStorageService.class));
+            mock(FileStorageService.class),
+            mock(AdminMemberIdentityReader.class));
 
     @Test
     void 활성_제공자_권한이_하나라도_있으면_통과한다() {

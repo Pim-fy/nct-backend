@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.domain.ProviderApplicationCommand;
 import nct.provider.dto.ProviderApplicationFileRequest;
@@ -42,6 +44,7 @@ public class ProviderApplicationService {
     private final ProviderApplicationMapper mapper;
     private final ReferenceDataService referenceDataService;
     private final FileStorageService fileStorageService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional
     public List<ProviderApplicationResponse> apply(Long userSn, ProviderApplicationRequest request) {
@@ -112,14 +115,16 @@ public class ProviderApplicationService {
 
     @Transactional(readOnly = true)
     public List<ProviderApplicationResponse> getForAdmin(String statusCode) {
-        return enrichFiles(mapper.findForAdmin(normalizeStatus(statusCode)));
+        return enrichAdminIdentities(enrichFiles(mapper.findForAdmin(normalizeStatus(statusCode))));
     }
 
     @Transactional
-    public ProviderApplicationResponse approve(Long applicationSn, Long actorUserSn) {
+    public ProviderApplicationResponse approve(Long applicationSn, String reason, Long actorUserSn) {
+        String normalizedReason = requireDecisionReason(reason);
         ProviderApplicationResponse application = requirePending(applicationSn);
         if (mapper.changeApplicationStatus(applicationSn, APPROVED, null, actorId(actorUserSn)) != 1
-                || mapper.insertStatus(applicationSn, HIST_APPROVED, null, actorId(actorUserSn)) != 1
+                || mapper.insertStatus(
+                        applicationSn, HIST_APPROVED, normalizedReason, actorId(actorUserSn)) != 1
                 || mapper.insertActivePermission(
                         application.getUserSn(),
                         application.getCategorySn(),
@@ -133,12 +138,12 @@ public class ProviderApplicationService {
 
     @Transactional
     public ProviderApplicationResponse reject(Long applicationSn, String reason, Long actorUserSn) {
-        if (reason == null || reason.isBlank() || reason.trim().length() > 4000) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
+        String normalizedReason = requireDecisionReason(reason);
         requirePending(applicationSn);
-        if (mapper.changeApplicationStatus(applicationSn, REJECTED, reason.trim(), actorId(actorUserSn)) != 1
-                || mapper.insertStatus(applicationSn, HIST_REJECTED, reason.trim(), actorId(actorUserSn)) != 1) {
+        if (mapper.changeApplicationStatus(
+                    applicationSn, REJECTED, normalizedReason, actorId(actorUserSn)) != 1
+                || mapper.insertStatus(
+                    applicationSn, HIST_REJECTED, normalizedReason, actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
         return enrichFiles(
@@ -182,6 +187,13 @@ public class ProviderApplicationService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         return statusCode;
+    }
+
+    private String requireDecisionReason(String reason) {
+        if (reason == null || reason.isBlank() || reason.trim().length() > 4000) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return reason.trim();
     }
 
     private void requireUser(Long userSn) {
@@ -235,5 +247,27 @@ public class ProviderApplicationService {
     private ProviderApplicationResponse enrichFiles(ProviderApplicationResponse application) {
         application.setFiles(mapper.findFilesByApplicationSn(application.getApplicationSn()));
         return application;
+    }
+
+    /** 담당자 7 연계 · F-PROV-003: 관리자 심사 목록의 신청자와 처리자를 회원 읽기 계약으로 조립합니다. */
+    private List<ProviderApplicationResponse> enrichAdminIdentities(
+            List<ProviderApplicationResponse> applications) {
+        Set<Long> userSns = new LinkedHashSet<>();
+        for (ProviderApplicationResponse application : applications) {
+            if (application.getUserSn() != null) userSns.add(application.getUserSn());
+            if (application.getProcessorUserSn() != null) userSns.add(application.getProcessorUserSn());
+        }
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(userSns);
+        for (ProviderApplicationResponse application : applications) {
+            application.setApplicantMember(identityOf(identities, application.getUserSn()));
+            application.setProcessorMember(identityOf(identities, application.getProcessorUserSn()));
+        }
+        return applications;
+    }
+
+    private AdminMemberIdentityResponse identityOf(
+            Map<Long, AdminMemberIdentityResponse> identities,
+            Long userSn) {
+        return userSn == null ? null : identities.get(userSn);
     }
 }

@@ -22,6 +22,7 @@ import nct.global.exception.CustomException;
 import nct.member.mapper.MemberMapper;
 import nct.member.port.MemberStatusChangeResult;
 import nct.member.port.MemberStatusCommandPort;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.member.port.AccountSanctionPort;
@@ -40,6 +41,7 @@ class AdminMemberServiceTest {
     @Mock private MemberTradeRestrictionPort tradeRestrictionPort;
     @Mock private AuditLogPort auditLogPort;
     @Mock private NotificationService notificationService;
+    @Mock private AdminMemberIdentityReader memberIdentityReader;
 
     private AdminMemberService service;
 
@@ -52,7 +54,8 @@ class AdminMemberServiceTest {
                 sanctionProvider,
                 tradeRestrictionPort,
                 auditLogPort,
-                notificationService);
+                notificationService,
+                memberIdentityReader);
     }
 
     @Test

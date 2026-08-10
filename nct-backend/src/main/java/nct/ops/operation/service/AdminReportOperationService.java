@@ -4,7 +4,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +18,8 @@ import nct.abuse.service.AbuseReportService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.port.AdminReportDecision;
 import nct.ops.operation.port.AdminReportDecisionCommand;
@@ -27,6 +32,7 @@ public class AdminReportOperationService {
 
     private final AdminReportDecisionPort adminReportDecisionPort;
     private final AbuseReportService abuseReportService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional(readOnly = true)
     public List<AdminAbuseReportResponse> getPendingReports() {
@@ -41,7 +47,7 @@ public class AdminReportOperationService {
                 page,
                 size);
         return AdminReportPageResponse.builder()
-                .items(result.getContent())
+                .items(enrichMembers(result.getContent()))
                 .page(result.getPage())
                 .size(result.getSize())
                 .totalItems(result.getTotalCount())
@@ -53,7 +59,62 @@ public class AdminReportOperationService {
 
     @Transactional(readOnly = true)
     public AdminAbuseReportResponse getReportDetail(Long reportSn) {
-        return abuseReportService.getReportDetail(reportSn);
+        return enrichMember(abuseReportService.getReportDetail(reportSn));
+    }
+
+    private List<AdminAbuseReportResponse> enrichMembers(List<AdminAbuseReportResponse> reports) {
+        if (reports == null || reports.isEmpty()) {
+            return reports == null ? List.of() : reports;
+        }
+
+        Set<Long> userSns = new LinkedHashSet<>();
+        for (AdminAbuseReportResponse report : reports) {
+            addUserSn(userSns, report.getReporterUserSn());
+            addUserSn(userSns, report.getReportedUserSn());
+            addUserSn(userSns, numericUserSn(report.getProcessedBy()));
+        }
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(userSns);
+        reports.forEach(report -> applyMembers(report, identities));
+        return reports;
+    }
+
+    private AdminAbuseReportResponse enrichMember(AdminAbuseReportResponse report) {
+        if (report == null) {
+            return null;
+        }
+        enrichMembers(List.of(report));
+        return report;
+    }
+
+    private void applyMembers(
+            AdminAbuseReportResponse report,
+            Map<Long, AdminMemberIdentityResponse> identities) {
+        report.setReporterMember(identityOf(identities, report.getReporterUserSn()));
+        report.setReportedMember(identityOf(identities, report.getReportedUserSn()));
+        report.setProcessorMember(identityOf(identities, numericUserSn(report.getProcessedBy())));
+    }
+
+    private AdminMemberIdentityResponse identityOf(
+            Map<Long, AdminMemberIdentityResponse> identities,
+            Long userSn) {
+        return userSn == null ? null : identities.get(userSn);
+    }
+
+    private void addUserSn(Set<Long> userSns, Long userSn) {
+        if (userSn != null && userSn > 0) {
+            userSns.add(userSn);
+        }
+    }
+
+    private Long numericUserSn(String value) {
+        if (value == null || !value.matches("\\d+")) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     @Transactional

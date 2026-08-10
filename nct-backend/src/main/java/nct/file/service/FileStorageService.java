@@ -53,6 +53,8 @@ import nct.global.exception.ErrorCode;
  *     (PORTFOLIO_FILE 연결 테이블 — 소유 담당자7, 2026-07-28)
  *   - service-request(서비스 요청서 첨부사진, F-SVC-001): 이미지만 — 요청자·제공자 보호 API로 서빙
  *     (SVC_REQ_IMAGE 연결 테이블 — 소유 담당자2, 2026-08-04)
+ *   - quote(견적 작업사진): 이미지만 — service-request와 동일하게 보호 API로 서빙
+ *     (QUOTE_PHOTO 연결 테이블 — 소유 담당자3, 2026-08-06)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -138,7 +140,8 @@ public class FileStorageService {
 
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
         // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20) + 리뷰 사진(CHG-021, 실DB 적용 2026-07-21)
-        //  + 제공자 포트폴리오(F-PROV-005, 2026-07-28) + 서비스요청 첨부사진(F-SVC-001, 2026-08-04))
+        //  + 제공자 포트폴리오(F-PROV-005, 2026-07-28) + 서비스요청 첨부사진(F-SVC-001, 2026-08-04)
+        //  + 견적 작업사진(QUOTE_PHOTO, 2026-08-06))
         if (fileMapper.countProductImageRefs(flSn) > 0
                 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
                 || fileMapper.countReviewImageRefs(flSn) > 0

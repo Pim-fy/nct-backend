@@ -135,9 +135,9 @@
          WHERE FL_SN = #{flSn}
     </select>
 
-    <!-- 견적 첨부 파일이 참조 중이면 업로드 취소용 삭제 API에서 제거하지 않는다. -->
+    <!-- 삭제 가드: 견적 작업사진으로 연결된 파일인지 (QUOTE_PHOTO는 담당자3 소유 — 읽기 전용) -->
     <select id="countQuotePhotoRefs" resultType="int">
-        /* FileMapper.countQuotePhotoRefs */
+        /* 파일: 견적작업사진 참조 수 */
         SELECT COUNT(*)
           FROM QUOTE_PHOTO
          WHERE FL_SN = #{flSn}

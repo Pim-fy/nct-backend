@@ -20,6 +20,7 @@ import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
+import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
 import nct.quote.dto.MyQuoteSummaryResponse;
 import nct.quote.dto.QuoteAttachmentResponse;
@@ -31,6 +32,7 @@ import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.quote.port.AdminQuoteListReader;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
@@ -40,12 +42,20 @@ import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarg
 
 @Service
 @RequiredArgsConstructor
-public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader, AdminQuoteSummaryReader {
+public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader,
+        AdminQuoteSummaryReader, AdminQuoteListReader {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
+    private static final String STATUS_EXPIRED   = "QUTC0003";
     private static final String STATUS_SELECTED  = "QUTC0004";
     private static final String STATUS_WITHDRAWN = "QUTC0005";
+    private static final Set<String> ADMIN_QUOTE_STATUSES = Set.of(
+            STATUS_SUBMITTED,
+            STATUS_REVISED,
+            STATUS_EXPIRED,
+            STATUS_SELECTED,
+            STATUS_WITHDRAWN);
 
     private static final int MAX_REVISE_CNT = 3;
     private static final int MAX_ATTACHMENT_COUNT = 5;
@@ -73,6 +83,46 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .collect(Collectors.toUnmodifiableMap(
                         AdminQuoteSummary::getServiceRequestId,
                         Function.identity()));
+    }
+
+    /** 담당자 3 견적 조회 계약 / 담당자 7 F-OPS-021 소비: 관리자 상세용 비민감 목록입니다. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminQuoteListItem> findByServiceRequestId(Long serviceRequestId) {
+        if (serviceRequestId == null || serviceRequestId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        List<AdminQuoteListItem> items = quoteMapper.findAdminQuoteListItems(serviceRequestId);
+        if (items == null) {
+            throw invalidAdminQuoteList();
+        }
+        Set<Long> quoteIds = new HashSet<>();
+        for (AdminQuoteListItem item : items) {
+            if (item == null
+                    || item.getServiceRequestId() == null
+                    || !serviceRequestId.equals(item.getServiceRequestId())
+                    || item.getQuoteId() == null
+                    || item.getQuoteId() <= 0
+                    || !quoteIds.add(item.getQuoteId())
+                    || item.getProviderUserId() == null
+                    || item.getProviderUserId() <= 0
+                    || item.getAmount() == null
+                    || item.getAmount() <= 0
+                    || !ADMIN_QUOTE_STATUSES.contains(item.getStatusCode())
+                    || item.getReviseCount() < 0
+                    || item.getSubmittedAt() == null
+                    || item.getUpdatedAt() == null) {
+                throw invalidAdminQuoteList();
+            }
+        }
+        return List.copyOf(items);
+    }
+
+    private CustomException invalidAdminQuoteList() {
+        return new CustomException(
+                ErrorCode.INTERNAL_SERVER_ERROR,
+                "관리자 견적 목록 데이터가 일관되지 않습니다.");
     }
 
     private void validateAdminSummary(AdminQuoteSummary summary) {

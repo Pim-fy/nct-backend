@@ -1,6 +1,7 @@
 package nct.ops.servicequery.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import nct.quote.dto.AdminQuoteSummary;
 import nct.point.dto.AdminEscrowSummary;
@@ -27,6 +28,7 @@ public record AdminServiceRequestDetailResponse(
         String integratedStatusName,
         int totalQuoteCount,
         int activeQuoteCount,
+        List<AdminServiceRequestQuoteResponse> quotes,
         Long selectedQuoteId,
         Long selectedProviderUserId,
         AdminMemberIdentityResponse selectedProviderMember,
@@ -56,7 +58,8 @@ public record AdminServiceRequestDetailResponse(
             AdminEscrowSummary escrow,
             AdminServiceRequestIntegratedStatus integratedStatus,
             AdminMemberIdentityResponse requesterMember,
-            AdminMemberIdentityResponse selectedProviderMember) {
+            AdminMemberIdentityResponse selectedProviderMember,
+            List<AdminServiceRequestQuoteResponse> quotes) {
         return new AdminServiceRequestDetailResponse(
                 source.getServiceRequestId(),
                 source.getTitle(),
@@ -74,6 +77,7 @@ public record AdminServiceRequestDetailResponse(
                 integratedStatus.label(),
                 quote == null ? 0 : quote.getTotalQuoteCount(),
                 quote == null ? 0 : quote.getActiveQuoteCount(),
+                List.copyOf(quotes),
                 quote == null ? null : quote.getSelectedQuoteId(),
                 quote == null ? null : quote.getSelectedProviderUserId(),
                 selectedProviderMember,

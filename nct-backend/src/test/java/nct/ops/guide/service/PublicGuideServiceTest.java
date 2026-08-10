@@ -20,9 +20,15 @@ class PublicGuideServiceTest {
 
         assertThat(guides)
                 .extracting("guideId")
-                .containsExactly("product-register", "service-request", "bid", "trade-completion", "point-exchange");
+                .containsExactly(
+                        "product-register",
+                        "service-request",
+                        "quote-selection",
+                        "bid",
+                        "trade-completion",
+                        "point-exchange");
         assertThat(guides)
-                .allSatisfy(guide -> assertThat(guide.routePath()).startsWith("/guide/"));
+                .allSatisfy(guide -> assertThat(guide.routePath()).startsWith("/customersupport/guide?flow="));
     }
 
     @Test
@@ -40,7 +46,7 @@ class PublicGuideServiceTest {
 
         assertThat(detail.title()).isEqualTo("상품 등록");
         assertThat(detail.steps()).anySatisfy(step -> assertThat(step).contains("시작가"));
-        assertThat(detail.relatedRoutes()).contains("/products/new");
+        assertThat(detail.relatedRoutes()).contains("/product/register");
     }
 
     @Test

@@ -112,6 +112,9 @@ public class SecurityConfig {
                 // 관리자 API
                 .requestMatchers("/api/admin/**")
                     .hasAuthority("ROLE_ADMIN")
+                // 담당자 7 · F-OPS-001: 비로그인 관리자도 전용 인증 컨트롤러까지 도달해야 한다.
+                .requestMatchers(HttpMethod.POST, "/api/auth/admin/login")
+                    .permitAll()
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()

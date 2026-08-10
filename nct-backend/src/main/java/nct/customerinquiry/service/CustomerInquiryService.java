@@ -1,7 +1,10 @@
 package nct.customerinquiry.service;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -23,6 +26,8 @@ import nct.customerinquiry.mapper.CustomerInquiryMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
@@ -51,6 +56,7 @@ public class CustomerInquiryService {
     private final ReferenceDataService referenceDataService;
     private final SensitiveContentInspectionUseCase inspectionUseCase;
     private final AuditLogPort auditLogPort;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     /** 원문을 DB에 넣지 않고 문의 번호 발급 후 필드별 검사 결과만 저장한다. */
     @Transactional
@@ -160,6 +166,7 @@ public class CustomerInquiryService {
                 ? List.of()
                 : customerInquiryMapper.findAdminInquiries(
                         normalizedStatus, normalizedType, normalizedKeyword, offset, size);
+        enrichAdminInquiryList(items);
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);
         return new AdminCustomerInquiryPageResponse(items, page, size, total, totalPages);
     }
@@ -167,7 +174,9 @@ public class CustomerInquiryService {
     @Transactional(readOnly = true)
     public AdminCustomerInquiryDetailResponse getAdminInquiry(Long inquirySn) {
         validateInquirySn(inquirySn);
-        return requireAdminInquiry(inquirySn);
+        AdminCustomerInquiryDetailResponse inquiry = requireAdminInquiry(inquirySn);
+        applyAdminInquiryMembers(inquiry);
+        return inquiry;
     }
 
     /** 접수 문의 한 건을 최초 처리 관리자에게 원자적으로 배정하고 감사기록을 남긴다. */
@@ -177,9 +186,9 @@ public class CustomerInquiryService {
         validateUser(adminUserSn);
         String normalizedRequestId = normalizeUuid(requestId);
         AdminCustomerInquiryDetailResponse inquiry = requireAdminInquiry(inquirySn);
-        if (!RECEIVED_STATUS.equals(inquiry.statusCode())
-                || inquiry.processorUserSn() != null
-                || inquiry.answer() != null) {
+        if (!RECEIVED_STATUS.equals(inquiry.getStatusCode())
+                || inquiry.getProcessorUserSn() != null
+                || inquiry.getAnswer() != null) {
             throw new CustomException(ErrorCode.CUSTOMER_INQUIRY_STATUS_CONFLICT);
         }
         referenceDataService.requireActiveCode(STATUS_GROUP, PROCESSING_STATUS);
@@ -217,10 +226,10 @@ public class CustomerInquiryService {
         String answer = normalizeRequired(request.answer(), 4000);
         String detectionKey = normalizeUuid(request.detectionKey());
         AdminCustomerInquiryDetailResponse inquiry = requireAdminInquiry(inquirySn);
-        if (!PROCESSING_STATUS.equals(inquiry.statusCode())
-                || !adminUserSn.equals(inquiry.processorUserSn())
-                || inquiry.answer() != null
-                || inquiry.answeredAt() != null) {
+        if (!PROCESSING_STATUS.equals(inquiry.getStatusCode())
+                || !adminUserSn.equals(inquiry.getProcessorUserSn())
+                || inquiry.getAnswer() != null
+                || inquiry.getAnsweredAt() != null) {
             throw new CustomException(ErrorCode.CUSTOMER_INQUIRY_STATUS_CONFLICT);
         }
         referenceDataService.requireActiveCode(STATUS_GROUP, ANSWERED_STATUS);
@@ -258,6 +267,44 @@ public class CustomerInquiryService {
             throw new CustomException(ErrorCode.CUSTOMER_INQUIRY_NOT_FOUND);
         }
         return inquiry;
+    }
+
+    private void enrichAdminInquiryList(List<AdminCustomerInquiryListItemResponse> inquiries) {
+        if (inquiries == null || inquiries.isEmpty()) {
+            return;
+        }
+
+        Set<Long> userSns = new LinkedHashSet<>();
+        for (AdminCustomerInquiryListItemResponse inquiry : inquiries) {
+            addUserSn(userSns, inquiry.getUserSn());
+            addUserSn(userSns, inquiry.getProcessorUserSn());
+        }
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(userSns);
+        for (AdminCustomerInquiryListItemResponse inquiry : inquiries) {
+            inquiry.setWriterMember(identityOf(identities, inquiry.getUserSn()));
+            inquiry.setProcessorMember(identityOf(identities, inquiry.getProcessorUserSn()));
+        }
+    }
+
+    private void applyAdminInquiryMembers(AdminCustomerInquiryDetailResponse inquiry) {
+        Set<Long> userSns = new LinkedHashSet<>();
+        addUserSn(userSns, inquiry.getUserSn());
+        addUserSn(userSns, inquiry.getProcessorUserSn());
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(userSns);
+        inquiry.setWriterMember(identityOf(identities, inquiry.getUserSn()));
+        inquiry.setProcessorMember(identityOf(identities, inquiry.getProcessorUserSn()));
+    }
+
+    private AdminMemberIdentityResponse identityOf(
+            Map<Long, AdminMemberIdentityResponse> identities,
+            Long userSn) {
+        return userSn == null ? null : identities.get(userSn);
+    }
+
+    private void addUserSn(Set<Long> userSns, Long userSn) {
+        if (userSn != null && userSn > 0) {
+            userSns.add(userSn);
+        }
     }
 
     private void recordStatusAudit(

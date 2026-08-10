@@ -3,6 +3,7 @@ package nct.audit.controller;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,8 @@ import nct.audit.mapper.ChatMessageView;
 import nct.audit.service.AuditLogService;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-18)
@@ -44,6 +47,7 @@ public class AdminAuditController {
     private static final int DEFAULT_LIMIT = 100;
 
     private final AuditLogService auditLogService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     /**
      * 감사로그 조건별 조회 (F-OPS-016) — 조건은 전부 선택 사항
@@ -62,8 +66,11 @@ public class AdminAuditController {
         LocalDateTime toDt = to == null ? null : to.plusDays(1).atStartOfDay().minusNanos(1);
         int rows = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(limit, 1), MAX_LIMIT);
 
-        List<AuditLogResponse> body = auditLogService.search(usrSn, typeCd, fromDt, toDt, rows).stream()
-                .map(AuditLogResponse::from)
+        var logs = auditLogService.search(usrSn, typeCd, fromDt, toDt, rows);
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                logs.stream().map(log -> log.getUsrSn()).toList());
+        List<AuditLogResponse> body = logs.stream()
+                .map(log -> AuditLogResponse.from(log, identities.get(log.getUsrSn())))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(body));
     }

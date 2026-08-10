@@ -32,8 +32,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
-import nct.ops.reference.domain.CommonCode;
-import nct.ops.reference.service.ReferenceDataService;
+import nct.ops.reference.service.AuctionBidUnitPolicyService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
 import nct.product.dto.ProductCommentResponse;
@@ -58,7 +57,6 @@ public class AuctionService {
     private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
     private static final String BOTH_TRADE_METHOD_CODE = "TRDC0020";
-    private static final String BID_UNIT_GROUP_CODE = "AUCG02";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -69,7 +67,7 @@ public class AuctionService {
     private final AuctionEventPublisher auctionEventPublisher;
     private final NotificationService notificationService;
     private final ReviewService reviewService;
-    private final ReferenceDataService referenceDataService;
+    private final AuctionBidUnitPolicyService bidUnitPolicyService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -242,7 +240,7 @@ public class AuctionService {
                 actorUserId,
                 now);
 
-        BigDecimal configuredBidUnit = requireConfiguredBidUnit(bidUnitAmount);
+        BigDecimal actualBidUnit = bidUnitPolicyService.resolveActiveAmount(bidUnitAmount);
 
         String statusCode = startDateTime.isAfter(now)
                 ? AuctionStatusCode.READY
@@ -251,7 +249,7 @@ public class AuctionService {
                 productId,
                 statusCode,
                 startAmount,
-                configuredBidUnit,
+                actualBidUnit,
                 startDateTime,
                 endDateTime,
                 actorUserId.toString());
@@ -618,7 +616,9 @@ public class AuctionService {
     private BigDecimal effectiveBidUnit(AuctionBidTarget target) {
         BigDecimal bidUnitPrice = target.getBidUnitPrice();
         if (bidUnitPrice == null || bidUnitPrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "경매 입찰 단위가 올바르지 않습니다.");
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "경매 입찰 단위를 확인할 수 없습니다.");
         }
         return bidUnitPrice;
     }
@@ -631,30 +631,6 @@ public class AuctionService {
                     ErrorCode.INVALID_INPUT_VALUE,
                     "입찰 금액은 입찰 단위의 배수여야 합니다."
             );
-        }
-    }
-
-    private BigDecimal requireConfiguredBidUnit(BigDecimal bidUnitAmount) {
-        if (bidUnitAmount == null || bidUnitAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 단위를 선택해 주세요.");
-        }
-
-        boolean configured = referenceDataService.getActiveCodes(BID_UNIT_GROUP_CODE).stream()
-                .map(CommonCode::getName)
-                .filter(name -> name != null && !name.isBlank())
-                .map(this::parseConfiguredBidUnit)
-                .anyMatch(option -> option.compareTo(bidUnitAmount) == 0);
-        if (!configured) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "선택할 수 없는 입찰 단위입니다.");
-        }
-        return bidUnitAmount;
-    }
-
-    private BigDecimal parseConfiguredBidUnit(String value) {
-        try {
-            return new BigDecimal(value.trim());
-        } catch (NumberFormatException exception) {
-            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "입찰 단위 공통코드 설정이 올바르지 않습니다.");
         }
     }
 

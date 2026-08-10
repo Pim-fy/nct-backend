@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.member.domain.Member;
+import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.dto.AdminMemberSource;
 
 @Mapper
@@ -37,6 +38,10 @@ public interface MemberMapper {
             @Param("size") int size);
 
     Optional<AdminMemberSource> findAdminMemberById(@Param("usrSn") Long usrSn);
+
+    /** 담당자 7 · F-OPS-002: 관리자 목록 조립용 비민감 회원 식별정보 일괄 조회입니다. */
+    List<AdminMemberIdentityResponse> findAdminMemberIdentities(
+            @Param("userSns") List<Long> userSns);
 
     long countAdminMembers(
             @Param("statusCode") String statusCode,

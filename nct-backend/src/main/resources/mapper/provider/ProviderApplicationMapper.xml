@@ -12,6 +12,9 @@
     <result column="PRV_APLY_RJCT_RSN_CN" property="rejectReason"/>
     <result column="PRV_APLY_TYPE_CD" property="applicationTypeCode"/>
     <result column="PRV_APLY_REG_DT" property="requestedAt"/>
+    <result column="PROC_USR_SN" property="processorUserSn"/>
+    <result column="PRV_STS_REG_DT" property="processedAt"/>
+    <result column="PRV_STS_RSN_CN" property="processedReason"/>
   </resultMap>
   <sql id="columns">
     a.PRV_APLY_SN,
@@ -44,11 +47,26 @@
   </select>
 
   <select id="findForAdmin" resultMap="application">
-    SELECT <include refid="columns"/>
+    SELECT <include refid="columns"/>,
+      CASE
+        WHEN decision_status.PRV_STS_REG_ID REGEXP '^[0-9]+$'
+        THEN CAST(decision_status.PRV_STS_REG_ID AS UNSIGNED)
+        ELSE NULL
+      END AS PROC_USR_SN,
+      decision_status.PRV_STS_REG_DT,
+      decision_status.PRV_STS_RSN_CN
     FROM PROVIDER_APPLY a
       JOIN USERS u ON u.USR_SN = a.USR_SN
       JOIN CATEGORY c ON c.CAT_SN = a.CAT_SN
       JOIN CMM_CODE status_code ON status_code.CMM_CD = a.PRV_APLY_STATUS_CD
+      LEFT JOIN PROVIDER_STATUS decision_status ON decision_status.PRV_STS_SN = (
+        SELECT history.PRV_STS_SN
+          FROM PROVIDER_STATUS history
+         WHERE history.PRV_APLY_SN = a.PRV_APLY_SN
+           AND history.PRV_STS_CD IN ('PRVC0017', 'PRVC0018')
+         ORDER BY history.PRV_STS_REG_DT DESC, history.PRV_STS_SN DESC
+         LIMIT 1
+      )
     WHERE a.PRV_APLY_ACTV_YN = 'Y'
       AND a.PRV_APLY_STATUS_CD IN ('PRVC0002', 'PRVC0003', 'PRVC0004')
     <if test="statusCode != null">

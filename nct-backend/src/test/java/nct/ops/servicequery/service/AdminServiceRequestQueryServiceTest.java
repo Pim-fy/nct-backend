@@ -21,6 +21,7 @@ import nct.ops.reference.dto.AdminCategoryResponse;
 import nct.ops.reference.service.AdminCategoryService;
 import nct.ops.servicequery.dto.AdminServiceRequestListRequest;
 import nct.ops.security.service.SensitiveDataMasker;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.point.dto.AdminEscrowSummary;
 import nct.point.port.AdminEscrowSummaryReader;
 import nct.quote.dto.AdminQuoteSummary;
@@ -62,7 +63,8 @@ class AdminServiceRequestQueryServiceTest {
                 quoteSummaryReader,
                 tradeSummaryReader,
                 settlementSummaryReader,
-                escrowSummaryReader);
+                escrowSummaryReader,
+                mock(AdminMemberIdentityReader.class));
     }
 
     @Test

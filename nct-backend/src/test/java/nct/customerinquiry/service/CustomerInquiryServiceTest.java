@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -36,6 +37,8 @@ import nct.customerinquiry.mapper.CustomerInquiryMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
@@ -49,6 +52,7 @@ class CustomerInquiryServiceTest {
     private ReferenceDataService referenceDataService;
     private SensitiveContentInspectionUseCase inspectionUseCase;
     private AuditLogPort auditLogPort;
+    private AdminMemberIdentityReader memberIdentityReader;
     private CustomerInquiryService service;
 
     @BeforeEach
@@ -57,8 +61,14 @@ class CustomerInquiryServiceTest {
         referenceDataService = mock(ReferenceDataService.class);
         inspectionUseCase = mock(SensitiveContentInspectionUseCase.class);
         auditLogPort = mock(AuditLogPort.class);
+        memberIdentityReader = mock(AdminMemberIdentityReader.class);
+        when(memberIdentityReader.findByUserSns(any())).thenReturn(Map.of());
         service = new CustomerInquiryService(
-                mapper, referenceDataService, inspectionUseCase, auditLogPort);
+                mapper,
+                referenceDataService,
+                inspectionUseCase,
+                auditLogPort,
+                memberIdentityReader);
     }
 
     @Test
@@ -181,11 +191,18 @@ class CustomerInquiryServiceTest {
         when(mapper.findAdminInquiries(
                 "INQC0007", "INQC0001", "51", 20L, 20))
                 .thenReturn(List.of(adminItem));
+        AdminMemberIdentityResponse writer = AdminMemberIdentityResponse.builder()
+                .userSn(10L)
+                .loginId("writer01")
+                .nickname("문의작성자")
+                .build();
+        when(memberIdentityReader.findByUserSns(any())).thenReturn(Map.of(10L, writer));
 
         AdminCustomerInquiryPageResponse adminPage = service.getAdminInquiries(
                 " INQC0007 ", " INQC0001 ", " 51 ", 2, 20);
 
         assertThat(adminPage.items()).containsExactly(adminItem);
+        assertThat(adminPage.items().getFirst().getWriterMember()).isSameAs(writer);
         assertThat(adminPage.totalItems()).isEqualTo(21L);
         assertThat(adminPage.totalPages()).isEqualTo(2);
         verify(referenceDataService, times(2)).requireActiveCode("INQG02", "INQC0007");

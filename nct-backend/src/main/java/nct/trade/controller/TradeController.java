@@ -3,9 +3,11 @@ package nct.trade.controller;
 import java.util.List;
 
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -25,8 +27,10 @@ import nct.trade.dto.ServiceTradeListPageResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
+import nct.trade.dto.TradeOfflineScheduleProposal;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.service.TradeService;
+import nct.trade.service.TradeOfflineScheduleProposalService;
 
 /** 로그인한 사용자의 물건 거래내역과 상세 조회 API다. */
 @RestController
@@ -35,6 +39,9 @@ import nct.trade.service.TradeService;
 public class TradeController {
 
     private final TradeService tradeService;
+    // 기존 컨트롤러 단위 테스트의 생성자 시그니처를 유지한다.
+    @Autowired
+    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
 
     /** 구매·판매 역할을 함께 포함한 내 물건 거래 목록을 조회한다. */
     @GetMapping
@@ -117,6 +124,81 @@ public class TradeController {
         long sellerUserId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 tradeService.saveMyOfflineSchedule(tradeId, sellerUserId, request)));
+    }
+
+    /** 거래 당사자 누구나 직거래 신규 일정 또는 변경 일정을 제안한다. */
+    @PostMapping("/{tradeId}/offline-schedule/proposals")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> proposeOfflineSchedule(
+            @PathVariable(name = "tradeId") long tradeId,
+            @Valid @RequestBody TradeOfflineScheduleRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        offlineScheduleProposalService.proposeSchedule(tradeId, userId, request);
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 거래 당사자 누구나 확정 일정 취소를 제안한다. */
+    @PostMapping("/{tradeId}/offline-schedule/cancel-requests")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> requestOfflineScheduleCancellation(
+            @PathVariable(name = "tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        offlineScheduleProposalService.requestCancellation(tradeId, userId);
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 대기 중 일정 제안을 수락한다. */
+    @PostMapping("/{tradeId}/offline-schedule/proposals/{proposalId}/accept")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> acceptOfflineScheduleProposal(
+            @PathVariable(name = "tradeId") long tradeId,
+            @PathVariable(name = "proposalId") long proposalId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        offlineScheduleProposalService.respond(tradeId, proposalId, userId, true, null);
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 대기 중 일정 제안을 거절한다. */
+    @PostMapping("/{tradeId}/offline-schedule/proposals/{proposalId}/reject")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> rejectOfflineScheduleProposal(
+            @PathVariable(name = "tradeId") long tradeId,
+            @PathVariable(name = "proposalId") long proposalId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        offlineScheduleProposalService.respond(tradeId, proposalId, userId, false, null);
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 제안자 본인의 대기 중 일정 제안을 철회한다. */
+    @DeleteMapping("/{tradeId}/offline-schedule/proposals/{proposalId}")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> withdrawOfflineScheduleProposal(
+            @PathVariable(name = "tradeId") long tradeId,
+            @PathVariable(name = "proposalId") long proposalId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        offlineScheduleProposalService.withdraw(tradeId, proposalId, userId);
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.getMyMaterialTradeDetail(tradeId, userId)));
+    }
+
+    /** 직거래 일정 제안·응답 이력을 거래 당사자에게 반환한다. */
+    @GetMapping("/{tradeId}/offline-schedule/proposals")
+    public ResponseEntity<ApiResponse<List<TradeOfflineScheduleProposal>>> getOfflineScheduleProposalHistory(
+            @PathVariable(name = "tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                offlineScheduleProposalService.getHistory(tradeId, userId)));
     }
 
     /** 판매자가 올린 인증사진과 메모를 하나의 발송 처리로 확정한다. */

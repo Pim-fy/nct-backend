@@ -44,6 +44,11 @@ public interface ReviewMapper {
             @Param("tradeId") long tradeId,
             @Param("usrSn") long usrSn);
 
+    /** 거래 당사자 검증과 함께, 상대방이 나(usrSn)에 대해 작성한 리뷰를 조회한다. */
+    TradeReviewStateSource selectCounterpartTradeReviewState(
+            @Param("tradeId") long tradeId,
+            @Param("usrSn") long usrSn);
+
     // @ai_generated: 기존 reviewId URL을 정식 auctionId URL로 변환할 때만 사용한다.
     ReviewRouteContext selectMyReviewRouteContext(
             @Param("reviewId") long reviewId,

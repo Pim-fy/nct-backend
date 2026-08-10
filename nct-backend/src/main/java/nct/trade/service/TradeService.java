@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,6 +93,9 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private final MemberService memberService;
     private final SettlementService settlementService;
     private final ChatService chatService;
+    // 기존 단위 테스트와 외부 생성자의 생성자 시그니처를 유지하기 위해 선택 주입한다.
+    @Autowired
+    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
     private final PointService pointService;
     private final ReferenceDataService referenceDataService;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
@@ -513,6 +517,9 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         decryptDetailAddresses(detail);
+        if (offlineScheduleProposalService != null) {
+            offlineScheduleProposalService.enrichDetail(detail, userId);
+        }
 
         return detail;
     }
@@ -666,37 +673,17 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
 
-    /** 판매자 본인의 직거래 일정과 장소를 등록하거나 기존 제안을 수정한다. */
+    /** 기존 판매자 전용 호출부와의 호환을 유지하되, 실제로는 일정 제안을 등록한다. */
     @Transactional
     public TradeDetailResponse saveMyOfflineSchedule(
             long tradeId,
             long sellerUserId,
             TradeOfflineScheduleRequest request) {
-        validateOfflineSchedule(request);
-
-        if (tradeMapper.findMyOfflineTradeIdForUpdate(tradeId, sellerUserId) == null) {
-            throw new CustomException(ErrorCode.NOT_FOUND,
-                    "존재하지 않거나 수정할 수 없는 직거래입니다.");
+        if (offlineScheduleProposalService == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR,
+                    "직거래 일정 협의 기능을 준비하지 못했습니다.");
         }
-
-        tradeMapper.upsertOfflineSchedule(
-                tradeId,
-                request.toMeetingDateTime(),
-                request.getMeetingPlace().trim(),
-                fieldCryptoService.encrypt(normalizeOptional(request.getMeetingAddress())));
-
-        // 일정이 처음 제안되면 구매자도 즉시 직거래 진행 상태를 확인할 수 있게 전이한다.
-        // 이후 일정 수정 때는 이미 진행 상태이므로 상태 이력을 중복해서 남기지 않는다.
-        if (tradeMapper.startOfflineTrade(tradeId, String.valueOf(sellerUserId)) == 1) {
-            tradeMapper.insertStatusHistory(
-                    tradeId,
-                    DELIVERING,
-                    "판매자가 직거래 일정을 제안했습니다.");
-        }
-
-        // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
-        // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
-        chatService.createOrGetOfflineTradeChatRoom(tradeId);
+        offlineScheduleProposalService.proposeSchedule(tradeId, sellerUserId, request);
 
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
@@ -1118,7 +1105,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         } else {
             detail.setDeliveryAddress(deliveryAddress + " " + deliveryDetailAddress);
         }
-        detail.setDeliveryDetailAddress(deliveryDetailAddress);
+        // @ai_generated (ISS: 판매자 화면 상세주소 중복 표시): deliveryAddress에 상세주소를 이미
+        // 합쳤으므로, deliveryDetailAddress를 별도 값으로 응답에 남기지 않는다 - 남겨두면 화면에
+        // 상세주소가 두 번(합쳐진 주소 안 + 별도 필드) 나타난다.
+        detail.setDeliveryDetailAddress(null);
         detail.setMeetingAddress(fieldCryptoService.decrypt(detail.getMeetingAddress()));
     }
 

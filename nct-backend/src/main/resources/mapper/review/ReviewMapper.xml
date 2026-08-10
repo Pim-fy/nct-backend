@@ -186,6 +186,25 @@
                OR T.REQ_USR_SN = #{usrSn} OR T.PRV_USR_SN = #{usrSn})
     </select>
 
+    <!-- @ai_generated: REVWD_USR_SN(리뷰 대상자) = 나로 조인하면, 거래 당사자가 둘뿐이므로
+         "상대방이 나에 대해 쓴 리뷰"가 그대로 나온다 - 상대방 회원번호를 따로 구할 필요가 없다. -->
+    <select id="selectCounterpartTradeReviewState" resultType="nct.review.dto.TradeReviewStateSource">
+        SELECT
+            T.TRD_SN        AS tradeId,
+            T.TRD_STATUS_CD AS tradeStatusCode,
+            R.RVW_SN        AS reviewId,
+            R.RVW_USE_YN    AS reviewUseYn,
+            R.RVW_SCORE     AS rating,
+            R.RVW_CN        AS content
+        FROM TRADE T
+        LEFT JOIN REVIEW R
+          ON R.TRD_SN = T.TRD_SN
+         AND R.REVWD_USR_SN = #{usrSn}
+        WHERE T.TRD_SN = #{tradeId}
+          AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn}
+               OR T.REQ_USR_SN = #{usrSn} OR T.PRV_USR_SN = #{usrSn})
+    </select>
+
     <!-- @ai_generated: 본인의 활성 물건 리뷰만 기존 URL 변환 컨텍스트로 반환한다. -->
     <!-- @ai_generated (담당자1 황희준, 2026-08-07): auctionId는 예전에 여기서 AUCTION을 직접
          JOIN해 채웠으나, ReviewService가 AuctionService 계약(findAuctionIdByProductId)으로 채우도록

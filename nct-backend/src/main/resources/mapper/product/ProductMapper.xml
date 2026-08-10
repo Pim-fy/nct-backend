@@ -80,13 +80,15 @@
     </select>
 
     <!-- ── 내 판매 목록 (최신순) ─────────────────────────── -->
-    <!-- filterType: DRAFT(임시저장) | ACTIVE(진행중) | WON(낙찰) | TRADING(거래중) | DONE(완료) | CANCELED(취소) | ENDED(종료/유찰) | null(전체) -->
+    <!-- filterType: DRAFT(임시저장) | RESERVED(예약) | ACTIVE(경매중) | TRADING(거래중) | DONE(완료) | CANCELED(취소) | ENDED(종료/유찰) | null(전체) -->
     <select id="findMyProducts" resultMap="ProductResponseMap">
         /* ProductMapper.findMyProducts */
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
                p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
                p.PRD_REG_DT, p.PRD_UPDT_DT,
+               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT,
+               p.PRD_DRAFT_START_NOW_YN, p.PRD_DRAFT_POLICY_AGREED_YN,
                f.FL_PATH AS PRD_IMG_URL
           FROM PRODUCT p
           JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
@@ -100,17 +102,24 @@
            <choose>
                <when test="filterType == 'DRAFT'">
                    AND p.PRD_STATUS_CD = 'PRDC0001'
+                   AND (COALESCE(p.PRD_DRAFT_START_NOW_YN, '') != 'N'
+                     OR p.PRD_DRAFT_START_DT IS NULL
+                     OR p.PRD_DRAFT_START_DT &lt;= NOW())
+               </when>
+               <!-- @ai_generated (마이페이지 판매 목록 필터 개편, 2026-08-09): 예약은
+                    임시저장 시 예약 시작을 선택했고 아직 시작시각이 지나지 않은 상품이다. -->
+               <when test="filterType == 'RESERVED'">
+                   AND p.PRD_STATUS_CD = 'PRDC0001'
+                   AND p.PRD_DRAFT_START_NOW_YN = 'N'
+                   AND p.PRD_DRAFT_START_DT > NOW()
                </when>
                <when test="filterType == 'ACTIVE'">
                    AND p.PRD_STATUS_CD = 'PRDC0002'
                    AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
                </when>
-               <when test="filterType == 'WON'">
-                   AND a.AUC_STATUS_CD = 'AUCC0003'
-                   AND t.TRD_SN IS NULL
-               </when>
                <when test="filterType == 'TRADING'">
-                   AND t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+                   AND (t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+                     OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL))
                </when>
                <when test="filterType == 'DONE'">
                    AND t.TRD_STATUS_CD = 'TRDC0006'

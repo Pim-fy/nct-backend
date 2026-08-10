@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.review.dto.CounterpartTradeReviewResponse;
 import nct.review.dto.MyTradeReviewResponse;
 import nct.review.service.ReviewService;
 
@@ -28,5 +29,13 @@ public class TradeReviewController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(reviewService.getMyTradeReview(userId, tradeId)));
+    }
+
+    @GetMapping("/counterpart")
+    public ResponseEntity<ApiResponse<CounterpartTradeReviewResponse>> getCounterpartTradeReview(
+            @PathVariable("tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(reviewService.getCounterpartTradeReview(userId, tradeId)));
     }
 }

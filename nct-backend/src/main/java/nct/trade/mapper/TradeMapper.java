@@ -208,6 +208,12 @@ public interface TradeMapper {
             @Param("meetingPlace") String meetingPlace,
             @Param("meetingAddress") String meetingAddress);
 
+    int deleteOfflineSchedule(@Param("tradeId") long tradeId);
+
+    int resetOfflineTrade(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
+
     /** 거래 당사자 본인의 물건 거래를 잠가 완료 확인과 중복 요청이 경합하지 않게 한다. */
     TradeConfirmationTarget findMyTradeForConfirmationForUpdate(
             @Param("tradeId") long tradeId,

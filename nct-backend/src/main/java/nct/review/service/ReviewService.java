@@ -19,10 +19,12 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.review.constant.CounterpartReviewStatus;
 import nct.review.constant.MyReviewStatus;
 import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
 import nct.review.domain.ReviewImage;
+import nct.review.dto.CounterpartTradeReviewResponse;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.MyTradeReviewResponse;
 import nct.review.dto.ReviewCreateResult;
@@ -129,6 +131,34 @@ public class ReviewService {
 
         return MyTradeReviewResponse.builder()
                 .status(status)
+                .tradeId(source.getTradeId())
+                .build();
+    }
+
+    /** 거래 상세에서 상대방이 나에 대해 작성한 리뷰를 조회한다. */
+    @Transactional(readOnly = true)
+    public CounterpartTradeReviewResponse getCounterpartTradeReview(long usrSn, long tradeId) {
+        if (usrSn <= 0 || tradeId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "거래번호와 회원번호가 올바르지 않습니다.");
+        }
+
+        TradeReviewStateSource source = reviewMapper.selectCounterpartTradeReviewState(tradeId, usrSn);
+        if (source == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 거래입니다.");
+        }
+
+        if (source.getReviewId() != null && "Y".equals(source.getReviewUseYn())) {
+            return CounterpartTradeReviewResponse.builder()
+                    .status(CounterpartReviewStatus.WRITTEN)
+                    .tradeId(source.getTradeId())
+                    .rating(source.getRating())
+                    .content(source.getContent())
+                    .photos(reviewImageMapper.selectUrlsByReviewSn(source.getReviewId()))
+                    .build();
+        }
+
+        return CounterpartTradeReviewResponse.builder()
+                .status(CounterpartReviewStatus.NOT_WRITTEN)
                 .tradeId(source.getTradeId())
                 .build();
     }

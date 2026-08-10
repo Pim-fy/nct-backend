@@ -771,7 +771,9 @@ class TradeServiceTest {
         assertThat(result.getRecipientName()).isEqualTo("구매자");
         assertThat(result.getRecipientPhone()).isEqualTo("01012345678");
         assertThat(result.getDeliveryAddress()).isEqualTo("서울시 마포구 101호");
-        assertThat(result.getDeliveryDetailAddress()).isEqualTo("101호");
+        // 상세주소는 이미 deliveryAddress에 합쳐졌으므로 응답에 별도로 남기지 않는다
+        // (판매자 화면에서 상세주소가 두 번 표시되던 중복 원인).
+        assertThat(result.getDeliveryDetailAddress()).isNull();
     }
 
     // @ai_generated (담당자1, 2026-08-07): auctionId<->productId 왕복 변환(AuctionService 계약

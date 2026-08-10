@@ -415,7 +415,6 @@ public class AuctionService {
         AuctionBidTarget target = findBidTarget(auctionId);
         validateBidAvailable(target, userId);
         validateCurrentHighestBidder(target, userId);
-        validateMixedTradeMethodProduct(target);
 
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
@@ -593,14 +592,6 @@ public class AuctionService {
             throw new CustomException(
                     ErrorCode.CONFLICT,
                     "현재 최고입찰자만 거래방식을 변경할 수 있습니다.");
-        }
-    }
-
-    private void validateMixedTradeMethodProduct(AuctionBidTarget target) {
-        if (!BOTH_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
-            throw new CustomException(
-                    ErrorCode.INVALID_INPUT_VALUE,
-                    "배송과 직거래를 모두 지원하는 경매만 거래방식을 변경할 수 있습니다.");
         }
     }
 

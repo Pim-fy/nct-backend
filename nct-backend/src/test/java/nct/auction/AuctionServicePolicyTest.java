@@ -325,6 +325,58 @@ class AuctionServicePolicyTest {
     }
 
     @Test
+    void currentHighestBidderChangesAddressForDeliveryOnlyAuction() {
+        target.setTradeMethodCode("TRDC0009");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0009");
+        target.setCurrentHighestDeliveryAddressId(60L);
+        when(auctionMapper.updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                70L,
+                "40"))
+                .thenReturn(1);
+        stubAuctionDetail();
+
+        AuctionDetailResponse response = auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0009"));
+
+        assertThat(response).isNotNull();
+        verify(buyerDeliveryAddressReader).getOwnedActiveAddressSnapshot(40L, 70L);
+        verify(auctionMapper).updateCurrentHighestBidTradeMethod(
+                10L,
+                45L,
+                40L,
+                "TRDC0009",
+                70L,
+                "40");
+        verifyRealtimeEvent("BID_TRADE_METHOD_CHANGED");
+    }
+
+    @Test
+    void deliveryOnlyAuctionRejectsChangingTradeMethodToOffline() {
+        target.setTradeMethodCode("TRDC0009");
+        target.setCurrentHighestBidId(45L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0009");
+
+        assertThatThrownBy(() -> auctionService.changeCurrentHighestBidTradeMethod(
+                10L,
+                40L,
+                tradeMethodChangeRequest("TRDC0010")))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("상품의 거래방식과 선택한 거래방식이 일치하지 않습니다.");
+
+        verify(auctionMapper, never()).updateCurrentHighestBidTradeMethod(
+                anyLong(), anyLong(), anyLong(), any(), any(), any());
+    }
+
+    @Test
     void tradeMethodChangeRejectsUserWhoIsNotCurrentHighestBidder() {
         target.setTradeMethodCode("TRDC0020");
         target.setCurrentHighestBidId(45L);

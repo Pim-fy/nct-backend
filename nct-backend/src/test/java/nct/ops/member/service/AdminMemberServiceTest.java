@@ -7,6 +7,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -104,5 +105,24 @@ class AdminMemberServiceTest {
         verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
         verify(auditLogPort, never()).record(any());
         verify(notificationService, never()).notify(any(Long.class), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void sanctionFailureStopsFollowingWritesSoOuterTransactionCanRollBack() {
+        when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
+        when(memberStatusCommandPort.changeStatus(any()))
+                .thenReturn(new MemberStatusChangeResult("USRC0001", "USRC0002", true));
+        doThrow(new IllegalStateException("sanction insert failed"))
+                .when(sanctionPort).restrict(any());
+
+        assertThatThrownBy(() -> service.changeStatus(
+                10L, "USRC0002", "운영 제한", "request-rollback", 99L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sanction insert failed");
+
+        verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
+        verify(auditLogPort, never()).record(any());
+        verify(notificationService, never())
+                .notify(any(Long.class), any(), any(), any(), any(), any(), any());
     }
 }

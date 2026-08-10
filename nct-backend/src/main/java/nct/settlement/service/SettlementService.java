@@ -26,7 +26,7 @@ import nct.trade.port.TradeSettlementReferenceReader;
  * 보류/해제(F-PAY-044, F-OPS-079)는 거래 분쟁 접수·판정에 따라 호출한다.
  * SETTLEMENT 테이블 직접 변경 금지.
  *
- * 상태 전이: 대기 → 완료 / 대기 ↔ 보류 — requireStatus가 행 잠금 후 검증하므로
+ * 상태 전이: 대기 → 완료 / 대기 ↔ 보류 / 대기·보류 → 환불종결 — 행 잠금 후 검증하므로
  * 보류 중인 정산이 실수로 완료되는 사고를 원천 차단한다.
  *
  * 관리자용 REST API(/api/admin/settlement/**)는 운영 도메인 확정 후 별도 작업.

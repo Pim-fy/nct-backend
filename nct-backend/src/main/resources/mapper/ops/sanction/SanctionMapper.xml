@@ -16,4 +16,96 @@
               AND (SNC_END_DT IS NULL OR SNC_END_DT > CURRENT_TIMESTAMP)
         )
     </select>
+
+    <select id="lockUser" resultType="long">
+        SELECT USR_SN
+          FROM USERS
+         WHERE USR_SN = #{userSn}
+         FOR UPDATE
+    </select>
+
+    <sql id="sanctionRecordColumns">
+        S.SNC_SN AS sanctionSn,
+        S.USR_SN AS userSn,
+        S.SNC_PROC_USR_SN AS processorUserSn,
+        S.SNC_TYPE_CD AS sanctionTypeCode,
+        C.CMM_NM AS sanctionTypeName,
+        S.SNC_RSN_CN AS reason,
+        S.SNC_REQ_ID AS restrictRequestId,
+        S.SNC_REL_REQ_ID AS releaseRequestId,
+        S.SNC_START_DT AS startedAt,
+        S.SNC_END_DT AS endedAt
+    </sql>
+
+    <select id="findByRestrictRequestId" resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.SNC_REQ_ID = #{requestId}
+         LIMIT 1
+    </select>
+
+    <select id="findByReleaseRequestId" resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.SNC_REL_REQ_ID = #{requestId}
+         LIMIT 1
+    </select>
+
+    <select id="findActiveAccountSuspensionsForUpdate"
+            resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.USR_SN = #{userSn}
+           AND S.SNC_TYPE_CD = 'SNCC0003'
+           AND S.SNC_START_DT &lt;= CURRENT_TIMESTAMP
+           AND (S.SNC_END_DT IS NULL OR S.SNC_END_DT &gt; CURRENT_TIMESTAMP)
+         ORDER BY S.SNC_SN DESC
+         FOR UPDATE
+    </select>
+
+    <insert id="insertAccountSuspension">
+        INSERT INTO SANCTION (
+            USR_SN,
+            SNC_PROC_USR_SN,
+            SNC_TYPE_CD,
+            SNC_RSN_CN,
+            SNC_START_DT,
+            SNC_REQ_ID,
+            SNC_REG_ID,
+            SNC_UPDT_ID
+        ) VALUES (
+            #{userSn},
+            #{adminUserSn},
+            'SNCC0003',
+            #{reason},
+            CURRENT_TIMESTAMP,
+            #{requestId},
+            #{actorId},
+            #{actorId}
+        )
+    </insert>
+
+    <update id="releaseAccountSuspension">
+        UPDATE SANCTION
+           SET SNC_END_DT = CURRENT_TIMESTAMP,
+               SNC_REL_REQ_ID = #{releaseRequestId},
+               SNC_UPDT_ID = #{actorId},
+               SNC_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SNC_SN = #{sanctionSn}
+           AND SNC_TYPE_CD = 'SNCC0003'
+           AND SNC_START_DT &lt;= CURRENT_TIMESTAMP
+           AND (SNC_END_DT IS NULL OR SNC_END_DT &gt; CURRENT_TIMESTAMP)
+    </update>
+
+    <select id="findHistory" resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.USR_SN = #{userSn}
+         ORDER BY S.SNC_SN DESC
+         LIMIT #{limit}
+    </select>
 </mapper>

@@ -114,6 +114,13 @@ class SettlementServiceTest {
     }
 
     @Test
+    void findSettlementByTradeReturnsEmptyWithoutThrowingWhenSettlementDoesNotExist() {
+        when(settlementMapper.selectByTrade(91L)).thenReturn(null);
+
+        assertThat(settlementService.findSettlementByTrade(91L)).isEmpty();
+    }
+
+    @Test
     void getSettlementByTradeRejectsMissingSettlement() {
         when(settlementMapper.selectByTrade(91L)).thenReturn(null);
 

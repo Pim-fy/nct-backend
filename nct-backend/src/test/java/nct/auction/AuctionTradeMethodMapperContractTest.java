@@ -29,6 +29,7 @@ class AuctionTradeMethodMapperContractTest {
                 .contains("AND BID_SN = #{bidId}")
                 .contains("AND USR_SN = #{userId}")
                 .contains("AND BID_STATUS_CD = 'BIDC0001'")
-                .contains("BID_TRD_METHOD_CD IS NULL OR BID_TRD_METHOD_CD &lt;&gt; #{tradeMethodCode}");
+                .contains("AND NOT ( BID_TRD_METHOD_CD &lt;=> #{tradeMethodCode} "
+                        + "AND BID_DLVR_ADDR_SN &lt;=> #{deliveryAddressId} )");
     }
 }

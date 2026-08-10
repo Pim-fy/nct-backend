@@ -73,6 +73,18 @@ public class ProductService {
         }
     }
 
+    // 시작가·즉시구매가 상한 — 1억 원 (사용자 확정, 260810)
+    private static final BigDecimal MAX_PRICE_AMT = BigDecimal.valueOf(100_000_000);
+
+    private void validatePriceUnderMax(BigDecimal prdStartAmt, BigDecimal prdIbyAmt) {
+        if (prdStartAmt != null && prdStartAmt.compareTo(MAX_PRICE_AMT) > 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "시작가는 " + MAX_PRICE_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+        }
+        if (prdIbyAmt != null && prdIbyAmt.compareTo(MAX_PRICE_AMT) > 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "즉시구매가는 " + MAX_PRICE_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+        }
+    }
+
     private final ProductMapper productMapper;
     private final ReferenceDataService referenceDataService;
     private final ProductImageMapper productImageMapper;
@@ -91,6 +103,7 @@ public class ProductService {
         }
         validateNoBannedKeyword(req.getPrdNm(), req.getPrdCn());
         validateInstantBuyAboveStartAmt(req.getPrdStartAmt(), req.getPrdIbyAmt());
+        validatePriceUnderMax(req.getPrdStartAmt(), req.getPrdIbyAmt());
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         validateClientStatusCd(statusCd);
         boolean isDraft = "PRDC0001".equals(statusCd);
@@ -148,6 +161,7 @@ public class ProductService {
         }
         validateNoBannedKeyword(req.getPrdNm(), req.getPrdCn());
         validateInstantBuyAboveStartAmt(req.getPrdStartAmt(), req.getPrdIbyAmt());
+        validatePriceUnderMax(req.getPrdStartAmt(), req.getPrdIbyAmt());
 
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         validateClientStatusCd(statusCd);

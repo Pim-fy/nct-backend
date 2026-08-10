@@ -106,7 +106,7 @@ class AuctionServicePolicyTest {
     @Test
     void placeBidRejectsAmountNotAlignedWithStoredAuctionBidUnit() {
         target.setBidUnitPrice(BigDecimal.valueOf(3000));
-        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         AuctionBidRequest request = bidRequest(12000);
 
         assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
@@ -117,7 +117,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidRejectsAmountNotAlignedWithBidUnit() {
-        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         AuctionBidRequest request = bidRequest(11500);
 
         assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
@@ -132,7 +132,7 @@ class AuctionServicePolicyTest {
         target.setTradeMethodCode("TRDC0009");
         target.setCurrentHighestBidderId(35L);
         target.setCurrentHighestBidId(45L);
-        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
         when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
             AuctionBidCreateCommand command = invocation.getArgument(0);
@@ -166,7 +166,7 @@ class AuctionServicePolicyTest {
     void placeBidPropagatesPreviousHighestBidHoldReleaseFailure() {
         target.setCurrentHighestBidderId(35L);
         target.setCurrentHighestBidId(45L);
-        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
         when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
             AuctionBidCreateCommand command = invocation.getArgument(0);
@@ -271,7 +271,7 @@ class AuctionServicePolicyTest {
     @Test
     void placeBidStoresMixedAuctionOfflineSelectionWithoutCheckingDeliveryAddress() {
         target.setTradeMethodCode("TRDC0020");
-        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
         when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
             AuctionBidCreateCommand command = invocation.getArgument(0);
@@ -597,11 +597,10 @@ class AuctionServicePolicyTest {
         return request;
     }
 
-    private AuctionPolicy auctionPolicy(int extensionMinutes, int maxExtensionCount, long minBidUnit) {
+    private AuctionPolicy auctionPolicy(int extensionMinutes, int maxExtensionCount) {
         AuctionPolicy policy = new AuctionPolicy();
         policy.setAucExtMin(extensionMinutes);
         policy.setAucExtMaxCnt(maxExtensionCount);
-        policy.setMinBidUnit(minBidUnit);
         return policy;
     }
 }

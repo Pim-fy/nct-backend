@@ -254,6 +254,18 @@
                 ELSE NULL
             END AS myBidTradeMethodCode,
             CASE
+                WHEN #{userId} IS NOT NULL THEN (
+                    SELECT highestBid.BID_DLVR_ADDR_SN
+                    FROM BID highestBid
+                    WHERE highestBid.AUC_SN = a.AUC_SN
+                      AND highestBid.BID_STATUS_CD = 'BIDC0001'
+                      AND highestBid.USR_SN = #{userId}
+                    ORDER BY highestBid.BID_AMT DESC, highestBid.BID_SN DESC
+                    LIMIT 1
+                )
+                ELSE NULL
+            END AS myBidDeliveryAddressId,
+            CASE
                 WHEN #{userId} IS NOT NULL
                  AND EXISTS (
                     SELECT 1
@@ -376,6 +388,7 @@
             currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
             currentBid.BID_TRD_METHOD_CD AS currentHighestTradeMethodCode,
+            currentBid.BID_DLVR_ADDR_SN AS currentHighestDeliveryAddressId,
             a.AUC_CUR_AMT AS currentPrice,
             a.AUC_BID_UNIT_AMT AS bidUnitPrice,
             p.PRD_IBY_AMT AS instantBuyPrice,
@@ -387,13 +400,15 @@
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
         LEFT JOIN (
-            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN, ranked.BID_TRD_METHOD_CD
+            SELECT ranked.BID_SN, ranked.AUC_SN, ranked.USR_SN,
+                   ranked.BID_TRD_METHOD_CD, ranked.BID_DLVR_ADDR_SN
             FROM (
                 SELECT
                     b.BID_SN,
                     b.AUC_SN,
                     b.USR_SN,
                     b.BID_TRD_METHOD_CD,
+                    b.BID_DLVR_ADDR_SN,
                     ROW_NUMBER() OVER (
                         PARTITION BY b.AUC_SN
                         ORDER BY b.BID_AMT DESC, b.BID_SN DESC
@@ -512,6 +527,7 @@
     <update id="updateCurrentHighestBids">
         UPDATE BID
         SET BID_STATUS_CD = 'BIDC0002',
+            BID_DLVR_ADDR_SN = NULL,
             BID_UPDT_ID = 'SYSTEM',
             BID_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
@@ -531,15 +547,16 @@
     <update id="updateCurrentHighestBidTradeMethod">
         UPDATE BID
         SET BID_TRD_METHOD_CD = #{tradeMethodCode},
+            BID_DLVR_ADDR_SN = #{deliveryAddressId},
             BID_UPDT_ID = #{actor},
             BID_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
           AND BID_SN = #{bidId}
           AND USR_SN = #{userId}
           AND BID_STATUS_CD = 'BIDC0001'
-          AND (
-              BID_TRD_METHOD_CD IS NULL
-              OR BID_TRD_METHOD_CD &lt;&gt; #{tradeMethodCode}
+          AND NOT (
+              BID_TRD_METHOD_CD &lt;=> #{tradeMethodCode}
+              AND BID_DLVR_ADDR_SN &lt;=> #{deliveryAddressId}
           )
     </update>
 
@@ -550,6 +567,7 @@
             BID_AMT,
             BID_STATUS_CD,
             BID_TRD_METHOD_CD,
+            BID_DLVR_ADDR_SN,
             BID_REG_ID,
             BID_UPDT_ID
         )
@@ -559,6 +577,7 @@
             #{bidAmount},
             #{statusCode},
             #{selectedTradeMethodCode},
+            #{selectedDeliveryAddressId},
             #{actor},
             #{actor}
         )

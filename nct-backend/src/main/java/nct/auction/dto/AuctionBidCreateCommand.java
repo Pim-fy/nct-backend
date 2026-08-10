@@ -13,6 +13,7 @@ public class AuctionBidCreateCommand {
     private final BigDecimal bidAmount;
     private final String statusCode;
     private final String selectedTradeMethodCode;
+    private final Long selectedDeliveryAddressId;
     private final String actor;
 
     public AuctionBidCreateCommand(
@@ -21,12 +22,14 @@ public class AuctionBidCreateCommand {
             BigDecimal bidAmount,
             String statusCode,
             String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId,
             String actor) {
         this.auctionId = auctionId;
         this.userId = userId;
         this.bidAmount = bidAmount;
         this.statusCode = statusCode;
         this.selectedTradeMethodCode = selectedTradeMethodCode;
+        this.selectedDeliveryAddressId = selectedDeliveryAddressId;
         this.actor = actor;
     }
 }

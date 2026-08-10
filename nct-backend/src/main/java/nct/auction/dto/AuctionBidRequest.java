@@ -11,4 +11,5 @@ public class AuctionBidRequest {
 
     private BigDecimal bidAmount;
     private String tradeMethod;
+    private Long deliveryAddressId;
 }

@@ -25,8 +25,6 @@ public class SystemSettingDetail {
     private Integer aucExtMin;
     /** 경매 자동연장 최대 횟수 */
     private Integer aucExtMaxCnt;
-    /** 최소 입찰 단위 (원) */
-    private Long minBidUnit;
 
     /** 거래 상대방 확인 기한 일수 — 지나면 자동완료 후보 */
     private Integer trdCfmnDays;

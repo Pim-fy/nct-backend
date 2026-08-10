@@ -18,8 +18,7 @@
         /* 시스템 설정: 경매 정책 조회 */
         SELECT
             SYS_SET_AUC_EXT_MIN     AS aucExtMin,
-            SYS_SET_AUC_EXT_MAX_CNT AS aucExtMaxCnt,
-            SYS_SET_MIN_BID_UNIT    AS minBidUnit
+            SYS_SET_AUC_EXT_MAX_CNT AS aucExtMaxCnt
         FROM SYSTEM_SETTING
         LIMIT 1
     </select>

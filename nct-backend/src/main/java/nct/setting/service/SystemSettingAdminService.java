@@ -65,7 +65,6 @@ public class SystemSettingAdminService {
     private void validate(SystemSettingDetail s) {
         requirePositive(s.getAucExtMin(), "경매 자동연장 기준 분");
         requireNonNegative(s.getAucExtMaxCnt(), "경매 자동연장 최대 횟수");
-        requirePositive(s.getMinBidUnit(), "최소 입찰 단위");
         requirePositive(s.getTrdCfmnDays(), "거래 확인 기한 일수");
         requirePositive(s.getQutExpDays(), "견적 유효기간 일수");
         requireYn(s.getAutoCmplYn(), "자동완료 처리 여부");
@@ -123,7 +122,6 @@ public class SystemSettingAdminService {
         StringBuilder sb = new StringBuilder("시스템 설정 수정:");
         appendIfChanged(sb, "자동연장기준분", before.getAucExtMin(), after.getAucExtMin());
         appendIfChanged(sb, "자동연장최대횟수", before.getAucExtMaxCnt(), after.getAucExtMaxCnt());
-        appendIfChanged(sb, "최소입찰단위", before.getMinBidUnit(), after.getMinBidUnit());
         appendIfChanged(sb, "거래확인기한일수", before.getTrdCfmnDays(), after.getTrdCfmnDays());
         appendIfChanged(sb, "자동완료여부", before.getAutoCmplYn(), after.getAutoCmplYn());
         appendIfChanged(sb, "최소충전금액", before.getMinChrgAmt(), after.getMinChrgAmt());

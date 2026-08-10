@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.member.mapper.DeliveryAddressMapper">
+
+    <resultMap id="deliveryAddressMap" type="nct.member.domain.DeliveryAddress">
+        <id column="USR_DLVR_ADDR_SN" property="deliveryAddressId"/>
+        <result column="USR_SN" property="userId"/>
+        <result column="USR_DLVR_ADDR_NM" property="name"/>
+        <result column="USR_DLVR_ZIP_ENC" property="zipCiphertext"/>
+        <result column="USR_DLVR_ADDR_ENC" property="addressCiphertext"/>
+        <result column="USR_DLVR_DADDR_ENC" property="addressDetailCiphertext"/>
+        <result column="USR_DLVR_DFLT_YN" property="defaultYn"/>
+        <result column="USR_DLVR_USE_YN" property="useYn"/>
+        <result column="USR_DLVR_REG_DT" property="registeredAt"/>
+        <result column="USR_DLVR_UPDT_DT" property="updatedAt"/>
+        <result column="USR_DLVR_REG_ID" property="registeredBy"/>
+        <result column="USR_DLVR_UPDT_ID" property="updatedBy"/>
+    </resultMap>
+
+    <sql id="deliveryAddressColumns">
+        USR_DLVR_ADDR_SN,
+        USR_SN,
+        USR_DLVR_ADDR_NM,
+        USR_DLVR_ZIP_ENC,
+        USR_DLVR_ADDR_ENC,
+        USR_DLVR_DADDR_ENC,
+        USR_DLVR_DFLT_YN,
+        USR_DLVR_USE_YN,
+        USR_DLVR_REG_DT,
+        USR_DLVR_UPDT_DT,
+        USR_DLVR_REG_ID,
+        USR_DLVR_UPDT_ID
+    </sql>
+
+    <select id="findActiveByUserId" resultMap="deliveryAddressMap">
+        SELECT <include refid="deliveryAddressColumns"/>
+        FROM USER_DELIVERY_ADDRESS
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_USE_YN = 'Y'
+        ORDER BY USR_DLVR_DFLT_YN DESC, USR_DLVR_ADDR_SN ASC
+    </select>
+
+    <select id="findOwnedActiveById" resultMap="deliveryAddressMap">
+        SELECT <include refid="deliveryAddressColumns"/>
+        FROM USER_DELIVERY_ADDRESS
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_ADDR_SN = #{deliveryAddressId}
+          AND USR_DLVR_USE_YN = 'Y'
+    </select>
+
+    <select id="findOwnedById" resultMap="deliveryAddressMap">
+        SELECT <include refid="deliveryAddressColumns"/>
+        FROM USER_DELIVERY_ADDRESS
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_ADDR_SN = #{deliveryAddressId}
+    </select>
+
+    <select id="findDefaultActiveByUserId" resultMap="deliveryAddressMap">
+        SELECT <include refid="deliveryAddressColumns"/>
+        FROM USER_DELIVERY_ADDRESS
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_USE_YN = 'Y'
+        ORDER BY USR_DLVR_DFLT_YN DESC, USR_DLVR_ADDR_SN ASC
+        LIMIT 1
+    </select>
+
+    <select id="findFirstActiveId" resultType="long">
+        SELECT USR_DLVR_ADDR_SN
+        FROM USER_DELIVERY_ADDRESS
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_USE_YN = 'Y'
+        ORDER BY USR_DLVR_ADDR_SN ASC
+        LIMIT 1
+    </select>
+
+    <select id="countActiveByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM USER_DELIVERY_ADDRESS
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_USE_YN = 'Y'
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="deliveryAddressId" keyColumn="USR_DLVR_ADDR_SN">
+        INSERT INTO USER_DELIVERY_ADDRESS (
+            USR_SN,
+            USR_DLVR_ADDR_NM,
+            USR_DLVR_ZIP_ENC,
+            USR_DLVR_ADDR_ENC,
+            USR_DLVR_DADDR_ENC,
+            USR_DLVR_DFLT_YN,
+            USR_DLVR_USE_YN,
+            USR_DLVR_REG_ID,
+            USR_DLVR_UPDT_ID
+        ) VALUES (
+            #{userId},
+            #{name},
+            #{zipCiphertext},
+            #{addressCiphertext},
+            #{addressDetailCiphertext},
+            #{defaultYn},
+            'Y',
+            #{registeredBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE USER_DELIVERY_ADDRESS
+        SET USR_DLVR_ADDR_NM = #{name},
+            USR_DLVR_ZIP_ENC = #{zipCiphertext},
+            USR_DLVR_ADDR_ENC = #{addressCiphertext},
+            USR_DLVR_DADDR_ENC = #{addressDetailCiphertext},
+            USR_DLVR_DFLT_YN = #{defaultYn},
+            USR_DLVR_UPDT_ID = #{updatedBy},
+            USR_DLVR_UPDT_DT = NOW()
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_ADDR_SN = #{deliveryAddressId}
+          AND USR_DLVR_USE_YN = 'Y'
+    </update>
+
+    <update id="clearDefaults">
+        UPDATE USER_DELIVERY_ADDRESS
+        SET USR_DLVR_DFLT_YN = 'N',
+            USR_DLVR_UPDT_ID = #{actor},
+            USR_DLVR_UPDT_DT = NOW()
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_USE_YN = 'Y'
+          AND USR_DLVR_DFLT_YN = 'Y'
+    </update>
+
+    <update id="setDefault">
+        UPDATE USER_DELIVERY_ADDRESS
+        SET USR_DLVR_DFLT_YN = 'Y',
+            USR_DLVR_UPDT_ID = #{actor},
+            USR_DLVR_UPDT_DT = NOW()
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_ADDR_SN = #{deliveryAddressId}
+          AND USR_DLVR_USE_YN = 'Y'
+    </update>
+
+    <update id="softDelete">
+        UPDATE USER_DELIVERY_ADDRESS
+        SET USR_DLVR_USE_YN = 'N',
+            USR_DLVR_DFLT_YN = 'N',
+            USR_DLVR_UPDT_ID = #{actor},
+            USR_DLVR_UPDT_DT = NOW()
+        WHERE USR_SN = #{userId}
+          AND USR_DLVR_ADDR_SN = #{deliveryAddressId}
+          AND USR_DLVR_USE_YN = 'Y'
+    </update>
+
+</mapper>

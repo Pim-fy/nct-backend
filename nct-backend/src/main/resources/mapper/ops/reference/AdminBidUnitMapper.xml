@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.reference.mapper.AdminBidUnitMapper">
+
+    <resultMap id="commonCodeMap" type="nct.ops.reference.domain.CommonCode">
+        <id column="CMM_SN" property="cmmSn"/>
+        <result column="CMM_PARENT_SN" property="parentSn"/>
+        <result column="CMM_CD" property="code"/>
+        <result column="CMM_NM" property="name"/>
+        <result column="CMM_EXPLN" property="description"/>
+        <result column="CMM_SORT_NO" property="sortNo"/>
+        <result column="CMM_USE_YN" property="useYn"/>
+    </resultMap>
+
+    <sql id="columns">
+        code.CMM_SN, code.CMM_PARENT_SN, code.CMM_CD, code.CMM_NM,
+        code.CMM_EXPLN, code.CMM_SORT_NO, code.CMM_USE_YN
+    </sql>
+
+    <select id="findGroupByCode" resultMap="commonCodeMap">
+        SELECT <include refid="columns"/>
+          FROM CMM_CODE code
+         WHERE code.CMM_CD = #{groupCode}
+           AND code.CMM_PARENT_SN IS NULL
+           AND code.CMM_USE_YN = 'Y'
+         LIMIT 1
+    </select>
+
+    <select id="findGroupByCodeForUpdate" resultMap="commonCodeMap">
+        SELECT <include refid="columns"/>
+          FROM CMM_CODE code
+         WHERE code.CMM_CD = #{groupCode}
+           AND code.CMM_PARENT_SN IS NULL
+           AND code.CMM_USE_YN = 'Y'
+         LIMIT 1
+         FOR UPDATE
+    </select>
+
+    <select id="findAllByGroup" resultMap="commonCodeMap">
+        SELECT <include refid="columns"/>
+          FROM CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+         ORDER BY code.CMM_SORT_NO, code.CMM_SN
+    </select>
+
+    <select id="findAllByGroupForUpdate" resultMap="commonCodeMap">
+        SELECT <include refid="columns"/>
+          FROM CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+         ORDER BY code.CMM_SORT_NO, code.CMM_SN
+         FOR UPDATE
+    </select>
+
+    <select id="findByIdAndGroupForUpdate" resultMap="commonCodeMap">
+        SELECT <include refid="columns"/>
+          FROM CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+         WHERE code.CMM_SN = #{bidUnitSn}
+           AND parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+         FOR UPDATE
+    </select>
+
+    <select id="countByName" resultType="int">
+        SELECT COUNT(*)
+          FROM CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND TRIM(code.CMM_NM) = TRIM(#{name})
+        <if test="excludeBidUnitSn != null">
+           AND code.CMM_SN != #{excludeBidUnitSn}
+        </if>
+    </select>
+
+    <select id="countActiveByGroup" resultType="int">
+        SELECT COUNT(*)
+          FROM CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+           AND code.CMM_USE_YN = 'Y'
+    </select>
+
+    <select id="findMaxSortNoByGroup" resultType="java.math.BigDecimal">
+        SELECT MAX(code.CMM_SORT_NO)
+          FROM CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+         WHERE parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+    </select>
+
+    <select id="findMaxCodeSequence" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(CAST(SUBSTRING(CMM_CD, 5) AS UNSIGNED)), 0)
+          FROM CMM_CODE
+         WHERE CMM_CD REGEXP CONCAT('^', #{codePrefix}, '[0-9]{4}$')
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="code.cmmSn" keyColumn="CMM_SN">
+        INSERT INTO CMM_CODE (
+            CMM_PARENT_SN, CMM_CD, CMM_NM, CMM_EXPLN, CMM_SORT_NO,
+            CMM_USE_YN, CMM_REG_ID, CMM_UPDT_ID
+        ) VALUES (
+            #{code.parentSn}, #{code.code}, #{code.name}, #{code.description}, #{code.sortNo},
+            #{code.useYn}, #{actorId}, #{actorId}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+           SET code.CMM_NM = #{code.name},
+               code.CMM_EXPLN = #{code.description},
+               code.CMM_SORT_NO = #{code.sortNo},
+               code.CMM_USE_YN = #{code.useYn},
+               code.CMM_UPDT_DT = CURRENT_TIMESTAMP,
+               code.CMM_UPDT_ID = #{actorId}
+         WHERE code.CMM_SN = #{code.cmmSn}
+           AND parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+    </update>
+
+    <update id="updateSortNo">
+        UPDATE CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+           SET code.CMM_SORT_NO = #{sortNo},
+               code.CMM_UPDT_DT = CURRENT_TIMESTAMP,
+               code.CMM_UPDT_ID = #{actorId}
+         WHERE code.CMM_SN = #{bidUnitSn}
+           AND parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+    </update>
+
+    <update id="updateUseYn">
+        UPDATE CMM_CODE code
+          JOIN CMM_CODE parent ON parent.CMM_SN = code.CMM_PARENT_SN
+           SET code.CMM_USE_YN = #{useYn},
+               code.CMM_UPDT_DT = CURRENT_TIMESTAMP,
+               code.CMM_UPDT_ID = #{actorId}
+         WHERE code.CMM_SN = #{bidUnitSn}
+           AND parent.CMM_CD = #{groupCode}
+           AND parent.CMM_USE_YN = 'Y'
+    </update>
+</mapper>

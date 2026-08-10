@@ -20,6 +20,7 @@
         <result column="NTC_USE_YN" property="useYn"/>
         <result column="NTC_REG_DT" property="registeredAt"/>
         <result column="NTC_UPDT_DT" property="updatedAt"/>
+        <result column="NTC_UPDT_ID" property="updaterActorId"/>
     </resultMap>
 
     <!-- 사용자 화면 쿼리는 공개에 필요한 컬럼만 조회하므로 관리자용 전체 매핑과 분리한다. -->
@@ -183,7 +184,8 @@
                notice.NTC_VIEW_CNT,
                notice.NTC_USE_YN,
                notice.NTC_REG_DT,
-               notice.NTC_UPDT_DT
+               notice.NTC_UPDT_DT,
+               notice.NTC_UPDT_ID
         <include refid="adminNoticeJoins"/>
         <include refid="adminNoticeWhere"/>
         <!-- 담당자 7 | F-OPS-023: 관리자 목록의 기본 기준은 최신 공지 번호순입니다. -->
@@ -207,7 +209,8 @@
                notice.NTC_VIEW_CNT,
                notice.NTC_USE_YN,
                notice.NTC_REG_DT,
-               notice.NTC_UPDT_DT
+               notice.NTC_UPDT_DT,
+               notice.NTC_UPDT_ID
         <include refid="adminNoticeJoins"/>
         WHERE notice.NTC_SN = #{noticeId}
           AND notice.NTC_USE_YN = 'Y'
@@ -231,7 +234,8 @@
                notice.NTC_VIEW_CNT,
                notice.NTC_USE_YN,
                notice.NTC_REG_DT,
-               notice.NTC_UPDT_DT
+               notice.NTC_UPDT_DT,
+               notice.NTC_UPDT_ID
         <include refid="adminNoticeJoins"/>
         WHERE notice.NTC_SN = #{noticeId}
         LIMIT 1

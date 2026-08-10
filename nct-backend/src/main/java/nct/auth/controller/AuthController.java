@@ -44,7 +44,8 @@ import lombok.RequiredArgsConstructor;
  * [인증 API 목록]
  *
  *  POST /api/auth/signup   회원가입                    (permitAll)
- *  POST /api/auth/login    로그인 -> JWT httpOnly 쿠키  (permitAll)
+ *  POST /api/auth/login          사용자 로그인 -> JWT httpOnly 쿠키  (permitAll)
+ *  POST /api/auth/admin/login    관리자 전용 로그인 -> JWT httpOnly 쿠키  (permitAll)
  *  POST /api/auth/refresh  Access Token 재발급          (permitAll - Refresh 쿠키로 검증)
  *  GET  /api/auth/verify   새로고침 자동 로그인          (permitAll - Refresh 쿠키로 검증)
  *  POST /api/auth/logout   로그아웃                     (authenticated)
@@ -164,8 +165,18 @@ public class AuthController {
     @SkipIdempotency // @ai_generated: Set-Cookie 응답이라 전역 중복요청 방지 재반환과 충돌 (F-COM-017)
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request,
-                                                            HttpServletResponse response) {
+                                                             HttpServletResponse response) {
         AuthSessionResult session = authService.login(request);
+        writeLoginCookies(response, session, request.isRememberMe());
+        return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
+    }
+
+    /** 담당자 7 · F-OPS-001: 관리자 계정은 이 전용 경로에서만 신규 세션을 발급한다. */
+    @SkipIdempotency
+    @PostMapping("/admin/login")
+    public ResponseEntity<ApiResponse<LoginResponse>> adminLogin(@Valid @RequestBody LoginRequest request,
+                                                                  HttpServletResponse response) {
+        AuthSessionResult session = authService.adminLogin(request);
         writeLoginCookies(response, session, request.isRememberMe());
         return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
     }

@@ -6,7 +6,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.audit.domain.AuditLog;
+import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.notice.domain.AdminNoticeWriteCommand;
 import nct.ops.notice.domain.Notice;
 import nct.ops.notice.dto.AdminNoticeCodeResponse;
@@ -52,6 +60,8 @@ public class AdminNoticeService {
     private final NoticeMapper noticeMapper;
     private final ReferenceDataService referenceDataService;
     private final NoticeChangeHistoryPort changeHistoryPort;
+    private final AdminMemberIdentityReader memberIdentityReader;
+    private final AuditLogService auditLogService;
 
     @Transactional(readOnly = true)
     public AdminNoticeOptionsResponse getOptions() {
@@ -81,13 +91,14 @@ public class AdminNoticeService {
         long totalItems = noticeMapper.countAdminNotices(
                 normalizedType, normalizedStatus, normalizedKeyword);
         long offset = (long) (page - 1) * size;
-        List<AdminNoticeListItemResponse> items = offset >= totalItems
+        List<Notice> notices = offset >= totalItems
                 ? List.of()
                 : noticeMapper.findAdminNotices(
-                        normalizedType, normalizedStatus, normalizedKeyword, offset, size)
-                    .stream()
-                    .map(this::toListItem)
-                    .toList();
+                        normalizedType, normalizedStatus, normalizedKeyword, offset, size);
+        Map<Long, AdminMemberIdentityResponse> identities = identitiesFor(notices);
+        List<AdminNoticeListItemResponse> items = notices.stream()
+                .map(notice -> toListItem(notice, identities))
+                .toList();
 
         return AdminNoticePageResponse.builder()
                 .items(items)
@@ -100,7 +111,7 @@ public class AdminNoticeService {
 
     @Transactional(readOnly = true)
     public AdminNoticeDetailResponse getNotice(Long noticeId) {
-        return toDetail(requireNotice(noticeId));
+        return toDetailWithIdentity(requireNotice(noticeId));
     }
 
     @Transactional
@@ -312,7 +323,10 @@ public class AdminNoticeService {
                 .toList();
     }
 
-    private AdminNoticeListItemResponse toListItem(Notice notice) {
+    private AdminNoticeListItemResponse toListItem(
+            Notice notice,
+            Map<Long, AdminMemberIdentityResponse> identities) {
+        Long updaterUserId = updaterUserId(notice);
         return AdminNoticeListItemResponse.builder()
                 .noticeId(notice.getNoticeSn())
                 .typeCode(notice.getTypeCode())
@@ -321,6 +335,10 @@ public class AdminNoticeService {
                 .statusName(notice.getStatusName())
                 .title(notice.getTitle())
                 .writerName(notice.getWriterName())
+                .writerUserId(notice.getWriterUserSn())
+                .writerMember(identities.get(notice.getWriterUserSn()))
+                .updaterUserId(updaterUserId)
+                .updaterMember(identities.get(updaterUserId))
                 .pinned("Y".equals(notice.getPinnedYn()))
                 .viewCount(notice.getViewCount())
                 .postingStartAt(notice.getPostingStartAt())
@@ -332,10 +350,17 @@ public class AdminNoticeService {
     }
 
     private AdminNoticeDetailResponse toDetail(Notice notice) {
+        Map<Long, AdminMemberIdentityResponse> identities = identitiesFor(List.of(notice));
+        Long updaterUserId = updaterUserId(notice);
+        AuditLog latestAudit = auditLogService.findLatest(RefType.NOTICE, notice.getNoticeSn());
         return AdminNoticeDetailResponse.builder()
                 .noticeId(notice.getNoticeSn())
                 .writerUserId(notice.getWriterUserSn())
                 .writerName(notice.getWriterName())
+                .writerMember(identities.get(notice.getWriterUserSn()))
+                .updaterUserId(updaterUserId)
+                .updaterMember(identities.get(updaterUserId))
+                .lastChangeReason(latestAudit == null ? null : latestAudit.getAudLogRsonCn())
                 .typeCode(notice.getTypeCode())
                 .typeName(notice.getTypeName())
                 .statusCode(notice.getStatusCode())
@@ -351,6 +376,27 @@ public class AdminNoticeService {
                 .revisionToken(revisionToken(notice))
                 .visibleNow(isVisibleNow(notice))
                 .build();
+    }
+
+    private AdminNoticeDetailResponse toDetailWithIdentity(Notice notice) {
+        return toDetail(notice);
+    }
+
+    /** 담당자 7 · F-OPS-023: 작성자·최종 변경자를 회원 읽기 계약으로 조립합니다. */
+    private Map<Long, AdminMemberIdentityResponse> identitiesFor(List<Notice> notices) {
+        Set<Long> userSns = new LinkedHashSet<>();
+        for (Notice notice : notices) {
+            if (notice.getWriterUserSn() != null) userSns.add(notice.getWriterUserSn());
+            Long updaterUserId = updaterUserId(notice);
+            if (updaterUserId != null) userSns.add(updaterUserId);
+        }
+        return memberIdentityReader.findByUserSns(userSns);
+    }
+
+    private Long updaterUserId(Notice notice) {
+        String actorId = notice.getUpdaterActorId();
+        if (actorId == null || !actorId.matches("USR:[0-9]+")) return null;
+        return Long.valueOf(actorId.substring("USR:".length()));
     }
 
     /**

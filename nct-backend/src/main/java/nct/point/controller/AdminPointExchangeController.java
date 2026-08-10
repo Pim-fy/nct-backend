@@ -1,6 +1,9 @@
 package nct.point.controller;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,6 +20,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.global.response.PageResponse;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
+import nct.point.domain.PointExchangeOrder;
 import nct.point.dto.AdminExchangeRejectRequest;
 import nct.point.dto.AdminPointExchangeAccountResponse;
 import nct.point.dto.AdminPointExchangeOrderResponse;
@@ -44,12 +51,15 @@ import nct.point.service.PointExchangeService;
 public class AdminPointExchangeController {
 
     private final PointExchangeService pointExchangeService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     /** 처리 대기 목록 — 관리자가 "누구에게 어디로 얼마" 보낼지 보는 화면의 데이터 */
     @GetMapping("/orders")
     public ResponseEntity<ApiResponse<List<AdminPointExchangeOrderResponse>>> getRequestedOrders() {
-        List<AdminPointExchangeOrderResponse> body = pointExchangeService.getRequestedListForAdmin().stream()
-                .map(AdminPointExchangeOrderResponse::from)
+        List<PointExchangeOrder> orders = pointExchangeService.getRequestedListForAdmin();
+        Map<Long, AdminMemberIdentityResponse> identities = identitiesFor(orders);
+        List<AdminPointExchangeOrderResponse> body = orders.stream()
+                .map(order -> AdminPointExchangeOrderResponse.from(order, identities))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(body));
     }
@@ -61,8 +71,11 @@ public class AdminPointExchangeController {
             @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
+        PageResponse<PointExchangeOrder> orders =
+                pointExchangeService.getAdminOrderPage(statusCode, keyword, page, size);
         AdminPointExchangePageResponse body = AdminPointExchangePageResponse.from(
-                pointExchangeService.getAdminOrderPage(statusCode, keyword, page, size));
+                orders,
+                identitiesFor(orders.getContent()));
         return ResponseEntity.ok(ApiResponse.success(body));
     }
 
@@ -101,5 +114,15 @@ public class AdminPointExchangeController {
         long adminUsrSn = userDetails.getMember().getId();
         pointExchangeService.reject(ptExcOrdSn, adminUsrSn, request.getReason());
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** 담당자 7 연계: 환전 도메인이 USERS를 직접 조회하지 않도록 회원 읽기 계약만 소비합니다. */
+    private Map<Long, AdminMemberIdentityResponse> identitiesFor(List<PointExchangeOrder> orders) {
+        Set<Long> userSns = new LinkedHashSet<>();
+        for (PointExchangeOrder order : orders) {
+            if (order.getUsrSn() != null) userSns.add(order.getUsrSn());
+            if (order.getPtExcOrdProcUsrSn() != null) userSns.add(order.getPtExcOrdProcUsrSn());
+        }
+        return memberIdentityReader.findByUserSns(userSns);
     }
 }

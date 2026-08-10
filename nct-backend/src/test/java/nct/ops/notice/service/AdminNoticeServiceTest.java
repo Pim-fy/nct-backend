@@ -25,6 +25,8 @@ import nct.ops.notice.mapper.NoticeMapper;
 import nct.ops.notice.port.NoticeChangeHistoryCommand;
 import nct.ops.notice.port.NoticeChangeHistoryPort;
 import nct.ops.reference.service.ReferenceDataService;
+import nct.member.port.AdminMemberIdentityReader;
+import nct.audit.service.AuditLogService;
 
 /** F-OPS-023 관리자 공지의 코드·기간·멱등·감사 경계를 확인한다. */
 class AdminNoticeServiceTest {
@@ -39,7 +41,12 @@ class AdminNoticeServiceTest {
         noticeMapper = mock(NoticeMapper.class);
         referenceDataService = mock(ReferenceDataService.class);
         changeHistoryPort = mock(NoticeChangeHistoryPort.class);
-        service = new AdminNoticeService(noticeMapper, referenceDataService, changeHistoryPort);
+        service = new AdminNoticeService(
+                noticeMapper,
+                referenceDataService,
+                changeHistoryPort,
+                mock(AdminMemberIdentityReader.class),
+                mock(AuditLogService.class));
     }
 
     @Test

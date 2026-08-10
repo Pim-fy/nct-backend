@@ -32,6 +32,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.service.MemberService;
 import nct.notification.service.NotificationService;
+import nct.ops.reference.service.AuctionBidUnitPolicyService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
 import nct.product.dto.ProductCommentResponse;
@@ -66,6 +67,7 @@ public class AuctionService {
     private final AuctionEventPublisher auctionEventPublisher;
     private final NotificationService notificationService;
     private final ReviewService reviewService;
+    private final AuctionBidUnitPolicyService bidUnitPolicyService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -237,16 +239,11 @@ public class AuctionService {
                 actorUserId,
                 now);
 
-        AuctionPolicy policy = pointService.getAuctionPolicy();
-        BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
-        if (bidUnitAmount != null && bidUnitAmount.compareTo(minimumBidUnit) < 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 단위는 시스템 최소 입찰 단위 이상이어야 합니다.");
-        }
+        BigDecimal actualBidUnit = bidUnitPolicyService.resolveActiveAmount(bidUnitAmount);
 
         String statusCode = startDateTime.isAfter(now)
                 ? AuctionStatusCode.READY
                 : AuctionStatusCode.ACTIVE;
-        BigDecimal actualBidUnit = bidUnitAmount == null ? minimumBidUnit : bidUnitAmount;
 
         int inserted = auctionMapper.insertAuction(
                 productId,
@@ -372,10 +369,10 @@ public class AuctionService {
         AuctionPolicy policy = pointService.getAuctionPolicy();
 
         BigDecimal bidAmount = request == null ? null : request.getBidAmount();
-        if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target, policy)) < 0) {
+        if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target)) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        validateBidUnit(target, policy, bidAmount);
+        validateBidUnit(target, bidAmount);
         validateBidBelowInstantBuyPrice(target, bidAmount);
 
         int updatedCount = auctionMapper.updateAuctionCurrentPrice(auctionId, bidAmount, userId.toString());
@@ -589,24 +586,25 @@ public class AuctionService {
         return target.getDatabaseNow() == null ? LocalDateTime.now() : target.getDatabaseNow();
     }
 
-    private BigDecimal minimumBidPrice(AuctionBidTarget target, AuctionPolicy policy) {
+    private BigDecimal minimumBidPrice(AuctionBidTarget target) {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
-        return currentPrice.add(effectiveBidUnit(target, policy));
+        return currentPrice.add(effectiveBidUnit(target));
     }
 
-    private BigDecimal effectiveBidUnit(AuctionBidTarget target, AuctionPolicy policy) {
-        BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
+    private BigDecimal effectiveBidUnit(AuctionBidTarget target) {
         BigDecimal bidUnitPrice = target.getBidUnitPrice();
-        if (bidUnitPrice == null || bidUnitPrice.compareTo(minimumBidUnit) < 0) {
-            bidUnitPrice = minimumBidUnit;
+        if (bidUnitPrice == null || bidUnitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "경매 입찰 단위를 확인할 수 없습니다.");
         }
         return bidUnitPrice;
     }
 
-    private void validateBidUnit(AuctionBidTarget target, AuctionPolicy policy, BigDecimal bidAmount) {
+    private void validateBidUnit(AuctionBidTarget target, BigDecimal bidAmount) {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
         BigDecimal bidIncrement = bidAmount.subtract(currentPrice);
-        if (bidIncrement.remainder(effectiveBidUnit(target, policy)).compareTo(BigDecimal.ZERO) != 0) {
+        if (bidIncrement.remainder(effectiveBidUnit(target)).compareTo(BigDecimal.ZERO) != 0) {
             throw new CustomException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "입찰 금액은 입찰 단위의 배수여야 합니다."

@@ -1,8 +1,10 @@
 package nct.ops.servicequery.service;
 
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.reference.service.AdminCategoryService;
 import nct.ops.servicequery.dto.AdminServiceRequestListRequest;
 import nct.ops.servicequery.dto.AdminServiceRequestDetailResponse;
@@ -49,6 +53,7 @@ public class AdminServiceRequestQueryService {
     private final AdminServiceTradeSummaryReader tradeSummaryReader;
     private final AdminSettlementSummaryReader settlementSummaryReader;
     private final AdminEscrowSummaryReader escrowSummaryReader;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional(readOnly = true)
     public AdminServiceRequestPageResponse getPage(AdminServiceRequestListRequest request) {
@@ -75,6 +80,14 @@ public class AdminServiceRequestQueryService {
             throw inconsistent("조회 대상이 아닌 견적 요약이 반환되었습니다.");
         }
         ServiceFlowSummaries flow = loadFlowSummaries(serviceRequestIds);
+        Set<Long> memberIds = new LinkedHashSet<>();
+        page.getItems().forEach(item -> memberIds.add(item.getRequesterUserId()));
+        quoteSummaries.values().stream()
+                .map(AdminQuoteSummary::getSelectedProviderUserId)
+                .filter(java.util.Objects::nonNull)
+                .forEach(memberIds::add);
+        Map<Long, AdminMemberIdentityResponse> memberIdentities =
+                memberIdentityReader.findByUserSns(memberIds);
         List<AdminServiceRequestListItemResponse> items = page.getItems().stream()
                 .map(item -> {
                     AdminQuoteSummary quote = quoteSummaries.get(item.getServiceRequestId());
@@ -88,7 +101,8 @@ public class AdminServiceRequestQueryService {
                             trade,
                             settlement,
                             escrow,
-                            integratedStatus(item.getStatusCode(), quote));
+                            integratedStatus(item.getStatusCode(), quote),
+                            memberIdentities.get(item.getRequesterUserId()));
                 })
                 .toList();
         return new AdminServiceRequestPageResponse(
@@ -117,13 +131,20 @@ public class AdminServiceRequestQueryService {
         AdminSettlementSummary settlement = settlementFor(trade, flow);
         AdminEscrowSummary escrow = escrowFor(trade, flow);
         validateCorrelation(detail.getStatusCode(), quote, trade, settlement, escrow);
+        Long selectedProviderUserId = quote == null ? null : quote.getSelectedProviderUserId();
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                java.util.stream.Stream.of(detail.getRequesterUserId(), selectedProviderUserId)
+                        .filter(java.util.Objects::nonNull)
+                        .toList());
         return AdminServiceRequestDetailResponse.from(
                 detail,
                 quote,
                 trade,
                 settlement,
                 escrow,
-                integratedStatus(detail.getStatusCode(), quote));
+                integratedStatus(detail.getStatusCode(), quote),
+                identities.get(detail.getRequesterUserId()),
+                identities.get(selectedProviderUserId));
     }
 
     private ServiceFlowSummaries loadFlowSummaries(List<Long> serviceRequestIds) {

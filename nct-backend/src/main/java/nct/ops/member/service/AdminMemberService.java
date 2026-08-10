@@ -1,7 +1,9 @@
 package nct.ops.member.service;
 
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.ObjectProvider;
@@ -10,11 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.abuse.mapper.AbuseReportMapper;
+import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.dto.AdminMemberSource;
 import nct.member.mapper.MemberMapper;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.member.port.MemberStatusChangeCommand;
 import nct.member.port.MemberStatusChangeResult;
 import nct.member.port.MemberStatusCommandPort;
@@ -56,6 +61,7 @@ public class AdminMemberService {
     private final MemberTradeRestrictionPort memberTradeRestrictionPort;
     private final AuditLogPort auditLogPort;
     private final NotificationService notificationService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional(readOnly = true)
     public AdminMemberPageResponse getMembers(String statusCode, String keyword, int page, int size) {
@@ -86,10 +92,30 @@ public class AdminMemberService {
         List<AccountSanctionHistory> sanctions = sanctionPort == null
                 ? Collections.emptyList()
                 : sanctionPort.findHistory(userSn, HISTORY_LIMIT);
+        List<AdminAbuseReportResponse> reports =
+                abuseReportMapper.findReportsByReportedUser(userSn, HISTORY_LIMIT);
+        Set<Long> identityUserSns = new LinkedHashSet<>();
+        identityUserSns.add(userSn);
+        for (AdminAbuseReportResponse report : reports) {
+            if (report.getReporterUserSn() != null) identityUserSns.add(report.getReporterUserSn());
+            Long processorUserSn = numericUserSn(report.getProcessedBy());
+            if (processorUserSn != null) identityUserSns.add(processorUserSn);
+        }
+        for (AccountSanctionHistory sanction : sanctions) {
+            if (sanction.processedBy() != null) identityUserSns.add(sanction.processedBy());
+        }
+        Map<Long, AdminMemberIdentityResponse> identities =
+                memberIdentityReader.findByUserSns(identityUserSns);
+        for (AdminAbuseReportResponse report : reports) {
+            report.setReporterMember(identities.get(report.getReporterUserSn()));
+            report.setReportedMember(identities.get(report.getReportedUserSn()));
+            report.setProcessorMember(identities.get(numericUserSn(report.getProcessedBy())));
+        }
         return new AdminMemberDetailResponse(
                 AdminMemberListItemResponse.from(source),
-                abuseReportMapper.findReportsByReportedUser(userSn, HISTORY_LIMIT),
+                reports,
                 sanctions,
+                identities,
                 sanctionPort != null,
                 sanctionPort != null);
     }
@@ -245,6 +271,15 @@ public class AdminMemberService {
     private void validateUserSn(Long userSn) {
         if (userSn == null || userSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private Long numericUserSn(String value) {
+        if (value == null || !value.matches("[0-9]+")) return null;
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 }

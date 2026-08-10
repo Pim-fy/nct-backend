@@ -166,8 +166,18 @@ public class AuthService {
      *   동일한 INVALID_CREDENTIALS 로 응답 (계정 존재 여부 노출 방지)
      */
     @Transactional
-    // @ai_generated: 토큰·응답 모델만 반환해 Service가 HttpServlet API에 의존하지 않게 한다.
+    // 담당자 7 · F-OPS-001: 일반 로그인에서는 관리자 계정의 세션 발급을 차단한다.
     public AuthSessionResult login(LoginRequest request) {
+        return authenticate(request, false);
+    }
+
+    /** 담당자 7 · F-OPS-001: 관리자 전용 로그인에서는 관리자 계정만 세션을 발급한다. */
+    @Transactional
+    public AuthSessionResult adminLogin(LoginRequest request) {
+        return authenticate(request, true);
+    }
+
+    private AuthSessionResult authenticate(LoginRequest request, boolean adminOnly) {
         AuthMember member = authMemberPort.findByLoginId(normalizeLoginId(request.getLoginId()))
                                           .orElseThrow(() -> new CustomException(ErrorCode.INVALID_CREDENTIALS));
 
@@ -176,11 +186,18 @@ public class AuthService {
             throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
         }
 
+        // 비밀번호 확인 뒤 채널 역할을 검사해 계정 존재 여부와 역할을 같은 401 응답으로 숨긴다.
+        boolean isAdmin = ROLE_ADMIN.equals(member.getRole());
+        if (adminOnly != isAdmin) {
+            throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
+        }
+
         // @ai_generated: F-AUTH-009 - 정지/탈퇴 계정은 비밀번호가 맞아도 로그인을 차단한다.
         requireActiveStatus(member.getStatus());
 
+        boolean rememberMe = request.isRememberMe();
         String accessToken  = jwtTokenProvider.createAccessToken(member.getId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), request.isRememberMe());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), rememberMe);
 
         authMemberPort.updateRefreshToken(member.getId(), refreshToken);
         return AuthSessionResult.builder()

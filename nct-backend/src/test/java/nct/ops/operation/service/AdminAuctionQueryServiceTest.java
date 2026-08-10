@@ -5,12 +5,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.service.AuctionService;
+import nct.member.port.AdminMemberIdentityReader;
+import nct.ops.operation.dto.AdminAuctionListItemResponse;
+import nct.ops.operation.dto.AdminAuctionListRequest;
 import nct.ops.operation.mapper.AdminAuctionQueryMapper;
 import nct.product.dto.ProductResponse;
 import nct.product.service.ProductService;
@@ -24,6 +28,7 @@ class AdminAuctionQueryServiceTest {
     private AuctionService auctionService;
     private ProductService productService;
     private TradeService tradeService;
+    private AdminMemberIdentityReader memberIdentityReader;
     private AdminAuctionQueryService service;
 
     @BeforeEach
@@ -32,7 +37,9 @@ class AdminAuctionQueryServiceTest {
         auctionService = mock(AuctionService.class);
         productService = mock(ProductService.class);
         tradeService = mock(TradeService.class);
-        service = new AdminAuctionQueryService(mapper, auctionService, productService, tradeService);
+        memberIdentityReader = mock(AdminMemberIdentityReader.class);
+        service = new AdminAuctionQueryService(
+                mapper, auctionService, productService, tradeService, memberIdentityReader);
     }
 
     @Test
@@ -56,5 +63,22 @@ class AdminAuctionQueryServiceTest {
         assertThat(response.getAuction()).isSameAs(auction);
         assertThat(response.getTradeSn()).isEqualTo(51L);
         assertThat(response.getTradeStatusCode()).isEqualTo("TRDC0003");
+    }
+
+    @Test
+    void returnsPageWhenCancellationProcessorIsNotAssigned() {
+        AdminAuctionListRequest request = new AdminAuctionListRequest();
+        AdminAuctionListItemResponse item = new AdminAuctionListItemResponse();
+        item.setSellerUserSn(7L);
+        item.setCancelProcessorUserSn(null);
+
+        when(mapper.count(request)).thenReturn(1L);
+        when(mapper.findPage(request)).thenReturn(List.of(item));
+        when(memberIdentityReader.findByUserSns(java.util.Set.of(7L))).thenReturn(Map.of());
+
+        var response = service.getPage(request);
+
+        assertThat(response.getItems()).containsExactly(item);
+        assertThat(item.getCancelProcessorMember()).isNull();
     }
 }

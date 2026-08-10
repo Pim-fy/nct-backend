@@ -15,6 +15,7 @@ import nct.global.security.port.AuthMember;
 import nct.point.domain.PointExchangeOrder;
 import nct.point.dto.AdminPointExchangeAccountResponse;
 import nct.point.service.PointExchangeService;
+import nct.member.port.AdminMemberIdentityReader;
 
 /** 담당자 7 · F-PAY-012: 관리자 환전 조회 컨트롤러의 인증·검색 전달값을 검증합니다. */
 class AdminPointExchangeControllerTest {
@@ -22,7 +23,8 @@ class AdminPointExchangeControllerTest {
     @Test
     void forwardsAdminOrderSearchConditions() {
         PointExchangeService service = mock(PointExchangeService.class);
-        AdminPointExchangeController controller = new AdminPointExchangeController(service);
+        AdminPointExchangeController controller = new AdminPointExchangeController(
+                service, mock(AdminMemberIdentityReader.class));
         PageResponse<PointExchangeOrder> page = PageResponse.<PointExchangeOrder>builder()
                 .content(List.of())
                 .totalCount(0)
@@ -40,7 +42,8 @@ class AdminPointExchangeControllerTest {
     @Test
     void forwardsAuthenticatedAdminAndIpForAccountReveal() {
         PointExchangeService service = mock(PointExchangeService.class);
-        AdminPointExchangeController controller = new AdminPointExchangeController(service);
+        AdminPointExchangeController controller = new AdminPointExchangeController(
+                service, mock(AdminMemberIdentityReader.class));
         HttpServletRequest request = mock(HttpServletRequest.class);
         AdminPointExchangeAccountResponse response = new AdminPointExchangeAccountResponse(
                 12L,

@@ -39,6 +39,8 @@ public class AuctionDetailResponse {
     private Double sellerRating;
     private Integer sellerReviewCount;
     @JsonIgnore
+    private Long currentHighestBidId;
+    @JsonIgnore
     private Long currentHighestBidderId;
     private boolean currentHighestBidder;
     private String myBidTradeMethodCode;

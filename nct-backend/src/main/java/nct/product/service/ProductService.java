@@ -1,5 +1,6 @@
 package nct.product.service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -65,6 +66,13 @@ public class ProductService {
         }
     }
 
+    // 즉시구매가는 입력하지 않으면 즉시구매 미사용이라 그대로 두고, 입력했다면 시작가보다 높아야 한다(정책 안내와 동일 기준).
+    private void validateInstantBuyAboveStartAmt(BigDecimal prdStartAmt, BigDecimal prdIbyAmt) {
+        if (prdIbyAmt != null && prdStartAmt != null && prdIbyAmt.compareTo(prdStartAmt) <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "즉시구매가는 시작가보다 높아야 합니다.");
+        }
+    }
+
     private final ProductMapper productMapper;
     private final ReferenceDataService referenceDataService;
     private final ProductImageMapper productImageMapper;
@@ -81,7 +89,8 @@ public class ProductService {
         if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        validateNoBannedKeyword(req.getPrdNm());
+        validateNoBannedKeyword(req.getPrdNm(), req.getPrdCn());
+        validateInstantBuyAboveStartAmt(req.getPrdStartAmt(), req.getPrdIbyAmt());
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         validateClientStatusCd(statusCd);
         boolean isDraft = "PRDC0001".equals(statusCd);
@@ -137,7 +146,8 @@ public class ProductService {
         if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        validateNoBannedKeyword(req.getPrdNm());
+        validateNoBannedKeyword(req.getPrdNm(), req.getPrdCn());
+        validateInstantBuyAboveStartAmt(req.getPrdStartAmt(), req.getPrdIbyAmt());
 
         String statusCd = (req.getPrdStatusCd() != null) ? req.getPrdStatusCd() : "PRDC0002";
         validateClientStatusCd(statusCd);
@@ -209,15 +219,23 @@ public class ProductService {
         }
     }
 
-    private void validateNoBannedKeyword(String prdNm) {
-        if (prdNm == null) return;
-        String lower = prdNm.toLowerCase();
-        bannedKeywordMapper.findActiveBannedKeywords().stream()
+    // 상품명뿐 아니라 본문(설명)도 같은 금지 키워드 목록으로 검사한다(F-AUC-004) —
+    // 상품명만 막으면 제목엔 안 넣고 본문에만 넣는 방식으로 우회할 수 있어서 같이 막는다.
+    private void validateNoBannedKeyword(String prdNm, String prdCn) {
+        List<String> activeKeywords = bannedKeywordMapper.findActiveBannedKeywords();
+        checkBannedKeyword(prdNm, "상품명", activeKeywords);
+        checkBannedKeyword(prdCn, "상품 설명", activeKeywords);
+    }
+
+    private void checkBannedKeyword(String text, String fieldLabel, List<String> keywords) {
+        if (text == null) return;
+        String lower = text.toLowerCase();
+        keywords.stream()
                 .filter(kwd -> lower.contains(kwd.toLowerCase()))
                 .findFirst()
                 .ifPresent(kwd -> {
                     throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                            "'" + kwd + "'은(는) 등록할 수 없는 상품명입니다.");
+                            "'" + kwd + "'은(는) 등록할 수 없는 " + fieldLabel + "입니다.");
                 });
     }
 

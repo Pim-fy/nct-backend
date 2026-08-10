@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,8 @@ import nct.auction.mapper.AuctionMapper;
 import nct.auction.service.AuctionService;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
-import nct.point.domain.AuctionPolicy;
+import nct.ops.reference.domain.CommonCode;
+import nct.ops.reference.service.ReferenceDataService;
 import nct.point.service.PointService;
 import nct.product.service.ProductService;
 
@@ -39,29 +41,34 @@ class AuctionServiceCreateAuctionTest {
     private PointService pointService;
 
     @Mock
+    private ReferenceDataService referenceDataService;
+
+    @Mock
     private ObjectProvider<ProductService> productServiceProvider;
 
     @InjectMocks
     private AuctionService auctionService;
 
-    private AuctionPolicy policy;
-
     @BeforeEach
-    void setUpPolicy() {
-        policy = auctionPolicy(10, 1, 1000);
-        lenient().when(pointService.getAuctionPolicy()).thenReturn(policy);
+    void setUpBidUnits() {
+        lenient().when(referenceDataService.getActiveCodes("AUCG02")).thenReturn(List.of(
+                bidUnitCode("AUCC0007", "500"),
+                bidUnitCode("AUCC0008", "1000"),
+                bidUnitCode("AUCC0009", "5000"),
+                bidUnitCode("AUCC0010", "10000"),
+                bidUnitCode("AUCC0011", "50000"),
+                bidUnitCode("AUCC0012", "100000")));
     }
 
     @Test
-    void createAuctionForProductUsesActiveStatusAndPolicyBidUnit() {
+    void createAuctionForProductUsesActiveStatusAndConfiguredBidUnit() {
         LocalDateTime startDateTime = LocalDateTime.now().minusMinutes(1);
         LocalDateTime endDateTime = LocalDateTime.now().plusDays(3);
-        policy.setMinBidUnit(2500L);
         when(auctionMapper.insertAuction(
                 10L,
                 AuctionStatusCode.ACTIVE,
                 BigDecimal.valueOf(50000),
-                BigDecimal.valueOf(2500),
+                BigDecimal.valueOf(500),
                 startDateTime,
                 endDateTime,
                 "7"))
@@ -70,7 +77,7 @@ class AuctionServiceCreateAuctionTest {
         auctionService.createAuctionForProduct(
                 10L,
                 BigDecimal.valueOf(50000),
-                null,
+                BigDecimal.valueOf(500),
                 startDateTime,
                 endDateTime,
                 7L);
@@ -79,7 +86,7 @@ class AuctionServiceCreateAuctionTest {
                 10L,
                 AuctionStatusCode.ACTIVE,
                 BigDecimal.valueOf(50000),
-                BigDecimal.valueOf(2500),
+                BigDecimal.valueOf(500),
                 startDateTime,
                 endDateTime,
                 "7");
@@ -146,9 +153,21 @@ class AuctionServiceCreateAuctionTest {
     }
 
     @Test
-    void createAuctionForProductRejectsBidUnitBelowPolicyMinimum() {
-        policy.setMinBidUnit(3000L);
+    void createAuctionForProductRejectsMissingBidUnit() {
+        assertThatThrownBy(() -> auctionService.createAuctionForProduct(
+                10L,
+                BigDecimal.valueOf(50000),
+                null,
+                LocalDateTime.now(),
+                LocalDateTime.now().plusDays(3),
+                7L))
+                .isInstanceOf(CustomException.class);
 
+        verifyNoInteractions(auctionMapper);
+    }
+
+    @Test
+    void createAuctionForProductRejectsBidUnitOutsideConfiguredOptions() {
         assertThatThrownBy(() -> auctionService.createAuctionForProduct(
                 10L,
                 BigDecimal.valueOf(50000),
@@ -156,7 +175,8 @@ class AuctionServiceCreateAuctionTest {
                 LocalDateTime.now(),
                 LocalDateTime.now().plusDays(3),
                 7L))
-                .isInstanceOf(CustomException.class);
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("선택할 수 없는 입찰 단위입니다.");
 
         verifyNoInteractions(auctionMapper);
     }
@@ -191,11 +211,10 @@ class AuctionServiceCreateAuctionTest {
         verifyNoInteractions(auctionMapper);
     }
 
-    private AuctionPolicy auctionPolicy(int extensionMinutes, int maxExtensionCount, long minBidUnit) {
-        AuctionPolicy auctionPolicy = new AuctionPolicy();
-        auctionPolicy.setAucExtMin(extensionMinutes);
-        auctionPolicy.setAucExtMaxCnt(maxExtensionCount);
-        auctionPolicy.setMinBidUnit(minBidUnit);
-        return auctionPolicy;
+    private CommonCode bidUnitCode(String code, String name) {
+        CommonCode commonCode = new CommonCode();
+        commonCode.setCode(code);
+        commonCode.setName(name);
+        return commonCode;
     }
 }

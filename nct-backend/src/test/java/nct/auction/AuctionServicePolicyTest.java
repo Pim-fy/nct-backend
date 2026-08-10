@@ -100,14 +100,15 @@ class AuctionServicePolicyTest {
     }
 
     @Test
-    void placeBidRejectsAmountBelowPolicyMinimumBidUnit() {
+    void placeBidUsesStoredBidUnitWhenLegacyPolicyMinimumIsHigher() {
         when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 3000));
-        AuctionBidRequest request = bidRequest(12000);
+        AuctionBidRequest request = bidRequest(11000);
 
         assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
-                .isInstanceOf(CustomException.class);
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("현재가가 갱신되었습니다");
 
-        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
+        verify(auctionMapper).updateAuctionCurrentPrice(10L, BigDecimal.valueOf(11000), "40");
     }
 
     @Test

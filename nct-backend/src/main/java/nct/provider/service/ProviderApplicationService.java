@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.domain.ProviderApplicationCommand;
 import nct.provider.dto.ProviderApplicationFileRequest;
@@ -42,6 +43,7 @@ public class ProviderApplicationService {
     private final ProviderApplicationMapper mapper;
     private final ReferenceDataService referenceDataService;
     private final FileStorageService fileStorageService;
+    private final NotificationService notificationService;
 
     @Transactional
     public List<ProviderApplicationResponse> apply(Long userSn, ProviderApplicationRequest request) {
@@ -127,6 +129,7 @@ public class ProviderApplicationService {
                         actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+        notificationService.notifyProviderApprovalResult(application.getUserSn(), true, null);
         return enrichFiles(
                 mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)));
     }
@@ -136,11 +139,13 @@ public class ProviderApplicationService {
         if (reason == null || reason.isBlank() || reason.trim().length() > 4000) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        requirePending(applicationSn);
-        if (mapper.changeApplicationStatus(applicationSn, REJECTED, reason.trim(), actorId(actorUserSn)) != 1
-                || mapper.insertStatus(applicationSn, HIST_REJECTED, reason.trim(), actorId(actorUserSn)) != 1) {
+        ProviderApplicationResponse application = requirePending(applicationSn);
+        String trimmedReason = reason.trim();
+        if (mapper.changeApplicationStatus(applicationSn, REJECTED, trimmedReason, actorId(actorUserSn)) != 1
+                || mapper.insertStatus(applicationSn, HIST_REJECTED, trimmedReason, actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+        notificationService.notifyProviderApprovalResult(application.getUserSn(), false, trimmedReason);
         return enrichFiles(
                 mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)));
     }

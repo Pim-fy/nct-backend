@@ -63,6 +63,7 @@ public enum ErrorCode {
     ABUSE_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신고한 항목입니다."),
     ABUSE_REPORT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 신고입니다."),
     CUSTOMER_INQUIRY_STATUS_CONFLICT(HttpStatus.CONFLICT, "고객 문의 처리 상태가 이미 변경되었습니다."),
+    INQUIRY_NOT_AVAILABLE(HttpStatus.CONFLICT, "종료된 경매에는 문의를 등록할 수 없습니다."),
     WITHDRAWN_USER(HttpStatus.GONE, "탈퇴한 사용자입니다."),
     // @ai_generated: 작업단위5 작업 2(F-AUTH-016) - 마이페이지 연동 관리 REST API 전용
     OAUTH_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "연동된 계정을 찾을 수 없습니다."),

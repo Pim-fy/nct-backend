@@ -16,6 +16,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
+import nct.notification.service.NotificationService;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.domain.ProviderApplicationCommand;
 import nct.provider.dto.ProviderApplicationFileRequest;
@@ -45,6 +46,7 @@ public class ProviderApplicationService {
     private final ReferenceDataService referenceDataService;
     private final FileStorageService fileStorageService;
     private final AdminMemberIdentityReader memberIdentityReader;
+    private final NotificationService notificationService;
 
     @Transactional
     public List<ProviderApplicationResponse> apply(Long userSn, ProviderApplicationRequest request) {
@@ -132,6 +134,7 @@ public class ProviderApplicationService {
                         actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+        notificationService.notifyProviderApprovalResult(application.getUserSn(), true, null);
         return enrichFiles(
                 mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)));
     }
@@ -139,13 +142,14 @@ public class ProviderApplicationService {
     @Transactional
     public ProviderApplicationResponse reject(Long applicationSn, String reason, Long actorUserSn) {
         String normalizedReason = requireDecisionReason(reason);
-        requirePending(applicationSn);
+        ProviderApplicationResponse application = requirePending(applicationSn);
         if (mapper.changeApplicationStatus(
                     applicationSn, REJECTED, normalizedReason, actorId(actorUserSn)) != 1
                 || mapper.insertStatus(
                     applicationSn, HIST_REJECTED, normalizedReason, actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+        notificationService.notifyProviderApprovalResult(application.getUserSn(), false, normalizedReason);
         return enrichFiles(
                 mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)));
     }

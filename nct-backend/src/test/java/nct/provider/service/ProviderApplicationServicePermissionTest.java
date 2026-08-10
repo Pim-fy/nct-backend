@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,19 +17,23 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.port.AdminMemberIdentityReader;
+import nct.notification.service.NotificationService;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.dto.ProviderApplicationRequest;
+import nct.provider.dto.ProviderApplicationResponse;
 import nct.provider.mapper.ProviderApplicationMapper;
 
 // @ai_generated F-PROV-015: 모드 진입용 "활성 권한 하나 이상" 읽기 계약을 단위 검증한다.
 class ProviderApplicationServicePermissionTest {
 
     private final ProviderApplicationMapper mapper = mock(ProviderApplicationMapper.class);
+    private final NotificationService notificationService = mock(NotificationService.class);
     private final ProviderApplicationService service = new ProviderApplicationService(
             mapper,
             mock(ReferenceDataService.class),
             mock(FileStorageService.class),
-            mock(AdminMemberIdentityReader.class));
+            mock(AdminMemberIdentityReader.class),
+            notificationService);
 
     @Test
     void 활성_제공자_권한이_하나라도_있으면_통과한다() {
@@ -60,5 +65,40 @@ class ProviderApplicationServicePermissionTest {
 
         verify(mapper).isEmailCertified(101L);
         verify(mapper, never()).insertApplication(any());
+    }
+
+    @Test
+    void 제공자_신청이_승인되면_승인_알림을_보낸다() {
+        ProviderApplicationResponse application = new ProviderApplicationResponse();
+        application.setApplicationSn(500L);
+        application.setUserSn(101L);
+        application.setCategorySn(30L);
+        application.setStatusCode("PRVC0002");
+        when(mapper.findForUpdate(500L)).thenReturn(Optional.of(application));
+        when(mapper.changeApplicationStatus(500L, "PRVC0003", null, "9")).thenReturn(1);
+        when(mapper.insertStatus(500L, "PRVC0017", "승인 사유", "9")).thenReturn(1);
+        when(mapper.insertActivePermission(101L, 30L, 500L, "9")).thenReturn(1);
+        when(mapper.findFilesByApplicationSn(500L)).thenReturn(List.of());
+
+        service.approve(500L, "승인 사유", 9L);
+
+        verify(notificationService).notifyProviderApprovalResult(101L, true, null);
+    }
+
+    @Test
+    void 제공자_신청이_반려되면_반려_알림을_보낸다() {
+        ProviderApplicationResponse application = new ProviderApplicationResponse();
+        application.setApplicationSn(501L);
+        application.setUserSn(102L);
+        application.setCategorySn(31L);
+        application.setStatusCode("PRVC0002");
+        when(mapper.findForUpdate(501L)).thenReturn(Optional.of(application));
+        when(mapper.changeApplicationStatus(501L, "PRVC0004", "자격 미달", "9")).thenReturn(1);
+        when(mapper.insertStatus(501L, "PRVC0018", "자격 미달", "9")).thenReturn(1);
+        when(mapper.findFilesByApplicationSn(501L)).thenReturn(List.of());
+
+        service.reject(501L, "자격 미달", 9L);
+
+        verify(notificationService).notifyProviderApprovalResult(102L, false, "자격 미달");
     }
 }

@@ -20,9 +20,11 @@ import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionListResponse;
 import nct.auction.service.AuctionService;
 import nct.global.security.crypto.FieldCryptoService;
+import nct.support.ApprovedDatabaseWriteIntegrationTest;
+import nct.support.TestGeneratedKeys;
 
 @SpringBootTest
-class AuctionListFilterTest {
+class AuctionListFilterTest extends ApprovedDatabaseWriteIntegrationTest {
 
     @Autowired AuctionService auctionService;
     @Autowired JdbcTemplate jdbc;
@@ -36,11 +38,10 @@ class AuctionListFilterTest {
     void setUpSeller() {
         String loginId = "t_auclist_" + System.nanoTime();
         String email = loginId + "@test.local";
-        jdbc.update("""
+        sellerSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
-        sellerSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
     @AfterEach
@@ -184,7 +185,7 @@ class AuctionListFilterTest {
             String auctionStatusCode,
             String tradeMethodCode) {
         long prdSn = insertProduct(sellerSn, productName, instantBuyPrice, tradeMethodCode);
-        jdbc.update("""
+        long aucSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO AUCTION (
                     PRD_SN,
                     AUC_STATUS_CD,
@@ -201,7 +202,6 @@ class AuctionListFilterTest {
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
                 LocalDateTime.now().plusHours(1));
-        long aucSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         auctionIds.add(aucSn);
         return aucSn;
     }
@@ -215,11 +215,10 @@ class AuctionListFilterTest {
             String productName,
             BigDecimal instantBuyPrice,
             String tradeMethodCode) {
-        jdbc.update("""
+        long prdSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD)
                 VALUES (?, 2, ?, 'PRDC0002', 10000, ?, ?)
                 """, sellerSn, productName, instantBuyPrice, tradeMethodCode);
-        long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         productIds.add(prdSn);
         return prdSn;
     }

@@ -41,6 +41,7 @@ import nct.review.dto.TrustScoreResponse;
 import nct.review.service.ReviewService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @Service
@@ -467,7 +468,7 @@ public class AuctionService {
         if (closed == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "경매 상태가 이미 변경되었습니다.");
         }
-        createAuctionTrade(
+        AuctionTradeCreateResult trade = createAuctionTrade(
                 target,
                 bid.getBidId(),
                 userId,
@@ -478,18 +479,19 @@ public class AuctionService {
         notificationService.notifyAuctionResult(userId, auctionId, true);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        detail.setTradeId(trade.getTradeSn());
         publishAuctionChanged(auctionId, "BUY_NOW");
         return detail;
     }
 
-    private void createAuctionTrade(
+    private AuctionTradeCreateResult createAuctionTrade(
             AuctionBidTarget target,
             Long winningBidId,
             Long buyerUserId,
             BigDecimal tradeAmount,
             AuctionTradeSource source,
             String selectedTradeMethodCode) {
-        tradeService.createAuctionTrade(
+        return tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
                         target.getProductId(),

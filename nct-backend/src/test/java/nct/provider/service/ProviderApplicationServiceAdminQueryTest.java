@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import nct.file.service.FileStorageService;
 import nct.member.port.AdminMemberIdentityReader;
+import nct.notification.service.NotificationService;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.dto.ProviderApplicationResponse;
 import nct.provider.mapper.ProviderApplicationMapper;
@@ -27,7 +28,8 @@ class ProviderApplicationServiceAdminQueryTest {
                 mapper,
                 mock(ReferenceDataService.class),
                 mock(FileStorageService.class),
-                memberIdentityReader);
+                memberIdentityReader,
+                mock(NotificationService.class));
         ProviderApplicationResponse application = new ProviderApplicationResponse();
         application.setApplicationSn(31L);
         application.setUserSn(101L);

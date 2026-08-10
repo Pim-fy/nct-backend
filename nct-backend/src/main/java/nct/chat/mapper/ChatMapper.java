@@ -18,6 +18,11 @@ public interface ChatMapper {
     /** 물건 직거래만 잠가 채팅방 생성과 중복 생성 검사가 같은 거래를 기준으로 이뤄지게 한다. */
     Long findOfflineMaterialTradeIdForUpdate(@Param("tradeId") long tradeId);
 
+    /** 직거래 당사자가 채팅 시작 버튼을 눌렀을 때만 거래 행을 잠근다. */
+    Long findMyOfflineMaterialTradeIdForUpdate(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
     /** 진행 중인 서비스 거래만 잠가 채팅방 생성·중복 검사를 같은 거래 기준으로 직렬화한다. */
     Long findServiceTradeIdForUpdate(@Param("tradeId") long tradeId);
 

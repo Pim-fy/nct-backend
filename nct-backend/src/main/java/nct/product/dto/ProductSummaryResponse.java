@@ -10,8 +10,8 @@ public class ProductSummaryResponse {
 
     private long total;
     private long draft;
+    private long reserved;
     private long active;
-    private long won;
     private long trading;
     private long closed;
 }

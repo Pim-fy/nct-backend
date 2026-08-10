@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
 import nct.global.security.crypto.FieldCryptoService;
+import nct.member.dto.AdminMemberIdentityResponse;
 import nct.notification.service.NotificationService;
 import nct.point.domain.PointExchangeOrder;
 import nct.point.domain.PointExchangeOrderStatus;
@@ -137,6 +139,29 @@ class PointExchangeServiceAdminHistoryTest {
         assertThat(response.getProcessedBy()).isEqualTo(99L);
         assertThat(response.getProcessedDate()).isEqualTo("2026-08-05 14:30");
         assertThat(response.getRejectReason()).isEqualTo("계좌 정보 불일치");
+    }
+
+    @Test
+    void requestedOrderWithoutProcessorBuildsAdminIdentityResponse() {
+        PointExchangeOrder order = order(
+                34L,
+                8L,
+                PointExchangeOrderStatus.REQUESTED,
+                "국민은행",
+                "123-45-6789");
+        AdminMemberIdentityResponse applicant = AdminMemberIdentityResponse.builder()
+                .userSn(8L)
+                .loginId("member08")
+                .nickname("환전신청자")
+                .build();
+
+        AdminPointExchangeOrderResponse response = AdminPointExchangeOrderResponse.from(
+                order,
+                Map.of(8L, applicant));
+
+        assertThat(response.getApplicantMember()).isSameAs(applicant);
+        assertThat(response.getProcessedBy()).isNull();
+        assertThat(response.getProcessorMember()).isNull();
     }
 
     @Test

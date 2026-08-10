@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="nct.trade.mapper.TradeOfflineProposalMapper">
+
+    <resultMap id="offlineProposalMap" type="nct.trade.dto.TradeOfflineScheduleProposal">
+        <id property="proposalId" column="proposalId" />
+        <result property="tradeId" column="tradeId" />
+        <result property="proposalType" column="proposalType" />
+        <result property="proposalStatus" column="proposalStatus" />
+        <result property="proposerUserId" column="proposerUserId" />
+        <result property="responderUserId" column="responderUserId" />
+        <result property="meetingDateTime" column="meetingDateTime" />
+        <result property="meetingPlace" column="meetingPlace" />
+        <result property="meetingAddress" column="meetingAddress" />
+        <result property="reason" column="reason" />
+        <result property="respondedAt" column="respondedAt" />
+    </resultMap>
+
+    <select id="findMyOfflineTradeForUpdate"
+            resultType="nct.trade.dto.TradeOfflineTradeTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.TRD_STATUS_CD AS tradeStatus,
+            t.TRD_METHOD_CD AS tradeMethod
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        FOR UPDATE
+    </select>
+
+    <select id="findMyOfflineTrade"
+            resultType="nct.trade.dto.TradeOfflineTradeTarget">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.SLLR_USR_SN AS sellerUserId,
+            t.BYPR_USR_SN AS buyerUserId,
+            t.TRD_STATUS_CD AS tradeStatus,
+            t.TRD_METHOD_CD AS tradeMethod
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+    </select>
+
+    <select id="findPendingProposal" resultMap="offlineProposalMap">
+        SELECT
+            p.TRD_OFL_PPS_SN AS proposalId,
+            p.TRD_SN AS tradeId,
+            p.TRD_OFL_PPS_TYPE_CD AS proposalType,
+            p.TRD_OFL_PPS_STATUS_CD AS proposalStatus,
+            p.TRD_OFL_PPS_PROPOSER_USR_SN AS proposerUserId,
+            p.TRD_OFL_PPS_RESPONDER_USR_SN AS responderUserId,
+            p.TRD_OFL_PPS_DT AS meetingDateTime,
+            p.TRD_OFL_PPS_PLC_NM AS meetingPlace,
+            p.TRD_OFL_PPS_ADDR_ENC AS meetingAddress,
+            p.TRD_OFL_PPS_RSN_CN AS reason,
+            p.TRD_OFL_PPS_RESP_DT AS respondedAt
+        FROM TRADE_OFFLINE_PROPOSAL p
+        WHERE p.TRD_SN = #{tradeId}
+          AND p.TRD_OFL_PPS_STATUS_CD = 'TRDC0025'
+        ORDER BY p.TRD_OFL_PPS_SN DESC
+        LIMIT 1
+    </select>
+
+    <select id="findProposalForUpdate" resultMap="offlineProposalMap">
+        SELECT
+            p.TRD_OFL_PPS_SN AS proposalId,
+            p.TRD_SN AS tradeId,
+            p.TRD_OFL_PPS_TYPE_CD AS proposalType,
+            p.TRD_OFL_PPS_STATUS_CD AS proposalStatus,
+            p.TRD_OFL_PPS_PROPOSER_USR_SN AS proposerUserId,
+            p.TRD_OFL_PPS_RESPONDER_USR_SN AS responderUserId,
+            p.TRD_OFL_PPS_DT AS meetingDateTime,
+            p.TRD_OFL_PPS_PLC_NM AS meetingPlace,
+            p.TRD_OFL_PPS_ADDR_ENC AS meetingAddress,
+            p.TRD_OFL_PPS_RSN_CN AS reason,
+            p.TRD_OFL_PPS_RESP_DT AS respondedAt
+        FROM TRADE_OFFLINE_PROPOSAL p
+        WHERE p.TRD_SN = #{tradeId}
+          AND p.TRD_OFL_PPS_SN = #{proposalId}
+        FOR UPDATE
+    </select>
+
+    <insert id="insertProposal" parameterType="nct.trade.dto.TradeOfflineScheduleProposal"
+            useGeneratedKeys="true" keyProperty="proposalId">
+        INSERT INTO TRADE_OFFLINE_PROPOSAL (
+            TRD_SN,
+            TRD_OFL_PPS_TYPE_CD,
+            TRD_OFL_PPS_STATUS_CD,
+            TRD_OFL_PPS_PROPOSER_USR_SN,
+            TRD_OFL_PPS_DT,
+            TRD_OFL_PPS_PLC_NM,
+            TRD_OFL_PPS_ADDR_ENC
+        )
+        VALUES (
+            #{tradeId},
+            #{proposalType},
+            'TRDC0025',
+            #{proposerUserId},
+            #{meetingDateTime},
+            #{meetingPlace},
+            #{meetingAddress}
+        )
+    </insert>
+
+    <update id="updateProposalStatus">
+        UPDATE TRADE_OFFLINE_PROPOSAL
+        SET TRD_OFL_PPS_STATUS_CD = #{statusCode},
+            TRD_OFL_PPS_RESPONDER_USR_SN = #{responderUserId},
+            TRD_OFL_PPS_RSN_CN = #{reason},
+            TRD_OFL_PPS_RESP_DT = CURRENT_TIMESTAMP,
+            TRD_OFL_PPS_UPDT_ID = CAST(#{responderUserId} AS CHAR)
+        WHERE TRD_OFL_PPS_SN = #{proposalId}
+          AND TRD_OFL_PPS_STATUS_CD = 'TRDC0025'
+    </update>
+
+    <update id="supersedeAcceptedScheduleProposals">
+        UPDATE TRADE_OFFLINE_PROPOSAL
+        SET TRD_OFL_PPS_STATUS_CD = 'TRDC0029',
+            TRD_OFL_PPS_UPDT_ID = 'SYSTEM'
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_OFL_PPS_SN &lt;&gt; #{proposalId}
+          AND TRD_OFL_PPS_TYPE_CD IN ('TRDC0030', 'TRDC0031')
+          AND TRD_OFL_PPS_STATUS_CD = 'TRDC0026'
+    </update>
+
+    <select id="findProposalHistory" resultMap="offlineProposalMap">
+        SELECT
+            p.TRD_OFL_PPS_SN AS proposalId,
+            p.TRD_SN AS tradeId,
+            p.TRD_OFL_PPS_TYPE_CD AS proposalType,
+            p.TRD_OFL_PPS_STATUS_CD AS proposalStatus,
+            p.TRD_OFL_PPS_PROPOSER_USR_SN AS proposerUserId,
+            p.TRD_OFL_PPS_RESPONDER_USR_SN AS responderUserId,
+            p.TRD_OFL_PPS_DT AS meetingDateTime,
+            p.TRD_OFL_PPS_PLC_NM AS meetingPlace,
+            p.TRD_OFL_PPS_ADDR_ENC AS meetingAddress,
+            p.TRD_OFL_PPS_RSN_CN AS reason,
+            p.TRD_OFL_PPS_RESP_DT AS respondedAt
+        FROM TRADE_OFFLINE_PROPOSAL p
+        WHERE p.TRD_SN = #{tradeId}
+        ORDER BY p.TRD_OFL_PPS_REG_DT DESC, p.TRD_OFL_PPS_SN DESC
+    </select>
+</mapper>

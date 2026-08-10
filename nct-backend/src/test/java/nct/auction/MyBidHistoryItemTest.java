@@ -36,20 +36,27 @@ class MyBidHistoryItemTest {
     }
 
     @Test
-    @DisplayName("상태 판정: 입찰 취소 또는 유찰·취소 경매는 CANCELED로 내려간다")
+    @DisplayName("상태 판정: 입찰 취소 또는 취소·취소요청 경매는 CANCELED로 내려간다")
     void canceled() {
         assertThat(item(BidStatusCode.CANCELED, AuctionStatusCode.ACTIVE).resolveDisplayStatus())
                 .isEqualTo("CANCELED");
         assertThat(item(BidStatusCode.EXCEPTION_CANCELED, AuctionStatusCode.ACTIVE).resolveDisplayStatus())
                 .isEqualTo("CANCELED");
-        assertThat(item(BidStatusCode.HIGHEST, AuctionStatusCode.FAILED).resolveDisplayStatus())
-                .isEqualTo("CANCELED");
         assertThat(item(BidStatusCode.HIGHEST, AuctionStatusCode.CANCELED).resolveDisplayStatus())
                 .isEqualTo("CANCELED");
-        assertThat(item(BidStatusCode.OUTBID, AuctionStatusCode.FAILED).resolveDisplayStatus())
+        assertThat(item(BidStatusCode.HIGHEST, AuctionStatusCode.CANCEL_REQUESTED).resolveDisplayStatus())
                 .isEqualTo("CANCELED");
         assertThat(item(BidStatusCode.OUTBID, AuctionStatusCode.CANCELED).resolveDisplayStatus())
                 .isEqualTo("CANCELED");
+    }
+
+    @Test
+    @DisplayName("상태 판정: 유찰 경매의 상위입찰 이력은 OUTBID를 유지한다")
+    void failedAuctionKeepsOutbidStatus() {
+        assertThat(item(BidStatusCode.OUTBID, AuctionStatusCode.FAILED).resolveDisplayStatus())
+                .isEqualTo("OUTBID");
+        assertThat(item(BidStatusCode.HIGHEST, AuctionStatusCode.FAILED).resolveDisplayStatus())
+                .isEqualTo("UNKNOWN");
     }
 
     private MyBidHistoryItem item(String bidStatusCode, String auctionStatusCode) {

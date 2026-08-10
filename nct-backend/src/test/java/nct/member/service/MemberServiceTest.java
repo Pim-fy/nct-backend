@@ -3,6 +3,7 @@ package nct.member.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -66,6 +67,118 @@ class MemberServiceTest {
         memberService = new MemberService(memberMapper, authMemberPort, passwordEncoder, fieldCryptoService, fileStorageService);
     }
 
+    // 담당자 7 · F-AUTH-010: 계좌 쌍의 보존·삭제·갱신·부분 입력 계약을 회귀 검증한다.
+    @Test
+    void omittedBankAccountPairPreservesExistingValues() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("구매자");
+
+        memberService.updateProfile(101L, request);
+
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(),
+                isNull(), isNull(), eq(false), anyString(), isNull(), eq(false),
+                isNull(), eq(false), isNull(), eq(false));
+    }
+
+    @Test
+    void blankBankAccountPairIsSentAsNullsInsteadOfEncryptedEmptyValues() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("구매자");
+        request.setBankName("   ");
+        request.setAccountNo("\t");
+
+        memberService.updateProfile(101L, request);
+
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(),
+                isNull(), isNull(), eq(true), anyString(), isNull(), eq(false),
+                isNull(), eq(false), isNull(), eq(false));
+    }
+
+    @Test
+    void nonBlankBankAccountPairIsTrimmedBeforeEncryption() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("구매자");
+        request.setBankName("  국민은행  ");
+        request.setAccountNo("  123-456  ");
+
+        memberService.updateProfile(101L, request);
+
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(),
+                eq("국민은행"), eq("123-456"), eq(false), anyString(), isNull(), eq(false),
+                isNull(), eq(false), isNull(), eq(false));
+    }
+
+    @Test
+    void blankOptionalAddressFieldsAreSentAsExplicitClears() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("구매자");
+        request.setZip("   ");
+        request.setAddress("\t");
+        request.setAddressDetail(" \r\n ");
+
+        memberService.updateProfile(101L, request);
+
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(),
+                isNull(), isNull(), eq(false), anyString(), isNull(), eq(true),
+                isNull(), eq(true), isNull(), eq(true));
+    }
+
+    @Test
+    void nonBlankOptionalAddressFieldsAreTrimmedBeforeEncryption() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("구매자");
+        request.setZip("  12345  ");
+        request.setAddress("  서울시 강남구  ");
+        request.setAddressDetail("  101호  ");
+
+        memberService.updateProfile(101L, request);
+
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(),
+                isNull(), isNull(), eq(false), anyString(), eq("12345"), eq(false),
+                eq("서울시 강남구"), eq(false), eq("101호"), eq(false));
+    }
+
+    @Test
+    void requiredProfileStringsAreTrimmedBeforePersistence() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        ProfileUpdateRequest request = profileRequest("  구매자  ");
+        request.setEmail("  user@example.com  ");
+        request.setPhone("  01012345678  ");
+
+        memberService.updateProfile(101L, request);
+
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(),
+                eq("user@example.com"), eq("user@example.com"), isNull(), isNull(), eq(false),
+                eq("01012345678"), isNull(), eq(false), isNull(), eq(false), isNull(), eq(false));
+    }
+
+    @Test
+    void partialBankAccountPairIsRejected() {
+        when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
+        String[][] partialPairs = {
+                { "국민은행", null },
+                { null, "123-456" },
+                { "", "123-456" },
+                { "국민은행", " " },
+                { null, " " },
+                { " ", null }
+        };
+
+        for (String[] pair : partialPairs) {
+            ProfileUpdateRequest request = profileRequest("구매자");
+            request.setBankName(pair[0]);
+            request.setAccountNo(pair[1]);
+
+            assertThatThrownBy(() -> memberService.updateProfile(101L, request))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(exception -> ((CustomException) exception).getErrorCode())
+                    .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(),
+                any(), any(), anyBoolean(), any(), any(), anyBoolean(), any(), anyBoolean(), any(), anyBoolean());
+    }
+
     @Test
     void 닉네임이_기존과_같으면_중복확인을_스킵한다() {
         when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
@@ -73,7 +186,8 @@ class MemberServiceTest {
         memberService.updateProfile(101L, profileRequest("구매자"));
 
         verify(memberMapper, never()).existsByNickname(anyString());
-        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(), any(), any(), any(), any(), any(), any());
+        verify(memberMapper).updateProfile(eq(101L), eq("구매자"), any(), anyString(), anyString(), any(), any(),
+                anyBoolean(), any(), any(), anyBoolean(), any(), anyBoolean(), any(), anyBoolean());
     }
 
     @Test
@@ -86,7 +200,8 @@ class MemberServiceTest {
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.DUPLICATE_NICKNAME);
 
-        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any(), any(), any(), any(), any());
+        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any(),
+                anyBoolean(), any(), any(), anyBoolean(), any(), anyBoolean(), any(), anyBoolean());
     }
 
     // @ai_generated: ISS-023 - 전화번호가 선택에서 필수로 전환됐으므로 빈 값 제출은 저장을 차단해야 한다.
@@ -101,7 +216,8 @@ class MemberServiceTest {
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any(), any(), any(), any(), any());
+        verify(memberMapper, never()).updateProfile(anyLong(), anyString(), any(), anyString(), anyString(), any(), any(),
+                anyBoolean(), any(), any(), anyBoolean(), any(), anyBoolean(), any(), anyBoolean());
     }
 
     @Test
@@ -109,7 +225,8 @@ class MemberServiceTest {
         when(memberMapper.findMemberById(101L)).thenReturn(Optional.of(memberWithNickname("구매자")));
         when(memberMapper.existsByNickname("새닉네임")).thenReturn(false);
         doThrow(new DataIntegrityViolationException("Duplicate entry for key 'UK_USERS_NM'"))
-                .when(memberMapper).updateProfile(eq(101L), eq("새닉네임"), any(), anyString(), anyString(), any(), any(), any(), any(), any(), any());
+                .when(memberMapper).updateProfile(eq(101L), eq("새닉네임"), any(), anyString(), anyString(), any(), any(),
+                        anyBoolean(), any(), any(), anyBoolean(), any(), anyBoolean(), any(), anyBoolean());
 
         assertThatThrownBy(() -> memberService.updateProfile(101L, profileRequest("새닉네임")))
                 .isInstanceOf(CustomException.class)

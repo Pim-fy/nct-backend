@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
+import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteHistoryResponse;
@@ -47,6 +48,9 @@ public interface QuoteMapper {
 
     List<AdminQuoteSummary> findAdminSummaries(
             @Param("serviceRequestIds") List<Long> serviceRequestIds);
+
+    List<AdminQuoteListItem> findAdminQuoteListItems(
+            @Param("serviceRequestId") Long serviceRequestId);
 
     QuoteResponse findMyActiveQuote(
             @Param("usrSn") Long usrSn,

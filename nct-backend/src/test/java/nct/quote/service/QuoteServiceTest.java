@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +25,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
+import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
 import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
 import nct.quote.dto.QuoteAttachmentResponse;
@@ -250,6 +252,87 @@ class QuoteServiceTest {
                 .isInstanceOf(CustomException.class);
     }
 
+    @Test
+    void returnsValidatedAdminQuoteListInOneMapperCall() {
+        AdminQuoteListItem first = adminQuoteItem(10L, 101L, 21L, 100_000L, "QUTC0001");
+        AdminQuoteListItem second = adminQuoteItem(10L, 100L, 22L, 90_000L, "QUTC0002");
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(first, second));
+
+        List<AdminQuoteListItem> result = service.findByServiceRequestId(10L);
+
+        assertThat(result).containsExactly(first, second);
+        verify(quoteMapper).findAdminQuoteListItems(10L);
+    }
+
+    @Test
+    void rejectsInvalidAdminQuoteListRequestBeforeMapperCall() {
+        assertThatThrownBy(() -> service.findByServiceRequestId(0L))
+                .isInstanceOf(CustomException.class);
+
+        verify(quoteMapper, never()).findAdminQuoteListItems(any());
+    }
+
+    @Test
+    void rejectsAdminQuoteFromAnotherServiceRequest() {
+        AdminQuoteListItem item = adminQuoteItem(11L, 101L, 21L, 100_000L, "QUTC0001");
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(item));
+
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsDuplicateAdminQuoteIds() {
+        AdminQuoteListItem first = adminQuoteItem(10L, 101L, 21L, 100_000L, "QUTC0001");
+        AdminQuoteListItem duplicate = adminQuoteItem(10L, 101L, 22L, 90_000L, "QUTC0002");
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(first, duplicate));
+
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsInvalidAdminQuoteProviderAmountOrStatus() {
+        AdminQuoteListItem invalidProvider = adminQuoteItem(10L, 101L, 0L, 100_000L, "QUTC0001");
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(invalidProvider));
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+
+        AdminQuoteListItem invalidAmount = adminQuoteItem(10L, 102L, 21L, 0L, "QUTC0001");
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(invalidAmount));
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+
+        AdminQuoteListItem invalidStatus = adminQuoteItem(10L, 103L, 21L, 100_000L, "QUTC9999");
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(invalidStatus));
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsAdminQuoteWithInvalidRevisionCountOrTimestamps() {
+        AdminQuoteListItem invalidRevision = adminQuoteItem(
+                10L, 101L, 21L, 100_000L, "QUTC0001");
+        invalidRevision.setReviseCount(-1);
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(invalidRevision));
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+
+        AdminQuoteListItem missingSubmittedAt = adminQuoteItem(
+                10L, 102L, 21L, 100_000L, "QUTC0001");
+        missingSubmittedAt.setSubmittedAt(null);
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(missingSubmittedAt));
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+
+        AdminQuoteListItem missingUpdatedAt = adminQuoteItem(
+                10L, 103L, 21L, 100_000L, "QUTC0001");
+        missingUpdatedAt.setUpdatedAt(null);
+        when(quoteMapper.findAdminQuoteListItems(10L)).thenReturn(List.of(missingUpdatedAt));
+        assertThatThrownBy(() -> service.findByServiceRequestId(10L))
+                .isInstanceOf(CustomException.class);
+    }
+
     private AdminQuoteSummary adminSummary(
             Long serviceRequestId,
             int totalQuoteCount,
@@ -263,6 +346,24 @@ class QuoteServiceTest {
         summary.setSelectedQuoteCount(selectedQuoteCount);
         summary.setSelectedQuoteId(selectedQuoteId);
         return summary;
+    }
+
+    private AdminQuoteListItem adminQuoteItem(
+            Long serviceRequestId,
+            Long quoteId,
+            Long providerUserId,
+            Long amount,
+            String statusCode) {
+        AdminQuoteListItem item = new AdminQuoteListItem();
+        item.setServiceRequestId(serviceRequestId);
+        item.setQuoteId(quoteId);
+        item.setProviderUserId(providerUserId);
+        item.setAmount(amount);
+        item.setStatusCode(statusCode);
+        item.setReviseCount(0);
+        item.setSubmittedAt(LocalDateTime.of(2026, 8, 10, 14, 0));
+        item.setUpdatedAt(LocalDateTime.of(2026, 8, 10, 14, 0));
+        return item;
     }
 
     @Test

@@ -82,10 +82,14 @@ public interface MemberMapper {
                        @Param("emailHmac") String emailHmac,
                        @Param("bankNameCiphertext") String bankNameCiphertext,
                        @Param("accountNoCiphertext") String accountNoCiphertext,
+                       @Param("clearBankAccount") boolean clearBankAccount,
                        @Param("telnoCiphertext") String telnoCiphertext,
                        @Param("zipCiphertext") String zipCiphertext,
+                       @Param("clearZip") boolean clearZip,
                        @Param("addressCiphertext") String addressCiphertext,
-                       @Param("addressDetailCiphertext") String addressDetailCiphertext);
+                       @Param("clearAddress") boolean clearAddress,
+                       @Param("addressDetailCiphertext") String addressDetailCiphertext,
+                       @Param("clearAddressDetail") boolean clearAddressDetail);
 
     // @ai_generated: F-AUTH-011 - POL-AUTH-013 컬럼별 보존 범위를 한 트랜잭션으로 반영한다.
     void withdraw(@Param("usrSn") Long usrSn,

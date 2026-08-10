@@ -50,26 +50,67 @@ public class MemberService {
         Member member = memberMapper.findMemberById(usrSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        String nickname = request.getNickname().trim();
+        String nickname = requireNonBlankTrimmed(request.getNickname());
+        String email = requireNonBlankTrimmed(request.getEmail());
+        String phone = requireNonBlankTrimmed(request.getPhone());
         if (!nickname.equals(member.getUsrNm()) && memberMapper.existsByNickname(nickname)) {
             throw new CustomException(ErrorCode.DUPLICATE_NICKNAME);
         }
-        // @ai_generated: ISS-023 - 전화번호가 필수로 전환돼 COALESCE 없이 직접 갱신하므로, DTO
-        // @NotBlank를 우회해 이 메서드가 호출되더라도 빈 값으로 기존 전화번호를 지우지 않도록 재확인한다.
-        if (request.getPhone() == null || request.getPhone().isBlank()) {
+
+        // 담당자 7 · F-AUTH-010: 계좌 두 필드를 보존·삭제·갱신 중 하나의 원자적 변경으로 분류한다.
+        String bankName = request.getBankName();
+        String accountNo = request.getAccountNo();
+        boolean bankAccountOmitted = bankName == null && accountNo == null;
+        boolean bankAccountProvided = bankName != null && accountNo != null;
+        if (!bankAccountOmitted && !bankAccountProvided) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
+        boolean clearBankAccount = false;
+        String bankNameCiphertext = null;
+        String accountNoCiphertext = null;
+        if (bankAccountProvided) {
+            boolean bankNameBlank = bankName.isBlank();
+            boolean accountNoBlank = accountNo.isBlank();
+            if (bankNameBlank != accountNoBlank) {
+                throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+            }
+
+            clearBankAccount = bankNameBlank;
+            if (!clearBankAccount) {
+                bankNameCiphertext = fieldCryptoService.encrypt(bankName.trim());
+                accountNoCiphertext = fieldCryptoService.encrypt(accountNo.trim());
+            }
+        }
+
+        String zip = request.getZip();
+        boolean clearZip = zip != null && zip.isBlank();
+        String zipCiphertext = zip == null || clearZip ? null : fieldCryptoService.encrypt(zip.trim());
+        String address = request.getAddress();
+        boolean clearAddress = address != null && address.isBlank();
+        String addressCiphertext = address == null || clearAddress
+                ? null
+                : fieldCryptoService.encrypt(address.trim());
+        String addressDetail = request.getAddressDetail();
+        boolean clearAddressDetail = addressDetail != null && addressDetail.isBlank();
+        String addressDetailCiphertext = addressDetail == null || clearAddressDetail
+                ? null
+                : fieldCryptoService.encrypt(addressDetail.trim());
+
         try {
             memberMapper.updateProfile(usrSn, nickname, request.getProfileFileSn(),
-                    fieldCryptoService.encrypt(request.getEmail()),
-                    fieldCryptoService.emailHmac(request.getEmail()),
-                    fieldCryptoService.encrypt(request.getBankName()),
-                    fieldCryptoService.encrypt(request.getAccountNo()),
-                    fieldCryptoService.encrypt(request.getPhone()),
-                    fieldCryptoService.encrypt(request.getZip()),
-                    fieldCryptoService.encrypt(request.getAddress()),
-                    fieldCryptoService.encrypt(request.getAddressDetail()));
+                    fieldCryptoService.encrypt(email),
+                    fieldCryptoService.emailHmac(email),
+                    bankNameCiphertext,
+                    accountNoCiphertext,
+                    clearBankAccount,
+                    fieldCryptoService.encrypt(phone),
+                    zipCiphertext,
+                    clearZip,
+                    addressCiphertext,
+                    clearAddress,
+                    addressDetailCiphertext,
+                    clearAddressDetail);
         } catch (DataIntegrityViolationException ex) {
             throw duplicateException(ex);
         }
@@ -197,6 +238,13 @@ public class MemberService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String requireNonBlankTrimmed(String value) {
+        if (value == null || value.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return value.trim();
     }
 
     private String anonymizedEmail(Long usrSn) {

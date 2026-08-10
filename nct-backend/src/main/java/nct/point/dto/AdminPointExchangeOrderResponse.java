@@ -56,19 +56,26 @@ public class AdminPointExchangeOrderResponse {
                 .date(o.getPtExcOrdRegDt() != null ? o.getPtExcOrdRegDt().format(DATE_FMT) : null)
                 .userName(o.getUsrNm())
                 .userSn(o.getUsrSn())
-                .applicantMember(identities.get(o.getUsrSn()))
+                .applicantMember(findIdentity(identities, o.getUsrSn()))
                 .amount(o.getPtExcOrdAmt())
                 .bankName(o.getPtExcOrdBankNm())
                 .accountNo(maskAccount(o.getPtExcOrdAcntNo()))
                 .statusCode(o.getPtExcOrdStatusCd())
                 .status(o.getStatusNm())
                 .processedBy(o.getPtExcOrdProcUsrSn())
-                .processorMember(identities.get(o.getPtExcOrdProcUsrSn()))
+                .processorMember(findIdentity(identities, o.getPtExcOrdProcUsrSn()))
                 .processedDate(o.getPtExcOrdProcDt() != null
                         ? o.getPtExcOrdProcDt().format(DATE_FMT)
                         : null)
                 .rejectReason(o.getPtExcOrdRjctRsnCn())
                 .build();
+    }
+
+    /** 담당자 7 · F-PAY-012: 미처리 환전은 처리자 번호가 없으므로 null 키 조회를 시도하지 않습니다. */
+    private static AdminMemberIdentityResponse findIdentity(
+            Map<Long, AdminMemberIdentityResponse> identities,
+            Long userSn) {
+        return userSn == null ? null : identities.get(userSn);
     }
 
     private static String maskAccount(String accountNo) {

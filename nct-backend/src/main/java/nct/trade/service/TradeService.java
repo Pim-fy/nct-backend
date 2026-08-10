@@ -22,8 +22,8 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
-import nct.member.dto.BuyerAddressSnapshot;
-import nct.member.service.MemberService;
+import nct.member.dto.BuyerDeliveryAddressSnapshot;
+import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
@@ -98,7 +98,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private final NotificationService notificationService;
     private final SystemSettingAdminMapper systemSettingMapper;
     private final FileStorageService fileStorageService;
-    private final MemberService memberService;
+    private final BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private final SettlementService settlementService;
     private final ChatService chatService;
     private final PointService pointService;
@@ -374,7 +374,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                         command.getTradeAmount()),
                 command.getSource().getStatusHistoryReason(),
                 command.getWinningBidId(),
-                command.getSelectedTradeMethodCode());
+                command.getSelectedTradeMethodCode(),
+                command.getSelectedDeliveryAddressId());
 
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
@@ -392,6 +393,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         return createOrGetMaterialTrade(
                 command,
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.",
+                null,
                 null,
                 null);
     }
@@ -431,7 +433,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             MaterialTradeCreateCommand command,
             String creationReason,
             Long bidId,
-            String selectedTradeMethodCode) {
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -460,17 +463,19 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
         tradeMapper.insertMaterialTrade(trade);
 
-        // MemberService가 주소 완전성을 보장한다. 예외를 잡지 않아 경매 트랜잭션 전체가 롤백된다.
+        // 회원 배송지 Reader가 소유권과 주소 완전성을 보장한다. 예외는 상위 경매 트랜잭션까지 전파한다.
         if (DELIVERY_METHOD.equals(tradeMethod)) {
-            BuyerAddressSnapshot address = memberService.getBuyerAddressSnapshot(
-                    command.getBuyerUserId());
+            BuyerDeliveryAddressSnapshot address =
+                    buyerDeliveryAddressReader.getOwnedAddressSnapshotForTrade(
+                            command.getBuyerUserId(),
+                            selectedDeliveryAddressId);
             tradeMapper.insertDeliverySnapshot(
                     trade.getTrdSn(),
                     fieldCryptoService.encrypt(address.recipientName()),
                     fieldCryptoService.encrypt(address.recipientPhone()),
                     fieldCryptoService.encrypt(address.zip()),
-                    fieldCryptoService.encrypt(address.addr()),
-                    fieldCryptoService.encrypt(address.daddr()));
+                    fieldCryptoService.encrypt(address.address()),
+                    fieldCryptoService.encrypt(address.addressDetail()));
         }
 
         tradeMapper.insertStatusHistory(

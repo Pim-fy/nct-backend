@@ -21,6 +21,8 @@ public class AuctionTradeCreateCommand {
     private final AuctionTradeSource source;
     /** 실제 거래방식. 혼합 상품(TRDC0020)은 택배 또는 직거래 중 하나여야 한다. */
     private final String selectedTradeMethodCode;
+    /** 배송 거래일 때 입찰자가 선택한 USER_DELIVERY_ADDRESS 식별자다. */
+    private final Long selectedDeliveryAddressId;
 
     /** 기존 단일 거래방식 상품 호출과의 호환용 생성자다. */
     public AuctionTradeCreateCommand(
@@ -32,7 +34,7 @@ public class AuctionTradeCreateCommand {
             BigDecimal tradeAmount,
             AuctionTradeSource source) {
         this(auctionId, productId, winningBidId, sellerUserId, buyerUserId,
-                tradeAmount, source, null);
+                tradeAmount, source, null, null);
     }
 
     public AuctionTradeCreateCommand(
@@ -44,6 +46,20 @@ public class AuctionTradeCreateCommand {
             BigDecimal tradeAmount,
             AuctionTradeSource source,
             String selectedTradeMethodCode) {
+        this(auctionId, productId, winningBidId, sellerUserId, buyerUserId,
+                tradeAmount, source, selectedTradeMethodCode, null);
+    }
+
+    public AuctionTradeCreateCommand(
+            long auctionId,
+            long productId,
+            long winningBidId,
+            long sellerUserId,
+            long buyerUserId,
+            BigDecimal tradeAmount,
+            AuctionTradeSource source,
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
         this.auctionId = auctionId;
         this.productId = productId;
         this.winningBidId = winningBidId;
@@ -52,5 +68,6 @@ public class AuctionTradeCreateCommand {
         this.tradeAmount = tradeAmount;
         this.source = source;
         this.selectedTradeMethodCode = selectedTradeMethodCode;
+        this.selectedDeliveryAddressId = selectedDeliveryAddressId;
     }
 }

@@ -30,7 +30,7 @@ import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.member.service.MemberService;
+import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
 import nct.ops.reference.domain.CommonCode;
 import nct.ops.reference.service.ReferenceDataService;
@@ -63,7 +63,7 @@ public class AuctionService {
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
-    private final MemberService memberService;
+    private final BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
     private final AuctionEventPublisher auctionEventPublisher;
@@ -211,7 +211,8 @@ public class AuctionService {
                     target.getCurrentHighestBidderId(),
                     target.getCurrentPrice(),
                     AuctionTradeSource.AUCTION_WIN,
-                    target.getCurrentHighestTradeMethodCode());
+                    target.getCurrentHighestTradeMethodCode(),
+                    target.getCurrentHighestDeliveryAddressId());
             notificationService.notifyAuctionResult(
                     target.getCurrentHighestBidderId(),
                     auctionId,
@@ -366,7 +367,10 @@ public class AuctionService {
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
                 request == null ? null : request.getTradeMethod());
-        validateDeliveryAddress(selectedTradeMethodCode, userId);
+        Long selectedDeliveryAddressId = resolveDeliveryAddressId(
+                selectedTradeMethodCode,
+                userId,
+                request == null ? null : request.getDeliveryAddressId());
         AuctionPolicy policy = pointService.getAuctionPolicy();
 
         BigDecimal bidAmount = request == null ? null : request.getBidAmount();
@@ -389,7 +393,8 @@ public class AuctionService {
                 auctionId,
                 userId,
                 bidAmount,
-                selectedTradeMethodCode);
+                selectedTradeMethodCode,
+                selectedDeliveryAddressId);
         pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
         auctionMapper.extendAuctionTime(
@@ -417,16 +422,21 @@ public class AuctionService {
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
                 request == null ? null : request.getTradeMethod());
-        if (selectedTradeMethodCode.equals(target.getCurrentHighestTradeMethodCode())) {
+        Long selectedDeliveryAddressId = resolveDeliveryAddressId(
+                selectedTradeMethodCode,
+                userId,
+                request == null ? null : request.getDeliveryAddressId());
+        if (selectedTradeMethodCode.equals(target.getCurrentHighestTradeMethodCode())
+                && Objects.equals(selectedDeliveryAddressId, target.getCurrentHighestDeliveryAddressId())) {
             return loadAuctionDetail(auctionId, userId);
         }
 
-        validateDeliveryAddress(selectedTradeMethodCode, userId);
         int updatedCount = auctionMapper.updateCurrentHighestBidTradeMethod(
                 auctionId,
                 target.getCurrentHighestBidId(),
                 userId,
                 selectedTradeMethodCode,
+                selectedDeliveryAddressId,
                 userId.toString());
         if (updatedCount == 0) {
             throw new CustomException(
@@ -446,7 +456,10 @@ public class AuctionService {
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
                 request == null ? null : request.getTradeMethod());
-        validateDeliveryAddress(selectedTradeMethodCode, userId);
+        Long selectedDeliveryAddressId = resolveDeliveryAddressId(
+                selectedTradeMethodCode,
+                userId,
+                request == null ? null : request.getDeliveryAddressId());
 
         BigDecimal instantBuyPrice = target.getInstantBuyPrice();
         if (instantBuyPrice == null || instantBuyPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -461,7 +474,8 @@ public class AuctionService {
                 auctionId,
                 userId,
                 instantBuyPrice,
-                selectedTradeMethodCode);
+                selectedTradeMethodCode,
+                selectedDeliveryAddressId);
         pointService.hold(userId, toPointAmount(instantBuyPrice), RefType.BID, bid.getBidId(), "즉시구매 포인트 홀딩");
         pointService.convertHoldToEscrow(userId, RefType.BID, bid.getBidId(), "즉시구매 보관금 전환");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
@@ -475,7 +489,8 @@ public class AuctionService {
                 userId,
                 instantBuyPrice,
                 AuctionTradeSource.BUY_NOW,
-                selectedTradeMethodCode);
+                selectedTradeMethodCode,
+                selectedDeliveryAddressId);
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, instantBuyPrice);
         notificationService.notifyAuctionResult(userId, auctionId, true);
 
@@ -491,7 +506,8 @@ public class AuctionService {
             Long buyerUserId,
             BigDecimal tradeAmount,
             AuctionTradeSource source,
-            String selectedTradeMethodCode) {
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
         return tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
@@ -501,7 +517,8 @@ public class AuctionService {
                         buyerUserId,
                         tradeAmount,
                         source,
-                        selectedTradeMethodCode));
+                        selectedTradeMethodCode,
+                        selectedDeliveryAddressId));
     }
 
     private void publishAuctionChanged(Long auctionId, String eventType) {
@@ -528,10 +545,16 @@ public class AuctionService {
         }
     }
 
-    private void validateDeliveryAddress(String selectedTradeMethodCode, Long userId) {
-        if (DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
-            memberService.getBuyerAddressSnapshot(userId);
+    private Long resolveDeliveryAddressId(
+            String selectedTradeMethodCode,
+            Long userId,
+            Long deliveryAddressId) {
+        if (!DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
+            return null;
         }
+        return buyerDeliveryAddressReader.getOwnedActiveAddressSnapshot(
+                userId,
+                deliveryAddressId).deliveryAddressId();
     }
 
     private String resolveSelectedTradeMethod(AuctionBidTarget target, String requestedTradeMethodCode) {
@@ -648,13 +671,15 @@ public class AuctionService {
             Long auctionId,
             Long userId,
             BigDecimal bidAmount,
-            String selectedTradeMethodCode) {
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
         AuctionBidCreateCommand bid = new AuctionBidCreateCommand(
                 auctionId,
                 userId,
                 bidAmount,
                 BidStatusCode.HIGHEST,
                 selectedTradeMethodCode,
+                selectedDeliveryAddressId,
                 userId.toString());
         int inserted = auctionMapper.insertBid(bid);
         if (inserted == 0 || bid.getBidId() == null) {

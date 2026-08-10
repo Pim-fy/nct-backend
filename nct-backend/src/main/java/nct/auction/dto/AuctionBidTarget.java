@@ -16,6 +16,7 @@ public class AuctionBidTarget {
     private Long currentHighestBidId;
     private Long currentHighestBidderId;
     private String currentHighestTradeMethodCode;
+    private Long currentHighestDeliveryAddressId;
     private BigDecimal currentPrice;
     private BigDecimal bidUnitPrice;
     private BigDecimal instantBuyPrice;

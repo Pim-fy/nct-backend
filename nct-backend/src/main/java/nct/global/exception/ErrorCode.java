@@ -21,6 +21,7 @@ public enum ErrorCode {
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
     // F-AUC-024 지원 - 배송지 스냅샷 조회 계약(MemberService.getBuyerAddressSnapshot) 전용
     BUYER_ADDRESS_INCOMPLETE(HttpStatus.BAD_REQUEST, "회원의 배송지 정보가 등록되어 있지 않습니다."),
+    DELIVERY_ADDRESS_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "배송지는 최대 10개까지 등록할 수 있습니다."),
 
     // 401 Unauthorized
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -38,6 +39,7 @@ public enum ErrorCode {
     // 404 Not Found
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
+    DELIVERY_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 배송지입니다."),
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 상품입니다."),
     SERVICE_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 서비스 요청입니다."),
     CHAT_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 채팅 메시지입니다."),

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,11 +24,12 @@ import nct.setting.service.SystemSettingAdminService;
  *
  * [테스트 - 시스템 설정 관리자 조회·수정] (F-OPS-024)
  *
- * 공유 DB(NCTDB) 주의사항 (PointFlowTest와 동일):
- * - @Transactional 테스트는 종료 시 전부 롤백 — SYSTEM_SETTING 단일 행 수정도 원상복구된다
+ * 공유 DB에 USERS와 SYSTEM_SETTING을 직접 쓰는 기존 통합 테스트다.
+ * 격리 DB 전용 프로필이 마련되기 전에는 기본 테스트에서 실행하지 않는다.
  */
 @SpringBootTest
 @Transactional
+@Disabled("격리 테스트 DB 전용: 공유 DB USERS/SYSTEM_SETTING 변경 금지")
 class SystemSettingAdminTest {
 
     @Autowired SystemSettingAdminService settingService;

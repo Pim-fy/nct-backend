@@ -9,7 +9,6 @@
         SELECT SYS_SET_SN              AS sysSetSn,
                SYS_SET_AUC_EXT_MIN     AS aucExtMin,
                SYS_SET_AUC_EXT_MAX_CNT AS aucExtMaxCnt,
-               SYS_SET_MIN_BID_UNIT    AS minBidUnit,
                SYS_SET_TRD_CFMN_DAYS   AS trdCfmnDays,
                SYS_SET_AUTO_CMPL_YN    AS autoCmplYn,
                SYS_SET_MIN_CHRG_AMT    AS minChrgAmt,
@@ -45,7 +44,6 @@
         UPDATE SYSTEM_SETTING
         SET SYS_SET_AUC_EXT_MIN     = #{aucExtMin},
             SYS_SET_AUC_EXT_MAX_CNT = #{aucExtMaxCnt},
-            SYS_SET_MIN_BID_UNIT    = #{minBidUnit},
             SYS_SET_TRD_CFMN_DAYS   = #{trdCfmnDays},
             SYS_SET_AUTO_CMPL_YN    = #{autoCmplYn},
             SYS_SET_MIN_CHRG_AMT    = #{minChrgAmt},

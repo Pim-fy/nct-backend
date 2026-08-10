@@ -29,8 +29,8 @@ import nct.global.security.crypto.FieldCryptoService;
 import nct.chat.service.ChatService;
 import nct.file.service.FileStorageService;
 import nct.file.domain.FileMeta;
-import nct.member.dto.BuyerAddressSnapshot;
-import nct.member.service.MemberService;
+import nct.member.dto.BuyerDeliveryAddressSnapshot;
+import nct.member.port.BuyerDeliveryAddressReader;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.reference.service.ReferenceDataService;
@@ -75,7 +75,7 @@ class TradeServiceTest {
     private NotificationService notificationService;
     private SystemSettingAdminMapper systemSettingMapper;
     private FileStorageService fileStorageService;
-    private MemberService memberService;
+    private BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private SettlementService settlementService;
     private ChatService chatService;
     private PointService pointService;
@@ -89,7 +89,7 @@ class TradeServiceTest {
         notificationService = mock(NotificationService.class);
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
         fileStorageService = mock(FileStorageService.class);
-        memberService = mock(MemberService.class);
+        buyerDeliveryAddressReader = mock(BuyerDeliveryAddressReader.class);
         settlementService = mock(SettlementService.class);
         chatService = mock(ChatService.class);
         pointService = mock(PointService.class);
@@ -102,7 +102,7 @@ class TradeServiceTest {
                 notificationService,
                 systemSettingMapper,
                 fileStorageService,
-                memberService,
+                buyerDeliveryAddressReader,
                 settlementService,
                 chatService,
                 pointService,
@@ -120,8 +120,9 @@ class TradeServiceTest {
         when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
         when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0009");
-        when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
-                new BuyerAddressSnapshot("구매자", "01012345678", "01234", "서울시 마포구", "101호"));
+        when(buyerDeliveryAddressReader.getOwnedAddressSnapshotForTrade(20L, null)).thenReturn(
+                new BuyerDeliveryAddressSnapshot(
+                        70L, "구매자", "01012345678", "01234", "서울시 마포구", "101호"));
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -553,12 +554,13 @@ class TradeServiceTest {
     void createsDeliveryTradeForBothMethodProductWhenFinalMethodIsSelected() {
         AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
                 40L, 30L, 50L, 10L, 20L, BigDecimal.valueOf(128000),
-                AuctionTradeSource.BUY_NOW, "TRDC0009");
+                AuctionTradeSource.BUY_NOW, "TRDC0009", 70L);
         when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
         when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(null);
         when(tradeMapper.findProductTradeMethod(30L)).thenReturn("TRDC0020");
-        when(memberService.getBuyerAddressSnapshot(20L)).thenReturn(
-                new BuyerAddressSnapshot("구매자", "01012345678", "01234", "서울시 마포구", "101호"));
+        when(buyerDeliveryAddressReader.getOwnedAddressSnapshotForTrade(20L, 70L)).thenReturn(
+                new BuyerDeliveryAddressSnapshot(
+                        70L, "구매자", "01012345678", "01234", "서울시 마포구", "101호"));
         doAnswer(invocation -> {
             Trade trade = invocation.getArgument(0);
             trade.setTrdSn(91L);
@@ -570,6 +572,7 @@ class TradeServiceTest {
         ArgumentCaptor<Trade> tradeCaptor = ArgumentCaptor.forClass(Trade.class);
         verify(tradeMapper).insertMaterialTrade(tradeCaptor.capture());
         assertThat(tradeCaptor.getValue().getTradeMethodCode()).isEqualTo("TRDC0009");
+        verify(buyerDeliveryAddressReader).getOwnedAddressSnapshotForTrade(20L, 70L);
         verify(tradeMapper).insertDeliverySnapshot(
                 91L, "구매자", "01012345678", "01234", "서울시 마포구", "101호");
     }
@@ -648,7 +651,7 @@ class TradeServiceTest {
         MaterialTradeCreateResult result = tradeService.createOrGetMaterialTrade(command);
 
         assertThat(result.isCreated()).isTrue();
-        verifyNoInteractions(memberService);
+        verifyNoInteractions(buyerDeliveryAddressReader);
         verify(tradeMapper, never()).insertDeliverySnapshot(
                 anyLong(),
                 any(),
@@ -673,7 +676,7 @@ class TradeServiceTest {
             trade.setTrdSn(91L);
             return 1;
         }).when(tradeMapper).insertMaterialTrade(any(Trade.class));
-        when(memberService.getBuyerAddressSnapshot(20L)).thenThrow(
+        when(buyerDeliveryAddressReader.getOwnedAddressSnapshotForTrade(20L, null)).thenThrow(
                 new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE));
 
         assertThatThrownBy(() -> tradeService.createOrGetMaterialTrade(command))

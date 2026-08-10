@@ -9,12 +9,15 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminDisputeListRequest;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.security.service.SensitiveDataMasker;
@@ -31,6 +34,7 @@ class AdminDisputeQueryServiceTest {
     private SettlementService settlementService;
     private ReferenceDataService referenceDataService;
     private SensitiveDataMasker sensitiveDataMasker;
+    private AdminMemberIdentityReader memberIdentityReader;
     private AdminDisputeQueryService service;
 
     @BeforeEach
@@ -39,10 +43,17 @@ class AdminDisputeQueryServiceTest {
         settlementService = mock(SettlementService.class);
         referenceDataService = mock(ReferenceDataService.class);
         sensitiveDataMasker = mock(SensitiveDataMasker.class);
+        memberIdentityReader = mock(AdminMemberIdentityReader.class);
         when(sensitiveDataMasker.maskText(org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Map.of());
         service = new AdminDisputeQueryService(
-                disputeReader, settlementService, referenceDataService, sensitiveDataMasker);
+                disputeReader,
+                settlementService,
+                referenceDataService,
+                sensitiveDataMasker,
+                memberIdentityReader);
     }
 
     @Test
@@ -139,10 +150,18 @@ class AdminDisputeQueryServiceTest {
                 new nct.settlement.exception.SettlementException(
                         ErrorCode.SETTLEMENT_NOT_FOUND,
                         "정산 없음"));
+        AdminMemberIdentityResponse disputer = AdminMemberIdentityResponse.builder()
+                .userSn(31L)
+                .loginId("disputer01")
+                .nickname("분쟁제기자")
+                .build();
+        when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Map.of(31L, disputer));
 
         var response = service.getDetail(11L);
 
         assertThat(response.getDisputerUserSn()).isEqualTo(31L);
+        assertThat(response.getDisputerMember()).isSameAs(disputer);
         assertThat(response.getRequesterUserSn()).isEqualTo(32L);
         assertThat(response.getProviderUserSn()).isEqualTo(33L);
         assertThat(response.getDisputeContent()).isEqualTo("연락처 010-1234-5678로 안내받았습니다.");

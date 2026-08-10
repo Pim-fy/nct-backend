@@ -307,6 +307,55 @@ class AuthServiceTest {
         verify(authMemberPort).updateRefreshToken(101L, "refresh-token-raw");
     }
 
+    // 담당자 7 · F-OPS-001: 관리자 계정은 일반 로그인 경로에서 토큰을 발급받을 수 없다.
+    @Test
+    void 관리자_계정은_일반_로그인에서_자격증명_오류로_차단한다() {
+        AuthMember member = memberWithRole("ROLE_ADMIN");
+        when(authMemberPort.findByLoginId("admin01")).thenReturn(java.util.Optional.of(member));
+        when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.login(loginRequest("admin01", "Password1!")))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+
+        verify(jwtTokenProvider, never()).createAccessToken(any());
+        verify(authMemberPort, never()).updateRefreshToken(any(), any());
+    }
+
+    @Test
+    void 관리자_전용_로그인은_관리자에게만_토큰을_발급한다() {
+        AuthMember member = memberWithRole("ROLE_ADMIN");
+        when(authMemberPort.findByLoginId("admin01")).thenReturn(java.util.Optional.of(member));
+        when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
+        when(jwtTokenProvider.createAccessToken(101L)).thenReturn("admin-access-token");
+        when(jwtTokenProvider.createRefreshToken(101L, true)).thenReturn("admin-refresh-token");
+        LoginRequest request = loginRequest("admin01", "Password1!");
+        request.setRememberMe(true);
+
+        AuthSessionResult result = authService.adminLogin(request);
+
+        assertThat(result.getLoginResponse().getRole()).isEqualTo("ROLE_ADMIN");
+        assertThat(result.getAccessToken()).isEqualTo("admin-access-token");
+        verify(jwtTokenProvider).createRefreshToken(101L, true);
+        verify(authMemberPort).updateRefreshToken(101L, "admin-refresh-token");
+    }
+
+    @Test
+    void 일반회원은_관리자_전용_로그인에서_자격증명_오류로_차단한다() {
+        AuthMember member = activeMember();
+        when(authMemberPort.findByLoginId("buyer01")).thenReturn(java.util.Optional.of(member));
+        when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.adminLogin(loginRequest("buyer01", "Password1!")))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+
+        verify(jwtTokenProvider, never()).createAccessToken(any());
+        verify(authMemberPort, never()).updateRefreshToken(any(), any());
+    }
+
     // @ai_generated: 로그인도 가입·중복확인과 같은 4자 최소 길이 경계를 사용해야 한다.
     @Test
     void 네자리_로그인아이디로_로그인하고_세자리는_조회전에_차단한다() {

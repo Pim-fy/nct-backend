@@ -23,8 +23,8 @@ import nct.point.service.PointExchangeService;
  * 운영 현황까지 모아 보여준다. 각 도메인이 아직 "몇 건 있다"를 내려주는 계약을 안 만들어놔서,
  * 여기서는 그 도메인 테이블을 직접 읽기 전용으로 집계한다(AdminNotificationMapper).
  *
- * linkPath는 현재 실제로 존재하는 관리자 화면에만 채운다. 회원 관리와 관리자 서비스 조회처럼
- * 대상 화면·계약이 아직 없는 항목은 죽은 링크를 만들지 않도록 비워둔다.
+ * linkPath는 현재 실제로 존재하는 관리자 화면에만 채운다. 대상 화면·계약이 아직 없는
+ * 항목은 죽은 링크를 만들지 않도록 비워둔다.
  */
 @Service
 @RequiredArgsConstructor
@@ -54,6 +54,7 @@ public class AdminNotificationService {
         items.add(AdminNotificationItem.builder()
                 .title("회원 가입·탈퇴")
                 .detail(String.format("오늘 신규가입 %d명, 탈퇴 %d명", signups, withdrawals))
+                .linkPath("/admin/members")
                 .build());
 
         int pendingProvider = adminNotificationMapper.countPendingProviderApply();
@@ -97,6 +98,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("신규 서비스 요청")
                     .detail(String.format("오늘 등록된 서비스 요청이 %d건 있습니다", newServiceRequests))
+                    .linkPath("/admin/services")
                     .build());
         }
         return items;
@@ -124,7 +126,7 @@ public class AdminNotificationService {
                     .title("최근 감사로그")
                     .detail((latest.getAudLogTypeNm() != null ? latest.getAudLogTypeNm() : "조치") + " 기록이 남았습니다: "
                             + latest.getAudLogRsonCn())
-                    .linkPath("/admin/audit-logs")
+                    .linkPath("/admin/operations-records?tab=audit")
                     .build());
         }
         return items;

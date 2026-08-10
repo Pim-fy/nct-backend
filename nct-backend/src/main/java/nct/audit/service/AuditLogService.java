@@ -65,6 +65,13 @@ public class AuditLogService {
         return auditLogMapper.selectList(usrSn, audLogTypeCd, fromDt, toDt, limit);
     }
 
+    /** 담당자 7 연계 · F-OPS-015: 참조 대상의 최신 관리자 처리 사유를 조회합니다. */
+    @Transactional(readOnly = true)
+    public AuditLog findLatest(RefType refType, Long refSn) {
+        if (refType == null || refSn == null || refSn <= 0) return null;
+        return auditLogMapper.selectLatestByReference(refType.getCode(), refSn);
+    }
+
     /**
      * 민감정보(채팅 메시지) 원문 제한 조회 (F-OPS-014)
      *

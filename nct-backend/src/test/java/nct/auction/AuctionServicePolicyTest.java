@@ -100,8 +100,9 @@ class AuctionServicePolicyTest {
     }
 
     @Test
-    void placeBidRejectsAmountBelowPolicyMinimumBidUnit() {
-        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 3000));
+    void placeBidRejectsAmountNotAlignedWithStoredAuctionBidUnit() {
+        target.setBidUnitPrice(BigDecimal.valueOf(3000));
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2, 1000));
         AuctionBidRequest request = bidRequest(12000);
 
         assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))

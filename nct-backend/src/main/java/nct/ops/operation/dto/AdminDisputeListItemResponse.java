@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import lombok.Builder;
 import lombok.Getter;
+import nct.member.dto.AdminMemberIdentityResponse;
 
 /** 담당자 7 · F-OPS-005: 관리자 거래 분쟁 목록 한 건입니다. */
 @Getter
@@ -13,6 +14,7 @@ public class AdminDisputeListItemResponse {
     private final Long disputeSn;
     private final Long tradeSn;
     private final Long disputerUserSn;
+    private final AdminMemberIdentityResponse disputerMember;
     private final String disputeTypeCode;
     private final String disputeTypeName;
     private final String disputeStatusCode;

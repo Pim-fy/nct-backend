@@ -3,7 +3,10 @@ package nct.setting.domain;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Data;
+import nct.member.dto.AdminMemberIdentityResponse;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-18)
@@ -49,4 +52,10 @@ public class SystemSettingDetail {
     private String emailYn;
 
     private LocalDateTime sysSetUpdtDt;
+    @JsonIgnore
+    private String sysSetUpdtId;
+    private Long updaterUserSn;
+    private boolean systemUpdated;
+    private AdminMemberIdentityResponse updatedByMember;
+    private String lastChangeReason;
 }

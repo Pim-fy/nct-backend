@@ -18,7 +18,7 @@
         LEFT JOIN CMM_CODE trade_status ON trade_status.CMM_CD = trade.TRD_STATUS_CD
         LEFT JOIN AUCTION_CANCEL_REQUEST cancel_request ON cancel_request.AUC_CNL_REQ_SN = (
             SELECT r.AUC_CNL_REQ_SN FROM AUCTION_CANCEL_REQUEST r
-             WHERE r.AUC_SN = a.AUC_SN AND r.AUC_CNL_REQ_APRV_YN IS NULL
+             WHERE r.AUC_SN = a.AUC_SN
              ORDER BY r.AUC_CNL_REQ_REG_DT DESC, r.AUC_CNL_REQ_SN DESC LIMIT 1
         )
         WHERE p.PRD_USE_YN = 'Y'
@@ -37,9 +37,11 @@
             <choose>
                 <when test="condition.cancellationPending">
                     AND cancel_request.AUC_CNL_REQ_SN IS NOT NULL
+                    AND cancel_request.AUC_CNL_REQ_APRV_YN IS NULL
                 </when>
                 <otherwise>
-                    AND cancel_request.AUC_CNL_REQ_SN IS NULL
+                    AND (cancel_request.AUC_CNL_REQ_SN IS NULL
+                         OR cancel_request.AUC_CNL_REQ_APRV_YN IS NOT NULL)
                 </otherwise>
             </choose>
         </if>
@@ -55,7 +57,8 @@
     </select>
     <select id="findPage" resultType="nct.ops.operation.dto.AdminAuctionListItemResponse">
         SELECT a.AUC_SN AS auctionId, p.PRD_SN AS productId, p.PRD_NM AS productName,
-               seller.USR_NM AS sellerName, p.PRD_STATUS_CD AS productStatusCode,
+               seller.USR_SN AS sellerUserSn, seller.USR_NM AS sellerName,
+               p.PRD_STATUS_CD AS productStatusCode,
                product_status.CMM_NM AS productStatusName, a.AUC_STATUS_CD AS auctionStatusCode,
                auction_status.CMM_NM AS auctionStatusName, COALESCE(bid.BID_COUNT, 0) AS bidCount,
                trade.TRD_SN AS tradeId, trade.TRD_STATUS_CD AS tradeStatusCode,
@@ -63,7 +66,11 @@
                cancel_request.AUC_CNL_REQ_SN AS cancelRequestId,
                cancel_request.AUC_CNL_REQ_RSN_CN AS cancelReason,
                cancel_request.AUC_CNL_REQ_REG_DT AS cancelRequestedAt,
-               cancel_request.PREV_AUC_STATUS_CD AS previousAuctionStatusCode
+               cancel_request.PREV_AUC_STATUS_CD AS previousAuctionStatusCode,
+               cancel_request.AUC_CNL_REQ_APRV_YN AS cancelApprovedYn,
+               cancel_request.PROC_USR_SN AS cancelProcessorUserSn,
+               cancel_request.AUC_CNL_REQ_PROC_RSN_CN AS cancelProcessReason,
+               cancel_request.AUC_CNL_REQ_PROC_DT AS cancelProcessedAt
         <include refid="fromWhere"/>
         ORDER BY
             CASE a.AUC_STATUS_CD

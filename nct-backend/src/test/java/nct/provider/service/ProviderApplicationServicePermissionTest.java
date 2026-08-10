@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.notification.service.NotificationService;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.dto.ProviderApplicationRequest;
@@ -31,6 +32,7 @@ class ProviderApplicationServicePermissionTest {
             mapper,
             mock(ReferenceDataService.class),
             mock(FileStorageService.class),
+            mock(AdminMemberIdentityReader.class),
             notificationService);
 
     @Test
@@ -74,11 +76,11 @@ class ProviderApplicationServicePermissionTest {
         application.setStatusCode("PRVC0002");
         when(mapper.findForUpdate(500L)).thenReturn(Optional.of(application));
         when(mapper.changeApplicationStatus(500L, "PRVC0003", null, "9")).thenReturn(1);
-        when(mapper.insertStatus(500L, "PRVC0017", null, "9")).thenReturn(1);
+        when(mapper.insertStatus(500L, "PRVC0017", "승인 사유", "9")).thenReturn(1);
         when(mapper.insertActivePermission(101L, 30L, 500L, "9")).thenReturn(1);
         when(mapper.findFilesByApplicationSn(500L)).thenReturn(List.of());
 
-        service.approve(500L, 9L);
+        service.approve(500L, "승인 사유", 9L);
 
         verify(notificationService).notifyProviderApprovalResult(101L, true, null);
     }

@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import lombok.Builder;
 import lombok.Getter;
+import nct.member.dto.AdminMemberIdentityResponse;
 
 /** 관리자만 조회하는 공지 상세다. 작성·수정 폼을 다시 채우는 데 사용한다. */
 @Getter
@@ -13,6 +14,10 @@ public class AdminNoticeDetailResponse {
     private final Long noticeId;
     private final Long writerUserId;
     private final String writerName;
+    private final AdminMemberIdentityResponse writerMember;
+    private final Long updaterUserId;
+    private final AdminMemberIdentityResponse updaterMember;
+    private final String lastChangeReason;
     private final String typeCode;
     private final String typeName;
     private final String statusCode;

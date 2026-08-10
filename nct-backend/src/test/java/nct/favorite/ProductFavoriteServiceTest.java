@@ -23,9 +23,11 @@ import nct.favorite.service.ProductFavoriteService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
+import nct.support.ApprovedDatabaseWriteIntegrationTest;
+import nct.support.TestGeneratedKeys;
 
 @SpringBootTest
-class ProductFavoriteServiceTest {
+class ProductFavoriteServiceTest extends ApprovedDatabaseWriteIntegrationTest {
 
     @Autowired ProductFavoriteService favoriteService;
     @Autowired JdbcTemplate jdbc;
@@ -126,18 +128,17 @@ class ProductFavoriteServiceTest {
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
         String email = loginId + "@test.local";
-        jdbc.update("""
+        long id = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
-        long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);
         return id;
     }
 
     private long insertActiveAuction(long sellerSn, String productName) {
         long prdSn = insertProduct(sellerSn, productName);
-        jdbc.update("""
+        long aucSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO AUCTION (
                     PRD_SN,
                     AUC_STATUS_CD,
@@ -154,20 +155,18 @@ class ProductFavoriteServiceTest {
                 BigDecimal.valueOf(10000),
                 LocalDateTime.now().minusHours(1),
                 LocalDateTime.now().plusHours(1));
-        long aucSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         auctionIds.add(aucSn);
         return aucSn;
     }
 
     private long insertProduct(long sellerSn, String productName) {
-        jdbc.update("""
+        long prdSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
                 VALUES (?, 2, ?, 'PRDC0002', 10000,
                         (SELECT C.CMM_CD FROM CMM_CODE C
                          JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
                          WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
                 """, sellerSn, productName);
-        long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         productIds.add(prdSn);
         return prdSn;
     }

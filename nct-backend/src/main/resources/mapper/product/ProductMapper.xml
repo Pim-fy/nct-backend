@@ -263,4 +263,16 @@
          WHERE PRD_SN = #{prdSn}
     </select>
 
+    <!-- 구매자 문의는 준비·진행 중이고 실제 종료시각이 지나지 않은 경매에서만 허용 -->
+    <select id="isAuctionInquiryAvailable" resultType="boolean">
+        /* ProductMapper.isAuctionInquiryAvailable */
+        SELECT EXISTS (
+            SELECT 1
+              FROM AUCTION
+             WHERE PRD_SN = #{prdSn}
+               AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+               AND AUC_END_DT &gt; CURRENT_TIMESTAMP
+        )
+    </select>
+
 </mapper>

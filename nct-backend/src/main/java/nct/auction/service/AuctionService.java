@@ -40,8 +40,10 @@ import nct.product.service.ProductService;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.service.ReviewService;
 import nct.trade.domain.AuctionTradeSource;
+import nct.trade.dto.AuctionBidTradeReference;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.port.AuctionBidTradeReader;
 import nct.trade.service.TradeService;
 
 @Service
@@ -68,6 +70,7 @@ public class AuctionService {
     private final NotificationService notificationService;
     private final ReviewService reviewService;
     private final AuctionBidUnitPolicyService bidUnitPolicyService;
+    private final AuctionBidTradeReader auctionBidTradeReader;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -314,11 +317,31 @@ public class AuctionService {
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
+        applyWinnerTradeLink(detail, userId);
         if (includeSupplemental) {
             applySellerReviewSummary(detail);
             detail.setProductUpdates(loadProductUpdates(detail.getProductId()));
         }
         return detail;
+    }
+
+    private void applyWinnerTradeLink(AuctionDetailResponse detail, Long userId) {
+        if (userId == null
+                || !AuctionStatusCode.ENDED.equals(detail.getAuctionStatusCode())
+                || !detail.isCurrentHighestBidder()
+                || detail.getCurrentHighestBidId() == null) {
+            return;
+        }
+
+        auctionBidTradeReader
+                .findByBuyerAndBidSns(userId, List.of(detail.getCurrentHighestBidId()))
+                .stream()
+                .filter(reference -> Objects.equals(
+                        reference.getBidSn(),
+                        detail.getCurrentHighestBidId()))
+                .map(AuctionBidTradeReference::getTradeId)
+                .findFirst()
+                .ifPresent(detail::setTradeId);
     }
 
     private void applySellerReviewSummary(AuctionDetailResponse detail) {

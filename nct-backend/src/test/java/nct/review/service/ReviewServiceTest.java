@@ -11,25 +11,36 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import nct.auction.service.AuctionService;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
+import nct.review.constant.MyReviewStatus;
 import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
 import nct.review.domain.ReviewImage;
 import nct.review.dto.MyReviewItem;
+import nct.review.dto.MyTradeReviewResponse;
 import nct.review.dto.ReviewCreateResult;
+import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.ReviewUpdateResult;
+import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
@@ -49,6 +60,9 @@ class ReviewServiceTest {
     @Mock private ReviewMapper reviewMapper;
     @Mock private FileStorageService fileStorageService;
     @Mock private ReviewImageMapper reviewImageMapper;
+    // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
+    @Mock private ObjectProvider<AuctionService> auctionServiceProvider;
+    @Mock private AuctionService auctionService;
 
     private ReviewService reviewService;
 
@@ -57,7 +71,7 @@ class ReviewServiceTest {
     private static final long COUNTERPART_USR_SN = 2L;
 
     private void setUp() {
-        reviewService = new ReviewService(reviewMapper, fileStorageService, reviewImageMapper);
+        reviewService = new ReviewService(reviewMapper, fileStorageService, reviewImageMapper, auctionServiceProvider);
     }
 
     private WritableTradeItem healthyTrade(String dealType) {
@@ -70,6 +84,121 @@ class ReviewServiceTest {
                 .completedDate("2026-06-18")
                 .counterpartUsrSn(COUNTERPART_USR_SN)
                 .build();
+    }
+
+    @Test
+    void 완료된_거래에_리뷰_이력이_없으면_WRITABLE이다() {
+        setUp();
+        TradeReviewStateSource source = new TradeReviewStateSource();
+        source.setTradeId(TRADE_ID);
+        source.setTradeStatusCode("TRDC0006");
+        when(reviewMapper.selectMyTradeReviewState(TRADE_ID, USR_SN)).thenReturn(source);
+
+        MyTradeReviewResponse result = reviewService.getMyTradeReview(USR_SN, TRADE_ID);
+
+        assertThat(result.getStatus()).isEqualTo(MyReviewStatus.WRITABLE);
+        assertThat(result.getTradeId()).isEqualTo(TRADE_ID);
+        assertThat(result.getReviewId()).isNull();
+    }
+
+    @Test
+    void 사용중인_리뷰가_있으면_WRITTEN이고_사진도_함께_반환한다() {
+        setUp();
+        TradeReviewStateSource source = new TradeReviewStateSource();
+        source.setTradeId(TRADE_ID);
+        source.setTradeStatusCode("TRDC0006");
+        source.setReviewId(900L);
+        source.setReviewUseYn("Y");
+        source.setRating(5);
+        source.setContent("좋은 거래였습니다");
+        when(reviewMapper.selectMyTradeReviewState(TRADE_ID, USR_SN)).thenReturn(source);
+        when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(List.of("review.jpg"));
+
+        MyTradeReviewResponse result = reviewService.getMyTradeReview(USR_SN, TRADE_ID);
+
+        assertThat(result.getStatus()).isEqualTo(MyReviewStatus.WRITTEN);
+        assertThat(result.getReviewId()).isEqualTo(900L);
+        assertThat(result.getRating()).isEqualTo(5);
+        assertThat(result.getContent()).isEqualTo("좋은 거래였습니다");
+        assertThat(result.getPhotos()).containsExactly("review.jpg");
+    }
+
+    @Test
+    void 삭제된_리뷰_이력이_있으면_재작성할_수_없어_UNAVAILABLE이다() {
+        setUp();
+        TradeReviewStateSource source = new TradeReviewStateSource();
+        source.setTradeId(TRADE_ID);
+        source.setTradeStatusCode("TRDC0006");
+        source.setReviewId(900L);
+        source.setReviewUseYn("N");
+        when(reviewMapper.selectMyTradeReviewState(TRADE_ID, USR_SN)).thenReturn(source);
+
+        MyTradeReviewResponse result = reviewService.getMyTradeReview(USR_SN, TRADE_ID);
+
+        assertThat(result.getStatus()).isEqualTo(MyReviewStatus.UNAVAILABLE);
+        assertThat(result.getReviewId()).isNull();
+        verify(reviewImageMapper, never()).selectUrlsByReviewSn(anyLong());
+    }
+
+    @Test
+    void 현재_사용자의_거래가_아니면_리뷰_상태를_조회할_수_없다() {
+        setUp();
+        when(reviewMapper.selectMyTradeReviewState(TRADE_ID, USR_SN)).thenReturn(null);
+
+        assertThatThrownBy(() -> reviewService.getMyTradeReview(USR_SN, TRADE_ID))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+    }
+
+    @Test
+    void 본인의_활성_리뷰는_기존_URL_변환_컨텍스트를_반환한다() {
+        setUp();
+        long productId = 300L;
+        ReviewRouteContext context = new ReviewRouteContext();
+        context.setReviewId(900L);
+        context.setTradeId(TRADE_ID);
+        context.setProductId(productId);
+        when(reviewMapper.selectMyReviewRouteContext(900L, USR_SN)).thenReturn(context);
+        // AUCTION을 Mapper에서 직접 JOIN하지 않으므로 AuctionService 계약으로 auctionId를 채운다.
+        when(auctionServiceProvider.getObject()).thenReturn(auctionService);
+        when(auctionService.findAuctionIdByProductId(productId)).thenReturn(501L);
+
+        ReviewRouteContext result = reviewService.getMyReviewRouteContext(USR_SN, 900L);
+
+        assertThat(result).isSameAs(context);
+        assertThat(result.getAuctionId()).isEqualTo(501L);
+    }
+
+    @Test
+    void 타인의_리뷰는_기존_URL_변환_컨텍스트를_조회할_수_없다() {
+        setUp();
+        when(reviewMapper.selectMyReviewRouteContext(900L, USR_SN)).thenReturn(null);
+
+        assertThatThrownBy(() -> reviewService.getMyReviewRouteContext(USR_SN, 900L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.REVIEW_NOT_FOUND);
+    }
+
+    @Test
+    void 상품에_대응하는_경매가_없으면_기존_URL_변환_컨텍스트를_조회할_수_없다() {
+        setUp();
+        long productId = 300L;
+        ReviewRouteContext context = new ReviewRouteContext();
+        context.setReviewId(900L);
+        context.setTradeId(TRADE_ID);
+        context.setProductId(productId);
+        when(reviewMapper.selectMyReviewRouteContext(900L, USR_SN)).thenReturn(context);
+        when(auctionServiceProvider.getObject()).thenReturn(auctionService);
+        // AUCTION 행이 없는 데이터 이상 상황(예전 INNER JOIN이 실패해 통째로 404였던 경우)에서도
+        // auctionId=null을 그대로 응답하지 않고 기존과 동일하게 404를 유지해야 한다.
+        when(auctionService.findAuctionIdByProductId(productId)).thenReturn(null);
+
+        assertThatThrownBy(() -> reviewService.getMyReviewRouteContext(USR_SN, 900L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.REVIEW_NOT_FOUND);
     }
 
     @Test
@@ -93,6 +222,20 @@ class ReviewServiceTest {
                 .isInstanceOf(TradeNotReviewableException.class);
 
         verify(reviewMapper, never()).insertReview(any());
+    }
+
+    @Test
+    void 동시_등록으로_유니크_제약이_충돌하면_작성불가_예외로_변환한다() {
+        setUp();
+        when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("goods")));
+        doAnswer(invocation -> {
+            throw new DuplicateKeyException("UK_REVIEW_TRD_REVWR");
+        }).when(reviewMapper).insertReview(any(Review.class));
+
+        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 5, "동시 등록", null))
+                .isInstanceOf(TradeNotReviewableException.class);
+
+        verify(reviewImageMapper, never()).insertAll(any());
     }
 
     @Test
@@ -176,6 +319,30 @@ class ReviewServiceTest {
                 .isInstanceOf(TooManyReviewPhotosException.class);
 
         verify(reviewMapper, never()).selectWritableTrade(any(Long.class), any(Long.class));
+    }
+
+    @Test
+    void 작성_가능한_리뷰_목록은_상품별_경매번호를_배치로_채운다() {
+        setUp();
+        WritableTradeItem goodsA = healthyTrade("goods").toBuilder().id(1L).tradeId(1L).productId(10L).build();
+        // 같은 상품에서 나온 두 항목(예: 판매자/구매자 양쪽 다 작성 가능)이 상품 조회를 중복 호출하지 않는지 검증.
+        WritableTradeItem goodsB = healthyTrade("goods").toBuilder().id(2L).tradeId(2L).productId(10L).build();
+        // 서비스 거래는 productId가 항상 null이다.
+        WritableTradeItem service = healthyTrade("service").toBuilder().id(3L).tradeId(3L).productId(null).build();
+        when(reviewMapper.selectWritableTrades(USR_SN)).thenReturn(List.of(goodsA, goodsB, service));
+        when(auctionServiceProvider.getObject()).thenReturn(auctionService);
+        // Map.of()는 실제 프로덕션 반환값(HashMap)과 달리 get(null)에서 NPE를 던지므로
+        // (서비스 거래 항목 조회가 이 케이스다) 테스트에서도 null-safe한 맵을 써야 한다.
+        when(auctionService.findAuctionIdsByProductIds(List.of(10L)))
+                .thenReturn(Collections.singletonMap(10L, 501L));
+
+        List<WritableTradeItem> result = reviewService.getWritableTrades(USR_SN);
+
+        assertThat(result).hasSize(3);
+        assertThat(result.get(0).getAuctionId()).isEqualTo(501L);
+        assertThat(result.get(1).getAuctionId()).isEqualTo(501L);
+        assertThat(result.get(2).getAuctionId()).isNull();
+        verify(auctionService).findAuctionIdsByProductIds(List.of(10L));
     }
 
     @Test

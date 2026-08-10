@@ -62,16 +62,18 @@ public class PointExchangeService {
             throw new PointException(ErrorCode.POINT_INVALID_AMOUNT, "환전 금액은 0보다 커야 합니다: " + amt);
         }
 
-        // 계좌 미등록이면 신청 차단 — 관리자가 이체할 곳이 없으므로.
-        // (계좌 등록 화면은 마이페이지(담당자3) 소유 — 여기서는 읽기만 한다)
-        // 미등록 검증을 먼저 하고 통과한 계좌만 복호화한다 — 예전엔 복호화가 null 검사보다
-        // 먼저라 헬퍼 안에 별도 null 가드가 필요했다 (2026-08-05 점검 정리로 순서 정돈)
+        // 담당자 7 · F-PAY-012: 암호화된 빈 문자열도 DB에서는 값처럼 보이므로
+        // 반드시 복호화한 평문을 기준으로 계좌 등록 여부를 확인한 뒤 포인트를 차감한다.
         UserAccount account = exchangeMapper.selectUserAccount(usrSn);
-        if (account == null || !account.isRegistered()) {
+        if (account == null) {
             throw new PointException(ErrorCode.EXCHANGE_ACCOUNT_NOT_REGISTERED,
                     "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요.");
         }
         decryptAccount(account);
+        if (!account.isRegistered()) {
+            throw new PointException(ErrorCode.EXCHANGE_ACCOUNT_NOT_REGISTERED,
+                    "환전 계좌가 등록되어 있지 않습니다. 마이페이지에서 계좌를 먼저 등록해 주세요.");
+        }
 
         // 잔액 검증 + 즉시 차감 — 회원 행 잠금 안에서 직렬화 (동시 신청 이중 차감 차단)
         long deductLdgSn = pointService.debitExchange(usrSn, amt, "환전 신청 차감");

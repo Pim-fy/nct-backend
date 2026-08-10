@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
+import nct.member.dto.AdminMemberIdentityResponse;
 import nct.ops.reference.dto.AdminCategoryResponse;
 import nct.ops.reference.service.AdminCategoryService;
 import nct.ops.servicequery.dto.AdminServiceRequestListRequest;
@@ -24,10 +26,13 @@ import nct.ops.security.service.SensitiveDataMasker;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.point.dto.AdminEscrowSummary;
 import nct.point.port.AdminEscrowSummaryReader;
+import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.port.AdminQuoteListReader;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.settlement.dto.AdminSettlementSummary;
 import nct.settlement.port.AdminSettlementSummaryReader;
+import nct.servicerequest.dto.AdminServiceRequestDetail;
 import nct.servicerequest.dto.AdminServiceRequestListItem;
 import nct.servicerequest.dto.AdminServiceRequestPage;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
@@ -40,9 +45,11 @@ class AdminServiceRequestQueryServiceTest {
     private AdminServiceRequestReader reader;
     private AdminCategoryService adminCategoryService;
     private AdminQuoteSummaryReader quoteSummaryReader;
+    private AdminQuoteListReader quoteListReader;
     private AdminServiceTradeSummaryReader tradeSummaryReader;
     private AdminSettlementSummaryReader settlementSummaryReader;
     private AdminEscrowSummaryReader escrowSummaryReader;
+    private AdminMemberIdentityReader memberIdentityReader;
     private AdminServiceRequestQueryService service;
 
     @BeforeEach
@@ -50,21 +57,25 @@ class AdminServiceRequestQueryServiceTest {
         reader = mock(AdminServiceRequestReader.class);
         adminCategoryService = mock(AdminCategoryService.class);
         quoteSummaryReader = mock(AdminQuoteSummaryReader.class);
+        quoteListReader = mock(AdminQuoteListReader.class);
         tradeSummaryReader = mock(AdminServiceTradeSummaryReader.class);
         settlementSummaryReader = mock(AdminSettlementSummaryReader.class);
         escrowSummaryReader = mock(AdminEscrowSummaryReader.class);
+        memberIdentityReader = mock(AdminMemberIdentityReader.class);
         when(tradeSummaryReader.findSummaries(any())).thenReturn(Map.of());
         when(settlementSummaryReader.findSummaries(any())).thenReturn(Map.of());
         when(escrowSummaryReader.findSummaries(any())).thenReturn(Map.of());
+        when(quoteListReader.findByServiceRequestId(any())).thenReturn(List.of());
         service = new AdminServiceRequestQueryService(
                 reader,
                 new SensitiveDataMasker(),
                 adminCategoryService,
                 quoteSummaryReader,
+                quoteListReader,
                 tradeSummaryReader,
                 settlementSummaryReader,
                 escrowSummaryReader,
-                mock(AdminMemberIdentityReader.class));
+                memberIdentityReader);
     }
 
     @Test
@@ -119,6 +130,131 @@ class AdminServiceRequestQueryServiceTest {
     void rejectsInvalidDetailIdBeforeReading() {
         assertThatThrownBy(() -> service.getDetail(0L)).isInstanceOf(CustomException.class);
         verify(reader, never()).readDetail(any());
+    }
+
+    @Test
+    void returnsDetailWhenNoQuoteHasBeenSelected() {
+        AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
+                .serviceRequestId(11L)
+                .requesterUserId(101L)
+                .title("선택 견적 없는 요청")
+                .statusCode("SVCC0002")
+                .build();
+        when(reader.readDetail(11L)).thenReturn(detail);
+        when(quoteSummaryReader.findSummaries(List.of(11L))).thenReturn(Map.of());
+        when(memberIdentityReader.findByUserSns(List.of(101L))).thenReturn(Map.of());
+
+        var result = service.getDetail(11L);
+
+        assertThat(result.serviceRequestId()).isEqualTo(11L);
+        assertThat(result.integratedStatusCode()).isEqualTo("RECEIVED");
+        assertThat(result.selectedProviderUserId()).isNull();
+        assertThat(result.selectedProviderMember()).isNull();
+        assertThat(result.quotes()).isEmpty();
+        verify(quoteListReader).findByServiceRequestId(11L);
+        verify(memberIdentityReader).findByUserSns(List.of(101L));
+    }
+
+    @Test
+    void returnsDetailQuoteListWithOneProviderIdentityBatch() {
+        AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
+                .serviceRequestId(12L)
+                .requesterUserId(101L)
+                .title("Open request")
+                .statusCode("SVCC0002")
+                .build();
+        when(reader.readDetail(12L)).thenReturn(detail);
+        AdminQuoteSummary summary = quoteSummary(12L, 2, 2, null);
+        when(quoteSummaryReader.findSummaries(List.of(12L))).thenReturn(Map.of(12L, summary));
+        AdminQuoteListItem first = quoteListItem(12L, 502L, 202L, 60_000L, "QUTC0002");
+        AdminQuoteListItem second = quoteListItem(12L, 501L, 201L, 50_000L, "QUTC0001");
+        when(quoteListReader.findByServiceRequestId(12L)).thenReturn(List.of(first, second));
+        AdminMemberIdentityResponse requester = memberIdentity(101L, "requester");
+        AdminMemberIdentityResponse providerOne = memberIdentity(201L, "provider-one");
+        AdminMemberIdentityResponse providerTwo = memberIdentity(202L, "provider-two");
+        when(memberIdentityReader.findByUserSns(List.of(101L, 202L, 201L)))
+                .thenReturn(Map.of(101L, requester, 201L, providerOne, 202L, providerTwo));
+
+        var result = service.getDetail(12L);
+
+        assertThat(result.quotes()).hasSize(2);
+        assertThat(result.quotes().getFirst().quoteId()).isEqualTo(502L);
+        assertThat(result.quotes().getFirst().providerMember()).isSameAs(providerTwo);
+        assertThat(result.quotes()).allMatch(quote -> !quote.selected());
+        verify(memberIdentityReader).findByUserSns(List.of(101L, 202L, 201L));
+    }
+
+    @Test
+    void marksSummarySelectedQuoteInDetailList() {
+        AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
+                .serviceRequestId(13L)
+                .requesterUserId(101L)
+                .title("Matched request")
+                .statusCode("SVCC0003")
+                .build();
+        when(reader.readDetail(13L)).thenReturn(detail);
+        AdminQuoteSummary summary = quoteSummary(13L, 2, 0, 502L);
+        when(quoteSummaryReader.findSummaries(List.of(13L))).thenReturn(Map.of(13L, summary));
+        when(quoteListReader.findByServiceRequestId(13L)).thenReturn(List.of(
+                quoteListItem(13L, 502L, 900L, 30_000L, "QUTC0004"),
+                quoteListItem(13L, 501L, 201L, 25_000L, "QUTC0005")));
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(13L);
+        trade.setTradeId(700L);
+        trade.setQuoteId(502L);
+        trade.setTradeStatusCode("TRDC0001");
+        when(tradeSummaryReader.findSummaries(List.of(13L))).thenReturn(Map.of(13L, trade));
+        AdminEscrowSummary escrow = new AdminEscrowSummary();
+        escrow.setTradeId(700L);
+        escrow.setEscrowDebitedAmount(30_000L);
+        escrow.setEscrowLedgerAmount(-30_000L);
+        when(escrowSummaryReader.findSummaries(List.of(700L))).thenReturn(Map.of(700L, escrow));
+        AdminMemberIdentityResponse selectedProvider = memberIdentity(900L, "selected-provider");
+        AdminMemberIdentityResponse competingProvider = memberIdentity(201L, "competing-provider");
+        when(memberIdentityReader.findByUserSns(List.of(101L, 900L, 201L)))
+                .thenReturn(Map.of(900L, selectedProvider, 201L, competingProvider));
+
+        var result = service.getDetail(13L);
+
+        assertThat(result.quotes()).filteredOn(quote -> quote.selected())
+                .singleElement()
+                .extracting(quote -> quote.quoteId())
+                .isEqualTo(502L);
+        assertThat(result.selectedProviderMember()).isSameAs(selectedProvider);
+    }
+
+    @Test
+    void rejectsDetailWhenProviderIdentityBatchOmitsAQuoteProvider() {
+        AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
+                .serviceRequestId(15L)
+                .requesterUserId(101L)
+                .statusCode("SVCC0002")
+                .build();
+        when(reader.readDetail(15L)).thenReturn(detail);
+        AdminQuoteSummary summary = quoteSummary(15L, 1, 1, null);
+        when(quoteSummaryReader.findSummaries(List.of(15L))).thenReturn(Map.of(15L, summary));
+        when(quoteListReader.findByServiceRequestId(15L)).thenReturn(List.of(
+                quoteListItem(15L, 501L, 201L, 25_000L, "QUTC0001")));
+        when(memberIdentityReader.findByUserSns(List.of(101L, 201L)))
+                .thenReturn(Map.of(101L, memberIdentity(101L, "requester")));
+
+        assertThatThrownBy(() -> service.getDetail(15L))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsDetailWhenQuoteSummaryAndListCountsDiffer() {
+        AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
+                .serviceRequestId(14L)
+                .requesterUserId(101L)
+                .statusCode("SVCC0002")
+                .build();
+        when(reader.readDetail(14L)).thenReturn(detail);
+        AdminQuoteSummary summary = quoteSummary(14L, 1, 1, null);
+        when(quoteSummaryReader.findSummaries(List.of(14L))).thenReturn(Map.of(14L, summary));
+
+        assertThatThrownBy(() -> service.getDetail(14L))
+                .isInstanceOf(CustomException.class);
     }
 
     @Test
@@ -358,5 +494,29 @@ class AdminServiceRequestQueryServiceTest {
             summary.setSelectedQuoteStatusCode("QUTC0004");
         }
         return summary;
+    }
+
+    private AdminQuoteListItem quoteListItem(
+            Long serviceRequestId,
+            Long quoteId,
+            Long providerUserId,
+            Long amount,
+            String statusCode) {
+        AdminQuoteListItem item = new AdminQuoteListItem();
+        item.setServiceRequestId(serviceRequestId);
+        item.setQuoteId(quoteId);
+        item.setProviderUserId(providerUserId);
+        item.setAmount(amount);
+        item.setStatusCode(statusCode);
+        item.setSubmittedAt(LocalDateTime.of(2026, 8, 10, 14, 0));
+        item.setUpdatedAt(LocalDateTime.of(2026, 8, 10, 14, 0));
+        return item;
+    }
+
+    private AdminMemberIdentityResponse memberIdentity(Long userSn, String nickname) {
+        return AdminMemberIdentityResponse.builder()
+                .userSn(userSn)
+                .nickname(nickname)
+                .build();
     }
 }

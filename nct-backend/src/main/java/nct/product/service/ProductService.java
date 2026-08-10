@@ -451,6 +451,10 @@ public class ProductService {
         ProductResponse product = productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
 
+        if (!productMapper.isAuctionInquiryAvailable(prdSn)) {
+            throw new CustomException(ErrorCode.INQUIRY_NOT_AVAILABLE);
+        }
+
         productCommentMapper.findLastInquiryTime(usrSn, prdSn).ifPresent(lastTime -> {
             long elapsed = Duration.between(lastTime, LocalDateTime.now()).toHours();
             if (elapsed < INQUIRY_COOLDOWN_HOURS) {

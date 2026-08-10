@@ -176,6 +176,22 @@
          GROUP BY SVC_REQ_SN
     </select>
 
+    <!-- 담당자 3 견적 조회 계약 / 담당자 7 F-OPS-021 소비: 내용과 첨부를 제외한 관리자 상세 목록. -->
+    <select id="findAdminQuoteListItems" resultType="nct.quote.dto.AdminQuoteListItem">
+        /* QuoteMapper.findAdminQuoteListItems */
+        SELECT q.SVC_REQ_SN AS serviceRequestId,
+               q.QUT_SN AS quoteId,
+               q.USR_SN AS providerUserId,
+               q.QUT_AMT AS amount,
+               q.QUT_STATUS_CD AS statusCode,
+               q.QUT_REVISE_CNT AS reviseCount,
+               q.QUT_REG_DT AS submittedAt,
+               q.QUT_UPDT_DT AS updatedAt
+          FROM QUOTE q
+         WHERE q.SVC_REQ_SN = #{serviceRequestId}
+         ORDER BY q.QUT_REG_DT DESC, q.QUT_SN DESC
+    </select>
+
     <!-- ── 견적 수정 이력 INSERT ─────────────────────── -->
     <!-- 제공자가 요청 상세와 견적 수정 화면에서 사용할 활성 견적 1건 조회 -->
     <select id="findMyActiveQuote" resultMap="QuoteResponseMap">

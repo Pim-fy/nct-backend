@@ -21,6 +21,7 @@ import nct.global.security.domain.CustomUserDetails;
 import nct.review.dto.MyReviewItem;
 import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewUpdateResult;
+import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
@@ -64,6 +65,15 @@ public class ReviewController {
 
         long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(reviewService.getMyReviews(usrSn)));
+    }
+
+    // @ai_generated: 기존 reviewId URL을 신규 auctionId URL로 안전하게 전환한다.
+    @GetMapping("/{id}/context")
+    public ResponseEntity<ApiResponse<ReviewRouteContext>> getMyReviewRouteContext(
+            @PathVariable("id") long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(reviewService.getMyReviewRouteContext(usrSn, id)));
     }
 
     /**

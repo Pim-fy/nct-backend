@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -20,10 +21,13 @@ import nct.ops.servicequery.dto.AdminServiceRequestDetailResponse;
 import nct.ops.servicequery.dto.AdminServiceRequestIntegratedStatus;
 import nct.ops.servicequery.dto.AdminServiceRequestListItemResponse;
 import nct.ops.servicequery.dto.AdminServiceRequestPageResponse;
+import nct.ops.servicequery.dto.AdminServiceRequestQuoteResponse;
 import nct.ops.security.service.SensitiveDataMasker;
 import nct.point.dto.AdminEscrowSummary;
 import nct.point.port.AdminEscrowSummaryReader;
+import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.port.AdminQuoteListReader;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.settlement.dto.AdminSettlementSummary;
 import nct.settlement.port.AdminSettlementSummaryReader;
@@ -50,6 +54,7 @@ public class AdminServiceRequestQueryService {
     private final SensitiveDataMasker sensitiveDataMasker;
     private final AdminCategoryService adminCategoryService;
     private final AdminQuoteSummaryReader quoteSummaryReader;
+    private final AdminQuoteListReader quoteListReader;
     private final AdminServiceTradeSummaryReader tradeSummaryReader;
     private final AdminSettlementSummaryReader settlementSummaryReader;
     private final AdminEscrowSummaryReader escrowSummaryReader;
@@ -126,16 +131,35 @@ public class AdminServiceRequestQueryService {
             throw inconsistent("조회 대상이 아닌 견적 요약이 반환되었습니다.");
         }
         AdminQuoteSummary quote = quoteSummaries.get(serviceRequestId);
+        List<AdminQuoteListItem> quoteItems = quoteListReader.findByServiceRequestId(serviceRequestId);
+        validateQuoteList(quote, quoteItems);
         ServiceFlowSummaries flow = loadFlowSummaries(List.of(serviceRequestId));
         AdminServiceTradeSummary trade = flow.trades().get(serviceRequestId);
         AdminSettlementSummary settlement = settlementFor(trade, flow);
         AdminEscrowSummary escrow = escrowFor(trade, flow);
         validateCorrelation(detail.getStatusCode(), quote, trade, settlement, escrow);
         Long selectedProviderUserId = quote == null ? null : quote.getSelectedProviderUserId();
-        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
-                java.util.stream.Stream.of(detail.getRequesterUserId(), selectedProviderUserId)
-                        .filter(java.util.Objects::nonNull)
-                        .toList());
+        Long selectedQuoteId = quote == null ? null : quote.getSelectedQuoteId();
+        Set<Long> memberIds = new LinkedHashSet<>();
+        if (detail.getRequesterUserId() != null) {
+            memberIds.add(detail.getRequesterUserId());
+        }
+        quoteItems.stream()
+                .map(AdminQuoteListItem::getProviderUserId)
+                .forEach(memberIds::add);
+        Map<Long, AdminMemberIdentityResponse> identities =
+                memberIdentityReader.findByUserSns(List.copyOf(memberIds));
+        if (identities == null || quoteItems.stream()
+                .map(AdminQuoteListItem::getProviderUserId)
+                .anyMatch(providerUserId -> !identities.containsKey(providerUserId))) {
+            throw inconsistent("견적 제공자 식별정보가 일치하지 않습니다.");
+        }
+        List<AdminServiceRequestQuoteResponse> quotes = quoteItems.stream()
+                .map(item -> AdminServiceRequestQuoteResponse.from(
+                        item,
+                        identities.get(item.getProviderUserId()),
+                        Objects.equals(selectedQuoteId, item.getQuoteId())))
+                .toList();
         return AdminServiceRequestDetailResponse.from(
                 detail,
                 quote,
@@ -144,7 +168,30 @@ public class AdminServiceRequestQueryService {
                 escrow,
                 integratedStatus(detail.getStatusCode(), quote),
                 identities.get(detail.getRequesterUserId()),
-                identities.get(selectedProviderUserId));
+                selectedProviderUserId == null ? null : identities.get(selectedProviderUserId),
+                quotes);
+    }
+
+    private void validateQuoteList(
+            AdminQuoteSummary summary,
+            List<AdminQuoteListItem> quoteItems) {
+        if (quoteItems == null) {
+            throw inconsistent("견적 상세 목록이 반환되지 않았습니다.");
+        }
+        int expectedTotalCount = summary == null ? 0 : summary.getTotalQuoteCount();
+        Long expectedSelectedQuoteId = summary == null ? null : summary.getSelectedQuoteId();
+        List<Long> selectedQuoteIds = quoteItems.stream()
+                .filter(item -> "QUTC0004".equals(item.getStatusCode()))
+                .map(AdminQuoteListItem::getQuoteId)
+                .toList();
+        Long actualSelectedQuoteId = selectedQuoteIds.size() == 1
+                ? selectedQuoteIds.getFirst()
+                : null;
+        if (expectedTotalCount != quoteItems.size()
+                || selectedQuoteIds.size() > 1
+                || !Objects.equals(expectedSelectedQuoteId, actualSelectedQuoteId)) {
+            throw inconsistent("견적 요약과 상세 목록이 일치하지 않습니다.");
+        }
     }
 
     private ServiceFlowSummaries loadFlowSummaries(List<Long> serviceRequestIds) {

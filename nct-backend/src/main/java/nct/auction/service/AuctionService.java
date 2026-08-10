@@ -2,8 +2,11 @@ package nct.auction.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -13,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.constant.BidStatusCode;
 import nct.auction.dto.AuctionBidCreateCommand;
+import nct.auction.dto.AuctionIdByProduct;
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionBuyNowRequest;
@@ -40,8 +44,10 @@ import nct.product.service.ProductService;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.service.ReviewService;
 import nct.trade.domain.AuctionTradeSource;
+import nct.trade.dto.AuctionBidTradeReference;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
+import nct.trade.port.AuctionBidTradeReader;
 import nct.trade.service.TradeService;
 
 @Service
@@ -68,6 +74,7 @@ public class AuctionService {
     private final NotificationService notificationService;
     private final ReviewService reviewService;
     private final AuctionBidUnitPolicyService bidUnitPolicyService;
+    private final AuctionBidTradeReader auctionBidTradeReader;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -129,6 +136,47 @@ public class AuctionService {
         }
 
         return auctionMapper.findAuctionStatusesByProducts(prdSns);
+    }
+
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): TRADE 도메인이 auctionId 경로를
+    // productId로 변환할 때 이 계약을 쓴다 — 기존에는 findAuctionDetailWithProductValidation
+    // 내부에서만 auctionMapper.findProductIdByAuctionId를 직접 썼는데, 그 매퍼 메서드를 공개
+    // 서비스 계약으로도 노출한다.
+    @Transactional(readOnly = true)
+    public Long findProductIdByAuctionId(Long auctionId) {
+        if (auctionId == null) {
+            return null;
+        }
+        return auctionMapper.findProductIdByAuctionId(auctionId);
+    }
+
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): REVIEW·TRADE 도메인이 이 계약으로
+    // PRD_SN -> AUC_SN을 얻는다 — Mapper 직접 JOIN 대신 이 서비스 메서드를 통해서만 접근한다.
+    @Transactional(readOnly = true)
+    public Long findAuctionIdByProductId(Long productId) {
+        if (productId == null) {
+            return null;
+        }
+        return auctionMapper.findAuctionIdByProductId(productId);
+    }
+
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): 위와 같은 목적의 배치 버전.
+    @Transactional(readOnly = true)
+    public Map<Long, Long> findAuctionIdsByProductIds(List<Long> productIds) {
+        // @ai_generated (담당자1, 2026-08-07): Map.of()는 get(null)에서 NPE를 던지므로
+        // (호출자가 productId=null을 키로 조회하는 경우가 흔하다) Collections.emptyMap()을 쓴다.
+        if (productIds == null || productIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<Long> prdSns = productIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (prdSns.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return auctionMapper.findAuctionIdsByProductIds(prdSns).stream()
+                .collect(Collectors.toMap(AuctionIdByProduct::getProductId, AuctionIdByProduct::getAuctionId));
     }
 
     @Transactional(readOnly = true)
@@ -314,11 +362,31 @@ public class AuctionService {
                 && productFavoriteMapper.existsActive(detail.getProductId(), userId));
         detail.setImages(auctionMapper.findAuctionImages(detail.getProductId()));
         detail.setBids(auctionMapper.findAuctionBids(auctionId));
+        applyWinnerTradeLink(detail, userId);
         if (includeSupplemental) {
             applySellerReviewSummary(detail);
             detail.setProductUpdates(loadProductUpdates(detail.getProductId()));
         }
         return detail;
+    }
+
+    private void applyWinnerTradeLink(AuctionDetailResponse detail, Long userId) {
+        if (userId == null
+                || !AuctionStatusCode.ENDED.equals(detail.getAuctionStatusCode())
+                || !detail.isCurrentHighestBidder()
+                || detail.getCurrentHighestBidId() == null) {
+            return;
+        }
+
+        auctionBidTradeReader
+                .findByBuyerAndBidSns(userId, List.of(detail.getCurrentHighestBidId()))
+                .stream()
+                .filter(reference -> Objects.equals(
+                        reference.getBidSn(),
+                        detail.getCurrentHighestBidId()))
+                .map(AuctionBidTradeReference::getTradeId)
+                .findFirst()
+                .ifPresent(detail::setTradeId);
     }
 
     private void applySellerReviewSummary(AuctionDetailResponse detail) {

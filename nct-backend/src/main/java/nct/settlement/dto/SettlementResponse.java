@@ -10,7 +10,7 @@ import nct.settlement.domain.SettlementStatus;
 /**
  * [정산 - 목록 응답 DTO]
  * - GET /api/settlement 응답 본문의 배열 원소
- * - 상태 한글명은 CMM_CODE 조인 없이 SettlementStatus 3종을 코드에서 직접 매핑한다
+ * - 상태 한글명은 CMM_CODE 조인 없이 SettlementStatus를 코드에서 직접 매핑한다
  *   (포인트분류처럼 값이 늘어날 여지가 없는 고정 상태 머신이라 DB 조인 없이도 안전)
  */
 @Getter
@@ -42,6 +42,7 @@ public class SettlementResponse {
         if (SettlementStatus.PENDING.getCode().equals(code)) return "대기";
         if (SettlementStatus.ON_HOLD.getCode().equals(code)) return "보류";
         if (SettlementStatus.COMPLETED.getCode().equals(code)) return "완료";
+        if (SettlementStatus.REFUNDED.getCode().equals(code)) return "환불종결";
         return code;
     }
 }

@@ -6,6 +6,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.settlement.domain.Settlement;
+import nct.settlement.domain.SettlementAdminAction;
+import nct.settlement.dto.AdminSettlementRecord;
 import nct.settlement.dto.AdminSettlementSummary;
 
 /**
@@ -38,4 +40,27 @@ public interface SettlementMapper {
 
     /** 회원별 정산 목록 (최신순 100건) */
     List<Settlement> selectListByUser(@Param("usrSn") long usrSn);
+
+    List<AdminSettlementRecord> findAdminPage(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword,
+            @Param("offset") long offset,
+            @Param("size") int size);
+
+    long countAdminPage(
+            @Param("statusCode") String statusCode,
+            @Param("keyword") String keyword);
+
+    AdminSettlementRecord findAdminDetail(@Param("stlmSn") long stlmSn);
+
+    SettlementAdminAction findAdminActionByRequestIdForUpdate(
+            @Param("requestId") String requestId);
+
+    int updateStatusIfExpected(
+            @Param("stlmSn") long stlmSn,
+            @Param("expectedStatusCd") String expectedStatusCd,
+            @Param("nextStatusCd") String nextStatusCd,
+            @Param("actorId") String actorId);
+
+    int insertAdminAction(SettlementAdminAction action);
 }

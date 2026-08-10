@@ -34,9 +34,10 @@ import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
 import nct.point.domain.PointBalance;
 import nct.point.service.PointService;
+import nct.support.ApprovedDatabaseWriteIntegrationTest;
 
 @SpringBootTest
-class AuctionConcurrencyTest {
+class AuctionConcurrencyTest extends ApprovedDatabaseWriteIntegrationTest {
 
     @Autowired AuctionService auctionService;
     @Autowired AuctionCancellationService cancellationService;

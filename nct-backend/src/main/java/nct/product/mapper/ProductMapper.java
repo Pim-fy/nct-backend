@@ -48,4 +48,7 @@ public interface ProductMapper {
 
     /** 변경사항(F-AUC-007) 등록 가드용 — 경매 진행 상태 조회. AUCTION은 조회만(기존 합의된 방식) */
     Optional<String> findAuctionStatus(@Param("prdSn") Long prdSn);
+
+    /** 구매자 문의 등록 가드용 — 준비·진행 상태이면서 종료시각 전인 경매인지 확인 */
+    boolean isAuctionInquiryAvailable(@Param("prdSn") Long prdSn);
 }

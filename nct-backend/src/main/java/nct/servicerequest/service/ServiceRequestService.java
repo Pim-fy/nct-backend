@@ -263,6 +263,26 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         return new ServiceRequestQuoteTarget(existing.getUsrSn(), existing.getCatSn());
     }
 
+    /**
+     * 담당자 7 통합, F-SVC-006·008: 견적 수정·철회·본인 조회에서 현재 카테고리 권한을
+     * 다시 확인할 수 있도록 요청자와 카테고리를 읽기 전용으로 제공한다.
+     * 요청 상태는 견적 상태 검증과 별개이므로 여기서는 사용 여부만 확인한다.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public ServiceRequestQuoteTarget requireForProviderAccess(Long svcReqSn) {
+        if (svcReqSn == null || svcReqSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        ServiceRequest existing = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        if (!Character.valueOf('Y').equals(existing.getSvcReqUseYn())) {
+            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
+        }
+        return new ServiceRequestQuoteTarget(existing.getUsrSn(), existing.getCatSn());
+    }
+
     /** 견적 도메인의 받은 견적 조회용 소유권 계약. */
     @Override
     @Transactional(readOnly = true)
@@ -370,6 +390,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         if (updated == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "요청서 상태가 이미 변경되었습니다.");
         }
+    }
+
+    /** 견적 요청 기간 만료 대상 조회 (F-SVC-003, 배치 전용) */
+    @Transactional(readOnly = true)
+    public List<Long> findExpiredOpenServiceRequestIds(int limit) {
+        return serviceRequestMapper.findExpiredOpenServiceRequestIds(limit);
+    }
+
+    /** 견적 요청 기간 만료 자동 마감 — 이미 처리됐거나 상태가 바뀐 건은 조용히 넘어간다 (F-SVC-003, 배치 전용) */
+    @Transactional
+    public void autoCloseExpiredServiceRequest(Long svcReqSn) {
+        serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
     }
 
     // 삭제는 임시저장 상태만 허용 — 공개 이후에는 제공자가 이미 견적을 냈을 수 있어 셀프 삭제로

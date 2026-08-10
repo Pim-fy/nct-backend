@@ -11,6 +11,8 @@ public interface ServiceRequestQuoteReader {
 
     ServiceRequestQuoteTarget requireOpenForQuote(Long svcReqSn);
 
+    ServiceRequestQuoteTarget requireForProviderAccess(Long svcReqSn);
+
     void requireOwner(Long svcReqSn, Long usrSn);
 
     Map<Long, String> findTitles(List<Long> svcReqSnList);

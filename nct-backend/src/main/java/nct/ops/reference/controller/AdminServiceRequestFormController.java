@@ -51,6 +51,15 @@ public class AdminServiceRequestFormController {
                 service.publish(categorySn, formTemplateSn, actorId(userDetails))));
     }
 
+    @PostMapping("/categories/{categorySn}/drafts/{formTemplateSn}/discard")
+    public ResponseEntity<ApiResponse<AdminServiceRequestFormEditorResponse>> discardDraft(
+            @PathVariable(name = "categorySn") Long categorySn,
+            @PathVariable(name = "formTemplateSn") Long formTemplateSn,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(
+                service.discardDraft(categorySn, formTemplateSn, actorId(userDetails))));
+    }
+
     private Long actorId(CustomUserDetails userDetails) {
         if (userDetails == null || userDetails.getMember() == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);

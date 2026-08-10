@@ -58,6 +58,12 @@
                     OR event.RSK_EVT_CN LIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
+            <if test="registeredFrom != null">
+                AND event.RSK_EVT_REG_DT &gt;= #{registeredFrom}
+            </if>
+            <if test="registeredTo != null">
+                AND event.RSK_EVT_REG_DT &lt;= #{registeredTo}
+            </if>
         </where>
     </sql>
 
@@ -90,9 +96,7 @@
                COUNT(*) AS count
           FROM RISK_EVENT event
           JOIN CMM_CODE typeCode ON typeCode.CMM_CD = event.RSK_EVT_TYPE_CD
-         <where>
-             <if test="processedYn != null">event.RSK_EVT_PROC_YN = #{processedYn}</if>
-         </where>
+         <include refid="adminRiskEventSearchWhere"/>
          GROUP BY event.RSK_EVT_TYPE_CD, typeCode.CMM_NM
          ORDER BY count DESC, event.RSK_EVT_TYPE_CD ASC
     </select>

@@ -274,7 +274,8 @@
                SVC_REQ_CN        = #{svcReqCn},
                SVC_REQ_BDGT_AMT  = #{svcReqBdgtAmt},
                SVC_REQ_STATUS_CD = #{svcReqStatusCd},
-               SVC_REQ_UPDT_ID   = #{svcReqUpdtId}
+               SVC_REQ_UPDT_ID   = #{svcReqUpdtId},
+               SVC_REQ_UPDT_DT   = CURRENT_TIMESTAMP
          WHERE SVC_REQ_SN  = #{svcReqSn}
            AND USR_SN      = #{usrSn}
            AND SVC_REQ_STATUS_CD = 'SVCC0001'
@@ -301,6 +302,39 @@
                SVC_REQ_UPDT_ID   = #{updtId}
          WHERE SVC_REQ_SN = #{svcReqSn}
            AND USR_SN     = #{usrSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0002'
+    </update>
+
+    <!-- ── 견적 요청 기간 만료 자동 마감 (F-SVC-003) ────────────────
+         마감 시점 = MIN(공개일 SVC_REQ_UPDT_DT + 5일, 희망일)
+         희망일은 카테고리별 필드 키가 달라 FIELD_TYPE_CD='CALENDAR'로 공통 식별한다. -->
+    <select id="findExpiredOpenServiceRequestIds" resultType="java.lang.Long">
+        /* ServiceRequestMapper.findExpiredOpenServiceRequestIds */
+        SELECT s.SVC_REQ_SN
+          FROM SERVICE_REQUEST s
+          LEFT JOIN (
+              SELECT i.SVC_REQ_SN, MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')) AS PREF_DT
+                FROM SVC_REQ_ITEM i
+                JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+               WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+               GROUP BY i.SVC_REQ_SN
+          ) pref ON pref.SVC_REQ_SN = s.SVC_REQ_SN
+         WHERE s.SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND s.SVC_REQ_USE_YN = 'Y'
+           AND LEAST(
+                   DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                   COALESCE(pref.PREF_DT, DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY))
+               ) &lt;= NOW()
+         ORDER BY s.SVC_REQ_SN
+         LIMIT #{limit}
+    </select>
+
+    <update id="autoCloseServiceRequest">
+        /* ServiceRequestMapper.autoCloseServiceRequest */
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+               SVC_REQ_UPDT_ID   = 'SYSTEM'
+         WHERE SVC_REQ_SN = #{svcReqSn}
            AND SVC_REQ_STATUS_CD = 'SVCC0002'
     </update>
 

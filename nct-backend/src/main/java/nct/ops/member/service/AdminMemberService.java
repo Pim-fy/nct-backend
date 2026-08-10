@@ -13,9 +13,11 @@ import nct.abuse.mapper.AbuseReportMapper;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.member.domain.Member;
 import nct.member.dto.AdminMemberSource;
 import nct.member.mapper.MemberMapper;
+import nct.member.port.MemberStatusChangeCommand;
+import nct.member.port.MemberStatusChangeResult;
+import nct.member.port.MemberStatusCommandPort;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
@@ -48,6 +50,7 @@ public class AdminMemberService {
     private static final int HISTORY_LIMIT = 50;
 
     private final MemberMapper memberMapper;
+    private final MemberStatusCommandPort memberStatusCommandPort;
     private final AbuseReportMapper abuseReportMapper;
     private final ObjectProvider<AccountSanctionPort> accountSanctionPortProvider;
     private final MemberTradeRestrictionPort memberTradeRestrictionPort;
@@ -108,13 +111,10 @@ public class AdminMemberService {
                     "담당자 5의 제재 생성·해제 계약이 아직 연결되지 않았습니다.");
         }
 
-        Member member = memberMapper.findMemberByIdForUpdate(userSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-        String previousStatus = member.getUsrStatusCd();
-        if (!ACTIVE.equals(previousStatus) && !SUSPENDED.equals(previousStatus)) {
-            throw new CustomException(ErrorCode.CONFLICT, "탈퇴 계정은 상태를 변경할 수 없습니다.");
-        }
-        if (previousStatus.equals(targetStatusCode)) {
+        MemberStatusChangeResult statusResult = memberStatusCommandPort.changeStatus(
+                new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
+        String previousStatus = statusResult.previousStatusCode();
+        if (!statusResult.changed()) {
             return new AdminMemberStatusChangeResponse(
                     userSn, previousStatus, previousStatus, false, 0, 0);
         }
@@ -126,12 +126,10 @@ public class AdminMemberService {
         MemberTradeRestrictionResult tradeResult = new MemberTradeRestrictionResult(List.of(), 0);
         if (SUSPENDED.equals(targetStatusCode)) {
             sanctionPort.restrict(sanctionCommand);
-            updateMemberStatus(userSn, previousStatus, targetStatusCode, adminUserSn);
             tradeResult = memberTradeRestrictionPort.restrictActiveTrades(
                     new MemberTradeRestrictionCommand(userSn, adminUserSn, normalizedReason));
         } else {
             sanctionPort.release(sanctionCommand);
-            updateMemberStatus(userSn, previousStatus, targetStatusCode, adminUserSn);
             // 보류 거래의 재개 정책은 정본에 없어 자동 복구하지 않는다.
         }
 
@@ -146,15 +144,6 @@ public class AdminMemberService {
                 true,
                 tradeResult.restrictedTradeCount(),
                 tradeResult.heldSettlementCount());
-    }
-
-    private void updateMemberStatus(
-            Long userSn, String previousStatus, String targetStatus, Long adminUserSn) {
-        int changed = memberMapper.updateStatusAndInvalidateRefreshToken(
-                userSn, previousStatus, targetStatus, String.valueOf(adminUserSn));
-        if (changed != 1) {
-            throw new CustomException(ErrorCode.CONFLICT, "회원 상태가 다른 요청에 의해 변경되었습니다.");
-        }
     }
 
     private void recordAudit(

@@ -15,7 +15,8 @@ public enum SettlementStatus {
 
     PENDING("STLC0001"),
     ON_HOLD("STLC0002"),
-    COMPLETED("STLC0003");
+    COMPLETED("STLC0003"),
+    REFUNDED("STLC0004");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

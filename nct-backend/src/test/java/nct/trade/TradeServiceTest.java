@@ -3,6 +3,7 @@ package nct.trade;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -56,6 +57,8 @@ import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.ServiceTradeCompletionTarget;
+import nct.trade.dto.ServiceScheduleChangeCommand;
+import nct.trade.dto.ServiceScheduleCancellationCommand;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -168,7 +171,10 @@ class TradeServiceTest {
         assertThat(response.tradeId()).isEqualTo(91L);
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
         assertThat(response.chatAvailable()).isTrue();
-        assertThat(response.availableActions()).containsExactly("SUBMIT_DISPUTE");
+        assertThat(response.availableActions()).containsExactly(
+                "REQUEST_SCHEDULE_CHANGE",
+                "REQUEST_SCHEDULE_CANCELLATION",
+                "SUBMIT_DISPUTE");
     }
 
     @Test
@@ -201,7 +207,8 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+        verify(tradeMapper, never()).findMyServiceTrades(
+                anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -211,7 +218,8 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).findMyServiceTrades(anyLong(), any(), any(), any(), anyLong(), any());
+        verify(tradeMapper, never()).findMyServiceTrades(
+                anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -295,7 +303,8 @@ class TradeServiceTest {
         tradeService.registerServiceTradeDispute(81L, 11L, request);
 
         verify(tradeMapper).insertTradeDispute(
-                81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.", "11");
+                81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.",
+                "TRDC0005", "11");
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
         verify(chatService).closeServiceTradeChatRoom(81L);
@@ -345,8 +354,33 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).insertTradeDispute(anyLong(), anyLong(), any(), any(), any());
+        verify(tradeMapper, never()).insertTradeDispute(
+                anyLong(), anyLong(), any(), any(), any(), any());
         verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void rejectsDeliveryIssueTypeForServiceTradeDisputeBeforeReferenceLookup() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0012");
+        request.setContent("서비스 거래에 배송 문제 유형을 선택했습니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(referenceDataService, never()).requireActiveCode(any(), any());
+        verify(tradeMapper, never()).insertTradeDispute(
+                anyLong(), anyLong(), any(), any(), any(), any());
     }
 
     @Test
@@ -1168,6 +1202,73 @@ class TradeServiceTest {
                 .isEqualTo(ErrorCode.ALREADY_PROCESSED);
         verify(tradeMapper, never()).cancelMaterialTrade(anyLong(), any());
         verify(tradeMapper, never()).insertStatusHistory(anyLong(), any(), any());
+    }
+
+    @Test
+    void recordsServiceScheduleChangeWithoutChangingTradeStatus() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        LocalDateTime requestedAt = LocalDateTime.now().plusDays(1).withNano(0);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+
+        tradeService.requestServiceScheduleChange(
+                81L,
+                11L,
+                new ServiceScheduleChangeCommand(requestedAt, "  오후로 변경 부탁드립니다.  "));
+
+        verify(tradeMapper).insertStatusHistory(
+                81L,
+                "TRDC0003",
+                "SCHEDULE_CHANGE|" + requestedAt.format(
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"))
+                        + "|오후로 변경 부탁드립니다.");
+    }
+
+    @Test
+    void recordsServiceScheduleCancellationForProvider() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+
+        tradeService.requestServiceScheduleCancellation(
+                81L,
+                22L,
+                new ServiceScheduleCancellationCommand("작업 일정 조정이 필요합니다."));
+
+        verify(tradeMapper).insertStatusHistory(
+                81L,
+                "TRDC0003",
+                "SCHEDULE_CANCEL||작업 일정 조정이 필요합니다.");
+    }
+
+    @Test
+    void rejectsServiceScheduleRequestFromNonParty() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.requestServiceScheduleCancellation(
+                81L,
+                99L,
+                new ServiceScheduleCancellationCommand("일정 조정이 필요합니다.")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+
+        verify(tradeMapper, never()).insertStatusHistory(81L, "TRDC0003", "SCHEDULE_CANCEL||일정 조정이 필요합니다.");
+    }
+
+    @Test
+    void rejectsServiceScheduleRequestOutsideInProgress() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", null);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.requestServiceScheduleCancellation(
+                81L,
+                11L,
+                new ServiceScheduleCancellationCommand("일정 조정이 필요합니다.")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(tradeMapper, never()).insertStatusHistory(81L, "TRDC0003", "SCHEDULE_CANCEL||일정 조정이 필요합니다.");
     }
 
     private TradeDeliverySubmitTarget deliveryTarget(String tradeStatus, Long deliveryId) {

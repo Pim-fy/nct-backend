@@ -21,9 +21,11 @@ import lombok.RequiredArgsConstructor;
 import nct.global.response.ApiResponse;
 import nct.global.response.PageResponse;
 import nct.global.security.domain.CustomUserDetails;
+import nct.quote.dto.MyQuoteSummaryResponse;
 import nct.quote.dto.QuoteCreateResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
+import nct.quote.dto.QuoteStatusResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
@@ -84,6 +86,17 @@ public class QuoteController {
                 quoteService.getMyQuotes(usrSn, page, size)));
     }
 
+    /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 집계입니다. */
+    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    @GetMapping("/me/summary")
+    public ResponseEntity<ApiResponse<MyQuoteSummaryResponse>> getMyQuoteSummary(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getMyQuoteSummary(usrSn)));
+    }
+
     /** 받은 견적 목록 (요청자용 — ROLE_USER) */
     /** 제공자 견적 제출 여부와 수정 대상 견적을 확인하는 화면 연결 API. */
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
@@ -106,6 +119,18 @@ public class QuoteController {
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 quoteService.getReceivedQuotes(usrSn, svcReqSn)));
+    }
+
+    /** 견적 상태 단건 조회 (담당자4·7 소비용) */
+    @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
+    @GetMapping("/{quoteId}/status")
+    public ResponseEntity<ApiResponse<QuoteStatusResponse>> getQuoteStatus(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "quoteId") Long quoteId) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getQuoteStatus(usrSn, quoteId)));
     }
 
     /** 견적 수정 이력 (F-SVC-007 요청자 비교 화면용 계약 제공) */

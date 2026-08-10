@@ -125,6 +125,34 @@
            AND FORM_USE_YN = 'Y'
     </select>
 
+    <select id="findVersionStatuses"
+            resultType="nct.servicerequest.dto.ServiceRequestFormVersionStatus">
+        SELECT F.CAT_SN AS catSn,
+               MAX(CASE
+                       WHEN F.FORM_ACTV_YN = 'Y' AND F.FORM_USE_YN = 'Y'
+                           THEN F.FORM_VER_NO
+                   END) AS activeVersion,
+               MAX(CASE
+                       WHEN F.FORM_ACTV_YN = 'N'
+                           AND F.FORM_USE_YN = 'Y'
+                           AND F.FORM_VER_NO &gt; COALESCE((
+                               SELECT MAX(A.FORM_VER_NO)
+                                 FROM SVC_REQ_FORM_TMPL A
+                                WHERE A.CAT_SN = F.CAT_SN
+                                  AND A.FORM_ACTV_YN = 'Y'
+                                  AND A.FORM_USE_YN = 'Y'
+                           ), 0)
+                           THEN F.FORM_VER_NO
+                   END) AS draftVersion
+          FROM SVC_REQ_FORM_TMPL F
+         WHERE F.CAT_SN IN
+        <foreach collection="catSnList" item="catSn" open="(" separator="," close=")">
+            #{catSn}
+        </foreach>
+           AND F.FORM_USE_YN = 'Y'
+         GROUP BY F.CAT_SN
+    </select>
+
     <update id="disableUnpublishedDrafts">
         UPDATE SVC_REQ_FORM_TMPL
            SET FORM_USE_YN = 'N',
@@ -272,6 +300,19 @@
            AND SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
            AND FORM_ACTV_YN = 'N'
            AND FORM_USE_YN = 'Y'
+           AND FORM_VER_NO &gt; #{activeVersion}
+    </update>
+
+    <update id="discardDraft">
+        UPDATE SVC_REQ_FORM_TMPL
+           SET FORM_USE_YN = 'N',
+               FORM_UPDT_DT = CURRENT_TIMESTAMP,
+               FORM_UPDT_ID = #{actorId}
+         WHERE CAT_SN = #{catSn}
+           AND SVC_REQ_FORM_TMPL_SN = #{formTemplateSn}
+           AND FORM_ACTV_YN = 'N'
+           AND FORM_USE_YN = 'Y'
+           AND FORM_VER_NO &gt; #{activeVersion}
     </update>
 
     <select id="findSteps" resultType="nct.servicerequest.dto.ServiceRequestFormStep">

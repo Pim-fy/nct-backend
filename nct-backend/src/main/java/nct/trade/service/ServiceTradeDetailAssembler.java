@@ -7,6 +7,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.trade.dto.ServiceTradeDetailResponse;
 import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceScheduleHistoryItem;
 
 /**
  * 서비스 거래·요청·선택 견적·보관금 조회 결과를 상세 화면용 응답으로 조립한다.
@@ -18,6 +19,13 @@ public class ServiceTradeDetailAssembler {
     private static final String WAITING_CONFIRMATION = "TRDC0005";
 
     public ServiceTradeDetailResponse assemble(ServiceTradeDetailSource source, long viewerUserId) {
+        return assemble(source, viewerUserId, List.of());
+    }
+
+    public ServiceTradeDetailResponse assemble(
+            ServiceTradeDetailSource source,
+            long viewerUserId,
+            List<ServiceScheduleHistoryItem> scheduleHistory) {
         if (source == null || viewerUserId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "서비스 거래 상세 조회 정보가 올바르지 않습니다.");
@@ -37,6 +45,7 @@ public class ServiceTradeDetailAssembler {
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
                 source.chatAvailable(),
+                List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
                 resolveAvailableActions(source.tradeStatusCode(), viewerRole));
     }
 
@@ -57,8 +66,10 @@ public class ServiceTradeDetailAssembler {
             if ("PROVIDER".equals(viewerRole)) {
                 actions.add("REQUEST_COMPLETION");
             }
-            // 일정 변경·취소는 입력 검증만 존재하고, 저장·처리 API가 아직 제공되지 않는다.
-            // 구현 전에는 호출 불가능한 행동을 상세 응답에 노출하지 않는다.
+            // F-SVC-016: 진행 중인 거래의 두 당사자는 일정 요청을 남길 수 있다.
+            // 요청은 상태·수수료·정산을 바꾸지 않고 상태 이력으로만 기록된다.
+            actions.add("REQUEST_SCHEDULE_CHANGE");
+            actions.add("REQUEST_SCHEDULE_CANCELLATION");
             actions.add("SUBMIT_DISPUTE");
         } else if (WAITING_CONFIRMATION.equals(statusCode)) {
             if ("REQUESTER".equals(viewerRole)) {

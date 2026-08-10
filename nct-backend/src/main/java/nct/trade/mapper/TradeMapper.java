@@ -25,10 +25,15 @@ import nct.trade.dto.TradeSettlementReference;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
+import nct.trade.dto.ServiceScheduleHistoryItem;
+import nct.trade.dto.AdminServiceTradeSummary;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
 public interface TradeMapper {
+
+    /** 담당자 7 · F-OPS-010: 관리자 대시보드용 전체 거래 수를 반환합니다. */
+    long countAllTrades();
 
     Long findOwnedProductIdForUpdate(
             @Param("productId") long productId,
@@ -63,6 +68,7 @@ public interface TradeMapper {
             @Param("disputerUserId") long disputerUserId,
             @Param("disputeTypeCode") String disputeTypeCode,
             @Param("content") String content,
+            @Param("previousTradeStatusCode") String previousTradeStatusCode,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
@@ -106,6 +112,10 @@ public interface TradeMapper {
 
     int insertServiceTrade(Trade trade);
 
+    /** 담당자 7 · F-OPS-021: 서비스 요청별 거래·진행 중 분쟁 상태를 한 번에 조회합니다. */
+    List<AdminServiceTradeSummary> findAdminServiceTradeSummaries(
+            @Param("serviceRequestIds") Collection<Long> serviceRequestIds);
+
     /** MemberService가 조회한 낙찰자 배송정보를 거래 시점 스냅샷으로 저장한다. */
     int insertDeliverySnapshot(
             @Param("tradeId") long tradeId,
@@ -142,6 +152,9 @@ public interface TradeMapper {
     ServiceTradeDetailSource findMyServiceTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    /** 일정 이벤트 형식으로 저장한 서비스 거래 상태 이력만 상세 화면에 제공한다. */
+    List<ServiceScheduleHistoryItem> findServiceScheduleHistory(@Param("tradeId") long tradeId);
 
     /** 서비스 거래 당사자의 목록 조회다. 서비스 요청 주소 등 민감 정보는 조회하지 않는다. */
     List<ServiceTradeListItem> findMyServiceTrades(

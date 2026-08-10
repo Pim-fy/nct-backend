@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.trade.mapper.AdminTradeDisputeCommandMapper">
+
+    <select id="findForUpdate" resultType="nct.trade.dto.AdminTradeDisputeDecisionTarget">
+        SELECT d.TRD_DSP_SN AS disputeSn,
+               d.TRD_SN AS tradeSn,
+               d.DSPT_USR_SN AS disputerUserSn,
+               d.TRD_DSP_STATUS_CD AS disputeStatusCode,
+               d.TRD_DSP_RSLT_CD AS disputeResultCode,
+               d.TRD_DSP_PREV_TRD_STATUS_CD AS previousTradeStatusCode,
+               t.TRD_TYPE_CD AS tradeTypeCode,
+               t.TRD_STATUS_CD AS tradeStatusCode,
+               t.BID_SN AS bidSn,
+               t.SLLR_USR_SN AS sellerUserSn,
+               t.BYPR_USR_SN AS buyerUserSn,
+               t.REQ_USR_SN AS requesterUserSn,
+               t.PRV_USR_SN AS providerUserSn
+        FROM TRADE_DISPUTE d
+        JOIN TRADE t ON t.TRD_SN = d.TRD_SN
+        WHERE d.TRD_DSP_SN = #{disputeSn}
+        FOR UPDATE
+    </select>
+
+    <update id="updateTradeStatus">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = #{targetStatusCode},
+            TRD_AUTO_CMPL_DT = CASE
+                WHEN #{targetStatusCode} = 'TRDC0005' THEN TRD_AUTO_CMPL_DT
+                ELSE NULL
+            END,
+            TRD_UPDT_ID = #{updaterId},
+            TRD_UPDT_DT = NOW()
+        WHERE TRD_SN = #{tradeSn}
+          AND TRD_STATUS_CD = #{expectedStatusCode}
+    </update>
+
+    <update id="updateDisputeDecision">
+        UPDATE TRADE_DISPUTE
+        SET TRD_DSP_RSLT_CD = #{resultCode},
+            TRD_DSP_STATUS_CD = #{statusCode},
+            TRD_DSP_PROC_RSN_CN = #{reason},
+            TRD_DSP_PROC_USR_SN = #{processorUserSn},
+            TRD_DSP_PROC_DT = NOW(),
+            TRD_DSP_UPDT_ID = #{updaterId},
+            TRD_DSP_UPDT_DT = NOW()
+        WHERE TRD_DSP_SN = #{disputeSn}
+          AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+    </update>
+
+    <insert id="insertTradeStatusHistory">
+        INSERT INTO TRADE_STATUS_HIST (
+            TRD_SN,
+            TRD_STS_HST_STATUS_CD,
+            TRD_STS_HST_RSN_CN,
+            TRD_STS_HST_REG_ID,
+            TRD_STS_HST_UPDT_ID
+        ) VALUES (
+            #{tradeSn},
+            #{statusCode},
+            #{reason},
+            #{updaterId},
+            #{updaterId}
+        )
+    </insert>
+
+</mapper>

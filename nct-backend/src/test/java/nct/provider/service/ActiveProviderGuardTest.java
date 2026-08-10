@@ -46,6 +46,30 @@ class ActiveProviderGuardTest {
     }
 
     @Test
+    void activeProviderForCategoryPassesCategoryAndSanctionChecks() {
+        when(authMemberPort.findById(101L)).thenReturn(Optional.of(member(101L, "USRC0001")));
+
+        guard.requireActiveForCategory(101L, 30L);
+
+        verify(providerApplicationService).requireCategoryPermission(101L, 30L);
+        verify(sanctionStatusReader).requireNoActiveSanction(101L);
+    }
+
+    @Test
+    void categoryPermissionFailureStopsBeforeSanctionCheck() {
+        when(authMemberPort.findById(101L)).thenReturn(Optional.of(member(101L, "USRC0001")));
+        doThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .when(providerApplicationService).requireCategoryPermission(101L, 30L);
+
+        assertThatThrownBy(() -> guard.requireActiveForCategory(101L, 30L))
+                .isInstanceOf(CustomException.class)
+                .extracting(error -> ((CustomException) error).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(sanctionStatusReader, never()).requireNoActiveSanction(101L);
+    }
+
+    @Test
     void invalidUserSnIsUnauthorized() {
         assertThatThrownBy(() -> guard.requireActive(null))
                 .isInstanceOf(CustomException.class)

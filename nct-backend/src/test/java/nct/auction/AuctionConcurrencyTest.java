@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
@@ -267,7 +271,7 @@ class AuctionConcurrencyTest {
     private long insertUser(String prefix) {
         String loginId = prefix + "_" + System.nanoTime();
         String email = loginId + "@test.local";
-        jdbc.update("""
+        long id = insertAndReturnKey("""
                 INSERT INTO USERS (
                     USR_LOGIN_ID,
                     USR_PSWD_HASH,
@@ -283,17 +287,15 @@ class AuctionConcurrencyTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?, ?)
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
                 fieldCryptoService.encrypt("테스트 주소"), fieldCryptoService.encrypt("101호"), fieldCryptoService.encrypt("12345"));
-        long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         userIds.add(id);
         return id;
     }
 
     private long insertProduct(long sellerSn, BigDecimal instantBuyAmount) {
-        jdbc.update("""
+        long id = insertAndReturnKey("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_IBY_AMT, PRD_TRD_METHOD_CD)
                 VALUES (?, 2, '동시성 테스트 경매 상품', 'PRDC0002', 10000, ?, 'TRDC0009')
                 """, sellerSn, instantBuyAmount);
-        long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         productIds.add(id);
         return id;
     }
@@ -303,7 +305,7 @@ class AuctionConcurrencyTest {
     }
 
     private long insertAuction(long prdSn, BigDecimal currentAmount, LocalDateTime endDateTime) {
-        jdbc.update("""
+        long id = insertAndReturnKey("""
                 INSERT INTO AUCTION (
                     PRD_SN,
                     AUC_STATUS_CD,
@@ -319,17 +321,36 @@ class AuctionConcurrencyTest {
                 currentAmount,
                 LocalDateTime.now().minusHours(1),
                 endDateTime);
-        long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         auctionIds.add(id);
         return id;
     }
 
     private long insertBid(long aucSn, long bidderSn, BigDecimal amount) {
-        jdbc.update("""
+        return insertAndReturnKey("""
                 INSERT INTO BID (AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD)
                 VALUES (?, ?, ?, 'BIDC0001')
                 """, aucSn, bidderSn, amount);
-        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    /**
+     * 담당자 7, F-OPS-018: INSERT와 생성키 조회를 같은 JDBC 실행에서 처리한다.
+     * 연결 풀에서 다른 연결의 LAST_INSERT_ID()를 읽어 0이 반환되는 fixture 오류를 방지한다.
+     */
+    private long insertAndReturnKey(String sql, Object... args) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            for (int index = 0; index < args.length; index++) {
+                statement.setObject(index + 1, args[index]);
+            }
+            return statement;
+        }, keyHolder);
+
+        Number key = keyHolder.getKey();
+        if (key == null) {
+            throw new IllegalStateException("동시성 테스트 fixture 생성키를 확인할 수 없습니다.");
+        }
+        return key.longValue();
     }
 
     private void creditAvailable(long usrSn, long amount) {

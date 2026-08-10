@@ -7,6 +7,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import nct.auction.dto.AuctionIdByProduct;
 import nct.auction.dto.AuctionListItem;
 import nct.auction.dto.AuctionListRequest;
 import nct.auction.dto.AuctionBidCreateCommand;
@@ -26,6 +27,15 @@ public interface AuctionMapper {
     long countAuctions(@Param("condition") AuctionListRequest condition);
 
     Long findProductIdByAuctionId(@Param("auctionId") Long auctionId);
+
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): REVIEW·TRADE 도메인이 상품당
+    // 경매번호를 Mapper에서 직접 JOIN하지 않고 조회하도록 신설. AUCTION.PRD_SN 유일 인덱스로
+    // 상품당 최대 1건이다.
+    Long findAuctionIdByProductId(@Param("productId") Long productId);
+
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): 위와 같은 목적의 배치 버전 —
+    // 리뷰 목록처럼 여러 행을 한 번에 조회할 때 상품 수만큼 개별 호출(N+1)하지 않기 위함.
+    List<AuctionIdByProduct> findAuctionIdsByProductIds(@Param("productIds") List<Long> productIds);
 
     AuctionDetailResponse findAuctionDetail(
             @Param("auctionId") Long auctionId,

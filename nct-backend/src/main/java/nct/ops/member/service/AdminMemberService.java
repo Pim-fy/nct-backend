@@ -1,7 +1,9 @@
 package nct.ops.member.service;
 
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.ObjectProvider;
@@ -10,12 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.abuse.mapper.AbuseReportMapper;
+import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.member.domain.Member;
 import nct.member.dto.AdminMemberSource;
 import nct.member.mapper.MemberMapper;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
+import nct.member.port.MemberStatusChangeCommand;
+import nct.member.port.MemberStatusChangeResult;
+import nct.member.port.MemberStatusCommandPort;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
@@ -48,11 +55,13 @@ public class AdminMemberService {
     private static final int HISTORY_LIMIT = 50;
 
     private final MemberMapper memberMapper;
+    private final MemberStatusCommandPort memberStatusCommandPort;
     private final AbuseReportMapper abuseReportMapper;
     private final ObjectProvider<AccountSanctionPort> accountSanctionPortProvider;
     private final MemberTradeRestrictionPort memberTradeRestrictionPort;
     private final AuditLogPort auditLogPort;
     private final NotificationService notificationService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional(readOnly = true)
     public AdminMemberPageResponse getMembers(String statusCode, String keyword, int page, int size) {
@@ -83,10 +92,30 @@ public class AdminMemberService {
         List<AccountSanctionHistory> sanctions = sanctionPort == null
                 ? Collections.emptyList()
                 : sanctionPort.findHistory(userSn, HISTORY_LIMIT);
+        List<AdminAbuseReportResponse> reports =
+                abuseReportMapper.findReportsByReportedUser(userSn, HISTORY_LIMIT);
+        Set<Long> identityUserSns = new LinkedHashSet<>();
+        identityUserSns.add(userSn);
+        for (AdminAbuseReportResponse report : reports) {
+            if (report.getReporterUserSn() != null) identityUserSns.add(report.getReporterUserSn());
+            Long processorUserSn = numericUserSn(report.getProcessedBy());
+            if (processorUserSn != null) identityUserSns.add(processorUserSn);
+        }
+        for (AccountSanctionHistory sanction : sanctions) {
+            if (sanction.processedBy() != null) identityUserSns.add(sanction.processedBy());
+        }
+        Map<Long, AdminMemberIdentityResponse> identities =
+                memberIdentityReader.findByUserSns(identityUserSns);
+        for (AdminAbuseReportResponse report : reports) {
+            report.setReporterMember(identities.get(report.getReporterUserSn()));
+            report.setReportedMember(identities.get(report.getReportedUserSn()));
+            report.setProcessorMember(identities.get(numericUserSn(report.getProcessedBy())));
+        }
         return new AdminMemberDetailResponse(
                 AdminMemberListItemResponse.from(source),
-                abuseReportMapper.findReportsByReportedUser(userSn, HISTORY_LIMIT),
+                reports,
                 sanctions,
+                identities,
                 sanctionPort != null,
                 sanctionPort != null);
     }
@@ -108,13 +137,10 @@ public class AdminMemberService {
                     "담당자 5의 제재 생성·해제 계약이 아직 연결되지 않았습니다.");
         }
 
-        Member member = memberMapper.findMemberByIdForUpdate(userSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-        String previousStatus = member.getUsrStatusCd();
-        if (!ACTIVE.equals(previousStatus) && !SUSPENDED.equals(previousStatus)) {
-            throw new CustomException(ErrorCode.CONFLICT, "탈퇴 계정은 상태를 변경할 수 없습니다.");
-        }
-        if (previousStatus.equals(targetStatusCode)) {
+        MemberStatusChangeResult statusResult = memberStatusCommandPort.changeStatus(
+                new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
+        String previousStatus = statusResult.previousStatusCode();
+        if (!statusResult.changed()) {
             return new AdminMemberStatusChangeResponse(
                     userSn, previousStatus, previousStatus, false, 0, 0);
         }
@@ -126,12 +152,10 @@ public class AdminMemberService {
         MemberTradeRestrictionResult tradeResult = new MemberTradeRestrictionResult(List.of(), 0);
         if (SUSPENDED.equals(targetStatusCode)) {
             sanctionPort.restrict(sanctionCommand);
-            updateMemberStatus(userSn, previousStatus, targetStatusCode, adminUserSn);
             tradeResult = memberTradeRestrictionPort.restrictActiveTrades(
                     new MemberTradeRestrictionCommand(userSn, adminUserSn, normalizedReason));
         } else {
             sanctionPort.release(sanctionCommand);
-            updateMemberStatus(userSn, previousStatus, targetStatusCode, adminUserSn);
             // 보류 거래의 재개 정책은 정본에 없어 자동 복구하지 않는다.
         }
 
@@ -146,15 +170,6 @@ public class AdminMemberService {
                 true,
                 tradeResult.restrictedTradeCount(),
                 tradeResult.heldSettlementCount());
-    }
-
-    private void updateMemberStatus(
-            Long userSn, String previousStatus, String targetStatus, Long adminUserSn) {
-        int changed = memberMapper.updateStatusAndInvalidateRefreshToken(
-                userSn, previousStatus, targetStatus, String.valueOf(adminUserSn));
-        if (changed != 1) {
-            throw new CustomException(ErrorCode.CONFLICT, "회원 상태가 다른 요청에 의해 변경되었습니다.");
-        }
     }
 
     private void recordAudit(
@@ -256,6 +271,15 @@ public class AdminMemberService {
     private void validateUserSn(Long userSn) {
         if (userSn == null || userSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private Long numericUserSn(String value) {
+        if (value == null || !value.matches("[0-9]+")) return null;
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 }

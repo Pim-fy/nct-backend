@@ -30,8 +30,9 @@ import nct.common.domain.RefType;
 import nct.favorite.mapper.ProductFavoriteMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.member.service.MemberService;
+import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
+import nct.ops.reference.service.AuctionBidUnitPolicyService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
 import nct.product.dto.ProductCommentResponse;
@@ -40,6 +41,7 @@ import nct.review.dto.TrustScoreResponse;
 import nct.review.service.ReviewService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @Service
@@ -59,12 +61,13 @@ public class AuctionService {
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
     private final PointService pointService;
-    private final MemberService memberService;
+    private final BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final TradeService tradeService;
     private final AuctionEventPublisher auctionEventPublisher;
     private final NotificationService notificationService;
     private final ReviewService reviewService;
+    private final AuctionBidUnitPolicyService bidUnitPolicyService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -206,7 +209,8 @@ public class AuctionService {
                     target.getCurrentHighestBidderId(),
                     target.getCurrentPrice(),
                     AuctionTradeSource.AUCTION_WIN,
-                    target.getCurrentHighestTradeMethodCode());
+                    target.getCurrentHighestTradeMethodCode(),
+                    target.getCurrentHighestDeliveryAddressId());
             notificationService.notifyAuctionResult(
                     target.getCurrentHighestBidderId(),
                     auctionId,
@@ -236,17 +240,11 @@ public class AuctionService {
                 actorUserId,
                 now);
 
-        AuctionPolicy policy = pointService.getAuctionPolicy();
-        BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
-        if (bidUnitAmount != null && bidUnitAmount.compareTo(minimumBidUnit) < 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "입찰 단위는 시스템 최소 입찰 단위 이상이어야 합니다.");
-        }
+        BigDecimal actualBidUnit = bidUnitPolicyService.resolveActiveAmount(bidUnitAmount);
 
         String statusCode = startDateTime.isAfter(now)
                 ? AuctionStatusCode.READY
                 : AuctionStatusCode.ACTIVE;
-        BigDecimal actualBidUnit = bidUnitAmount == null ? minimumBidUnit : bidUnitAmount;
-
         int inserted = auctionMapper.insertAuction(
                 productId,
                 statusCode,
@@ -367,14 +365,17 @@ public class AuctionService {
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
                 request == null ? null : request.getTradeMethod());
-        validateDeliveryAddress(selectedTradeMethodCode, userId);
+        Long selectedDeliveryAddressId = resolveDeliveryAddressId(
+                selectedTradeMethodCode,
+                userId,
+                request == null ? null : request.getDeliveryAddressId());
         AuctionPolicy policy = pointService.getAuctionPolicy();
 
         BigDecimal bidAmount = request == null ? null : request.getBidAmount();
-        if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target, policy)) < 0) {
+        if (bidAmount == null || bidAmount.compareTo(minimumBidPrice(target)) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        validateBidUnit(target, policy, bidAmount);
+        validateBidUnit(target, bidAmount);
         validateBidBelowInstantBuyPrice(target, bidAmount);
 
         int updatedCount = auctionMapper.updateAuctionCurrentPrice(auctionId, bidAmount, userId.toString());
@@ -390,7 +391,8 @@ public class AuctionService {
                 auctionId,
                 userId,
                 bidAmount,
-                selectedTradeMethodCode);
+                selectedTradeMethodCode,
+                selectedDeliveryAddressId);
         pointService.hold(userId, toPointAmount(bidAmount), RefType.BID, bid.getBidId(), "입찰 포인트 홀딩");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
         auctionMapper.extendAuctionTime(
@@ -413,21 +415,25 @@ public class AuctionService {
         AuctionBidTarget target = findBidTarget(auctionId);
         validateBidAvailable(target, userId);
         validateCurrentHighestBidder(target, userId);
-        validateMixedTradeMethodProduct(target);
 
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
                 request == null ? null : request.getTradeMethod());
-        if (selectedTradeMethodCode.equals(target.getCurrentHighestTradeMethodCode())) {
+        Long selectedDeliveryAddressId = resolveDeliveryAddressId(
+                selectedTradeMethodCode,
+                userId,
+                request == null ? null : request.getDeliveryAddressId());
+        if (selectedTradeMethodCode.equals(target.getCurrentHighestTradeMethodCode())
+                && Objects.equals(selectedDeliveryAddressId, target.getCurrentHighestDeliveryAddressId())) {
             return loadAuctionDetail(auctionId, userId);
         }
 
-        validateDeliveryAddress(selectedTradeMethodCode, userId);
         int updatedCount = auctionMapper.updateCurrentHighestBidTradeMethod(
                 auctionId,
                 target.getCurrentHighestBidId(),
                 userId,
                 selectedTradeMethodCode,
+                selectedDeliveryAddressId,
                 userId.toString());
         if (updatedCount == 0) {
             throw new CustomException(
@@ -447,7 +453,10 @@ public class AuctionService {
         String selectedTradeMethodCode = resolveSelectedTradeMethod(
                 target,
                 request == null ? null : request.getTradeMethod());
-        validateDeliveryAddress(selectedTradeMethodCode, userId);
+        Long selectedDeliveryAddressId = resolveDeliveryAddressId(
+                selectedTradeMethodCode,
+                userId,
+                request == null ? null : request.getDeliveryAddressId());
 
         BigDecimal instantBuyPrice = target.getInstantBuyPrice();
         if (instantBuyPrice == null || instantBuyPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -462,7 +471,8 @@ public class AuctionService {
                 auctionId,
                 userId,
                 instantBuyPrice,
-                selectedTradeMethodCode);
+                selectedTradeMethodCode,
+                selectedDeliveryAddressId);
         pointService.hold(userId, toPointAmount(instantBuyPrice), RefType.BID, bid.getBidId(), "즉시구매 포인트 홀딩");
         pointService.convertHoldToEscrow(userId, RefType.BID, bid.getBidId(), "즉시구매 보관금 전환");
         releasePreviousHighestBidHold(previousHighestBidderId, previousHighestBidId);
@@ -470,29 +480,32 @@ public class AuctionService {
         if (closed == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "경매 상태가 이미 변경되었습니다.");
         }
-        createAuctionTrade(
+        AuctionTradeCreateResult trade = createAuctionTrade(
                 target,
                 bid.getBidId(),
                 userId,
                 instantBuyPrice,
                 AuctionTradeSource.BUY_NOW,
-                selectedTradeMethodCode);
+                selectedTradeMethodCode,
+                selectedDeliveryAddressId);
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, instantBuyPrice);
         notificationService.notifyAuctionResult(userId, auctionId, true);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        detail.setTradeId(trade.getTradeSn());
         publishAuctionChanged(auctionId, "BUY_NOW");
         return detail;
     }
 
-    private void createAuctionTrade(
+    private AuctionTradeCreateResult createAuctionTrade(
             AuctionBidTarget target,
             Long winningBidId,
             Long buyerUserId,
             BigDecimal tradeAmount,
             AuctionTradeSource source,
-            String selectedTradeMethodCode) {
-        tradeService.createAuctionTrade(
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
+        return tradeService.createAuctionTrade(
                 new AuctionTradeCreateCommand(
                         target.getAuctionId(),
                         target.getProductId(),
@@ -501,7 +514,8 @@ public class AuctionService {
                         buyerUserId,
                         tradeAmount,
                         source,
-                        selectedTradeMethodCode));
+                        selectedTradeMethodCode,
+                        selectedDeliveryAddressId));
     }
 
     private void publishAuctionChanged(Long auctionId, String eventType) {
@@ -528,10 +542,16 @@ public class AuctionService {
         }
     }
 
-    private void validateDeliveryAddress(String selectedTradeMethodCode, Long userId) {
-        if (DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
-            memberService.getBuyerAddressSnapshot(userId);
+    private Long resolveDeliveryAddressId(
+            String selectedTradeMethodCode,
+            Long userId,
+            Long deliveryAddressId) {
+        if (!DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
+            return null;
         }
+        return buyerDeliveryAddressReader.getOwnedActiveAddressSnapshot(
+                userId,
+                deliveryAddressId).deliveryAddressId();
     }
 
     private String resolveSelectedTradeMethod(AuctionBidTarget target, String requestedTradeMethodCode) {
@@ -575,36 +595,29 @@ public class AuctionService {
         }
     }
 
-    private void validateMixedTradeMethodProduct(AuctionBidTarget target) {
-        if (!BOTH_TRADE_METHOD_CODE.equals(target.getTradeMethodCode())) {
-            throw new CustomException(
-                    ErrorCode.INVALID_INPUT_VALUE,
-                    "배송과 직거래를 모두 지원하는 경매만 거래방식을 변경할 수 있습니다.");
-        }
-    }
-
     private LocalDateTime databaseNow(AuctionBidTarget target) {
         return target.getDatabaseNow() == null ? LocalDateTime.now() : target.getDatabaseNow();
     }
 
-    private BigDecimal minimumBidPrice(AuctionBidTarget target, AuctionPolicy policy) {
+    private BigDecimal minimumBidPrice(AuctionBidTarget target) {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
-        return currentPrice.add(effectiveBidUnit(target, policy));
+        return currentPrice.add(effectiveBidUnit(target));
     }
 
-    private BigDecimal effectiveBidUnit(AuctionBidTarget target, AuctionPolicy policy) {
-        BigDecimal minimumBidUnit = BigDecimal.valueOf(policy.getMinBidUnit());
+    private BigDecimal effectiveBidUnit(AuctionBidTarget target) {
         BigDecimal bidUnitPrice = target.getBidUnitPrice();
-        if (bidUnitPrice == null || bidUnitPrice.compareTo(minimumBidUnit) < 0) {
-            bidUnitPrice = minimumBidUnit;
+        if (bidUnitPrice == null || bidUnitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "경매 입찰 단위를 확인할 수 없습니다.");
         }
         return bidUnitPrice;
     }
 
-    private void validateBidUnit(AuctionBidTarget target, AuctionPolicy policy, BigDecimal bidAmount) {
+    private void validateBidUnit(AuctionBidTarget target, BigDecimal bidAmount) {
         BigDecimal currentPrice = target.getCurrentPrice() == null ? BigDecimal.ZERO : target.getCurrentPrice();
         BigDecimal bidIncrement = bidAmount.subtract(currentPrice);
-        if (bidIncrement.remainder(effectiveBidUnit(target, policy)).compareTo(BigDecimal.ZERO) != 0) {
+        if (bidIncrement.remainder(effectiveBidUnit(target)).compareTo(BigDecimal.ZERO) != 0) {
             throw new CustomException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "입찰 금액은 입찰 단위의 배수여야 합니다."
@@ -625,13 +638,15 @@ public class AuctionService {
             Long auctionId,
             Long userId,
             BigDecimal bidAmount,
-            String selectedTradeMethodCode) {
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
         AuctionBidCreateCommand bid = new AuctionBidCreateCommand(
                 auctionId,
                 userId,
                 bidAmount,
                 BidStatusCode.HIGHEST,
                 selectedTradeMethodCode,
+                selectedDeliveryAddressId,
                 userId.toString());
         int inserted = auctionMapper.insertBid(bid);
         if (inserted == 0 || bid.getBidId() == null) {

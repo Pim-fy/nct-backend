@@ -46,6 +46,21 @@
         LIMIT #{limit}
     </select>
 
+    <select id="selectLatestByReference" resultType="nct.audit.domain.AuditLog">
+        SELECT A.AUD_LOG_SN          AS audLogSn,
+               A.USR_SN              AS usrSn,
+               A.AUD_LOG_TYPE_CD     AS audLogTypeCd,
+               A.AUD_LOG_REF_TYPE_CD AS audLogRefTypeCd,
+               A.AUD_LOG_REF_SN      AS audLogRefSn,
+               A.AUD_LOG_RSON_CN     AS audLogRsonCn,
+               A.AUD_LOG_REG_DT      AS audLogRegDt
+          FROM AUDIT_LOG A
+         WHERE A.AUD_LOG_REF_TYPE_CD = #{refTypeCd}
+           AND A.AUD_LOG_REF_SN = #{refSn}
+         ORDER BY A.AUD_LOG_SN DESC
+         LIMIT 1
+    </select>
+
     <!-- 민감정보 제한 조회 (F-OPS-014).
          ⚠️ CHAT_MESSAGE는 담당자4 소유 테이블 — 감사 목적의 읽기 전용 SELECT만 허용, 변경 금지.
          반드시 AuditLogService.viewChatMessage()를 통해서만 호출된다 (사유+감사로그 없이 직접 호출 금지) -->

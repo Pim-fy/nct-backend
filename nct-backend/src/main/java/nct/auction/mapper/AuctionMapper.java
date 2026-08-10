@@ -76,6 +76,7 @@ public interface AuctionMapper {
             @Param("bidId") Long bidId,
             @Param("userId") Long userId,
             @Param("tradeMethodCode") String tradeMethodCode,
+            @Param("deliveryAddressId") Long deliveryAddressId,
             @Param("actor") String actor);
 
     int insertBid(AuctionBidCreateCommand command);

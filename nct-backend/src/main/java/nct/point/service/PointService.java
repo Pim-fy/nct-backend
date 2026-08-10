@@ -55,7 +55,7 @@ public class PointService {
     }
 
     /**
-     * 경매 정책 조회 (담당자5 소비 계약, 2026-07-21) — 자동연장 기준·최대횟수·최소입찰단위.
+     * 경매 정책 조회 (담당자5 소비 계약, 2026-07-21) — 자동연장 기준·최대횟수.
      * 설정 행이 없거나 값이 비정상(0 이하)이면 임의 기본값으로 채우지 않고 예외로 실패시킨다
      * (동민씨 요청 정책 그대로 — 있으면 쓰고 없으면 요청 자체를 막는다).
      */
@@ -64,10 +64,9 @@ public class PointService {
         AuctionPolicy policy = systemSettingMapper.selectAuctionPolicy();
         if (policy == null
                 || policy.getAucExtMin() == null || policy.getAucExtMin() <= 0
-                || policy.getAucExtMaxCnt() == null || policy.getAucExtMaxCnt() < 0
-                || policy.getMinBidUnit() == null || policy.getMinBidUnit() <= 0) {
+                || policy.getAucExtMaxCnt() == null || policy.getAucExtMaxCnt() < 0) {
             throw new PointException(ErrorCode.SYSTEM_SETTING_INVALID,
-                    "경매 정책 설정값을 확인할 수 없습니다 (aucExtMin/aucExtMaxCnt/minBidUnit).");
+                    "경매 정책 설정값을 확인할 수 없습니다 (aucExtMin/aucExtMaxCnt).");
         }
         return policy;
     }

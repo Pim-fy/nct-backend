@@ -53,6 +53,8 @@ import nct.global.exception.ErrorCode;
  *     (PORTFOLIO_FILE 연결 테이블 — 소유 담당자7, 2026-07-28)
  *   - service-request(서비스 요청서 첨부사진, F-SVC-001): 이미지만 — 요청자·제공자 보호 API로 서빙
  *     (SVC_REQ_IMAGE 연결 테이블 — 소유 담당자2, 2026-08-04)
+ *   - quote(견적 작업사진): 이미지만 — service-request와 동일하게 보호 API로 서빙
+ *     (QUOTE_PHOTO 연결 테이블 — 소유 담당자3, 2026-08-06)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -85,7 +87,8 @@ public class FileStorageService {
             "review", Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "profile", Set.of("jpg", "jpeg", "png", "webp"),
             "portfolio", Set.of("jpg", "jpeg", "png", "webp"),
-            "service-request", Set.of("jpg", "jpeg", "png", "gif", "webp"));
+            "service-request", Set.of("jpg", "jpeg", "png", "gif", "webp"),
+            "quote", Set.of("pdf", "jpg", "jpeg", "png", "gif", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -137,12 +140,14 @@ public class FileStorageService {
 
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
         // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20) + 리뷰 사진(CHG-021, 실DB 적용 2026-07-21)
-        //  + 제공자 포트폴리오(F-PROV-005, 2026-07-28) + 서비스요청 첨부사진(F-SVC-001, 2026-08-04))
+        //  + 제공자 포트폴리오(F-PROV-005, 2026-07-28) + 서비스요청 첨부사진(F-SVC-001, 2026-08-04)
+        //  + 견적 작업사진(QUOTE_PHOTO, 2026-08-06))
         if (fileMapper.countProductImageRefs(flSn) > 0
                 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
                 || fileMapper.countReviewImageRefs(flSn) > 0
                 || fileMapper.countPortfolioFileRefs(flSn) > 0
-                || fileMapper.countServiceRequestImageRefs(flSn) > 0) {
+                || fileMapper.countServiceRequestImageRefs(flSn) > 0
+                || fileMapper.countQuotePhotoRefs(flSn) > 0) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 
@@ -294,6 +299,19 @@ public class FileStorageService {
     public FileMeta requireOwnedServiceRequestFile(Long flSn, Long usrSn) {
         FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
         if (!"service-request".equals(extractService(fileMeta.getFlPath()))) {
+            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        return fileMeta;
+    }
+
+    /**
+     * 견적 제출·수정 시 연결할 파일이 현재 제공자가 quote 구분으로 올린 활성 파일인지 검증한다.
+     * QUOTE_PHOTO에 다른 회원 또는 다른 용도의 파일 번호를 연결하는 것을 막는다.
+     */
+    @Transactional(readOnly = true)
+    public FileMeta requireOwnedQuoteFile(Long flSn, Long usrSn) {
+        FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
+        if (!"quote".equals(extractService(fileMeta.getFlPath()))) {
             throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
         }
         return fileMeta;

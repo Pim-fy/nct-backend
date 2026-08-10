@@ -45,7 +45,8 @@ class AdminRiskEventSecurityTest {
 
     @Test
     void allowsAdmin() throws Exception {
-        when(adminRiskEventService.getTypeSummary(null)).thenReturn(List.of());
+        when(adminRiskEventService.getTypeSummary(null, null, null, null, null))
+                .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/risk-events/summary")
                         .with(user("admin@example.com").authorities(() -> "ROLE_ADMIN")))

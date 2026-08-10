@@ -1,0 +1,11 @@
+-- 초기 다중 배송지 이관 때 클라이언트 문자셋 영향으로 깨진 기본 배송지명만 보정한다.
+-- UTF-8 한글 리터럴을 직접 보내지 않고 hex 값을 변환해 실행 환경의 문자셋 영향을 피한다.
+UPDATE USER_DELIVERY_ADDRESS
+SET USR_DLVR_ADDR_NM = CONVERT(0xEAB8B0EBB3B820EBB0B0EC86A1ECA780 USING utf8mb4),
+    USR_DLVR_UPDT_ID = 'SYSTEM'
+WHERE USR_DLVR_ADDR_NM = '?? ???';
+
+-- 검증: 0건이어야 한다.
+SELECT COUNT(*) AS MALFORMED_DELIVERY_ADDRESS_NAME_COUNT
+FROM USER_DELIVERY_ADDRESS
+WHERE USR_DLVR_ADDR_NM = '?? ???';

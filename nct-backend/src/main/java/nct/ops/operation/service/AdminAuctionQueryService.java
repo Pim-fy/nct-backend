@@ -1,7 +1,10 @@
 package nct.ops.operation.service;
 
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +14,8 @@ import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.service.AuctionService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.product.dto.ProductResponse;
 import nct.product.service.ProductService;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -33,13 +38,16 @@ public class AdminAuctionQueryService {
     private final AuctionService auctionService;
     private final ProductService productService;
     private final TradeService tradeService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     @Transactional(readOnly = true)
     public AdminAuctionPageResponse getPage(AdminAuctionListRequest request) {
         AdminAuctionListRequest condition = request == null ? new AdminAuctionListRequest() : request;
         normalize(condition);
         long totalItems = mapper.count(condition);
-        List<AdminAuctionListItemResponse> items = totalItems == 0 ? List.of() : mapper.findPage(condition);
+        List<AdminAuctionListItemResponse> items = totalItems == 0
+                ? List.of()
+                : enrichMemberIdentities(mapper.findPage(condition));
         return AdminAuctionPageResponse.builder()
                 .items(items).page(condition.getPage()).size(condition.getSize()).totalItems(totalItems)
                 .totalPages((int) Math.ceil((double) totalItems / condition.getSize()))
@@ -82,5 +90,27 @@ public class AdminAuctionQueryService {
     private String trimToNull(String value) {
         if (value == null || value.isBlank()) return null;
         return value.trim();
+    }
+
+    /** 담당자 7 · F-OPS-003/004: 판매자와 처리자를 한 번의 회원 계약 조회로 조립합니다. */
+    private List<AdminAuctionListItemResponse> enrichMemberIdentities(
+            List<AdminAuctionListItemResponse> items) {
+        Set<Long> userSns = new LinkedHashSet<>();
+        for (AdminAuctionListItemResponse item : items) {
+            if (item.getSellerUserSn() != null) userSns.add(item.getSellerUserSn());
+            if (item.getCancelProcessorUserSn() != null) userSns.add(item.getCancelProcessorUserSn());
+        }
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(userSns);
+        for (AdminAuctionListItemResponse item : items) {
+            item.setSellerMember(identityOf(identities, item.getSellerUserSn()));
+            item.setCancelProcessorMember(identityOf(identities, item.getCancelProcessorUserSn()));
+        }
+        return items;
+    }
+
+    private AdminMemberIdentityResponse identityOf(
+            Map<Long, AdminMemberIdentityResponse> identities,
+            Long userSn) {
+        return userSn == null ? null : identities.get(userSn);
     }
 }

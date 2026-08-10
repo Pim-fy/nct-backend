@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ import nct.servicerequest.dto.ServiceRequestFormOption;
 import nct.servicerequest.dto.ServiceRequestFormResponse;
 import nct.servicerequest.dto.ServiceRequestFormRule;
 import nct.servicerequest.dto.ServiceRequestFormStep;
+import nct.servicerequest.dto.ServiceRequestFormVersionStatus;
 import nct.servicerequest.mapper.ServiceRequestFormMapper;
 
 /**
@@ -85,6 +87,16 @@ public class ServiceRequestFormManagementService {
         return formMapper.countActiveForm(categorySn) > 0;
     }
 
+    @Transactional(readOnly = true)
+    public Map<Long, ServiceRequestFormVersionStatus> getVersionStatuses(List<Long> categorySns) {
+        if (categorySns == null || categorySns.isEmpty()) {
+            return Map.of();
+        }
+        categorySns.forEach(this::validateId);
+        return formMapper.findVersionStatuses(categorySns).stream()
+                .collect(Collectors.toMap(ServiceRequestFormVersionStatus::getCatSn, status -> status));
+    }
+
     @Transactional
     public ServiceRequestFormResponse saveDraft(
             Long categorySn,
@@ -93,9 +105,15 @@ public class ServiceRequestFormManagementService {
         validateId(categorySn);
         validateActor(actorId);
         validateDraft(request);
-        Set<FieldRef> inheritedSensitiveFields = getLatestForm(categorySn)
+        Optional<ServiceRequestFormResponse> latestForm = getLatestForm(categorySn);
+        Set<FieldRef> inheritedSensitiveFields = latestForm
                 .map(this::sensitiveFieldRefs)
                 .orElseGet(Set::of);
+        if (latestForm.isPresent()
+                && definition(request, inheritedSensitiveFields)
+                        .equals(definition(latestForm.get()))) {
+            throw invalid("변경된 내용이 없어 새 초안을 저장하지 않았습니다.");
+        }
 
         int activeVersion = getActiveVersion(categorySn);
         formMapper.disableUnpublishedDrafts(categorySn, activeVersion, actorId);
@@ -150,9 +168,175 @@ public class ServiceRequestFormManagementService {
         if (YES.equals(target.getActiveYn())) {
             return readService.getFormByTemplateSn(formTemplateSn);
         }
+        int activeVersion = getActiveVersion(categorySn);
+        if (target.getFormVersion() == null || target.getFormVersion() <= activeVersion) {
+            throw invalid("과거 서비스 요청 폼은 다시 발행할 수 없습니다.");
+        }
         formMapper.deactivateActiveTemplate(categorySn, actorId);
-        requireOne(formMapper.activateTemplate(categorySn, formTemplateSn, actorId));
+        requireOne(formMapper.activateTemplate(
+                categorySn, formTemplateSn, activeVersion, actorId));
         return readService.getFormByTemplateSn(formTemplateSn);
+    }
+
+    @Transactional
+    public ServiceRequestFormResponse discardDraft(
+            Long categorySn,
+            Long formTemplateSn,
+            String actorId) {
+        validateId(categorySn);
+        validateId(formTemplateSn);
+        validateActor(actorId);
+        ServiceRequestFormResponse target = formMapper
+                .findFormHeaderForUpdate(categorySn, formTemplateSn)
+                .orElseThrow(() -> invalid("폐기할 서비스 요청 폼 초안을 찾을 수 없습니다."));
+        if (YES.equals(target.getActiveYn())) {
+            throw invalid("현재 발행 중인 서비스 요청 폼은 폐기할 수 없습니다.");
+        }
+        int activeVersion = getActiveVersion(categorySn);
+        if (target.getFormVersion() == null || target.getFormVersion() <= activeVersion) {
+            throw invalid("과거에 발행된 서비스 요청 폼은 폐기할 수 없습니다.");
+        }
+        requireOne(formMapper.discardDraft(
+                categorySn, formTemplateSn, activeVersion, actorId));
+        target.setUseYn(NO);
+        return target;
+    }
+
+    private FormDefinition definition(
+            AdminServiceRequestFormDraftRequest request,
+            Set<FieldRef> inheritedSensitiveFields) {
+        List<StepDefinition> steps = request.steps().stream()
+                .map(step -> new StepDefinition(
+                        step.stepKey().trim(),
+                        step.title().trim(),
+                        blankToNull(step.description()),
+                        step.type(),
+                        blankToNull(step.nextStepKey()),
+                        safe(step.options()).stream().map(this::definition).toList(),
+                        safe(step.fields()).stream()
+                                .map(field -> definition(
+                                        step.stepKey().trim(),
+                                        field,
+                                        inheritedSensitiveFields))
+                                .toList()))
+                .toList();
+        return new FormDefinition(
+                blankToNull(request.subtitle()),
+                jsonObject(request.uiMetaJson(), "폼 표시 설정"),
+                steps);
+    }
+
+    private FormDefinition definition(ServiceRequestFormResponse form) {
+        List<StepDefinition> steps = safe(form.getSteps()).stream()
+                .map(step -> new StepDefinition(
+                        step.getStepKey(),
+                        step.getTitle(),
+                        blankToNull(step.getDescription()),
+                        step.getType(),
+                        blankToNull(step.getNextStepKey()),
+                        safe(step.getOptions()).stream().map(this::definition).toList(),
+                        safe(step.getFields()).stream().map(this::definition).toList()))
+                .toList();
+        return new FormDefinition(
+                blankToNull(form.getSubtitle()),
+                jsonObject(form.getUiMetaJson(), "폼 표시 설정"),
+                steps);
+    }
+
+    private OptionDefinition definition(OptionRequest option) {
+        return new OptionDefinition(
+                option.optionKey().trim(),
+                option.value().trim(),
+                option.label().trim(),
+                blankToNull(option.subtitle()),
+                blankToNull(option.nextStepKey()));
+    }
+
+    private OptionDefinition definition(ServiceRequestFormOption option) {
+        return new OptionDefinition(
+                option.getOptionKey(),
+                option.getValue(),
+                option.getLabel(),
+                blankToNull(option.getSubtitle()),
+                blankToNull(option.getNextStepKey()));
+    }
+
+    private FieldDefinition definition(
+            String stepKey,
+            FieldRequest field,
+            Set<FieldRef> inheritedSensitiveFields) {
+        boolean sensitive = "ADDRESS".equals(field.type())
+                || Boolean.TRUE.equals(field.sensitive())
+                || inheritedSensitiveFields.contains(new FieldRef(
+                        stepKey, field.fieldKey().trim()));
+        return new FieldDefinition(
+                field.fieldKey().trim(),
+                field.label().trim(),
+                field.type(),
+                blankToNull(field.placeholder()),
+                blankToNull(field.description()),
+                Boolean.TRUE.equals(field.required()),
+                Boolean.TRUE.equals(field.requireDigit()),
+                sensitive,
+                field.maxSelections(),
+                jsonObject(field.uiMetaJson(), "필드 표시 설정"),
+                safe(field.options()).stream().map(this::fieldOptionDefinition).toList(),
+                safe(field.rules()).stream().map(this::definition).toList());
+    }
+
+    private FieldDefinition definition(ServiceRequestFormField field) {
+        return new FieldDefinition(
+                field.getFieldKey(),
+                field.getLabel(),
+                field.getType(),
+                blankToNull(field.getPlaceholder()),
+                blankToNull(field.getDescription()),
+                YES.equals(field.getRequiredYn()),
+                YES.equals(field.getRequireDigitYn()),
+                YES.equals(field.getSensitiveYn()),
+                field.getMaxSelections(),
+                jsonObject(field.getUiMetaJson(), "필드 표시 설정"),
+                safe(field.getOptions()).stream().map(this::fieldOptionDefinition).toList(),
+                safe(field.getRules()).stream().map(this::definition).toList());
+    }
+
+    private OptionDefinition fieldOptionDefinition(OptionRequest option) {
+        return new OptionDefinition(
+                option.optionKey().trim(),
+                option.value().trim(),
+                option.label().trim(),
+                null,
+                null);
+    }
+
+    private OptionDefinition fieldOptionDefinition(ServiceRequestFormOption option) {
+        return new OptionDefinition(
+                option.getOptionKey(),
+                option.getValue(),
+                option.getLabel(),
+                null,
+                null);
+    }
+
+    private RuleDefinition definition(RuleRequest rule) {
+        return new RuleDefinition(
+                blankToNull(rule.sourceStepKey()),
+                blankToNull(rule.sourceFieldKey()),
+                blankToNull(rule.compareValue()),
+                rule.operator(),
+                rule.action());
+    }
+
+    private RuleDefinition definition(ServiceRequestFormRule rule) {
+        String sourceStepKey = isBlank(rule.getSourceStepKey())
+                ? rule.getSourceFieldStepKey()
+                : rule.getSourceStepKey();
+        return new RuleDefinition(
+                blankToNull(sourceStepKey),
+                blankToNull(rule.getSourceFieldKey()),
+                blankToNull(rule.getCompareValue()),
+                rule.getOperator(),
+                rule.getAction());
     }
 
     private Map<String, ServiceRequestFormStep> insertSteps(
@@ -542,18 +726,26 @@ public class ServiceRequestFormManagementService {
         return step == null ? null : step.getStepSn();
     }
 
-    private String normalizeJson(String value, String label) {
-        if (isBlank(value)) {
-            return null;
-        }
+    private JsonNode jsonObject(String value, String label) {
+        if (isBlank(value)) return null;
         try {
             JsonNode parsed = objectMapper.readTree(value);
             if (parsed == null || !parsed.isObject()) {
                 throw invalid(label + "은 JSON 객체 형식이어야 합니다.");
             }
-            return objectMapper.writeValueAsString(parsed);
+            return parsed;
         } catch (JsonProcessingException exception) {
             throw invalid(label + "의 JSON 형식이 올바르지 않습니다.");
+        }
+    }
+
+    private String normalizeJson(String value, String label) {
+        JsonNode parsed = jsonObject(value, label);
+        if (parsed == null) return null;
+        try {
+            return objectMapper.writeValueAsString(parsed);
+        } catch (JsonProcessingException exception) {
+            throw invalid(label + "을 저장 형식으로 변환하지 못했습니다.");
         }
     }
 
@@ -639,5 +831,52 @@ public class ServiceRequestFormManagementService {
     }
 
     private record FieldOptionRef(String stepKey, String fieldKey, String value) {
+    }
+
+    private record FormDefinition(
+            String subtitle,
+            JsonNode uiMeta,
+            List<StepDefinition> steps) {
+    }
+
+    private record StepDefinition(
+            String stepKey,
+            String title,
+            String description,
+            String type,
+            String nextStepKey,
+            List<OptionDefinition> options,
+            List<FieldDefinition> fields) {
+    }
+
+    private record OptionDefinition(
+            String optionKey,
+            String value,
+            String label,
+            String subtitle,
+            String nextStepKey) {
+    }
+
+    private record FieldDefinition(
+            String fieldKey,
+            String label,
+            String type,
+            String placeholder,
+            String description,
+            boolean required,
+            boolean requireDigit,
+            boolean sensitive,
+            Integer maxSelections,
+            JsonNode uiMeta,
+            List<OptionDefinition> options,
+            List<RuleDefinition> rules) {
+    }
+
+    private record RuleDefinition(
+            String sourceStepKey,
+            String sourceFieldKey,
+            String compareValue,
+            String operator,
+            String action) {
     }
 }

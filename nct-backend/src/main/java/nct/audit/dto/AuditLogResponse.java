@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter;
 import lombok.Builder;
 import lombok.Getter;
 import nct.audit.domain.AuditLog;
+import nct.member.dto.AdminMemberIdentityResponse;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-18)
@@ -25,6 +26,7 @@ public class AuditLogResponse {
     /** 행위자 (이름 + 회원번호, 시스템 자동 기록이면 둘 다 null) */
     private final String userName;
     private final Long userSn;
+    private final AdminMemberIdentityResponse actorMember;
 
     /** 행위 유형 한글명 (생성/수정/원문조회/관리자승인 등) */
     private final String type;
@@ -39,11 +41,18 @@ public class AuditLogResponse {
 
     /** 도메인 모델 → 응답 DTO 변환 */
     public static AuditLogResponse from(AuditLog log) {
+        return from(log, null);
+    }
+
+    public static AuditLogResponse from(
+            AuditLog log,
+            AdminMemberIdentityResponse actorMember) {
         return AuditLogResponse.builder()
                 .id(log.getAudLogSn())
                 .date(log.getAudLogRegDt() != null ? log.getAudLogRegDt().format(DATE_FMT) : null)
                 .userName(log.getUsrNm())
                 .userSn(log.getUsrSn())
+                .actorMember(actorMember)
                 .type(log.getAudLogTypeNm())
                 .typeCd(log.getAudLogTypeCd())
                 .refType(log.getRefTypeNm())

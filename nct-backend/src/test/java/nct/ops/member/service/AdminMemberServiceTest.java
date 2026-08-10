@@ -7,10 +7,9 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 import java.util.List;
-import java.util.Optional;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,8 +20,10 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.global.exception.CustomException;
-import nct.member.domain.Member;
 import nct.member.mapper.MemberMapper;
+import nct.member.port.MemberStatusChangeResult;
+import nct.member.port.MemberStatusCommandPort;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.member.port.AccountSanctionPort;
@@ -34,12 +35,14 @@ import nct.trade.port.MemberTradeRestrictionResult;
 class AdminMemberServiceTest {
 
     @Mock private MemberMapper memberMapper;
+    @Mock private MemberStatusCommandPort memberStatusCommandPort;
     @Mock private AbuseReportMapper abuseReportMapper;
     @Mock private ObjectProvider<AccountSanctionPort> sanctionProvider;
     @Mock private AccountSanctionPort sanctionPort;
     @Mock private MemberTradeRestrictionPort tradeRestrictionPort;
     @Mock private AuditLogPort auditLogPort;
     @Mock private NotificationService notificationService;
+    @Mock private AdminMemberIdentityReader memberIdentityReader;
 
     private AdminMemberService service;
 
@@ -47,11 +50,13 @@ class AdminMemberServiceTest {
     void setUp() {
         service = new AdminMemberService(
                 memberMapper,
+                memberStatusCommandPort,
                 abuseReportMapper,
                 sanctionProvider,
                 tradeRestrictionPort,
                 auditLogPort,
-                notificationService);
+                notificationService,
+                memberIdentityReader);
     }
 
     @Test
@@ -63,22 +68,16 @@ class AdminMemberServiceTest {
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining("제재 생성·해제 계약");
 
-        verify(memberMapper, never()).findMemberByIdForUpdate(any());
-        verify(memberMapper, never()).updateStatusAndInvalidateRefreshToken(
-                any(), any(), any(), any());
+        verify(memberStatusCommandPort, never()).changeStatus(any());
         verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
         verify(auditLogPort, never()).record(any());
     }
 
     @Test
-    void restrictionRunsSanctionThenMemberThenTradesThenAudit() {
+    void restrictionRunsMemberThenSanctionThenTradesThenAudit() {
         when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
-        when(memberMapper.findMemberByIdForUpdate(10L)).thenReturn(Optional.of(Member.builder()
-                .usrSn(10L)
-                .usrStatusCd("USRC0001")
-                .build()));
-        when(memberMapper.updateStatusAndInvalidateRefreshToken(
-                10L, "USRC0001", "USRC0002", "99")).thenReturn(1);
+        when(memberStatusCommandPort.changeStatus(any()))
+                .thenReturn(new MemberStatusChangeResult("USRC0001", "USRC0002", true));
         when(tradeRestrictionPort.restrictActiveTrades(any()))
                 .thenReturn(new MemberTradeRestrictionResult(List.of(), 0));
 
@@ -87,10 +86,10 @@ class AdminMemberServiceTest {
 
         assertThat(result.changed()).isTrue();
         assertThat(result.currentStatusCode()).isEqualTo("USRC0002");
-        InOrder order = inOrder(sanctionPort, memberMapper, tradeRestrictionPort, auditLogPort);
+        InOrder order = inOrder(
+                memberStatusCommandPort, sanctionPort, tradeRestrictionPort, auditLogPort);
+        order.verify(memberStatusCommandPort).changeStatus(any());
         order.verify(sanctionPort).restrict(any());
-        order.verify(memberMapper).updateStatusAndInvalidateRefreshToken(
-                10L, "USRC0001", "USRC0002", "99");
         order.verify(tradeRestrictionPort).restrictActiveTrades(any());
         order.verify(auditLogPort).record(any());
     }
@@ -98,20 +97,35 @@ class AdminMemberServiceTest {
     @Test
     void sameStatusIsIdempotentWithoutDuplicateSideEffects() {
         when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
-        when(memberMapper.findMemberByIdForUpdate(10L)).thenReturn(Optional.of(Member.builder()
-                .usrSn(10L)
-                .usrStatusCd("USRC0002")
-                .build()));
+        when(memberStatusCommandPort.changeStatus(any()))
+                .thenReturn(new MemberStatusChangeResult("USRC0002", "USRC0002", false));
 
         var result = service.changeStatus(
                 10L, "USRC0002", "재시도", "request-2", 99L);
 
         assertThat(result.changed()).isFalse();
         verify(sanctionPort, never()).restrict(any());
-        verify(memberMapper, never()).updateStatusAndInvalidateRefreshToken(
-                any(), any(), any(), any());
         verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
         verify(auditLogPort, never()).record(any());
         verify(notificationService, never()).notify(any(Long.class), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void sanctionFailureStopsFollowingWritesSoOuterTransactionCanRollBack() {
+        when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
+        when(memberStatusCommandPort.changeStatus(any()))
+                .thenReturn(new MemberStatusChangeResult("USRC0001", "USRC0002", true));
+        doThrow(new IllegalStateException("sanction insert failed"))
+                .when(sanctionPort).restrict(any());
+
+        assertThatThrownBy(() -> service.changeStatus(
+                10L, "USRC0002", "운영 제한", "request-rollback", 99L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sanction insert failed");
+
+        verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
+        verify(auditLogPort, never()).record(any());
+        verify(notificationService, never())
+                .notify(any(Long.class), any(), any(), any(), any(), any(), any());
     }
 }

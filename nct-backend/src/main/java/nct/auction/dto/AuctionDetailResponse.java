@@ -14,6 +14,8 @@ import lombok.Setter;
 public class AuctionDetailResponse {
 
     private Long auctionId;
+    /** 즉시구매 성공 응답에서 생성된 구매자 거래 상세 이동에 사용합니다. */
+    private Long tradeId;
     private Long productId;
     private String title;
     private String content;
@@ -40,6 +42,7 @@ public class AuctionDetailResponse {
     private Long currentHighestBidderId;
     private boolean currentHighestBidder;
     private String myBidTradeMethodCode;
+    private Long myBidDeliveryAddressId;
     private boolean hasBidHistory;
     private List<AuctionImageItem> images = List.of();
     private List<AuctionBidItem> bids = List.of();

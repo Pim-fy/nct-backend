@@ -129,7 +129,7 @@
           FROM CATEGORY
          WHERE CAT_DOMAIN_CD = #{domainCode}
            AND CAT_PARENT_SN IS NOT NULL
-           AND CAT_NM = #{name}
+           AND LOWER(TRIM(CAT_NM)) = LOWER(TRIM(#{name}))
         <if test="excludeCategorySn != null">
            AND CAT_SN != #{excludeCategorySn}
         </if>

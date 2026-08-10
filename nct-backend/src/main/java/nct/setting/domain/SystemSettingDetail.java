@@ -3,7 +3,10 @@ package nct.setting.domain;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Data;
+import nct.member.dto.AdminMemberIdentityResponse;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-18)
@@ -22,8 +25,6 @@ public class SystemSettingDetail {
     private Integer aucExtMin;
     /** 경매 자동연장 최대 횟수 */
     private Integer aucExtMaxCnt;
-    /** 최소 입찰 단위 (원) */
-    private Long minBidUnit;
 
     /** 거래 상대방 확인 기한 일수 — 지나면 자동완료 후보 */
     private Integer trdCfmnDays;
@@ -49,4 +50,10 @@ public class SystemSettingDetail {
     private String emailYn;
 
     private LocalDateTime sysSetUpdtDt;
+    @JsonIgnore
+    private String sysSetUpdtId;
+    private Long updaterUserSn;
+    private boolean systemUpdated;
+    private AdminMemberIdentityResponse updatedByMember;
+    private String lastChangeReason;
 }

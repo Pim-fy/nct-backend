@@ -33,6 +33,7 @@ import nct.product.dto.ProductInquiryRequest;
 import nct.product.dto.ProductInquiryResponse;
 import nct.product.dto.ProductRegisterRequest;
 import nct.product.dto.ProductResponse;
+import nct.product.dto.ProductSummaryResponse;
 import nct.product.dto.ProductViewResponse;
 import nct.product.service.ProductService;
 
@@ -42,6 +43,7 @@ import nct.product.service.ProductService;
  *  POST   /api/products                        상품 등록         (authenticated)
  *  PUT    /api/products/{prdSn}                임시저장 수정·등록 전환 (authenticated, 본인만)
  *  GET    /api/products/me                     내 판매 목록       (authenticated)
+ *  GET    /api/products/me/summary             내 판매 목록 필터 탭 개수 (authenticated)
  *  GET    /api/products/{prdSn}                상품 상세 조회     (permit-all)
  *  DELETE /api/products/{prdSn}                상품 삭제          (authenticated, 본인만)
  *  GET    /api/products/banned-keywords        금지 키워드 목록   (permit-all)
@@ -82,6 +84,15 @@ public class ProductController {
         Long usrSn = userDetails.getMember().getId();
         ProductResponse response = productService.updateProduct(prdSn, usrSn, request);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /** 내 판매 목록 필터 탭 개수 — 요약 카드·필터 탭 배지 전용, 목록 데이터 없이 개수만 반환 */
+    @GetMapping("/me/summary")
+    public ResponseEntity<ApiResponse<ProductSummaryResponse>> getMyProductsSummary(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(productService.getMyProductsSummary(usrSn)));
     }
 
     /** 내 판매 목록 */

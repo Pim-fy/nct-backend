@@ -36,4 +36,5 @@ public class Notice {
     private String useYn;
     private LocalDateTime registeredAt;
     private LocalDateTime updatedAt;
+    private String updaterActorId;
 }

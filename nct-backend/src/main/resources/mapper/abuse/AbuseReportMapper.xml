@@ -25,6 +25,8 @@
         RPTD_USR_SN AS reportedUserSn,
         ABR_TYPE_CD AS reportTypeCode,
         ABR_STATUS_CD AS statusCode,
+        ABR_TITLE_NM AS title,
+        ABR_TRG_NM AS targetName,
         ABR_CN AS content,
         ABR_REF_TYPE_CD AS referenceTypeCode,
         ABR_REF_SN AS referenceSn,
@@ -53,6 +55,8 @@
                     OR ABR_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
                     OR ABR_REF_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
                     OR CAST(ABR_REF_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_TITLE_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR ABR_TRG_NM LIKE CONCAT('%', #{keyword}, '%')
                     OR ABR_CN LIKE CONCAT('%', #{keyword}, '%')
                     OR ABR_PROC_RSN_CN LIKE CONCAT('%', #{keyword}, '%')
                 )

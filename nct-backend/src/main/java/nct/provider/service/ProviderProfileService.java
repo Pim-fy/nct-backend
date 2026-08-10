@@ -23,7 +23,14 @@ public class ProviderProfileService {
     @Transactional(readOnly = true)
     public ProviderProfileResponse getMine(Long userSn) {
         requireActiveProvider(userSn);
-        return mapper.findActiveByUserSn(userSn).orElseGet(() -> emptyProfile(userSn));
+        ProviderProfileResponse profile = mapper.findActiveByUserSn(userSn)
+                .orElseGet(() -> emptyProfile(userSn));
+
+        // 담당자 7 F-PROV-013: 프로필을 아직 작성하지 않은 제공자도 승인된 분야 권한은 표시한다.
+        if (profile.getCategories() == null || profile.getCategories().isEmpty()) {
+            profile.setCategories(mapper.findActiveCategoryNames(userSn));
+        }
+        return profile;
     }
 
     @Transactional

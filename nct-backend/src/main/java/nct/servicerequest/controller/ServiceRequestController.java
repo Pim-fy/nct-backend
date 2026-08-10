@@ -24,11 +24,13 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.servicerequest.dto.ServiceRequestRegisterRequest;
 import nct.servicerequest.dto.ServiceRequestFormResponse;
+import nct.servicerequest.dto.ServiceRequestQuoteSelectionResponse;
 import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.dto.SvcReqCommentRequest;
 import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.service.ServiceRequestService;
 import nct.servicerequest.service.ServiceRequestFormService;
+import nct.servicerequest.service.ServiceRequestQuoteSelectionService;
 
 /**
  * [서비스 요청서 API] (F-SVC-001~004)
@@ -50,6 +52,7 @@ public class ServiceRequestController {
 
     private final ServiceRequestService serviceRequestService;
     private final ServiceRequestFormService serviceRequestFormService;
+    private final ServiceRequestQuoteSelectionService serviceRequestQuoteSelectionService;
 
     /** F-SVC-002 현재 활성 카테고리별 동적 폼 정의 */
     @PreAuthorize("hasAuthority('ROLE_USER')")
@@ -102,6 +105,22 @@ public class ServiceRequestController {
         Long usrSn = userDetails.getMember().getId();
         serviceRequestService.closeServiceRequest(svcReqSn, usrSn);
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /** 담당자 7 통합, F-SVC-010/013: 견적 선택부터 보관금·매칭 완료까지 한 번에 처리한다. */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
+    @PostMapping("/{svcReqSn}/quotes/{quoteId}/select")
+    public ResponseEntity<ApiResponse<ServiceRequestQuoteSelectionResponse>> selectQuoteAndCreateTrade(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "svcReqSn") Long svcReqSn,
+            @PathVariable(name = "quoteId") Long quoteId) {
+
+        Long requesterUsrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                serviceRequestQuoteSelectionService.selectQuoteAndCreateTrade(
+                        svcReqSn,
+                        quoteId,
+                        requesterUsrSn)));
     }
 
     /** 담당자 7 통합: 제공자 모드에서 일반회원의 공개 요청서를 검색한다. */

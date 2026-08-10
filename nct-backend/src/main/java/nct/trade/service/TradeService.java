@@ -3,6 +3,7 @@ package nct.trade.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.HashSet;
@@ -21,8 +22,8 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
-import nct.member.dto.BuyerAddressSnapshot;
-import nct.member.service.MemberService;
+import nct.member.dto.BuyerDeliveryAddressSnapshot;
+import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
@@ -50,6 +51,8 @@ import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.ServiceTradeDisputeRequest;
+import nct.trade.dto.ServiceScheduleChangeCommand;
+import nct.trade.dto.ServiceScheduleCancellationCommand;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
@@ -80,6 +83,14 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private static final String CANCELED = "TRDC0008";
     private static final String ON_HOLD = "TRDC0007";
     private static final String TRADE_DISPUTE_TYPE_GROUP = "TRDG04";
+    private static final Set<String> SERVICE_TRADE_DISPUTE_TYPES = Set.of(
+            "TRDC0011", // 제공자 미방문·연락 두절
+            "TRDC0013", // 작업 내용·품질·일정 문제
+            "TRDC0014", // 보관금·환불·정산 문제
+            "TRDC0015"  // 기타
+    );
+    private static final DateTimeFormatter SERVICE_SCHEDULE_AT_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
     private static final String SCHEDULER_UPDATER = "SYSTEM";
     private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
 
@@ -87,7 +98,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private final NotificationService notificationService;
     private final SystemSettingAdminMapper systemSettingMapper;
     private final FileStorageService fileStorageService;
-    private final MemberService memberService;
+    private final BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private final SettlementService settlementService;
     private final ChatService chatService;
     private final PointService pointService;
@@ -152,6 +163,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         String disputeTypeCode = request.getDisputeTypeCode().trim();
+        if (!SERVICE_TRADE_DISPUTE_TYPES.contains(disputeTypeCode)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "서비스 거래에 사용할 수 없는 거래 문제 유형입니다.");
+        }
         referenceDataService.requireActiveCode(TRADE_DISPUTE_TYPE_GROUP, disputeTypeCode);
         String updaterId = String.valueOf(userId);
         tradeMapper.insertTradeDispute(
@@ -159,6 +174,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 userId,
                 disputeTypeCode,
                 request.getContent().trim(),
+                target.getTradeStatusCode(),
                 updaterId);
         settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
         if (tradeMapper.holdServiceTradeForDispute(tradeId, updaterId) == 0) {
@@ -221,6 +237,52 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         rejectOpenServiceDispute(tradeId);
         completeServiceTradeAndSettle(target, String.valueOf(requesterUserId),
                 "서비스 의뢰자가 완료를 확인했습니다.", false);
+    }
+
+    /** F-SVC-016: 진행 중인 서비스 거래의 일정 변경 요청을 상태 이력으로 기록한다. */
+    @Transactional
+    public void requestServiceScheduleChange(
+            long tradeId,
+            long userId,
+            ServiceScheduleChangeCommand command) {
+        ServiceScheduleChangeCommand normalized = new ServiceScheduleRequestValidator().validateChange(command);
+        validateServiceScheduleRequester(tradeId, userId);
+        tradeMapper.insertStatusHistory(
+                tradeId,
+                IN_PROGRESS,
+                "SCHEDULE_CHANGE|" + SERVICE_SCHEDULE_AT_FORMAT.format(normalized.requestedScheduleAt())
+                        + "|" + normalized.reason());
+    }
+
+    /** F-SVC-016: 진행 중인 서비스 거래의 일정 취소 요청을 상태 이력으로 기록한다. */
+    @Transactional
+    public void requestServiceScheduleCancellation(
+            long tradeId,
+            long userId,
+            ServiceScheduleCancellationCommand command) {
+        ServiceScheduleCancellationCommand normalized = new ServiceScheduleRequestValidator()
+                .validateCancellation(command);
+        validateServiceScheduleRequester(tradeId, userId);
+        tradeMapper.insertStatusHistory(
+                tradeId,
+                IN_PROGRESS,
+                "SCHEDULE_CANCEL||" + normalized.reason());
+    }
+
+    private void validateServiceScheduleRequester(long tradeId, long userId) {
+        if (tradeId <= 0 || userId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래번호와 회원번호가 필요합니다.");
+        }
+        ServiceTradeCompletionTarget target = lockServiceTradeCompletionTarget(tradeId);
+        if (target.getRequesterUserId() != userId && target.getProviderUserId() != userId) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
+                    "서비스 거래 당사자만 일정 요청을 할 수 있습니다.");
+        }
+        if (!IN_PROGRESS.equals(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "서비스 진행 상태에서만 일정 요청을 할 수 있습니다.");
+        }
     }
 
     /** 만료 시각이 지난 서비스 완료 확인을 자동 완료한다. */
@@ -312,7 +374,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                         command.getTradeAmount()),
                 command.getSource().getStatusHistoryReason(),
                 command.getWinningBidId(),
-                command.getSelectedTradeMethodCode());
+                command.getSelectedTradeMethodCode(),
+                command.getSelectedDeliveryAddressId());
 
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
@@ -330,6 +393,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         return createOrGetMaterialTrade(
                 command,
                 "낙찰 또는 즉시구매로 거래가 생성되었습니다.",
+                null,
                 null,
                 null);
     }
@@ -369,7 +433,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             MaterialTradeCreateCommand command,
             String creationReason,
             Long bidId,
-            String selectedTradeMethodCode) {
+            String selectedTradeMethodCode,
+            Long selectedDeliveryAddressId) {
         validateMaterialTrade(command);
 
         if (tradeMapper.findOwnedProductIdForUpdate(
@@ -398,17 +463,19 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
         tradeMapper.insertMaterialTrade(trade);
 
-        // MemberService가 주소 완전성을 보장한다. 예외를 잡지 않아 경매 트랜잭션 전체가 롤백된다.
+        // 회원 배송지 Reader가 소유권과 주소 완전성을 보장한다. 예외는 상위 경매 트랜잭션까지 전파한다.
         if (DELIVERY_METHOD.equals(tradeMethod)) {
-            BuyerAddressSnapshot address = memberService.getBuyerAddressSnapshot(
-                    command.getBuyerUserId());
+            BuyerDeliveryAddressSnapshot address =
+                    buyerDeliveryAddressReader.getOwnedAddressSnapshotForTrade(
+                            command.getBuyerUserId(),
+                            selectedDeliveryAddressId);
             tradeMapper.insertDeliverySnapshot(
                     trade.getTrdSn(),
                     fieldCryptoService.encrypt(address.recipientName()),
                     fieldCryptoService.encrypt(address.recipientPhone()),
                     fieldCryptoService.encrypt(address.zip()),
-                    fieldCryptoService.encrypt(address.addr()),
-                    fieldCryptoService.encrypt(address.daddr()));
+                    fieldCryptoService.encrypt(address.address()),
+                    fieldCryptoService.encrypt(address.addressDetail()));
         }
 
         tradeMapper.insertStatusHistory(
@@ -519,7 +586,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     "존재하지 않거나 접근할 수 없는 서비스 거래입니다.");
         }
 
-        return new ServiceTradeDetailAssembler().assemble(source, userId);
+        return new ServiceTradeDetailAssembler().assemble(
+                source,
+                userId,
+                tradeMapper.findServiceScheduleHistory(tradeId));
     }
 
     /** 로그인한 의뢰자 또는 제공자가 본인 서비스 거래 상세로 재진입할 목록을 조회한다. */

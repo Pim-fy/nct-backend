@@ -382,6 +382,55 @@ class SettlementServiceTest {
                 anyLong(), anyLong(), any(), anyLong(), anyString());
     }
 
+    @Test
+    void resumeByTradeChangesHeldSettlementToPending() {
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(settlement(
+                501L, 91L, 10L, 30_000L, SettlementStatus.ON_HOLD));
+        when(settlementMapper.updateStatus(
+                501L, SettlementStatus.PENDING.getCode(), "700"))
+                .thenReturn(1);
+
+        boolean resumed = settlementService.resumeByTradeIfOnHold(91L, 700L);
+
+        assertThat(resumed).isTrue();
+        verify(notificationService).notifySettlement(
+                10L,
+                "정산 보류 해제",
+                "거래대금 30,000P의 정산 보류가 해제되어 대기 상태로 전환되었습니다.",
+                91L);
+    }
+
+    @Test
+    void closeRefundedByTradeRejectsCompletedSettlement() {
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(settlement(
+                501L, 91L, 10L, 30_000L, SettlementStatus.COMPLETED));
+
+        assertThatThrownBy(() -> settlementService.closeRefundedByTradeIfOpen(91L, 700L))
+                .isInstanceOf(SettlementException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SETTLEMENT_INVALID_STATUS);
+
+        verify(settlementMapper, never()).updateStatus(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void closeRefundedByTradeMarksOpenSettlementRefunded() {
+        when(settlementMapper.selectByTradeForUpdate(91L)).thenReturn(settlement(
+                501L, 91L, 10L, 30_000L, SettlementStatus.ON_HOLD));
+        when(settlementMapper.updateStatus(
+                501L, SettlementStatus.REFUNDED.getCode(), "700"))
+                .thenReturn(1);
+
+        boolean refunded = settlementService.closeRefundedByTradeIfOpen(91L, 700L);
+
+        assertThat(refunded).isTrue();
+        verify(notificationService).notifySettlement(
+                10L,
+                "정산 환불종결",
+                "거래 분쟁의 전액 환불 판정으로 정산이 종료되었습니다.",
+                91L);
+    }
+
     private Settlement settlement(
             long settlementId,
             long tradeId,

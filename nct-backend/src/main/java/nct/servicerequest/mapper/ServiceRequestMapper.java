@@ -47,7 +47,18 @@ public interface ServiceRequestMapper {
 
     int updateServiceRequest(ServiceRequest serviceRequest);
 
+    int markServiceRequestMatched(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("usrSn") Long usrSn,
+            @Param("updtId") String updtId);
+
     int closeServiceRequest(@Param("svcReqSn") Long svcReqSn, @Param("usrSn") Long usrSn, @Param("updtId") String updtId);
 
     void deleteServiceRequest(@Param("svcReqSn") Long svcReqSn, @Param("usrSn") Long usrSn);
+
+    /** 견적 요청 기간(공개 후 5일, 희망일이 더 빠르면 희망일) 만료된 공개 요청서 목록 */
+    List<Long> findExpiredOpenServiceRequestIds(@Param("limit") int limit);
+
+    /** 견적 요청 기간 만료 자동 마감 — 시스템 배치 전용, 소유자 검증 없이 상태만 확인 */
+    int autoCloseServiceRequest(@Param("svcReqSn") Long svcReqSn);
 }

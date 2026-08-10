@@ -1,6 +1,7 @@
 package nct.quote.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -22,4 +23,10 @@ public class QuoteResponse {
     private int reviseCnt;
     private LocalDateTime registeredAt;
     private LocalDateTime updatedAt;
+    private List<QuoteAttachmentResponse> attachments;
+    private String qutTtl;
+    private String catNm;
+    private Long svcReqBdgtAmt;
+    private LocalDateTime svcReqRegDt;
+    private String svcReqHopeDt;
 }

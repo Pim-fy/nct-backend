@@ -24,7 +24,8 @@ public enum RefType {
     QUOTE("REFC0008"),
     POINT_LEDGER("REFC0009"),
     SYSTEM_SETTING("REFC0010"),
-    NOTICE("REFC0011");
+    NOTICE("REFC0011"),
+    CUSTOMER_INQUIRY("REFC0013");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

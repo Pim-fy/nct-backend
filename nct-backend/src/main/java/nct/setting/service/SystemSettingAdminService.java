@@ -7,10 +7,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.audit.domain.AuditLogType;
+import nct.audit.domain.AuditLog;
 import nct.audit.service.AuditLogService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.dto.AdminMemberIdentityResponse;
+import nct.member.port.AdminMemberIdentityReader;
 import nct.setting.domain.SystemSettingDetail;
 import nct.setting.mapper.SystemSettingAdminMapper;
 
@@ -32,11 +35,12 @@ public class SystemSettingAdminService {
 
     private final SystemSettingAdminMapper settingMapper;
     private final AuditLogService auditLogService;
+    private final AdminMemberIdentityReader memberIdentityReader;
 
     /** 전체 설정 조회 (관리자 화면) */
     @Transactional(readOnly = true)
     public SystemSettingDetail get() {
-        return settingMapper.selectOne();
+        return enrichUpdater(settingMapper.selectOne());
     }
 
     /**
@@ -49,18 +53,18 @@ public class SystemSettingAdminService {
         validate(request);
 
         request.setSysSetSn(current.getSysSetSn());
+        request.setSysSetUpdtId(String.valueOf(adminUsrSn));
         settingMapper.update(request);
 
         auditLogService.record(adminUsrSn, AuditLogType.UPDATE, RefType.SYSTEM_SETTING,
                 current.getSysSetSn(), summarizeChanges(current, request), ipAddr);
-        return settingMapper.selectOne();
+        return enrichUpdater(settingMapper.selectOne());
     }
 
     /** 허용 범위 검증 — 하나라도 어긋나면 아무것도 저장하지 않는다 */
     private void validate(SystemSettingDetail s) {
         requirePositive(s.getAucExtMin(), "경매 자동연장 기준 분");
         requireNonNegative(s.getAucExtMaxCnt(), "경매 자동연장 최대 횟수");
-        requirePositive(s.getMinBidUnit(), "최소 입찰 단위");
         requirePositive(s.getTrdCfmnDays(), "거래 확인 기한 일수");
         requirePositive(s.getQutExpDays(), "견적 유효기간 일수");
         requireYn(s.getAutoCmplYn(), "자동완료 처리 여부");
@@ -118,7 +122,6 @@ public class SystemSettingAdminService {
         StringBuilder sb = new StringBuilder("시스템 설정 수정:");
         appendIfChanged(sb, "자동연장기준분", before.getAucExtMin(), after.getAucExtMin());
         appendIfChanged(sb, "자동연장최대횟수", before.getAucExtMaxCnt(), after.getAucExtMaxCnt());
-        appendIfChanged(sb, "최소입찰단위", before.getMinBidUnit(), after.getMinBidUnit());
         appendIfChanged(sb, "거래확인기한일수", before.getTrdCfmnDays(), after.getTrdCfmnDays());
         appendIfChanged(sb, "자동완료여부", before.getAutoCmplYn(), after.getAutoCmplYn());
         appendIfChanged(sb, "최소충전금액", before.getMinChrgAmt(), after.getMinChrgAmt());
@@ -140,5 +143,31 @@ public class SystemSettingAdminService {
         if (!same) {
             sb.append(' ').append(label).append(' ').append(before).append('→').append(after).append(',');
         }
+    }
+
+    /** 담당자 7 연계 · F-OPS-024: 최종 설정 변경자를 안전한 회원 식별 정보로 조립합니다. */
+    private SystemSettingDetail enrichUpdater(SystemSettingDetail setting) {
+        if (setting == null) {
+            return setting;
+        }
+        AuditLog latestAudit = auditLogService.findLatest(RefType.SYSTEM_SETTING, setting.getSysSetSn());
+        setting.setLastChangeReason(latestAudit == null ? null : latestAudit.getAudLogRsonCn());
+        if (setting.getSysSetUpdtId() == null
+                || !setting.getSysSetUpdtId().matches("[0-9]+")) {
+            setting.setSystemUpdated(true);
+            return setting;
+        }
+        long updaterUserSn;
+        try {
+            updaterUserSn = Long.parseLong(setting.getSysSetUpdtId());
+        } catch (NumberFormatException ignored) {
+            return setting;
+        }
+        setting.setUpdaterUserSn(updaterUserSn);
+        AdminMemberIdentityResponse identity = memberIdentityReader
+                .findByUserSns(java.util.List.of(updaterUserSn))
+                .get(updaterUserSn);
+        setting.setUpdatedByMember(identity);
+        return setting;
     }
 }

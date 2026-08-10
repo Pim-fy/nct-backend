@@ -84,6 +84,27 @@ public class AdminServiceRequestFormService {
         return response(category, form);
     }
 
+    @Transactional
+    public AdminServiceRequestFormEditorResponse discardDraft(
+            Long categorySn,
+            Long formTemplateSn,
+            Long actorUserId) {
+        validateActor(actorUserId);
+        Category category = lockCategory(categorySn);
+        ServiceRequestFormResponse discarded = formManagementService.discardDraft(
+                categorySn, formTemplateSn, actor(actorUserId));
+        record(
+                "FORM_DISCARD",
+                actorUserId,
+                category,
+                "서비스 요청 폼 초안 폐기 v" + discarded.getFormVersion(),
+                "discardedFormVersion=" + discarded.getFormVersion());
+        ServiceRequestFormResponse remaining = formManagementService
+                .getLatestForm(categorySn)
+                .orElse(null);
+        return response(category, remaining);
+    }
+
     private AdminServiceRequestFormEditorResponse response(
             Category category,
             ServiceRequestFormResponse form) {

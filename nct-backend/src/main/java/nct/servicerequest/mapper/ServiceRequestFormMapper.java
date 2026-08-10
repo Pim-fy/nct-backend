@@ -11,6 +11,7 @@ import nct.servicerequest.dto.ServiceRequestFormOption;
 import nct.servicerequest.dto.ServiceRequestFormResponse;
 import nct.servicerequest.dto.ServiceRequestFormRule;
 import nct.servicerequest.dto.ServiceRequestFormStep;
+import nct.servicerequest.dto.ServiceRequestFormVersionStatus;
 
 /** 담당자 7: F-SVC-002 동적 폼 정의 읽기 전용 Mapper. */
 @Mapper
@@ -40,6 +41,9 @@ public interface ServiceRequestFormMapper {
     Integer findActiveVersion(@Param("catSn") Long catSn);
 
     int countActiveForm(@Param("catSn") Long catSn);
+
+    List<ServiceRequestFormVersionStatus> findVersionStatuses(
+            @Param("catSnList") List<Long> catSnList);
 
     int disableUnpublishedDrafts(@Param("catSn") Long catSn,
                                  @Param("activeVersion") int activeVersion,
@@ -82,7 +86,13 @@ public interface ServiceRequestFormMapper {
 
     int activateTemplate(@Param("catSn") Long catSn,
                          @Param("formTemplateSn") Long formTemplateSn,
+                         @Param("activeVersion") int activeVersion,
                          @Param("actorId") String actorId);
+
+    int discardDraft(@Param("catSn") Long catSn,
+                     @Param("formTemplateSn") Long formTemplateSn,
+                     @Param("activeVersion") int activeVersion,
+                     @Param("actorId") String actorId);
 
     List<ServiceRequestFormStep> findSteps(@Param("formTemplateSn") Long formTemplateSn);
 

@@ -1,9 +1,11 @@
 package nct.point.dto;
 
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 
 import lombok.Builder;
 import lombok.Getter;
+import nct.member.dto.AdminMemberIdentityResponse;
 import nct.point.domain.PointExchangeOrder;
 
 /**
@@ -25,6 +27,7 @@ public class AdminPointExchangeOrderResponse {
     /** 신청자 (이름 + 회원번호 — 동명이인 구분용) */
     private final String userName;
     private final Long userSn;
+    private final AdminMemberIdentityResponse applicantMember;
 
     private final long amount;
 
@@ -35,22 +38,32 @@ public class AdminPointExchangeOrderResponse {
     private final String statusCode;
     private final String status;
     private final Long processedBy;
+    private final AdminMemberIdentityResponse processorMember;
     private final String processedDate;
     private final String rejectReason;
 
     /** 담당자 7 · F-PAY-012: 도메인 모델을 계좌번호가 마스킹된 관리자 목록 응답으로 변환합니다. */
     public static AdminPointExchangeOrderResponse from(PointExchangeOrder o) {
+        return from(o, Map.of());
+    }
+
+    /** 담당자 7 연계 · F-PAY-012: 신청자와 처리자의 안전한 회원 식별 정보를 함께 조립합니다. */
+    public static AdminPointExchangeOrderResponse from(
+            PointExchangeOrder o,
+            Map<Long, AdminMemberIdentityResponse> identities) {
         return AdminPointExchangeOrderResponse.builder()
                 .id(o.getPtExcOrdSn())
                 .date(o.getPtExcOrdRegDt() != null ? o.getPtExcOrdRegDt().format(DATE_FMT) : null)
                 .userName(o.getUsrNm())
                 .userSn(o.getUsrSn())
+                .applicantMember(identities.get(o.getUsrSn()))
                 .amount(o.getPtExcOrdAmt())
                 .bankName(o.getPtExcOrdBankNm())
                 .accountNo(maskAccount(o.getPtExcOrdAcntNo()))
                 .statusCode(o.getPtExcOrdStatusCd())
                 .status(o.getStatusNm())
                 .processedBy(o.getPtExcOrdProcUsrSn())
+                .processorMember(identities.get(o.getPtExcOrdProcUsrSn()))
                 .processedDate(o.getPtExcOrdProcDt() != null
                         ? o.getPtExcOrdProcDt().format(DATE_FMT)
                         : null)

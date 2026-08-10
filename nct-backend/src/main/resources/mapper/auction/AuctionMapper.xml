@@ -198,6 +198,26 @@
         WHERE AUC_SN = #{auctionId}
     </select>
 
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): REVIEW·TRADE 도메인이
+         PRD_SN -> AUC_SN을 Mapper에서 직접 JOIN하지 않도록 신설한 계약. -->
+    <select id="findAuctionIdByProductId" resultType="long">
+        SELECT AUC_SN
+        FROM AUCTION
+        WHERE PRD_SN = #{productId}
+    </select>
+
+    <!-- @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): 위와 같은 목적의 배치 버전. -->
+    <select id="findAuctionIdsByProductIds" resultType="nct.auction.dto.AuctionIdByProduct">
+        SELECT
+            PRD_SN AS productId,
+            AUC_SN AS auctionId
+        FROM AUCTION
+        WHERE PRD_SN IN
+        <foreach collection="productIds" item="productId" open="(" separator="," close=")">
+            #{productId}
+        </foreach>
+    </select>
+
     <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
         SELECT
             a.AUC_SN AS auctionId,
@@ -220,6 +240,14 @@
             p.PRD_VIEW_CNT AS viewCount,
             u.USR_SN AS sellerId,
             u.USR_NM AS sellerName,
+            (
+                SELECT highestBid.BID_SN
+                FROM BID highestBid
+                WHERE highestBid.AUC_SN = a.AUC_SN
+                  AND highestBid.BID_STATUS_CD = 'BIDC0001'
+                ORDER BY highestBid.BID_AMT DESC, highestBid.BID_SN DESC
+                LIMIT 1
+            ) AS currentHighestBidId,
             (
                 SELECT highestBid.USR_SN
                 FROM BID highestBid

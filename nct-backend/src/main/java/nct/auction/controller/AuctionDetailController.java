@@ -16,6 +16,7 @@ import nct.auction.dto.AuctionBuyNowRequest;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionTradeMethodChangeRequest;
+import nct.global.idempotency.SkipIdempotency;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.auction.service.AuctionService;
@@ -55,6 +56,7 @@ public class AuctionDetailController {
     }
 
     @PutMapping("/{auctionId}/bids/me/trade-method")
+    @SkipIdempotency
     public ApiResponse<AuctionDetailResponse> changeMyBidTradeMethod(
             @PathVariable("auctionId") Long auctionId,
             @RequestBody AuctionTradeMethodChangeRequest request,

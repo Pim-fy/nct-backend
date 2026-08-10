@@ -8,4 +8,5 @@ import lombok.Setter;
 public class AuctionBuyNowRequest {
 
     private String tradeMethod;
+    private Long deliveryAddressId;
 }

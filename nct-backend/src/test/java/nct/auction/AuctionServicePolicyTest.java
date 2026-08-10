@@ -47,6 +47,7 @@ import nct.point.service.PointService;
 import nct.product.service.ProductService;
 import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.AuctionTradeCreateCommand;
+import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.service.TradeService;
 
 @ExtendWith(MockitoExtension.class)
@@ -94,6 +95,8 @@ class AuctionServicePolicyTest {
         target.setEndDateTime(LocalDateTime.now().plusMinutes(2));
         target.setDatabaseNow(LocalDateTime.now());
         lenient().when(auctionMapper.findAuctionBidTargetForUpdate(10L)).thenReturn(target);
+        lenient().when(tradeService.createAuctionTrade(any(AuctionTradeCreateCommand.class)))
+                .thenReturn(new AuctionTradeCreateResult(900L, "TRDC0003", true));
     }
 
     @Test
@@ -183,7 +186,8 @@ class AuctionServicePolicyTest {
         when(auctionMapper.closeAuctionByInstantBuy(10L, BigDecimal.valueOf(30000), "40")).thenReturn(1);
         stubAuctionDetail();
 
-        auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest());
+        AuctionDetailResponse response = auctionService.buyNow(
+                10L, 40L, new AuctionBuyNowRequest());
 
         ArgumentCaptor<AuctionTradeCreateCommand> commandCaptor =
                 ArgumentCaptor.forClass(AuctionTradeCreateCommand.class);
@@ -197,6 +201,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getTradeAmount()).isEqualByComparingTo("30000");
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.BUY_NOW);
         assertThat(command.getSelectedTradeMethodCode()).isEqualTo("TRDC0010");
+        assertThat(response.getTradeId()).isEqualTo(900L);
         verify(notificationService).notifyBidUpdated(35L, 10L, 30000L);
         verify(notificationService).notifyAuctionResult(40L, 10L, true);
         verifyRealtimeEvent("BUY_NOW");

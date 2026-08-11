@@ -202,7 +202,7 @@ public class ReviewService {
      */
     @Transactional
     public ReviewCreateResult createReview(long usrSn, long tradeId, int rating, String content,
-            List<MultipartFile> photos) {
+            List<MultipartFile> photos, String reviewerNickname) {
         if (rating < 1 || rating > 5) {
             throw new InvalidRatingException(rating);
         }
@@ -240,7 +240,7 @@ public class ReviewService {
                 NotificationType.TRADE,
                 NotificationDomain.TRADE,
                 "리뷰가 등록되었습니다",
-                "거래 상대방이 리뷰를 등록했습니다.",
+                reviewerNickname + "님이 리뷰를 등록했습니다.",
                 RefType.TRADE,
                 tradeId);
 

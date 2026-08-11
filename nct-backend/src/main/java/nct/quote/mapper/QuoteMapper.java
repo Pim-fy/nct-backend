@@ -80,4 +80,7 @@ public interface QuoteMapper {
             @Param("svcReqSn") Long svcReqSn,
             @Param("excludeQutSn") Long excludeQutSn,
             @Param("updtId") String updtId);
+
+    /** 담당자2 소비: 해당 서비스 요청에 견적을 제출한 제공자 USR_SN distinct 목록 (철회 포함) */
+    List<Long> findProviderUsrSnBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
 }

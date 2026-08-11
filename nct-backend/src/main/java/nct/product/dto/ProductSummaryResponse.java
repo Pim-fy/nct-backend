@@ -13,5 +13,6 @@ public class ProductSummaryResponse {
     private long reserved;
     private long active;
     private long trading;
+    private long dispute;
     private long closed;
 }

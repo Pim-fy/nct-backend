@@ -107,6 +107,18 @@ public class ServiceRequestController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
+    /** 마감된 요청서 재등록 — 내용을 복사한 새 임시저장 요청서를 만든다 (원본은 이력으로 유지) */
+    @PreAuthorize("hasAuthority('ROLE_USER')")
+    @PostMapping("/{svcReqSn}/reregister")
+    public ResponseEntity<ApiResponse<ServiceRequestResponse>> reregisterServiceRequest(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "svcReqSn") Long svcReqSn) {
+
+        Long usrSn = userDetails.getMember().getId();
+        ServiceRequestResponse response = serviceRequestService.reregisterServiceRequest(svcReqSn, usrSn);
+        return ResponseEntity.status(201).body(ApiResponse.created(response));
+    }
+
     /** 담당자 7 통합, F-SVC-010/013: 견적 선택부터 보관금·매칭 완료까지 한 번에 처리한다. */
     @PreAuthorize("hasAuthority('ROLE_USER')")
     @PostMapping("/{svcReqSn}/quotes/{quoteId}/select")

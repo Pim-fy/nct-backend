@@ -38,5 +38,6 @@ public class WritableTradeItem {
     private String partyLabel;  // "판매자" | "구매자" | "제공자" | "요청자"
     private String partyName;
     private String completedDate;
+    private String reviewDeadline; // 거래 완료일 + 30일 (yyyy-MM-dd). 프론트에서 기간 만료 여부 판별에 사용.
     private Long counterpartUsrSn; // 리뷰 저장 시 REVWD_USR_SN에 넣을 값 (응답에도 그대로 노출됨 - 참여자 본인 확인용)
 }

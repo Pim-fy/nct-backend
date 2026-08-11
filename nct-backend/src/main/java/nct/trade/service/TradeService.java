@@ -220,7 +220,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     "거래 상태가 변경되어 완료 요청을 처리할 수 없습니다.");
         }
         tradeMapper.insertStatusHistory(
-                tradeId, WAITING_CONFIRMATION, normalizedCompletionMemo);
+                tradeId, WAITING_CONFIRMATION,
+                "SERVICE_COMPLETION_REQUEST|" + normalizedCompletionMemo);
         notificationService.notifyTradeConfirmRequest(
                 target.getRequesterUserId(), tradeId, confirmDays);
     }
@@ -262,7 +263,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         tradeMapper.insertStatusHistory(
                 tradeId,
                 IN_PROGRESS,
-                "SCHEDULE_CHANGE|" + SERVICE_SCHEDULE_AT_FORMAT.format(normalized.requestedScheduleAt())
+                "SCHEDULE_CHANGE|" + userId + "|"
+                        + SERVICE_SCHEDULE_AT_FORMAT.format(normalized.requestedScheduleAt())
                         + "|" + normalized.reason());
     }
 
@@ -305,7 +307,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         String decision = approved ? "APPROVED" : "REJECTED";
         if (!approved) {
             tradeMapper.insertStatusHistory(tradeId, IN_PROGRESS,
-                    "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + decision);
+                    "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + userId + "|" + decision);
             return;
         }
 
@@ -320,7 +322,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 "서비스 일정 취소 상호 동의 환불");
         chatService.closeServiceTradeChatRoom(tradeId);
         tradeMapper.insertStatusHistory(tradeId, CANCELED,
-                "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + decision);
+                "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + userId + "|" + decision);
         notificationService.notifyServiceTradeCancelled(target.getRequesterUserId(), tradeId, true);
         notificationService.notifyServiceTradeCancelled(target.getProviderUserId(), tradeId, false);
     }

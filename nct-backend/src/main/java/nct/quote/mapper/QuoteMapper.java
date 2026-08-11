@@ -10,6 +10,7 @@ import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
 import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.dto.MyQuoteSummaryCounts;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
@@ -43,8 +44,8 @@ public interface QuoteMapper {
 
     int countMyQuotes(@Param("usrSn") Long usrSn);
 
-    /** 담당자 7 연동 · F-PROV-009: 제출·수정 상태의 활성 견적만 집계합니다. */
-    int countMyActiveQuotes(@Param("usrSn") Long usrSn);
+    /** 담당자 7 · F-PROV-009: 제공자 견적을 전체·활성·선택·종료 상태로 한 번에 집계합니다. */
+    MyQuoteSummaryCounts findMyQuoteSummary(@Param("usrSn") Long usrSn);
 
     List<AdminQuoteSummary> findAdminSummaries(
             @Param("serviceRequestIds") List<Long> serviceRequestIds);
@@ -80,4 +81,7 @@ public interface QuoteMapper {
             @Param("svcReqSn") Long svcReqSn,
             @Param("excludeQutSn") Long excludeQutSn,
             @Param("updtId") String updtId);
+
+    /** 담당자2 소비: 해당 서비스 요청에 견적을 제출한 제공자 USR_SN distinct 목록 (철회 포함) */
+    List<Long> findProviderUsrSnBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
 }

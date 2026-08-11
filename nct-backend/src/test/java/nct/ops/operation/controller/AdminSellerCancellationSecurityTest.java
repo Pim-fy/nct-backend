@@ -1,6 +1,7 @@
 package nct.ops.operation.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -24,10 +25,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import nct.global.idempotency.RequestFingerprintMapper;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
-import nct.ops.audit.port.AuditLogCommand;
-import nct.ops.audit.port.AuditLogPort;
-import nct.ops.operation.port.SellerCancellationDecisionCommand;
-import nct.trade.service.TradeService;
+import nct.ops.operation.port.SellerCancellationDecision;
+import nct.ops.operation.service.AdminSellerCancellationService;
 
 /** 담당자 7 · F-OPS-004: 판매자 취소 판정 API의 관리자 권한 경계를 검증합니다. */
 @SpringBootTest
@@ -38,13 +37,10 @@ class AdminSellerCancellationSecurityTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private TradeService tradeService;
+    private AdminSellerCancellationService adminSellerCancellationService;
 
     @MockitoBean
     private RequestFingerprintMapper requestFingerprintMapper;
-
-    @MockitoBean
-    private AuditLogPort auditLogPort;
 
     @Test
     void rejectsAnonymousUser() throws Exception {
@@ -56,7 +52,7 @@ class AdminSellerCancellationSecurityTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.httpCode").value(401));
 
-        verifyNoInteractions(tradeService);
+        verifyNoInteractions(adminSellerCancellationService);
     }
 
     @Test
@@ -70,7 +66,7 @@ class AdminSellerCancellationSecurityTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.httpCode").value(403));
 
-        verifyNoInteractions(tradeService);
+        verifyNoInteractions(adminSellerCancellationService);
     }
 
     @Test
@@ -90,8 +86,11 @@ class AdminSellerCancellationSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
 
-        verify(tradeService).decide(any(SellerCancellationDecisionCommand.class));
-        verify(auditLogPort).record(any(AuditLogCommand.class));
+        verify(adminSellerCancellationService).decide(
+                eq(91L),
+                eq(SellerCancellationDecision.REJECTED),
+                eq("insufficient evidence"),
+                eq(7L));
     }
 
     private CustomUserDetails adminUserDetails(Long userId) {

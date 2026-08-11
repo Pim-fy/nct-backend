@@ -41,6 +41,17 @@ class ServiceTradeDetailAssemblerTest {
     }
 
     @Test
+    void counterpartWithPendingCancellationSeesDecisionAction() {
+        ServiceTradeDetailSource source = new ServiceTradeDetailSource(
+                91L, 11L, 22L, 31L, "TRDC0003", BigDecimal.valueOf(150000), null,
+                "입주 청소 요청", "청소 견적", null, null, null, true, true);
+
+        ServiceTradeDetailResponse response = assembler.assemble(source, 22L);
+
+        assertThat(response.availableActions()).contains("DECIDE_SCHEDULE_CANCELLATION");
+    }
+
+    @Test
     void requesterWaitingConfirmationSeesConfirmAndDisputeActions() {
         ServiceTradeDetailResponse response = assembler.assemble(source("TRDC0005"), 11L);
 
@@ -68,6 +79,7 @@ class ServiceTradeDetailAssemblerTest {
                 "2026. 08. 03. 오전 10:00",
                 "ESCROW_HELD",
                 "보관금이 안전하게 보관 중입니다.",
-                true);
+                true,
+                false);
     }
 }

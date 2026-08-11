@@ -51,6 +51,7 @@ import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
+import nct.trade.dto.ServiceTradeAddressSource;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
 import nct.trade.dto.ServiceTradeListPageResponse;
@@ -62,6 +63,7 @@ import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.ServiceScheduleChangeCommand;
 import nct.trade.dto.ServiceScheduleCancellationCommand;
+import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -188,13 +190,17 @@ class TradeServiceTest {
                 null,
                 "ESCROW_HELD",
                 "보관금이 안전하게 보관 중입니다.",
-                true);
+                true,
+                false);
         when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(source);
+        when(tradeMapper.findMyServiceTradeAddresses(91L, 10L)).thenReturn(List.of(
+                new ServiceTradeAddressSource("서울 마포구", "101호", "01234")));
 
         ServiceTradeDetailResponse response = tradeService.getMyServiceTradeDetail(91L, 10L);
 
         assertThat(response.tradeId()).isEqualTo(91L);
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
+        assertThat(response.serviceAddressLabel()).isEqualTo("(01234) 서울 마포구 101호");
         assertThat(response.chatAvailable()).isTrue();
         assertThat(response.availableActions()).containsExactly(
                 "REQUEST_SCHEDULE_CHANGE",
@@ -1337,7 +1343,40 @@ class TradeServiceTest {
         verify(tradeMapper).insertStatusHistory(
                 81L,
                 "TRDC0003",
-                "SCHEDULE_CANCEL||작업 일정 조정이 필요합니다.");
+                "SCHEDULE_CANCEL_REQUEST|22|작업 일정 조정이 필요합니다.");
+    }
+
+    @Test
+    void approvesCounterpartScheduleCancellationWithCancellationAndRefund() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.findPendingServiceScheduleCancellation(81L))
+                .thenReturn(new ServiceScheduleCancellationPending(701L, 11L));
+        when(tradeMapper.cancelServiceTrade(81L, "22")).thenReturn(1);
+
+        tradeService.decideServiceScheduleCancellation(81L, 22L, true);
+
+        verify(settlementService).closeRefundedByTradeIfOpen(81L, 22L);
+        verify(pointService).refundEscrow(11L, 81L, nct.common.domain.RefType.TRADE, 81L,
+                "서비스 일정 취소 상호 동의 환불");
+        verify(chatService).closeServiceTradeChatRoom(81L);
+        verify(tradeMapper).insertStatusHistory(
+                81L, "TRDC0008", "SCHEDULE_CANCEL_DECISION|701|APPROVED");
+    }
+
+    @Test
+    void rejectsCounterpartScheduleCancellationWithoutChangingTradeOrEscrow() {
+        ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0003", null);
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.findPendingServiceScheduleCancellation(81L))
+                .thenReturn(new ServiceScheduleCancellationPending(701L, 11L));
+
+        tradeService.decideServiceScheduleCancellation(81L, 22L, false);
+
+        verify(tradeMapper).insertStatusHistory(
+                81L, "TRDC0003", "SCHEDULE_CANCEL_DECISION|701|REJECTED");
+        verify(tradeMapper, never()).cancelServiceTrade(anyLong(), any());
+        verifyNoInteractions(settlementService, pointService, chatService);
     }
 
     @Test
@@ -1353,7 +1392,8 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
 
-        verify(tradeMapper, never()).insertStatusHistory(81L, "TRDC0003", "SCHEDULE_CANCEL||일정 조정이 필요합니다.");
+        verify(tradeMapper, never()).insertStatusHistory(
+                81L, "TRDC0003", "SCHEDULE_CANCEL_REQUEST|99|일정 조정이 필요합니다.");
     }
 
     @Test

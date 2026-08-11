@@ -1,11 +1,13 @@
 package nct.servicerequest.service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,7 @@ import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
 import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
@@ -48,9 +51,10 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
+    private final ApplicationEventPublisher eventPublisher;
 
-    // 변경사항 추가는 공개·매칭완료 상태(요청서가 이미 노출된 상태)에서만, 최대 3개까지
-    private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002", "SVCC0003");
+    // 변경사항 추가는 공개 상태에서만 — 매칭완료 이후로는 요청 내용이 확정된 것으로 보고 막는다
+    private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002");
     private static final int MAX_COMMENT_COUNT = 3;
 
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
@@ -61,6 +65,15 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private void validateClientStatusCd(String statusCd) {
         if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "허용되지 않는 요청서 상태값입니다.");
+        }
+    }
+
+    // 희망 예산 상한 — 10억 원 (사용자 확정, 260810)
+    private static final BigDecimal MAX_BUDGET_AMT = BigDecimal.valueOf(1_000_000_000);
+
+    private void validateBudgetUnderMax(BigDecimal svcReqBdgtAmt) {
+        if (svcReqBdgtAmt != null && svcReqBdgtAmt.compareTo(MAX_BUDGET_AMT) > 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "희망 예산은 " + MAX_BUDGET_AMT.toPlainString() + "원 이하로 입력해 주세요.");
         }
     }
 
@@ -111,6 +124,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     public ServiceRequestResponse registerServiceRequest(Long usrSn, ServiceRequestRegisterRequest req) {
         String statusCd = (req.getSvcReqStatusCd() != null) ? req.getSvcReqStatusCd() : "SVCC0002";
         validateClientStatusCd(statusCd);
+        validateBudgetUnderMax(req.getSvcReqBdgtAmt());
         ValidatedSubmission formSubmission = serviceRequestFormService.validateSubmission(
                 req.getCatSn(),
                 req.getFormTemplateSn(),
@@ -159,6 +173,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
 
         String statusCd = (req.getSvcReqStatusCd() != null) ? req.getSvcReqStatusCd() : "SVCC0002";
         validateClientStatusCd(statusCd);
+        validateBudgetUnderMax(req.getSvcReqBdgtAmt());
         ValidatedSubmission formSubmission = serviceRequestFormService.validateSubmission(
                 req.getCatSn(),
                 req.getFormTemplateSn(),
@@ -431,7 +446,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
         if (!COMMENTABLE_STATUS_CD.contains(serviceRequest.getSvcReqStatusCd())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "공개 또는 매칭완료 상태의 요청서에만 변경사항을 추가할 수 있습니다.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "공개 상태의 요청서에만 변경사항을 추가할 수 있습니다.");
         }
         if (svcReqCommentMapper.findLatestComments(svcReqSn, Integer.MAX_VALUE).size() >= MAX_COMMENT_COUNT) {
             throw new CustomException(ErrorCode.CONFLICT, "변경사항은 최대 " + MAX_COMMENT_COUNT + "개까지 등록할 수 있습니다.");
@@ -445,6 +460,10 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 .svcReqCmtRegId(String.valueOf(usrSn))
                 .build();
         svcReqCommentMapper.insertComment(comment);
+        // 요청서 변경사항(F-SVC-006) 커밋 후 견적 제출 제공자 알림 — quote 도메인을 직접 참조하면
+        // QuoteService↔ServiceRequestService 순환참조가 되므로 이벤트로 발행해 방향을 끊는다
+        // (AdminDisputeDecisionCommittedEvent와 동일한 패턴, 리스너는 nct.quote.service에 있다)
+        eventPublisher.publishEvent(new ServiceRequestCommentAddedEvent(svcReqSn, serviceRequest.getSvcReqTtl(), req.getTtl()));
 
         return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT).stream()
                 .filter(c -> c.getSvcReqCmtSn().equals(comment.getSvcReqCmtSn()))

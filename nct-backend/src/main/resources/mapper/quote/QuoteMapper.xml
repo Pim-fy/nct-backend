@@ -140,12 +140,21 @@
          WHERE USR_SN = #{usrSn}
     </select>
 
-    <select id="countMyActiveQuotes" resultType="int">
-        /* QuoteMapper.countMyActiveQuotes */
-        SELECT COUNT(*)
+    <!-- 담당자 7 · F-PROV-009: 제공자 대시보드용 견적 상태를 한 번의 SQL로 집계한다. -->
+    <select id="findMyQuoteSummary" resultType="nct.quote.dto.MyQuoteSummaryCounts">
+        /* QuoteMapper.findMyQuoteSummary */
+        SELECT COUNT(*) AS totalQuoteCount,
+               COUNT(CASE WHEN QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002') THEN 1 END)
+                   AS activeQuoteCount,
+               COUNT(CASE WHEN QUT_STATUS_CD = 'QUTC0004' THEN 1 END)
+                   AS selectedQuoteCount,
+               COUNT(CASE WHEN QUT_STATUS_CD IN ('QUTC0003', 'QUTC0005') THEN 1 END)
+                   AS endedQuoteCount,
+               COUNT(CASE WHEN QUT_STATUS_CD NOT IN
+                   ('QUTC0001', 'QUTC0002', 'QUTC0003', 'QUTC0004', 'QUTC0005')
+                   THEN 1 END) AS unsupportedQuoteCount
           FROM QUOTE
          WHERE USR_SN = #{usrSn}
-           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
     </select>
 
     <!-- F-OPS-021: 관리자 통합상태 조립용 요청별 견적 요약. 목록 전체를 한 번에 조회한다. -->
@@ -290,6 +299,14 @@
           FROM QUOTE_PHOTO
          WHERE QUT_SN = #{qutSn}
            AND FL_SN = #{flSn}
+    </select>
+
+    <!-- ── 담당자2 소비: 서비스 요청에 견적 제출한 제공자 USR_SN (철회 포함) ── -->
+    <select id="findProviderUsrSnBySvcReqSn" resultType="java.lang.Long">
+        /* QuoteMapper.findProviderUsrSnBySvcReqSn */
+        SELECT DISTINCT USR_SN
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
     </select>
 
     <!-- ── 받은 견적 목록 (요청자용) ─────────────────── -->

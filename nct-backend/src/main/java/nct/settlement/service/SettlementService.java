@@ -1,6 +1,7 @@
 package nct.settlement.service;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -253,7 +254,7 @@ public class SettlementService {
         notificationService.notifySettlement(
                 settlement.getUsrSn(),
                 "정산 환불종결",
-                "거래 분쟁의 전액 환불 판정으로 정산이 종료되었습니다.",
+                "거래 환불 처리로 정산이 종료되었습니다.",
                 trdSn);
         return true;
     }
@@ -266,12 +267,16 @@ public class SettlementService {
     /** 거래번호 기준 정산 단건 공개 조회 계약 */
     @Transactional(readOnly = true)
     public Settlement getSettlementByTrade(long trdSn) {
-        Settlement settlement = settlementMapper.selectByTrade(trdSn);
-        if (settlement == null) {
-            throw new SettlementException(ErrorCode.SETTLEMENT_NOT_FOUND,
-                    "거래에 연결된 정산 건이 없습니다: " + trdSn);
-        }
-        return settlement;
+        return findSettlementByTrade(trdSn)
+                .orElseThrow(() -> new SettlementException(
+                        ErrorCode.SETTLEMENT_NOT_FOUND,
+                        "거래에 연결된 정산 건이 없습니다: " + trdSn));
+    }
+
+    /** 담당자 7 · F-OPS-005: 정산이 아직 없는 거래도 정상 결과로 조회하는 관리자 조립용 계약입니다. */
+    @Transactional(readOnly = true)
+    public Optional<Settlement> findSettlementByTrade(long trdSn) {
+        return Optional.ofNullable(settlementMapper.selectByTrade(trdSn));
     }
 
     /**

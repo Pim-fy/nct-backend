@@ -132,4 +132,18 @@
                             PRV_PRF_AREA_NM = VALUES(PRV_PRF_AREA_NM),
                             PRV_PRF_USE_YN = 'Y', PRV_PRF_UPDT_ID = VALUES(PRV_PRF_UPDT_ID)
   </insert>
+  <update id="updateReviewRating">
+    UPDATE PROVIDER_PROFILE
+       SET PRV_PRF_RVW_AVG_SCR = #{averageScore},
+           PRV_PRF_RVW_CNT = #{reviewCount},
+           PRV_PRF_UPDT_ID = #{actorId},
+           PRV_PRF_UPDT_DT = CURRENT_TIMESTAMP
+     WHERE USR_SN = #{userSn}
+  </update>
+  <select id="lockReviewRatingByUserSn" resultType="long">
+    SELECT USR_SN
+      FROM PROVIDER_PROFILE
+     WHERE USR_SN = #{userSn}
+     FOR UPDATE
+  </select>
 </mapper>

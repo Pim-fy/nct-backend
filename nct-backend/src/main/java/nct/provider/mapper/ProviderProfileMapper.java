@@ -1,5 +1,6 @@
 package nct.provider.mapper;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,4 +38,14 @@ public interface ProviderProfileMapper {
 
     int upsert(@Param("userSn") Long userSn, @Param("introduction") String introduction,
                @Param("availableArea") String availableArea, @Param("actorId") String actorId);
+
+    /** 담당자 7 · F-COM-009: 원천 리뷰 집계값으로 검색용 평점 캐시를 갱신한다. */
+    int updateReviewRating(
+            @Param("userSn") long userSn,
+            @Param("averageScore") BigDecimal averageScore,
+            @Param("reviewCount") long reviewCount,
+            @Param("actorId") String actorId);
+
+    /** 동시 리뷰 변경이 같은 제공자 캐시를 오래된 값으로 덮지 않도록 대상 행을 직렬화한다. */
+    Long lockReviewRatingByUserSn(@Param("userSn") long userSn);
 }

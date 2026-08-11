@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.trade.dto.AdminTradeDisputeQuery;
 import nct.trade.dto.AdminTradeDisputeRecord;
+import nct.trade.dto.TradeDisputeEvidenceFile;
 import nct.trade.mapper.AdminTradeDisputeReadMapper;
 import nct.trade.port.AdminTradeDisputeReader;
 
@@ -32,5 +33,15 @@ public class AdminTradeDisputeReaderService implements AdminTradeDisputeReader {
     @Override
     public AdminTradeDisputeRecord findById(long disputeSn) {
         return mapper.findById(disputeSn);
+    }
+
+    @Override
+    public List<TradeDisputeEvidenceFile> findEvidenceFiles(long disputeSn) {
+        return List.copyOf(mapper.findEvidenceFiles(disputeSn));
+    }
+
+    @Override
+    public boolean hasEvidenceFile(long disputeSn, long fileSn) {
+        return mapper.countEvidenceFileLink(disputeSn, fileSn) > 0;
     }
 }

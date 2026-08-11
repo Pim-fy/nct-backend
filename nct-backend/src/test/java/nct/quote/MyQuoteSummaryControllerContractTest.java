@@ -28,4 +28,20 @@ class MyQuoteSummaryControllerContractTest {
         assertThat(authorization).isNotNull();
         assertThat(authorization.value()).isEqualTo("hasAuthority('ROLE_SERVICE')");
     }
+
+    @Test
+    void myQuoteDetailEndpointRequiresExactServiceRole() throws NoSuchMethodException {
+        Method endpoint = QuoteController.class.getDeclaredMethod(
+                "getMyQuote",
+                CustomUserDetails.class,
+                Long.class);
+
+        GetMapping mapping = endpoint.getAnnotation(GetMapping.class);
+        PreAuthorize authorization = endpoint.getAnnotation(PreAuthorize.class);
+
+        assertThat(mapping).isNotNull();
+        assertThat(mapping.value()).containsExactly("/me/{quoteId}");
+        assertThat(authorization).isNotNull();
+        assertThat(authorization.value()).isEqualTo("hasAuthority('ROLE_SERVICE')");
+    }
 }

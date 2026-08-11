@@ -410,6 +410,42 @@ class QuoteServiceTest {
     }
 
     @Test
+    void myQuoteDetailReturnsOnlyOwnedQuoteWithProtectedAttachmentUrls() {
+        Quote ownedQuote = Quote.builder().qutSn(99L).svcReqSn(10L).usrSn(7L).build();
+        QuoteResponse response = new QuoteResponse();
+        response.setQutSn(99L);
+        response.setSvcReqSn(10L);
+        QuoteAttachmentResponse attachment = new QuoteAttachmentResponse();
+        attachment.setFlSn(88L);
+        attachment.setFileName("견적서.pdf");
+
+        when(quoteMapper.findQuoteById(99L)).thenReturn(ownedQuote);
+        when(quoteMapper.findMyQuote(7L, 99L)).thenReturn(response);
+        when(quoteMapper.findQuoteAttachments(99L)).thenReturn(List.of(attachment));
+
+        QuoteResponse result = service.getMyQuote(7L, 99L);
+
+        verify(activeProviderGuard).requireActive(7L);
+        assertThat(result.getAttachments()).singleElement()
+                .extracting(QuoteAttachmentResponse::getUrl)
+                .isEqualTo("/api/quotes/99/attachments/88");
+    }
+
+    @Test
+    void myQuoteDetailRejectsAnotherProvidersQuote() {
+        Quote anotherProvidersQuote = Quote.builder().qutSn(99L).svcReqSn(10L).usrSn(8L).build();
+        when(quoteMapper.findQuoteById(99L)).thenReturn(anotherProvidersQuote);
+
+        assertThatThrownBy(() -> service.getMyQuote(7L, 99L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+
+        verify(activeProviderGuard).requireActive(7L);
+        verify(quoteMapper, never()).findMyQuote(7L, 99L);
+    }
+
+    @Test
     void myQuoteSummaryReturnsAggregatedStatusCounts() {
         MyQuoteSummaryCounts summary = new MyQuoteSummaryCounts(8, 2, 1, 5, 0);
         when(quoteMapper.findMyQuoteSummary(7L)).thenReturn(summary);

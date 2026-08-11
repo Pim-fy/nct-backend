@@ -310,6 +310,33 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .build();
     }
 
+    /**
+     * 담당자 7 연결 · F-SVC-005~008: 목록 이동 상태 없이도 제공자가 본인 견적 상세를 조회합니다.
+     * 작성자 소유권을 먼저 확인하고, 첨부파일은 권한 검증이 적용된 견적 전용 URL만 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public QuoteResponse getMyQuote(Long usrSn, Long qutSn) {
+        if (usrSn == null || usrSn <= 0 || qutSn == null || qutSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        activeProviderGuard.requireActive(usrSn);
+
+        Quote quote = quoteMapper.findQuoteById(qutSn);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!usrSn.equals(quote.getUsrSn())) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        QuoteResponse response = quoteMapper.findMyQuote(usrSn, qutSn);
+        if (response == null) {
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+        populateAttachments(response);
+        return response;
+    }
+
     /** 담당자 7 · F-PROV-009: 제공자 대시보드용 상태별 견적 수를 반환합니다. */
     @Transactional(readOnly = true)
     public MyQuoteSummaryResponse getMyQuoteSummary(Long usrSn) {

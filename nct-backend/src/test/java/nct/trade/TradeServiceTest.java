@@ -65,6 +65,7 @@ import nct.trade.dto.ServiceScheduleChangeCommand;
 import nct.trade.dto.ServiceScheduleCancellationCommand;
 import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.TradeDisputeTarget;
+import nct.trade.dto.TradeDisputeRegistration;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.TradeOfflineScheduleProposal;
@@ -335,13 +336,24 @@ class TradeServiceTest {
         request.setContent("작업 완료 내용에 이견이 있습니다.");
         when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
         when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        doAnswer(invocation -> {
+            TradeDisputeRegistration registration = invocation.getArgument(0);
+            registration.setDisputeSn(701L);
+            return 1;
+        }).when(tradeMapper).insertTradeDispute(any(TradeDisputeRegistration.class));
         when(tradeMapper.holdServiceTradeForDispute(81L, "11")).thenReturn(1);
 
         tradeService.registerServiceTradeDispute(81L, 11L, request);
 
-        verify(tradeMapper).insertTradeDispute(
-                81L, 11L, "TRDC0011", "작업 완료 내용에 이견이 있습니다.",
-                "TRDC0005", "11");
+        ArgumentCaptor<TradeDisputeRegistration> captor =
+                ArgumentCaptor.forClass(TradeDisputeRegistration.class);
+        verify(tradeMapper).insertTradeDispute(captor.capture());
+        assertThat(captor.getValue().getTradeId()).isEqualTo(81L);
+        assertThat(captor.getValue().getDisputerUserId()).isEqualTo(11L);
+        assertThat(captor.getValue().getDisputeTypeCode()).isEqualTo("TRDC0011");
+        assertThat(captor.getValue().getContent()).isEqualTo("작업 완료 내용에 이견이 있습니다.");
+        assertThat(captor.getValue().getPreviousTradeStatusCode()).isEqualTo("TRDC0005");
+        assertThat(captor.getValue().getUpdaterId()).isEqualTo("11");
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
         verify(chatService).closeServiceTradeChatRoom(81L);
@@ -391,8 +403,7 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
-        verify(tradeMapper, never()).insertTradeDispute(
-                anyLong(), anyLong(), any(), any(), any(), any());
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
         verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
     }
 
@@ -416,8 +427,63 @@ class TradeServiceTest {
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
         verify(referenceDataService, never()).requireActiveCode(any(), any());
-        verify(tradeMapper, never()).insertTradeDispute(
-                anyLong(), anyLong(), any(), any(), any(), any());
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
+    }
+
+    @Test
+    void linksOnlyOwnedTradeDisputeEvidenceFilesInRequestOrder() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("증빙이 있는 거래 문제입니다.");
+        request.setFileSns(List.of(801L, 802L));
+
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        doAnswer(invocation -> {
+            TradeDisputeRegistration registration = invocation.getArgument(0);
+            registration.setDisputeSn(701L);
+            return 1;
+        }).when(tradeMapper).insertTradeDispute(any(TradeDisputeRegistration.class));
+        when(tradeMapper.insertTradeDisputeFile(anyLong(), anyLong(), anyInt(), any()))
+                .thenReturn(1);
+        when(tradeMapper.holdServiceTradeForDispute(81L, "11")).thenReturn(1);
+
+        tradeService.registerServiceTradeDispute(81L, 11L, request);
+
+        verify(fileStorageService).requireOwnedTradeDisputeFile(801L, 11L);
+        verify(fileStorageService).requireOwnedTradeDisputeFile(802L, 11L);
+        verify(tradeMapper).insertTradeDisputeFile(701L, 801L, 1, "11");
+        verify(tradeMapper).insertTradeDisputeFile(701L, 802L, 2, "11");
+    }
+
+    @Test
+    void rejectsDuplicateTradeDisputeEvidenceBeforeSavingDispute() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("중복 증빙 파일입니다.");
+        request.setFileSns(List.of(801L, 801L));
+
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(fileStorageService);
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
     }
 
     @Test

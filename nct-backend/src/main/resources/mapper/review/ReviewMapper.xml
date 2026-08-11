@@ -76,7 +76,9 @@
             U.USR_NM                                AS partyName,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
             DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
-            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
+            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
+            CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
+                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
@@ -107,7 +109,9 @@
             U.USR_NM                                AS partyName,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
             DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
-            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
+            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
+            CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
+                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
@@ -223,6 +227,21 @@
           AND R.RVW_USE_YN = 'Y'
     </select>
 
+    <!-- 수정·삭제 전 피평가자 식별도 작성자 소유·활성 조건을 통과한 리뷰만 허용한다. -->
+    <select id="selectOwnedActiveReviewRatingTarget" resultType="nct.review.dto.ReviewRatingTarget">
+        SELECT R.REVWD_USR_SN AS receiverUserSn,
+               R.RVW_DOMAIN_CD AS domainCode,
+               CASE WHEN R.RVW_DOMAIN_CD = 'RVWC0002'
+                          AND T.TRD_TYPE_CD = 'TRDC0002'
+                          AND T.PRV_USR_SN = R.REVWD_USR_SN
+                    THEN TRUE ELSE FALSE END AS receivedAsServiceProvider
+        FROM REVIEW R
+        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
+        WHERE R.RVW_SN = #{rvwSn}
+          AND R.REVWR_USR_SN = #{usrSn}
+          AND R.RVW_USE_YN = 'Y'
+    </select>
+
     <!-- 리뷰 수정 - 본인 소유 + 미삭제 리뷰만 대상. WHERE 조건에 안 걸리면 영향 행 0건 (서비스 계층에서 예외 처리) -->
     <update id="updateReview">
         /* 리뷰: 수정 */
@@ -259,6 +278,18 @@
         ============================================================================
     -->
 
+    <!-- 담당자 7 · F-COM-008: 물품 리뷰의 피평가자 역할을 목록/개수에 동일하게 적용한다. -->
+    <sql id="receivedGoodsRoleFilter">
+        <if test="role != null and role == 'SELLER'">
+            AND T.TRD_TYPE_CD = 'TRDC0001'
+            AND T.SLLR_USR_SN = R.REVWD_USR_SN
+        </if>
+        <if test="role != null and role == 'BUYER'">
+            AND T.TRD_TYPE_CD = 'TRDC0001'
+            AND T.BYPR_USR_SN = R.REVWD_USR_SN
+        </if>
+    </sql>
+
     <!-- 특정 회원이 받은 리뷰 목록 (F-COM-008) — dealType null이면 전체, 아니면 해당 거래유형만 -->
     <select id="selectReviewsByReceiver" resultType="nct.review.dto.UserReviewItem">
         /* 리뷰: 특정 회원이 받은 리뷰 목록 (F-COM-008) */
@@ -286,6 +317,7 @@
           <if test="dealType != null and dealType == 'service'">
             AND T.TRD_TYPE_CD = 'TRDC0002'
           </if>
+          <include refid="receivedGoodsRoleFilter"/>
         ORDER BY R.RVW_REG_DT DESC
         LIMIT #{size} OFFSET #{offset}
     </select>
@@ -304,6 +336,7 @@
           <if test="dealType != null and dealType == 'service'">
             AND T.TRD_TYPE_CD = 'TRDC0002'
           </if>
+          <include refid="receivedGoodsRoleFilter"/>
     </select>
 
     <!-- 신뢰지표 집계 (F-COM-009~010) — 리뷰 없으면 totalCount=0, 점수는 null -->
@@ -320,6 +353,22 @@
         JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.REVWD_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
+    </select>
+
+    <!-- 제공자 프로필에는 서비스 거래에서 제공자로서 받은 활성 리뷰만 반영한다.
+         기존 리뷰 임시 조회 경계를 따라 TRADE를 읽기 전용 JOIN한다. 담당자4의 거래 리뷰방향
+         bulk/read 포트가 제공되면 ReviewService 조합 계약으로 교체한다. -->
+    <select id="selectServiceReviewRatingSummary" resultType="nct.review.dto.ServiceReviewRatingSummary">
+        SELECT COALESCE(ROUND(AVG(R.RVW_SCORE), 1), 0.0) AS averageScore,
+               COUNT(*) AS reviewCount
+        FROM REVIEW R
+        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
+        WHERE R.REVWD_USR_SN = #{usrSn}
+          AND R.RVW_DOMAIN_CD = 'RVWC0002'
+          AND R.RVW_USE_YN = 'Y'
+          AND T.TRD_TYPE_CD = 'TRDC0002'
+          AND R.REVWR_USR_SN = T.REQ_USR_SN
+          AND T.PRV_USR_SN = R.REVWD_USR_SN
     </select>
 
 </mapper>

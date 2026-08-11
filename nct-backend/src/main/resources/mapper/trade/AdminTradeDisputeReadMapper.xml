@@ -62,4 +62,25 @@
         JOIN TRADE t ON t.TRD_SN = d.TRD_SN
         WHERE d.TRD_DSP_SN = #{disputeSn}
     </select>
+
+    <select id="findEvidenceFiles" resultType="nct.trade.dto.TradeDisputeEvidenceFile">
+        SELECT f.FL_SN AS fileSn,
+               f.FL_ORG_NM AS originalName,
+               f.FL_EXT AS extension,
+               f.FL_SIZE_AMT AS sizeAmount
+        FROM TRADE_DISPUTE_FILE df
+        JOIN FILES f ON f.FL_SN = df.FL_SN
+        WHERE df.TRD_DSP_SN = #{disputeSn}
+          AND f.FL_USE_YN = 'Y'
+        ORDER BY df.TRD_DSP_FL_SORT_NO, df.TRD_DSP_FL_SN
+    </select>
+
+    <select id="countEvidenceFileLink" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE_DISPUTE_FILE df
+        JOIN FILES f ON f.FL_SN = df.FL_SN
+        WHERE df.TRD_DSP_SN = #{disputeSn}
+          AND df.FL_SN = #{fileSn}
+          AND f.FL_USE_YN = 'Y'
+    </select>
 </mapper>

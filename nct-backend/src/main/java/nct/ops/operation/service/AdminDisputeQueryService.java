@@ -14,6 +14,7 @@ import nct.global.exception.ErrorCode;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminDisputeDetailResponse;
+import nct.ops.operation.dto.AdminDisputeEvidenceFileResponse;
 import nct.ops.operation.dto.AdminDisputeListItemResponse;
 import nct.ops.operation.dto.AdminDisputeListRequest;
 import nct.ops.operation.dto.AdminDisputePageResponse;
@@ -89,6 +90,14 @@ public class AdminDisputeQueryService {
                                 record.getProviderUserSn())
                         .filter(userSn -> userSn != null && userSn > 0)
                         .toList());
+        List<AdminDisputeEvidenceFileResponse> evidenceFiles = disputeReader.findEvidenceFiles(disputeSn)
+                .stream()
+                .map(file -> new AdminDisputeEvidenceFileResponse(
+                        file.fileSn(),
+                        file.originalName(),
+                        file.extension(),
+                        file.sizeAmount()))
+                .toList();
         return AdminDisputeDetailResponse.builder()
                 .disputeSn(record.getDisputeSn())
                 .tradeSn(record.getTradeSn())
@@ -128,6 +137,7 @@ public class AdminDisputeQueryService {
                 .settlementOnHold(settlement.onHold())
                 .registeredAt(record.getRegisteredAt())
                 .updatedAt(record.getUpdatedAt())
+                .evidenceFiles(evidenceFiles)
                 .build();
     }
 
@@ -154,6 +164,7 @@ public class AdminDisputeQueryService {
                 .settlementStatusName(settlement.statusName())
                 .settlementOnHold(settlement.onHold())
                 .registeredAt(record.getRegisteredAt())
+                .processedAt(record.getProcessedAt())
                 .build();
     }
 

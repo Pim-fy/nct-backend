@@ -60,6 +60,7 @@ import nct.trade.dto.ServiceScheduleCancellationCommand;
 import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.TradeDisputeTarget;
+import nct.trade.dto.TradeDisputeRegistration;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -98,6 +99,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
     private static final String SCHEDULER_UPDATER = "SYSTEM";
     private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
+    private static final int MAX_TRADE_DISPUTE_FILES = 5;
 
     private final TradeMapper tradeMapper;
     private final NotificationService notificationService;
@@ -180,14 +182,33 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     "서비스 거래에 사용할 수 없는 거래 문제 유형입니다.");
         }
         referenceDataService.requireActiveCode(TRADE_DISPUTE_TYPE_GROUP, disputeTypeCode);
+        List<Long> evidenceFileSns = validateTradeDisputeEvidenceFiles(request.getFileSns(), userId);
         String updaterId = String.valueOf(userId);
-        tradeMapper.insertTradeDispute(
-                tradeId,
-                userId,
-                disputeTypeCode,
-                request.getContent().trim(),
-                target.getTradeStatusCode(),
-                updaterId);
+        TradeDisputeRegistration registration = TradeDisputeRegistration.builder()
+                .tradeId(tradeId)
+                .disputerUserId(userId)
+                .disputeTypeCode(disputeTypeCode)
+                .content(request.getContent().trim())
+                .previousTradeStatusCode(target.getTradeStatusCode())
+                .updaterId(updaterId)
+                .build();
+        if (tradeMapper.insertTradeDispute(registration) == 0
+                || registration.getDisputeSn() == null
+                || registration.getDisputeSn() <= 0) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR,
+                    "거래 문제 접수 정보를 저장하지 못했습니다.");
+        }
+        for (int index = 0; index < evidenceFileSns.size(); index++) {
+            int inserted = tradeMapper.insertTradeDisputeFile(
+                    registration.getDisputeSn(),
+                    evidenceFileSns.get(index),
+                    index + 1,
+                    updaterId);
+            if (inserted != 1) {
+                throw new CustomException(ErrorCode.DATABASE_ERROR,
+                        "거래 분쟁 증빙 파일을 연결하지 못했습니다.");
+            }
+        }
         settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
         if (tradeMapper.holdServiceTradeForDispute(tradeId, updaterId) == 0) {
             throw new CustomException(ErrorCode.CONFLICT,
@@ -195,6 +216,27 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
         chatService.closeServiceTradeChatRoom(tradeId);
         tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 접수되었습니다.");
+    }
+
+    /** 분쟁 증빙은 접수자 본인이 trade-dispute 구분으로 올린 활성 파일만 연결합니다. */
+    private List<Long> validateTradeDisputeEvidenceFiles(List<Long> fileSns, long userId) {
+        if (fileSns == null || fileSns.isEmpty()) {
+            return List.of();
+        }
+        if (fileSns.size() > MAX_TRADE_DISPUTE_FILES) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 문제 증빙은 최대 5개까지 첨부할 수 있습니다.");
+        }
+
+        Set<Long> uniqueFileSns = new HashSet<>(fileSns);
+        if (uniqueFileSns.size() != fileSns.size()
+                || fileSns.stream().anyMatch(fileSn -> fileSn == null || fileSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "증빙 파일 번호가 올바르지 않습니다.");
+        }
+
+        fileSns.forEach(fileSn -> fileStorageService.requireOwnedTradeDisputeFile(fileSn, userId));
+        return List.copyOf(fileSns);
     }
 
     /** 제공자가 서비스 완료를 요청하고, 의뢰자의 확인 기한 5일을 시작한다. */

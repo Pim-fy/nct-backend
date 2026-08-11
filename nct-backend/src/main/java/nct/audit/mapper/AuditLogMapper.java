@@ -39,4 +39,18 @@ public interface AuditLogMapper {
      * - CHAT_MESSAGE는 담당자4 소유 테이블 — 여기서는 읽기 전용 SELECT만 하며 절대 변경하지 않는다
      */
     ChatMessageView selectChatMessageView(@Param("chMsgSn") long chMsgSn);
+
+    /** 전달된 메시지가 해당 거래 분쟁의 거래 채팅방에 실제로 속하는지 확인합니다. */
+    int countDisputeChatMessageLink(
+            @Param("chMsgSn") long chMsgSn,
+            @Param("trdDspSn") long trdDspSn);
+
+    /** 원문 조회 전에 분쟁·거래·채팅방 연결과 전체 메시지 수만 확인합니다. */
+    DisputeChatTarget selectDisputeChatTarget(@Param("trdDspSn") long trdDspSn);
+
+    /** 검증된 거래 분쟁의 채팅 메시지를 최신 페이지부터 제한 조회합니다. */
+    List<ChatMessageView> selectDisputeChatMessages(
+            @Param("trdDspSn") long trdDspSn,
+            @Param("limit") int limit,
+            @Param("offset") long offset);
 }

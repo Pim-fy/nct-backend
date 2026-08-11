@@ -77,4 +77,44 @@
         WHERE M.CH_MSG_SN = #{chMsgSn}
     </select>
 
+    <!-- 기존 단건 API도 임의의 분쟁 번호를 붙여 다른 채팅을 열 수 없게 실제 연결을 검증한다. -->
+    <select id="countDisputeChatMessageLink" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE_DISPUTE D
+        JOIN CHAT_ROOM R ON R.TRD_SN = D.TRD_SN
+        JOIN CHAT_MESSAGE M ON M.CH_RM_SN = R.CH_RM_SN
+        WHERE D.TRD_DSP_SN = #{trdDspSn}
+          AND M.CH_MSG_SN = #{chMsgSn}
+    </select>
+
+    <!-- 메시지 원문을 읽기 전 분쟁과 채팅방 연결 및 행 수만 확인한다. -->
+    <select id="selectDisputeChatTarget" resultType="nct.audit.mapper.DisputeChatTarget">
+        SELECT D.TRD_DSP_SN AS disputeSn,
+               D.TRD_SN AS tradeSn,
+               R.CH_RM_SN AS roomSn,
+               COUNT(M.CH_MSG_SN) AS messageCount
+        FROM TRADE_DISPUTE D
+        LEFT JOIN CHAT_ROOM R ON R.TRD_SN = D.TRD_SN
+        LEFT JOIN CHAT_MESSAGE M ON M.CH_RM_SN = R.CH_RM_SN
+        WHERE D.TRD_DSP_SN = #{trdDspSn}
+        GROUP BY D.TRD_DSP_SN, D.TRD_SN, R.CH_RM_SN
+    </select>
+
+    <!-- 분쟁 거래에 연결된 채팅만 최신 페이지부터 조회하고 각 페이지 안에서는 서비스에서 시간순으로 뒤집는다. -->
+    <select id="selectDisputeChatMessages" resultType="nct.audit.mapper.ChatMessageView">
+        SELECT M.CH_MSG_SN AS chMsgSn,
+               M.CH_RM_SN AS chRmSn,
+               M.USR_SN AS usrSn,
+               U.USR_NM AS usrNm,
+               M.CH_MSG_CN AS chMsgCn,
+               M.CH_MSG_REG_DT AS chMsgRegDt
+        FROM TRADE_DISPUTE D
+        JOIN CHAT_ROOM R ON R.TRD_SN = D.TRD_SN
+        JOIN CHAT_MESSAGE M ON M.CH_RM_SN = R.CH_RM_SN
+        LEFT JOIN USERS U ON U.USR_SN = M.USR_SN
+        WHERE D.TRD_DSP_SN = #{trdDspSn}
+        ORDER BY M.CH_MSG_REG_DT DESC, M.CH_MSG_SN DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
 </mapper>

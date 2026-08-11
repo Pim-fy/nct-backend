@@ -42,6 +42,10 @@ public interface QuoteMapper {
             @Param("offset") int offset,
             @Param("size") int size);
 
+    QuoteResponse findMyQuote(
+            @Param("usrSn") Long usrSn,
+            @Param("qutSn") Long qutSn);
+
     int countMyQuotes(@Param("usrSn") Long usrSn);
 
     /** 담당자 7 · F-PROV-009: 제공자 견적을 전체·활성·선택·종료 상태로 한 번에 집계합니다. */

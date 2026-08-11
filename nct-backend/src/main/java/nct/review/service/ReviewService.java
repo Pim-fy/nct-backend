@@ -3,12 +3,14 @@ package nct.review.service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,6 +22,7 @@ import nct.file.service.FileStorageService;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
+import nct.provider.port.ProviderReviewRatingPort;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
@@ -33,7 +36,9 @@ import nct.review.dto.MyReviewItem;
 import nct.review.dto.MyTradeReviewResponse;
 import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewRouteContext;
+import nct.review.dto.ReviewRatingTarget;
 import nct.review.dto.ReviewUpdateResult;
+import nct.review.dto.ServiceReviewRatingSummary;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.UserReviewItem;
@@ -62,6 +67,7 @@ public class ReviewService {
     private final FileStorageService fileStorageService;
     private final ReviewImageMapper reviewImageMapper;
     private final NotificationService notificationService;
+    private final ProviderReviewRatingPort providerReviewRatingPort;
     // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 ReviewService를
     // 주입받고 있어(신뢰지표 소비) 순환 의존을 피하려고 ObjectProvider로 지연 주입한다.
     // AuctionService.productServiceProvider와 같은 패턴이다.
@@ -200,7 +206,7 @@ public class ReviewService {
      * @param content 리뷰 내용
      * @param photos  첨부 사진 (없어도 됨)
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ReviewCreateResult createReview(long usrSn, long tradeId, int rating, String content,
             List<MultipartFile> photos) {
         if (rating < 1 || rating > 5) {
@@ -235,6 +241,11 @@ public class ReviewService {
             photoCount = storeReviewImages(photos, review.getRvwSn(), usrSn);
         }
 
+        synchronizeProviderRating(
+                domainCd,
+                trade.getCounterpartUsrSn(),
+                trade.isCounterpartServiceProvider());
+
         notificationService.notify(
                 trade.getCounterpartUsrSn(),
                 NotificationType.TRADE,
@@ -257,12 +268,14 @@ public class ReviewService {
      * 새 사진은 기존 첨부에 추가된다 - 프론트(ReviewEditPage)가 기존 사진 목록을 다시 보여주지 않고
      * 이번에 새로 고른 파일만 넘겨주는 구조라, 여기서도 기존 첨부를 건드리지 않고 더하기만 한다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ReviewUpdateResult updateReview(long usrSn, long rvwSn, int rating, String content,
             List<MultipartFile> photos) {
         if (rating < 1 || rating > 5) {
             throw new InvalidRatingException(rating);
         }
+        ReviewRatingTarget ratingTarget = reviewMapper.selectOwnedActiveReviewRatingTarget(rvwSn, usrSn)
+                .orElseThrow(() -> new ReviewNotFoundException(rvwSn));
         // 수정은 새 사진이 기존 첨부에 "추가"되는 구조라, 기존 개수까지 합산해서 검사한다
         int existingPhotoCount = reviewImageMapper.selectUrlsByReviewSn(rvwSn).size();
         validatePhotoCount(existingPhotoCount, photos);
@@ -277,6 +290,11 @@ public class ReviewService {
             addedPhotoCount = storeReviewImages(photos, rvwSn, usrSn);
         }
 
+        synchronizeProviderRating(
+                ratingTarget.getDomainCode(),
+                ratingTarget.getReceiverUserSn(),
+                ratingTarget.isReceivedAsServiceProvider());
+
         return ReviewUpdateResult.builder()
                 .id(rvwSn)
                 .rating(rating)
@@ -285,12 +303,18 @@ public class ReviewService {
     }
 
     /** 리뷰 삭제 (소프트 삭제). 본인이 작성한 리뷰만 삭제할 수 있다. */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void deleteReview(long usrSn, long rvwSn) {
+        ReviewRatingTarget ratingTarget = reviewMapper.selectOwnedActiveReviewRatingTarget(rvwSn, usrSn)
+                .orElseThrow(() -> new ReviewNotFoundException(rvwSn));
         int deleted = reviewMapper.deleteReview(rvwSn, usrSn);
         if (deleted == 0) {
             throw new ReviewNotFoundException(rvwSn);
         }
+        synchronizeProviderRating(
+                ratingTarget.getDomainCode(),
+                ratingTarget.getReceiverUserSn(),
+                ratingTarget.isReceivedAsServiceProvider());
     }
 
     /**
@@ -301,16 +325,27 @@ public class ReviewService {
      * @param page     0-indexed 페이지 번호
      * @param size     페이지당 건수 (최대 50 강제)
      */
-    public PageResponse<UserReviewItem> getReviewsAboutUser(long usrSn, String dealType, int page, int size) {
+    public PageResponse<UserReviewItem> getReviewsAboutUser(
+            long usrSn,
+            String dealType,
+            String role,
+            int page,
+            int size) {
+        String normalizedRole = normalizeReceivedGoodsRole(dealType, role);
         int safeSize = Math.min(size, 50);
         int offset = page * safeSize;
 
-        List<UserReviewItem> raw = reviewMapper.selectReviewsByReceiver(usrSn, dealType, offset, safeSize);
+        List<UserReviewItem> raw = reviewMapper.selectReviewsByReceiver(
+                usrSn,
+                dealType,
+                normalizedRole,
+                offset,
+                safeSize);
         List<UserReviewItem> masked = raw.stream()
                 .map(item -> item.toBuilder().reviewerName(maskName(item.getReviewerName())).build())
                 .toList();
 
-        long total = reviewMapper.countReviewsByReceiver(usrSn, dealType);
+        long total = reviewMapper.countReviewsByReceiver(usrSn, dealType, normalizedRole);
         return PageResponse.<UserReviewItem>builder()
                 .content(masked)
                 .totalCount(total)
@@ -330,6 +365,44 @@ public class ReviewService {
                 .usrSn(usrSn)
                 .hasReviews(raw.getTotalCount() > 0)
                 .build();
+    }
+
+    /** 담당자 7 · F-COM-008: 역할 필터는 물품 리뷰에서만 허용하고 ALL은 기존 전체 조회로 정규화한다. */
+    private String normalizeReceivedGoodsRole(String dealType, String role) {
+        if (role == null || role.isBlank() || "ALL".equalsIgnoreCase(role.trim())) {
+            return null;
+        }
+
+        String normalizedRole = role.trim().toUpperCase(Locale.ROOT);
+        if (!"SELLER".equals(normalizedRole) && !"BUYER".equals(normalizedRole)) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "리뷰 역할은 ALL, SELLER, BUYER만 사용할 수 있습니다.");
+        }
+        if (!"goods".equals(dealType)) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "판매자/구매자 역할 필터는 물품 리뷰에서만 사용할 수 있습니다.");
+        }
+        return normalizedRole;
+    }
+
+    /** 서비스 제공자로서 받은 활성 리뷰만 제공자 검색·프로필용 캐시에 반영한다. */
+    private void synchronizeProviderRating(
+            String domainCode,
+            long receiverUserSn,
+            boolean receivedAsServiceProvider) {
+        if (!ReviewDomainCode.SERVICE.equals(domainCode) || !receivedAsServiceProvider) {
+            return;
+        }
+        if (!providerReviewRatingPort.lockReviewRating(receiverUserSn)) {
+            return;
+        }
+        ServiceReviewRatingSummary summary = reviewMapper.selectServiceReviewRatingSummary(receiverUserSn);
+        providerReviewRatingPort.updateReviewRating(
+                receiverUserSn,
+                summary.getAverageScore(),
+                summary.getReviewCount());
     }
 
     /** 기존 개수 + 이번에 새로 올리는 개수(빈 파일 제외)가 MAX_REVIEW_PHOTOS를 넘으면 거부 */

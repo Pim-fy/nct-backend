@@ -94,6 +94,18 @@
         WHERE USR_SN = #{usrSn}
     </select>
 
+    <!-- 담당자 7 통합 연결 · F-COM-008~009 지원: 거래 프로필에 필요한 공개 필드만 선택한다.
+         탈퇴 상태는 USR_USE_YN 값이 남아 있어도 존재하지 않는 회원과 같은 조회 결과로 처리한다. -->
+    <select id="findPublicProfileById" resultType="nct.member.dto.PublicUserProfileSource">
+        SELECT USR_SN AS userSn,
+               USR_NM AS displayName,
+               USR_PRFL_FL_SN AS profileFileSn
+        FROM USERS
+        WHERE USR_SN = #{usrSn}
+          AND USR_USE_YN = 'Y'
+          AND USR_STATUS_CD &lt;&gt; 'USRC0003'
+    </select>
+
     <!-- 담당자 7 · F-OPS-002/019: 상태 변경 직전 회원 행을 잠가 중복 관리자 요청을 직렬화한다. -->
     <select id="findMemberByIdForUpdate" parameterType="Long" resultMap="memberMap">
         SELECT

@@ -80,4 +80,7 @@ public interface FileMapper {
      */
     /** 견적 첨부 파일이 이미 QUOTE_PHOTO에 연결되어 있는지 확인한다. */
     int countQuotePhotoRefs(@Param("flSn") Long flSn);
+
+    /** 거래 분쟁 증빙으로 연결된 파일은 일반 첨부 삭제 API로 지울 수 없습니다. */
+    int countTradeDisputeFileRefs(@Param("flSn") Long flSn);
 }

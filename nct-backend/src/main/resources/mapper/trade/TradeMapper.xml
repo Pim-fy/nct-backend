@@ -103,7 +103,11 @@
         )
     </select>
 
-    <insert id="insertTradeDispute">
+    <insert id="insertTradeDispute"
+            parameterType="nct.trade.dto.TradeDisputeRegistration"
+            useGeneratedKeys="true"
+            keyProperty="disputeSn"
+            keyColumn="TRD_DSP_SN">
         INSERT INTO TRADE_DISPUTE (
             TRD_SN,
             DSPT_USR_SN,
@@ -122,6 +126,22 @@
             #{previousTradeStatusCode},
             #{updaterId},
             #{updaterId}
+        )
+    </insert>
+
+    <insert id="insertTradeDisputeFile">
+        INSERT INTO TRADE_DISPUTE_FILE (
+            TRD_DSP_SN,
+            FL_SN,
+            TRD_DSP_FL_SORT_NO,
+            TRD_DSP_FL_REG_ID,
+            TRD_DSP_FL_UPDT_ID
+        ) VALUES (
+            #{disputeSn},
+            #{fileSn},
+            #{sortOrder},
+            #{registrantId},
+            #{registrantId}
         )
     </insert>
 
@@ -696,6 +716,50 @@
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0002'
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+    </select>
+
+    <!-- 담당자 7 · F-OPS-005: 관리자 전용 읽기 계약. 정확 주소와 당사자 전용 행동은 반환하지 않는다. -->
+    <select id="findAdminServiceTradeDetail" resultType="nct.trade.dto.ServiceTradeDetailSource">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.SVC_REQ_SN AS serviceRequestId,
+            t.TRD_STATUS_CD AS tradeStatusCode,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            sr.SVC_REQ_TTL AS serviceRequestTitle,
+            q.QUT_CN AS quoteSummary,
+            requestedSchedule.scheduleLabel,
+            CASE
+                WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
+                WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
+                ELSE NULL
+            END AS escrowStatusCode,
+            CASE
+                WHEN st.STLM_STATUS_CD = 'STLC0001' THEN '정산 대기 중입니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0002' THEN '분쟁 처리로 정산이 보류되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0003' THEN '정산이 완료되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0004' THEN '전액 환불로 정산이 종결되었습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
+                ELSE NULL
+            END AS escrowStatusLabel,
+            FALSE AS chatAvailable,
+            FALSE AS cancellationDecisionAvailable
+        FROM TRADE t
+        JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
+        LEFT JOIN (
+            SELECT i.SVC_REQ_SN,
+                   DATE_FORMAT(MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')), '%Y. %m. %d.') AS scheduleLabel
+            FROM SVC_REQ_ITEM i
+            JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+            WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+            GROUP BY i.SVC_REQ_SN
+        ) requestedSchedule ON requestedSchedule.SVC_REQ_SN = t.SVC_REQ_SN
+        LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
     </select>
 
     <!-- 선택 견적이 거래로 확정된 뒤에는 요청자·제공자에게만 등록된 정확 주소를 제공한다. -->

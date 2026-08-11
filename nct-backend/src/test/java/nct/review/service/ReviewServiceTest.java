@@ -78,6 +78,7 @@ class ReviewServiceTest {
     private static final long USR_SN = 1L;
     private static final long TRADE_ID = 100L;
     private static final long COUNTERPART_USR_SN = 2L;
+    private static final String REVIEWER_NICKNAME = "테스터";
 
     private void setUp() {
         reviewService = new ReviewService(
@@ -233,9 +234,9 @@ class ReviewServiceTest {
     void 평점이_범위를_벗어나면_거래_조회_없이_바로_실패한다() {
         setUp();
 
-        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 0, "내용", null))
+        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 0, "내용", null, REVIEWER_NICKNAME))
                 .isInstanceOf(InvalidRatingException.class);
-        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 6, "내용", null))
+        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 6, "내용", null, REVIEWER_NICKNAME))
                 .isInstanceOf(InvalidRatingException.class);
 
         verify(reviewMapper, never()).selectWritableTrade(any(Long.class), any(Long.class));
@@ -246,7 +247,7 @@ class ReviewServiceTest {
         setUp();
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 5, "내용", null))
+        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 5, "내용", null, REVIEWER_NICKNAME))
                 .isInstanceOf(TradeNotReviewableException.class);
 
         verify(reviewMapper, never()).insertReview(any());
@@ -260,7 +261,7 @@ class ReviewServiceTest {
             throw new DuplicateKeyException("UK_REVIEW_TRD_REVWR");
         }).when(reviewMapper).insertReview(any(Review.class));
 
-        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 5, "동시 등록", null))
+        assertThatThrownBy(() -> reviewService.createReview(USR_SN, TRADE_ID, 5, "동시 등록", null, REVIEWER_NICKNAME))
                 .isInstanceOf(TradeNotReviewableException.class);
 
         verify(reviewImageMapper, never()).insertAll(any());
@@ -276,7 +277,7 @@ class ReviewServiceTest {
             return null;
         }).when(reviewMapper).insertReview(any(Review.class));
 
-        ReviewCreateResult result = reviewService.createReview(USR_SN, TRADE_ID, 5, "만족합니다", null);
+        ReviewCreateResult result = reviewService.createReview(USR_SN, TRADE_ID, 5, "만족합니다", null, REVIEWER_NICKNAME);
 
         org.mockito.ArgumentCaptor<Review> captor = org.mockito.ArgumentCaptor.forClass(Review.class);
         verify(reviewMapper).insertReview(captor.capture());
@@ -300,7 +301,7 @@ class ReviewServiceTest {
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("service")));
         serviceRatingSummary("4.0", 1L);
 
-        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null);
+        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
         org.mockito.ArgumentCaptor<Review> captor = org.mockito.ArgumentCaptor.forClass(Review.class);
         verify(reviewMapper).insertReview(captor.capture());
@@ -324,7 +325,7 @@ class ReviewServiceTest {
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("service")));
         when(providerReviewRatingPort.lockReviewRating(COUNTERPART_USR_SN)).thenReturn(false);
 
-        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null);
+        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
         verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
         verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
@@ -338,7 +339,7 @@ class ReviewServiceTest {
                 .build();
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(requesterTarget));
 
-        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null);
+        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
         verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
         verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
@@ -362,7 +363,7 @@ class ReviewServiceTest {
         MultipartFile photo2 = new MockMultipartFile("photos", "b.jpg", "image/jpeg", "data".getBytes());
 
         ReviewCreateResult result = reviewService.createReview(
-                USR_SN, TRADE_ID, 5, "사진 첨부 테스트", List.of(photo1, photo2));
+                USR_SN, TRADE_ID, 5, "사진 첨부 테스트", List.of(photo1, photo2), REVIEWER_NICKNAME);
 
         assertThat(result.getPhotoCount()).isEqualTo(2);
 
@@ -383,7 +384,7 @@ class ReviewServiceTest {
         setUp();
 
         assertThatThrownBy(() -> reviewService.createReview(
-                USR_SN, TRADE_ID, 5, "내용", mockPhotos(6)))
+                USR_SN, TRADE_ID, 5, "내용", mockPhotos(6), REVIEWER_NICKNAME))
                 .isInstanceOf(TooManyReviewPhotosException.class);
 
         verify(reviewMapper, never()).selectWritableTrade(any(Long.class), any(Long.class));

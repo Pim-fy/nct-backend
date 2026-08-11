@@ -21,6 +21,17 @@
         ORDER BY i.SVC_REQ_IMG_SORT_NO ASC
     </select>
 
+    <!-- 재등록(마감된 요청서 복사) 전용 — insertAll에 그대로 넘길 전체 컬럼 조회, PK·SVC_REQ_SN은 호출측에서 새 값으로 교체 -->
+    <select id="findImageEntitiesBySvcReqSn" resultType="nct.servicerequest.domain.SvcReqImage">
+        /* SvcReqImageMapper.findImageEntitiesBySvcReqSn */
+        SELECT SVC_REQ_SN        AS svcReqSn,
+               FL_SN              AS flSn,
+               SVC_REQ_IMG_SORT_NO AS svcReqImgSortNo
+          FROM SVC_REQ_IMAGE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+         ORDER BY SVC_REQ_IMG_SORT_NO ASC
+    </select>
+
     <select id="countImageLink" resultType="int">
         /* SvcReqImageMapper.countImageLink */
         SELECT COUNT(*)

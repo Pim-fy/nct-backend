@@ -58,6 +58,26 @@
          ORDER BY I.SVC_REQ_ITM_SORT_NO ASC
     </select>
 
+    <!-- 재등록(마감된 요청서 복사) 전용 — insertAll에 그대로 넘길 전체 컬럼 조회, PK·SVC_REQ_SN은 호출측에서 새 값으로 교체 -->
+    <select id="findItemEntitiesBySvcReqSn" resultType="nct.servicerequest.domain.SvcReqItem">
+        /* SvcReqItemMapper.findItemEntitiesBySvcReqSn */
+        SELECT SVC_REQ_SN            AS svcReqSn,
+               SVC_REQ_FORM_TMPL_SN  AS formTemplateSn,
+               SVC_REQ_STEP_SN       AS stepSn,
+               SVC_REQ_FIELD_SN      AS fieldSn,
+               SVC_REQ_STEP_OPT_SN   AS stepOptionSn,
+               SVC_REQ_FIELD_OPT_SN  AS fieldOptionSn,
+               SVC_REQ_ITM_CN        AS svcReqItmCn,
+               SVC_REQ_ITM_VAL_CN    AS value,
+               SVC_REQ_ITM_VAL_ENC   AS encryptedValue,
+               SVC_REQ_ITM_STRUCT_YN AS structuredYn,
+               SVC_REQ_ITM_PUBLIC_YN AS publicYn,
+               SVC_REQ_ITM_SORT_NO   AS svcReqItmSortNo
+          FROM SVC_REQ_ITEM
+         WHERE SVC_REQ_SN = #{svcReqSn}
+         ORDER BY SVC_REQ_ITM_SORT_NO ASC
+    </select>
+
     <!-- 요청 항목 일괄 추가 -->
     <insert id="insertAll">
         /* SvcReqItemMapper.insertAll */

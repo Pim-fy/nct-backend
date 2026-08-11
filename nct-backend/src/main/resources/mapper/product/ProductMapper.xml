@@ -80,7 +80,7 @@
     </select>
 
     <!-- ── 내 판매 목록 (최신순) ─────────────────────────── -->
-    <!-- filterType: DRAFT(임시저장) | RESERVED(예약) | ACTIVE(경매중) | TRADING(거래중) | DONE(완료) | CANCELED(취소) | ENDED(종료/유찰) | null(전체) -->
+    <!-- filterType: DRAFT(임시저장) | RESERVED(예약) | ACTIVE(경매중) | TRADING(거래중) | DISPUTE(보류/분쟁) | DONE(완료) | CANCELED(취소) | ENDED(종료/유찰) | null(전체) -->
     <select id="findMyProducts" resultMap="ProductResponseMap">
         /* ProductMapper.findMyProducts */
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
@@ -126,6 +126,9 @@
                    AND (t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                      OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL))
                </when>
+               <when test="filterType == 'DISPUTE'">
+                   AND t.TRD_STATUS_CD = 'TRDC0007'
+               </when>
                <when test="filterType == 'DONE'">
                    AND t.TRD_STATUS_CD = 'TRDC0006'
                </when>
@@ -161,6 +164,7 @@
                                AND a.AUC_STATUS_CD = 'AUCC0002' THEN 1 ELSE 0 END), 0) AS active,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                                OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL) THEN 1 ELSE 0 END), 0) AS trading,
+            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0007' THEN 1 ELSE 0 END), 0) AS dispute,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0006'
                                OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006') THEN 1 ELSE 0 END), 0) AS closed
           FROM PRODUCT p

@@ -20,5 +20,8 @@ public interface SvcReqImageMapper {
     /** 요청서 이미지 목록 조회 — 상세 조회·임시저장 복원용 */
     List<SvcReqImageItem> findImagesBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
 
+    /** 재등록(마감된 요청서 복사) 전용 — 원본 행을 그대로 복제하기 위한 전체 컬럼 조회 */
+    List<SvcReqImage> findImageEntitiesBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
+
     int countImageLink(@Param("svcReqSn") Long svcReqSn, @Param("flSn") Long flSn);
 }

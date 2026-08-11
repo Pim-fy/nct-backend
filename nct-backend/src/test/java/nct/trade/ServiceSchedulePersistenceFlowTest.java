@@ -72,7 +72,7 @@ class ServiceSchedulePersistenceFlowTest {
                 .isZero();
         assertThat(tradeMapper.findServiceScheduleHistory(tradeId))
                 .extracting(item -> item.eventType())
-                .containsExactly("CANCEL", "CHANGE");
+                .containsExactly("CANCEL_REQUEST", "CHANGE");
         assertThat(detail.scheduleHistory()).hasSize(2);
         assertThat(detail.scheduleHistory().get(0).reason())
                 .isEqualTo("장비 점검으로 일정 취소를 요청합니다.");

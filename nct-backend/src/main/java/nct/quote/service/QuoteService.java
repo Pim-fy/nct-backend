@@ -12,11 +12,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.common.domain.RefType;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
 import nct.global.security.service.ProviderAccessGuard;
+import nct.notification.domain.NotificationDomain;
+import nct.notification.domain.NotificationType;
+import nct.notification.service.NotificationService;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
@@ -36,6 +40,7 @@ import nct.quote.port.AdminQuoteListReader;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
+import nct.quote.port.ServiceRequestQuoteProviderReader;
 import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
@@ -43,7 +48,7 @@ import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarg
 @Service
 @RequiredArgsConstructor
 public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader,
-        AdminQuoteSummaryReader, AdminQuoteListReader {
+        AdminQuoteSummaryReader, AdminQuoteListReader, ServiceRequestQuoteProviderReader {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -65,6 +70,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private final ProviderAccessGuard providerAccessGuard;
     private final ActiveProviderGuard activeProviderGuard;
     private final FileStorageService fileStorageService;
+    private final NotificationService notificationService;
 
     /** F-OPS-021: 관리자 목록과 상세가 사용할 견적 요약을 요청 단위로 일괄 제공합니다. */
     @Override
@@ -196,7 +202,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (!usrSn.equals(quote.getUsrSn())) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
-        requireCurrentProviderAccess(usrSn, quote.getSvcReqSn());
+        ServiceRequestQuoteTarget target = requireCurrentProviderAccess(usrSn, quote.getSvcReqSn());
         if (quote.getQutReviseCnt() >= MAX_REVISE_CNT) {
             throw new CustomException(ErrorCode.QUOTE_REVISION_LIMIT_EXCEEDED);
         }
@@ -222,6 +228,15 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
 
         quoteMapper.deleteQuotePhotosByQutSn(qutSn);
         savePhotos(qutSn, usrSn, request.photoFlSns());
+
+        notificationService.notify(
+                target.requesterUsrSn(),
+                NotificationType.SERVICE,
+                NotificationDomain.SERVICE,
+                "받은 견적이 수정되었습니다",
+                "견적이 수정되었습니다",
+                RefType.QUOTE,
+                qutSn);
     }
 
     /** F-SVC-008: 견적 철회. 요청자 선택(QUTC0004) 이후 불가. */
@@ -313,9 +328,10 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
      * 담당자 7 통합, F-PROV-011·F-SVC-006·008: 과거 JWT 표시가 아니라 현재 회원 상태,
      * 요청 카테고리 승인 권한과 유효 제재 여부를 서비스 계층에서 다시 검증한다.
      */
-    private void requireCurrentProviderAccess(Long usrSn, Long svcReqSn) {
+    private ServiceRequestQuoteTarget requireCurrentProviderAccess(Long usrSn, Long svcReqSn) {
         ServiceRequestQuoteTarget target = serviceRequestQuoteReader.requireForProviderAccess(svcReqSn);
         activeProviderGuard.requireActiveForCategory(usrSn, target.categorySn());
+        return target;
     }
 
     /** 받은 견적 목록 조회 (요청자용). 본인 서비스 요청에 달린 견적만 허용. */
@@ -483,6 +499,16 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 quote.getUsrSn(),
                 quote.getQutAmt(),
                 quote.getQutStatusCd());
+    }
+
+    /** ServiceRequestQuoteProviderReader 구현 — 담당자2(신현석) 요청서 변경 알림 발행 시 소비. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> findProviderUsrSnBySvcReqSn(Long svcReqSn) {
+        if (svcReqSn == null || svcReqSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return quoteMapper.findProviderUsrSnBySvcReqSn(svcReqSn);
     }
 
     private void savePhotos(Long qutSn, Long usrSn, List<Long> photoFlSns) {

@@ -625,7 +625,7 @@
         LIMIT 1
     </select>
 
-    <!-- 서비스 거래 당사자에게만 요청서 제목·선택 견적·정산 상태를 제공한다. 주소 등 민감 요청서 정보는 조회하지 않는다. -->
+    <!-- 서비스 거래 당사자에게만 요청서·선택 견적·정산 상태를 제공한다. 정확 주소는 별도 당사자 조회로 분리한다. -->
     <select id="findMyServiceTradeDetail" resultType="nct.trade.dto.ServiceTradeDetailSource">
         SELECT
             t.TRD_SN AS tradeId,
@@ -637,7 +637,7 @@
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
             sr.SVC_REQ_TTL AS serviceRequestTitle,
             q.QUT_CN AS quoteSummary,
-            NULL AS scheduleLabel,
+            requestedSchedule.scheduleLabel,
             CASE
                 WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
@@ -659,14 +659,57 @@
                       AND cr.CH_RM_STATUS_CD = 'CHRC0001'
                  ) THEN TRUE
                 ELSE FALSE
-            END AS chatAvailable
+            END AS chatAvailable,
+            CASE
+                WHEN t.TRD_STATUS_CD = 'TRDC0003'
+                 AND EXISTS (
+                    SELECT 1
+                    FROM TRADE_STATUS_HIST cancelRequest
+                    WHERE cancelRequest.TRD_SN = t.TRD_SN
+                      AND cancelRequest.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
+                      AND CAST(SUBSTRING_INDEX(
+                            SUBSTRING_INDEX(cancelRequest.TRD_STS_HST_RSN_CN, '|', 2), '|', -1
+                          ) AS UNSIGNED) &lt;&gt; #{userId}
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM TRADE_STATUS_HIST cancelDecision
+                        WHERE cancelDecision.TRD_SN = cancelRequest.TRD_SN
+                          AND cancelDecision.TRD_STS_HST_RSN_CN LIKE CONCAT(
+                                'SCHEDULE_CANCEL_DECISION|', cancelRequest.TRD_STS_HST_SN, '|%')
+                      )
+                 ) THEN TRUE
+                ELSE FALSE
+            END AS cancellationDecisionAvailable
         FROM TRADE t
         JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
         JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
+        LEFT JOIN (
+            /* 요청서의 카테고리별 날짜 필드 중 가장 이른 선택일을 기본 서비스 일정으로 표시한다. */
+            SELECT i.SVC_REQ_SN,
+                   DATE_FORMAT(MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')), '%Y. %m. %d.') AS scheduleLabel
+            FROM SVC_REQ_ITEM i
+            JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+            WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+            GROUP BY i.SVC_REQ_SN
+        ) requestedSchedule ON requestedSchedule.SVC_REQ_SN = t.SVC_REQ_SN
         LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0002'
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+    </select>
+
+    <!-- 선택 견적이 거래로 확정된 뒤에는 요청자·제공자에게만 등록된 정확 주소를 제공한다. -->
+    <select id="findMyServiceTradeAddresses" resultType="nct.trade.dto.ServiceTradeAddressSource">
+        SELECT a.SVC_REQ_ADDR_ENC AS encryptedAddress,
+               a.SVC_REQ_DADDR_ENC AS encryptedDetailAddress,
+               a.SVC_REQ_ZIP_ENC AS encryptedZonecode
+        FROM TRADE t
+        JOIN SVC_REQ_ADDRESS a ON a.SVC_REQ_SN = t.SVC_REQ_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
+          AND a.SVC_REQ_ADDR_USE_YN = 'Y'
+          AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+        ORDER BY a.SVC_REQ_STEP_SN, a.ADDR_ROLE_KEY, a.SVC_REQ_ADDR_SEQ_NO
     </select>
 
     <!-- F-SVC-016은 거래 상태를 바꾸지 않아도, 식별 가능한 상태 이력 사유로 요청 내역을 보존한다. -->
@@ -675,6 +718,9 @@
             h.TRD_STS_HST_SN AS id,
             CASE
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%' THEN 'CHANGE'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%' THEN 'CANCEL_REQUEST'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE '%|APPROVED' THEN 'CANCEL_APPROVED'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE '%|REJECTED' THEN 'CANCEL_REJECTED'
                 ELSE 'CANCEL'
             END AS eventType,
             h.TRD_STS_HST_REG_DT AS occurredAt,
@@ -685,18 +731,55 @@
                         '%Y-%m-%dT%H:%i:%s')
                 ELSE NULL
             END AS requestedScheduleAt,
-            SUBSTRING(
-                h.TRD_STS_HST_RSN_CN,
-                LOCATE('|', h.TRD_STS_HST_RSN_CN,
-                    LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1) AS reason
+            CASE
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION%|APPROVED'
+                    THEN '상대방이 일정 취소 요청에 동의했습니다. 거래가 취소되고 보관금이 환불되었습니다.'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION%|REJECTED'
+                    THEN '상대방이 일정 취소 요청을 거절했습니다. 거래는 계속 진행됩니다.'
+                ELSE SUBSTRING(
+                    h.TRD_STS_HST_RSN_CN,
+                    LOCATE('|', h.TRD_STS_HST_RSN_CN,
+                        LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1)
+            END AS reason
         FROM TRADE_STATUS_HIST h
         WHERE h.TRD_SN = #{tradeId}
           AND (
               h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL|%'
+              OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
+              OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION|%'
           )
         ORDER BY h.TRD_STS_HST_REG_DT DESC, h.TRD_STS_HST_SN DESC
     </select>
+
+    <select id="findPendingServiceScheduleCancellation"
+            resultType="nct.trade.dto.ServiceScheduleCancellationPending">
+        SELECT h.TRD_STS_HST_SN AS historyId,
+               CAST(SUBSTRING_INDEX(
+                   SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1
+               ) AS UNSIGNED) AS requesterUserId
+        FROM TRADE_STATUS_HIST h
+        WHERE h.TRD_SN = #{tradeId}
+          AND h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM TRADE_STATUS_HIST decision
+              WHERE decision.TRD_SN = h.TRD_SN
+                AND decision.TRD_STS_HST_RSN_CN LIKE CONCAT(
+                    'SCHEDULE_CANCEL_DECISION|', h.TRD_STS_HST_SN, '|%')
+          )
+        ORDER BY h.TRD_STS_HST_SN DESC
+        LIMIT 1
+    </select>
+
+    <update id="cancelServiceTrade">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0008',
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_TYPE_CD = 'TRDC0002'
+          AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
 
     <!-- 서비스 거래 당사자가 재진입할 목록이다. 요청서 주소·세부 항목 같은 민감 정보는 포함하지 않는다. -->
     <select id="findMyServiceTrades" resultType="nct.trade.dto.ServiceTradeListItem">

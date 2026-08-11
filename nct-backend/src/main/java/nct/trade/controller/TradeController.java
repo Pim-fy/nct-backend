@@ -28,6 +28,7 @@ import nct.trade.dto.ServiceScheduleChangeRequest;
 import nct.trade.dto.ServiceScheduleCancellationRequest;
 import nct.trade.dto.ServiceScheduleChangeCommand;
 import nct.trade.dto.ServiceScheduleCancellationCommand;
+import nct.trade.dto.ServiceScheduleCancellationDecisionRequest;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
@@ -286,6 +287,18 @@ public class TradeController {
                 tradeId,
                 userDetails.getMember().getId(),
                 new ServiceScheduleCancellationCommand(request.getReason()));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 상대방이 일정 취소 요청을 동의하거나 거절한다. 동의 시 거래 취소와 환불을 함께 처리한다. */
+    @PostMapping("/{tradeId}/service-schedule-cancellations/decision")
+    public ResponseEntity<ApiResponse<Void>> decideServiceScheduleCancellation(
+            @PathVariable(name = "tradeId") long tradeId,
+            @RequestBody ServiceScheduleCancellationDecisionRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.decideServiceScheduleCancellation(
+                tradeId, userDetails.getMember().getId(), request.isApproved());
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

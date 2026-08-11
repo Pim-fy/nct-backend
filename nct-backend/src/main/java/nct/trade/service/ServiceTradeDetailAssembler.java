@@ -26,6 +26,14 @@ public class ServiceTradeDetailAssembler {
             ServiceTradeDetailSource source,
             long viewerUserId,
             List<ServiceScheduleHistoryItem> scheduleHistory) {
+        return assemble(source, viewerUserId, scheduleHistory, null);
+    }
+
+    public ServiceTradeDetailResponse assemble(
+            ServiceTradeDetailSource source,
+            long viewerUserId,
+            List<ServiceScheduleHistoryItem> scheduleHistory,
+            String serviceAddressLabel) {
         if (source == null || viewerUserId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "서비스 거래 상세 조회 정보가 올바르지 않습니다.");
@@ -42,11 +50,13 @@ public class ServiceTradeDetailAssembler {
                 source.serviceRequestTitle(),
                 source.quoteSummary(),
                 source.scheduleLabel(),
+                serviceAddressLabel,
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
                 source.chatAvailable(),
                 List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
-                resolveAvailableActions(source.tradeStatusCode(), viewerRole));
+                resolveAvailableActions(source.tradeStatusCode(), viewerRole,
+                        source.cancellationDecisionAvailable()));
     }
 
     private String resolveViewerRole(ServiceTradeDetailSource source, long viewerUserId) {
@@ -60,7 +70,8 @@ public class ServiceTradeDetailAssembler {
                 "서비스 거래 당사자만 상세 정보를 조회할 수 있습니다.");
     }
 
-    private List<String> resolveAvailableActions(String statusCode, String viewerRole) {
+    private List<String> resolveAvailableActions(
+            String statusCode, String viewerRole, boolean cancellationDecisionAvailable) {
         List<String> actions = new ArrayList<>();
         if (IN_PROGRESS.equals(statusCode)) {
             if ("PROVIDER".equals(viewerRole)) {
@@ -70,6 +81,9 @@ public class ServiceTradeDetailAssembler {
             // 요청은 상태·수수료·정산을 바꾸지 않고 상태 이력으로만 기록된다.
             actions.add("REQUEST_SCHEDULE_CHANGE");
             actions.add("REQUEST_SCHEDULE_CANCELLATION");
+            if (cancellationDecisionAvailable) {
+                actions.add("DECIDE_SCHEDULE_CANCELLATION");
+            }
             actions.add("SUBMIT_DISPUTE");
         } else if (WAITING_CONFIRMATION.equals(statusCode)) {
             if ("REQUESTER".equals(viewerRole)) {

@@ -185,6 +185,15 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         }
 
         savePhotos(quote.getQutSn(), usrSn, request.photoFlSns());
+
+        notificationService.notify(
+                target.requesterUsrSn(),
+                NotificationType.SERVICE,
+                NotificationDomain.SERVICE,
+                "새 견적이 도착했습니다",
+                "등록하신 서비스 요청에 새 견적이 도착했습니다.",
+                RefType.QUOTE,
+                quote.getQutSn());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 

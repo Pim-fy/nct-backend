@@ -190,6 +190,7 @@ class TradeServiceTest {
                 null,
                 "ESCROW_HELD",
                 "보관금이 안전하게 보관 중입니다.",
+                "ACTIVE",
                 true,
                 false);
         when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(source);
@@ -201,6 +202,7 @@ class TradeServiceTest {
         assertThat(response.tradeId()).isEqualTo(91L);
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
         assertThat(response.serviceAddressLabel()).isEqualTo("(01234) 서울 마포구 101호");
+        assertThat(response.chatRoomStatus()).isEqualTo("ACTIVE");
         assertThat(response.chatAvailable()).isTrue();
         assertThat(response.availableActions()).containsExactly(
                 "REQUEST_SCHEDULE_CHANGE",

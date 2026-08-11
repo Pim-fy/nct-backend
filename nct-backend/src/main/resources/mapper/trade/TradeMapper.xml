@@ -656,6 +656,20 @@
                 ELSE NULL
             END AS escrowStatusLabel,
             CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
+                      AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                ) THEN 'ACTIVE'
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
+                ) THEN 'CLOSED'
+                ELSE 'NOT_STARTED'
+            END AS chatRoomStatus,
+            CASE
                 WHEN t.TRD_STATUS_CD = 'TRDC0003'
                  AND EXISTS (
                     SELECT 1

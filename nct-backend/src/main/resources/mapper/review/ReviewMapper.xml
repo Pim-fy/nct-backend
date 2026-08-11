@@ -67,6 +67,7 @@
          계속 NULL로 남는다(기존과 동일). -->
     <select id="selectWritableTrades" resultType="nct.review.dto.WritableTradeItem">
         /* 리뷰(임시): 작성 가능한 거래 목록 - TRADE 읽기 전용 조회, 상단 주석 참고 */
+        /* 리뷰 작성 가능 기간: 거래 완료일로부터 30일. 기간 만료 항목도 목록에 포함하여 프론트에서 만료 안내. */
         SELECT
             T.TRD_SN                                AS id,
             P.PRD_SN                                AS productId,
@@ -75,7 +76,8 @@
             <include refid="partyLabelCase"/>       AS partyLabel,
             U.USR_NM                                AS partyName,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
-            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
+            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d')                        AS completedDate,
+            DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
@@ -98,6 +100,7 @@
          자체를 쓰지 않으므로 ReviewService가 이 결과에는 auctionId를 채우지 않는다. -->
     <select id="selectWritableTrade" resultType="nct.review.dto.WritableTradeItem">
         /* 리뷰(임시): 작성 가능 여부 재검증(단건) - TRADE 읽기 전용 조회, 상단 주석 참고 */
+        /* 서버 측 재검증: 완료일로부터 30일 이내인 건만 통과시킨다. */
         SELECT
             T.TRD_SN                                AS id,
             P.PRD_SN                                AS productId,
@@ -106,7 +109,8 @@
             <include refid="partyLabelCase"/>       AS partyLabel,
             U.USR_NM                                AS partyName,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
-            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
+            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d')                        AS completedDate,
+            DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
@@ -115,6 +119,7 @@
         <include refid="completedTradeDateJoin"/>
         WHERE T.TRD_SN = #{tradeId}
           AND T.TRD_STATUS_CD = 'TRDC0006'
+          AND completedHist.completedDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
           AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn}
                OR T.REQ_USR_SN = #{usrSn} OR T.PRV_USR_SN = #{usrSn})
           AND NOT EXISTS (

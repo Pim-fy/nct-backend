@@ -53,6 +53,7 @@ public class ServiceTradeDetailAssembler {
                 serviceAddressLabel,
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
+                source.chatRoomStatus(),
                 source.chatAvailable(),
                 List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
                 resolveAvailableActions(source.tradeStatusCode(), viewerRole,

@@ -34,6 +34,7 @@ class ServiceTradeDetailAssemblerTest {
         ServiceTradeDetailResponse response = assembler.assemble(source("TRDC0003"), 11L);
 
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
+        assertThat(response.chatRoomStatus()).isEqualTo("ACTIVE");
         assertThat(response.availableActions()).containsExactly(
                 "REQUEST_SCHEDULE_CHANGE",
                 "REQUEST_SCHEDULE_CANCELLATION",
@@ -44,7 +45,7 @@ class ServiceTradeDetailAssemblerTest {
     void counterpartWithPendingCancellationSeesDecisionAction() {
         ServiceTradeDetailSource source = new ServiceTradeDetailSource(
                 91L, 11L, 22L, 31L, "TRDC0003", BigDecimal.valueOf(150000), null,
-                "입주 청소 요청", "청소 견적", null, null, null, true, true);
+                "입주 청소 요청", "청소 견적", null, null, null, "ACTIVE", true, true);
 
         ServiceTradeDetailResponse response = assembler.assemble(source, 22L);
 
@@ -79,6 +80,7 @@ class ServiceTradeDetailAssemblerTest {
                 "2026. 08. 03. 오전 10:00",
                 "ESCROW_HELD",
                 "보관금이 안전하게 보관 중입니다.",
+                "ACTIVE",
                 true,
                 false);
     }

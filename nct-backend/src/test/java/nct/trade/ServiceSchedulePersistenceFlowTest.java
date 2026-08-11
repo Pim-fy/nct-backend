@@ -76,10 +76,43 @@ class ServiceSchedulePersistenceFlowTest {
         assertThat(detail.scheduleHistory()).hasSize(2);
         assertThat(detail.scheduleHistory().get(0).reason())
                 .isEqualTo("장비 점검으로 일정 취소를 요청합니다.");
+        assertThat(detail.scheduleHistory().get(0).actorRole()).isEqualTo("PROVIDER");
         assertThat(detail.scheduleHistory().get(1).requestedScheduleAt())
                 .isEqualTo(requestedScheduleAt);
         assertThat(detail.scheduleHistory().get(1).reason())
                 .isEqualTo("고객 요청으로 오후 일정으로 변경합니다.");
+        assertThat(detail.scheduleHistory().get(1).actorRole()).isEqualTo("REQUESTER");
+    }
+
+    @Test
+    void returnsDisputeReceiptWithoutExposingReportedContent() {
+        tradeMapper.insertStatusHistory(tradeId, "TRDC0007", "거래 문제가 접수되었습니다.");
+
+        ServiceTradeDetailResponse detail = tradeService.getMyServiceTradeDetail(tradeId, providerUserId);
+
+        assertThat(detail.scheduleHistory()).singleElement().satisfies(item -> {
+            assertThat(item.eventType()).isEqualTo("DISPUTE_REPORTED");
+            assertThat(item.reason()).isEqualTo("거래 문제가 접수되어 거래와 정산이 보류되었습니다.");
+        });
+    }
+
+    @Test
+    void returnsEscrowLifecycleHistoryInNewestFirstOrder() {
+        tradeMapper.insertStatusHistory(tradeId, "TRDC0003", "선택 견적으로 서비스 거래가 생성되었습니다.");
+        tradeMapper.insertStatusHistory(tradeId, "TRDC0005", "SERVICE_COMPLETION_REQUEST|완료 요청 메모는 이력에 공개하지 않습니다.");
+        tradeMapper.insertStatusHistory(tradeId, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
+        tradeMapper.insertStatusHistory(tradeId, "TRDC0008", "관리자 환불 처리 사유는 이력에 공개하지 않습니다.");
+
+        assertThat(tradeMapper.findServiceScheduleHistory(tradeId))
+                .extracting(item -> item.eventType())
+                .containsExactly("ESCROW_REFUNDED", "SETTLEMENT_COMPLETED", "COMPLETION_REQUESTED", "ESCROW_HELD");
+        assertThat(tradeMapper.findServiceScheduleHistory(tradeId))
+                .extracting(item -> item.reason())
+                .containsExactly(
+                        "거래가 취소되어 보관금이 환불되었습니다.",
+                        "거래가 완료되어 정산이 완료되었습니다.",
+                        "서비스 완료 요청이 등록되어 의뢰자 확인을 기다립니다.",
+                        "선택 견적이 확정되어 보관금이 예치되었습니다.");
     }
 
     private long insertUser(String prefix) {

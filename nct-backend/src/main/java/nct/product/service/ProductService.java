@@ -136,8 +136,8 @@ public class ProductService {
                     product.getPrdSn(),
                     req.getPrdStartAmt(),
                     req.getBidUnit(),
+                    req.getAucStartDt(),
                     req.getAucEndDt(),
-                    true,
                     usrSn);
         }
 
@@ -199,8 +199,8 @@ public class ProductService {
                     prdSn,
                     req.getPrdStartAmt(),
                     req.getBidUnit(),
+                    req.getAucStartDt(),
                     req.getAucEndDt(),
-                    true,
                     usrSn);
         }
 

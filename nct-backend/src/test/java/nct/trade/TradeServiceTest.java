@@ -191,6 +191,7 @@ class TradeServiceTest {
                 null,
                 "ESCROW_HELD",
                 "보관금이 안전하게 보관 중입니다.",
+                "ACTIVE",
                 true,
                 false);
         when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(source);
@@ -202,6 +203,7 @@ class TradeServiceTest {
         assertThat(response.tradeId()).isEqualTo(91L);
         assertThat(response.viewerRole()).isEqualTo("REQUESTER");
         assertThat(response.serviceAddressLabel()).isEqualTo("(01234) 서울 마포구 101호");
+        assertThat(response.chatRoomStatus()).isEqualTo("ACTIVE");
         assertThat(response.chatAvailable()).isTrue();
         assertThat(response.availableActions()).containsExactly(
                 "REQUEST_SCHEDULE_CHANGE",
@@ -1391,7 +1393,7 @@ class TradeServiceTest {
         verify(tradeMapper).insertStatusHistory(
                 81L,
                 "TRDC0003",
-                "SCHEDULE_CHANGE|" + requestedAt.format(
+                "SCHEDULE_CHANGE|11|" + requestedAt.format(
                         java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"))
                         + "|오후로 변경 부탁드립니다.");
     }
@@ -1427,7 +1429,7 @@ class TradeServiceTest {
                 "서비스 일정 취소 상호 동의 환불");
         verify(chatService).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(
-                81L, "TRDC0008", "SCHEDULE_CANCEL_DECISION|701|APPROVED");
+                81L, "TRDC0008", "SCHEDULE_CANCEL_DECISION|701|22|APPROVED");
     }
 
     @Test
@@ -1440,7 +1442,7 @@ class TradeServiceTest {
         tradeService.decideServiceScheduleCancellation(81L, 22L, false);
 
         verify(tradeMapper).insertStatusHistory(
-                81L, "TRDC0003", "SCHEDULE_CANCEL_DECISION|701|REJECTED");
+                81L, "TRDC0003", "SCHEDULE_CANCEL_DECISION|701|22|REJECTED");
         verify(tradeMapper, never()).cancelServiceTrade(anyLong(), any());
         verifyNoInteractions(settlementService, pointService, chatService);
     }

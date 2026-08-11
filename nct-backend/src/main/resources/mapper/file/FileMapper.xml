@@ -143,4 +143,11 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 삭제 가드: 거래 분쟁 증빙으로 연결된 파일인지 (F-SVC-012/F-OPS-005) -->
+    <select id="countTradeDisputeFileRefs" resultType="int">
+        SELECT COUNT(*)
+          FROM TRADE_DISPUTE_FILE
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

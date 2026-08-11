@@ -1,12 +1,13 @@
 package nct.ops.operation.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.Builder;
 import lombok.Getter;
 import nct.member.dto.AdminMemberIdentityResponse;
 
-/** 담당자 7 · F-OPS-005: 개인정보 원문과 파일 데이터를 제외한 분쟁 상세 응답입니다. */
+/** 담당자 7 · F-OPS-005: 개인정보 원문과 파일 경로를 제외한 분쟁 상세 응답입니다. */
 @Getter
 @Builder
 public class AdminDisputeDetailResponse {
@@ -48,4 +49,5 @@ public class AdminDisputeDetailResponse {
     private final boolean settlementOnHold;
     private final LocalDateTime registeredAt;
     private final LocalDateTime updatedAt;
+    private final List<AdminDisputeEvidenceFileResponse> evidenceFiles;
 }

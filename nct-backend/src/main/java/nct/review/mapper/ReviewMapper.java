@@ -11,6 +11,8 @@ import nct.review.dto.MyReviewItem;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.ReviewRouteContext;
+import nct.review.dto.ReviewRatingTarget;
+import nct.review.dto.ServiceReviewRatingSummary;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 
@@ -54,6 +56,11 @@ public interface ReviewMapper {
             @Param("reviewId") long reviewId,
             @Param("usrSn") long usrSn);
 
+    /** 본인이 작성한 활성 리뷰의 피평가자와 도메인을 권한 조건과 함께 조회한다. */
+    Optional<ReviewRatingTarget> selectOwnedActiveReviewRatingTarget(
+            @Param("rvwSn") long rvwSn,
+            @Param("usrSn") long usrSn);
+
     /** 리뷰 평점·내용 수정 (본인 소유·미삭제 리뷰만, 영향 행 0건이면 대상 없음/타인 소유/이미 삭제) */
     int updateReview(@Param("rvwSn") long rvwSn, @Param("usrSn") long usrSn,
                       @Param("rating") int rating, @Param("content") String content);
@@ -68,14 +75,19 @@ public interface ReviewMapper {
     List<UserReviewItem> selectReviewsByReceiver(
             @Param("usrSn") long usrSn,
             @Param("dealType") String dealType,
+            @Param("role") String role,
             @Param("offset") int offset,
             @Param("size") int size);
 
     /** 페이지네이션 totalCount용 — selectReviewsByReceiver와 동일 조건 */
     long countReviewsByReceiver(
             @Param("usrSn") long usrSn,
-            @Param("dealType") String dealType);
+            @Param("dealType") String dealType,
+            @Param("role") String role);
 
     /** 신뢰지표 집계 (F-COM-009~010, 담당자4 정민재 소비) */
     TrustScoreResponse selectTrustScore(@Param("usrSn") long usrSn);
+
+    /** 제공자로서 받은 활성 서비스 리뷰의 평균 별점과 리뷰 수를 계산한다. */
+    ServiceReviewRatingSummary selectServiceReviewRatingSummary(@Param("usrSn") long usrSn);
 }

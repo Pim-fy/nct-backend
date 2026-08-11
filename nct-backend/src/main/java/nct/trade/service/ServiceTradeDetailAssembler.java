@@ -53,10 +53,39 @@ public class ServiceTradeDetailAssembler {
                 serviceAddressLabel,
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
+                source.chatRoomStatus(),
                 source.chatAvailable(),
                 List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
                 resolveAvailableActions(source.tradeStatusCode(), viewerRole,
                         source.cancellationDecisionAvailable()));
+    }
+
+    /** 담당자 7 · F-OPS-005: 관리자에게는 원문 주소와 당사자 처리 버튼을 제외한 읽기 전용 상세만 제공합니다. */
+    public ServiceTradeDetailResponse assembleForAdmin(
+            ServiceTradeDetailSource source,
+            List<ServiceScheduleHistoryItem> scheduleHistory) {
+        if (source == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "서비스 거래 상세 조회 정보가 올바르지 않습니다.");
+        }
+
+        return new ServiceTradeDetailResponse(
+                source.tradeId(),
+                source.serviceRequestId(),
+                "ADMIN",
+                source.tradeStatusCode(),
+                source.tradeAmount(),
+                source.autoCompleteAt(),
+                source.serviceRequestTitle(),
+                source.quoteSummary(),
+                source.scheduleLabel(),
+                null,
+                source.escrowStatusCode(),
+                source.escrowStatusLabel(),
+                source.chatRoomStatus(),
+                false,
+                List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
+                List.of());
     }
 
     private String resolveViewerRole(ServiceTradeDetailSource source, long viewerUserId) {

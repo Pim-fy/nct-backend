@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 import nct.member.domain.Member;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.dto.AdminMemberSource;
+import nct.member.dto.PublicUserProfileSource;
 
 @Mapper
 public interface MemberMapper {
@@ -26,6 +27,9 @@ public interface MemberMapper {
 
     // @ai_generated: JWT subject(usrSn) 기반 조회 - 로그인 필터·재발급이 가변 필드(email) 대신 사용
     Optional<Member> findMemberById(Long usrSn);
+
+    /** 담당자 7 통합 연결 · F-COM-008~009 지원: 거래 프로필에 허용된 회원 공개 필드만 조회한다. */
+    Optional<PublicUserProfileSource> findPublicProfileById(@Param("usrSn") Long usrSn);
 
     /** 담당자 7 · F-OPS-002: 관리자 회원 상세/상태 변경의 행 잠금 조회입니다. */
     Optional<Member> findMemberByIdForUpdate(Long usrSn);

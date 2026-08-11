@@ -145,6 +145,7 @@
         SELECT <include refid="adminSettlementColumns" />
         <include refid="adminSettlementJoins" />
         <include refid="adminSettlementFilters" />
+        <!-- 담당자 7 · F-OPS-009: 자동 완료 흐름에서도 목록 순서가 흔들리지 않도록 정산번호 최신순으로 조회한다. -->
         ORDER BY S.STLM_SN DESC
         LIMIT #{size} OFFSET #{offset}
     </select>

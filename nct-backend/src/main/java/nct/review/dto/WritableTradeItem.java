@@ -40,4 +40,6 @@ public class WritableTradeItem {
     private String completedDate;
     private String reviewDeadline; // 거래 완료일 + 30일 (yyyy-MM-dd). 프론트에서 기간 만료 여부 판별에 사용.
     private Long counterpartUsrSn; // 리뷰 저장 시 REVWD_USR_SN에 넣을 값 (응답에도 그대로 노출됨 - 참여자 본인 확인용)
+    @JsonIgnore
+    private boolean counterpartServiceProvider; // 제공자로서 받은 서비스 리뷰 캐시만 갱신하기 위한 내부 판정값
 }

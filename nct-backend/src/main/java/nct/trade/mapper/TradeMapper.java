@@ -18,6 +18,7 @@ import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDisputeTarget;
+import nct.trade.dto.TradeDisputeRegistration;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.MemberActiveTradeTarget;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -65,13 +66,14 @@ public interface TradeMapper {
     /** 같은 거래의 접수·처리중 분쟁이 있는지 조회한다. TRADE 행 잠금 뒤에 호출한다. */
     boolean hasOpenTradeDispute(@Param("tradeId") long tradeId);
 
-    int insertTradeDispute(
-            @Param("tradeId") long tradeId,
-            @Param("disputerUserId") long disputerUserId,
-            @Param("disputeTypeCode") String disputeTypeCode,
-            @Param("content") String content,
-            @Param("previousTradeStatusCode") String previousTradeStatusCode,
-            @Param("updaterId") String updaterId);
+    int insertTradeDispute(TradeDisputeRegistration registration);
+
+    /** 생성된 분쟁에 검증 완료된 증빙 파일을 표시 순서대로 연결합니다. */
+    int insertTradeDisputeFile(
+            @Param("disputeSn") long disputeSn,
+            @Param("fileSn") long fileSn,
+            @Param("sortOrder") int sortOrder,
+            @Param("registrantId") String registrantId);
 
     /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
     int holdServiceTradeForDispute(
@@ -163,6 +165,9 @@ public interface TradeMapper {
     ServiceTradeDetailSource findMyServiceTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    /** 관리자 전용 서비스 거래 상세는 당사자 전용 조회와 별도 계약으로 제공합니다. */
+    ServiceTradeDetailSource findAdminServiceTradeDetail(@Param("tradeId") long tradeId);
 
     /** 선택 견적 거래의 두 당사자에게만 요청서 정확 주소 암호문을 제공한다. */
     List<ServiceTradeAddressSource> findMyServiceTradeAddresses(

@@ -7,10 +7,12 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockMultipartFile;
@@ -32,6 +35,7 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
+import nct.provider.port.ProviderReviewRatingPort;
 import nct.review.constant.MyReviewStatus;
 import nct.review.constant.ReviewDomainCode;
 import nct.review.domain.Review;
@@ -40,7 +44,9 @@ import nct.review.dto.MyReviewItem;
 import nct.review.dto.MyTradeReviewResponse;
 import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewRouteContext;
+import nct.review.dto.ReviewRatingTarget;
 import nct.review.dto.ReviewUpdateResult;
+import nct.review.dto.ServiceReviewRatingSummary;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
@@ -62,6 +68,7 @@ class ReviewServiceTest {
     @Mock private FileStorageService fileStorageService;
     @Mock private ReviewImageMapper reviewImageMapper;
     @Mock private NotificationService notificationService;
+    @Mock private ProviderReviewRatingPort providerReviewRatingPort;
     // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
     @Mock private ObjectProvider<AuctionService> auctionServiceProvider;
     @Mock private AuctionService auctionService;
@@ -74,7 +81,13 @@ class ReviewServiceTest {
     private static final String REVIEWER_NICKNAME = "테스터";
 
     private void setUp() {
-        reviewService = new ReviewService(reviewMapper, fileStorageService, reviewImageMapper, notificationService, auctionServiceProvider);
+        reviewService = new ReviewService(
+                reviewMapper,
+                fileStorageService,
+                reviewImageMapper,
+                notificationService,
+                providerReviewRatingPort,
+                auctionServiceProvider);
     }
 
     private WritableTradeItem healthyTrade(String dealType) {
@@ -86,7 +99,20 @@ class ReviewServiceTest {
                 .partyName("이**")
                 .completedDate("2026-06-18")
                 .counterpartUsrSn(COUNTERPART_USR_SN)
+                .counterpartServiceProvider("service".equals(dealType))
                 .build();
+    }
+
+    private void allowServiceReviewMutation(long reviewId) {
+        when(reviewMapper.selectOwnedActiveReviewRatingTarget(reviewId, USR_SN))
+                .thenReturn(Optional.of(
+                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.SERVICE, true)));
+    }
+
+    private void serviceRatingSummary(String averageScore, long reviewCount) {
+        when(providerReviewRatingPort.lockReviewRating(COUNTERPART_USR_SN)).thenReturn(true);
+        when(reviewMapper.selectServiceReviewRatingSummary(COUNTERPART_USR_SN))
+                .thenReturn(new ServiceReviewRatingSummary(new BigDecimal(averageScore), reviewCount));
     }
 
     @Test
@@ -266,18 +292,58 @@ class ReviewServiceTest {
         assertThat(result.getPhotoCount()).isZero();
 
         verify(fileStorageService, never()).storeImage(any(), any(), any());
+        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test
     void 서비스거래_리뷰는_RVWC0002_도메인코드로_저장된다() {
         setUp();
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("service")));
+        serviceRatingSummary("4.0", 1L);
 
         reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
         org.mockito.ArgumentCaptor<Review> captor = org.mockito.ArgumentCaptor.forClass(Review.class);
         verify(reviewMapper).insertReview(captor.capture());
         assertThat(captor.getValue().getRvwDomainCd()).isEqualTo(ReviewDomainCode.SERVICE);
+        verify(providerReviewRatingPort).updateReviewRating(
+                COUNTERPART_USR_SN,
+                new BigDecimal("4.0"),
+                1L);
+        InOrder refreshOrder = inOrder(providerReviewRatingPort, reviewMapper);
+        refreshOrder.verify(providerReviewRatingPort).lockReviewRating(COUNTERPART_USR_SN);
+        refreshOrder.verify(reviewMapper).selectServiceReviewRatingSummary(COUNTERPART_USR_SN);
+        refreshOrder.verify(providerReviewRatingPort).updateReviewRating(
+                COUNTERPART_USR_SN,
+                new BigDecimal("4.0"),
+                1L);
+    }
+
+    @Test
+    void 제공자_프로필이_없으면_서비스_리뷰는_캐시_집계를_생략한다() {
+        setUp();
+        when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("service")));
+        when(providerReviewRatingPort.lockReviewRating(COUNTERPART_USR_SN)).thenReturn(false);
+
+        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
+
+        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
+        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
+    }
+
+    @Test
+    void 제공자가_요청자에게_남긴_서비스_리뷰는_요청자의_제공자_평점_캐시를_건드리지_않는다() {
+        setUp();
+        WritableTradeItem requesterTarget = healthyTrade("service").toBuilder()
+                .counterpartServiceProvider(false)
+                .build();
+        when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(requesterTarget));
+
+        reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
+
+        verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
+        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
+        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test
@@ -382,18 +448,20 @@ class ReviewServiceTest {
     @Test
     void 존재하지_않거나_본인_소유가_아닌_리뷰를_수정하면_예외가_발생한다() {
         setUp();
-        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(0);
 
         assertThatThrownBy(() -> reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null))
                 .isInstanceOf(ReviewNotFoundException.class);
 
+        verify(reviewMapper, never()).updateReview(any(Long.class), any(Long.class), any(Integer.class), any());
         verify(fileStorageService, never()).storeImage(any(), any(), any());
     }
 
     @Test
     void 리뷰_수정이_성공하면_평점과_내용이_반영된다() {
         setUp();
+        allowServiceReviewMutation(900L);
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        serviceRatingSummary("4.3", 3L);
 
         ReviewUpdateResult result = reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null);
 
@@ -401,12 +469,32 @@ class ReviewServiceTest {
         assertThat(result.getRating()).isEqualTo(4);
         assertThat(result.getAddedPhotoCount()).isZero();
         verify(fileStorageService, never()).storeImage(any(), any(), any());
+        verify(providerReviewRatingPort).updateReviewRating(
+                COUNTERPART_USR_SN,
+                new BigDecimal("4.3"),
+                3L);
+    }
+
+    @Test
+    void 요청자로서_받은_서비스_리뷰를_수정해도_제공자_평점_캐시를_건드리지_않는다() {
+        setUp();
+        when(reviewMapper.selectOwnedActiveReviewRatingTarget(900L, USR_SN))
+                .thenReturn(Optional.of(
+                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.SERVICE, false)));
+        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+
+        reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null);
+
+        verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
+        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test
     void 리뷰_수정시_새_사진이_있으면_REVIEW_IMAGE에_추가로_연결한다() {
         setUp();
+        allowServiceReviewMutation(900L);
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        serviceRatingSummary("4.0", 1L);
         when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
                 .thenReturn(FileMeta.builder().flSn(20L).build());
         MultipartFile photo = new MockMultipartFile("photos", "c.jpg", "image/jpeg", "data".getBytes());
@@ -425,6 +513,7 @@ class ReviewServiceTest {
     @Test
     void 수정시_기존_사진과_새_사진을_합쳐_5장을_넘으면_거부된다() {
         setUp();
+        allowServiceReviewMutation(900L);
         when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(
                 List.of("a.jpg", "b.jpg", "c.jpg", "d.jpg")); // 기존 4장
 
@@ -438,9 +527,11 @@ class ReviewServiceTest {
     @Test
     void 수정시_기존_사진과_새_사진을_합쳐_정확히_5장이면_허용된다() {
         setUp();
+        allowServiceReviewMutation(900L);
         when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(
                 List.of("a.jpg", "b.jpg", "c.jpg")); // 기존 3장
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        serviceRatingSummary("4.0", 1L);
         when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
                 .thenReturn(FileMeta.builder().flSn(30L).build())
                 .thenReturn(FileMeta.builder().flSn(31L).build());
@@ -463,19 +554,26 @@ class ReviewServiceTest {
     @Test
     void 리뷰_삭제가_성공하면_매퍼의_소프트_삭제가_호출된다() {
         setUp();
+        allowServiceReviewMutation(900L);
         when(reviewMapper.deleteReview(900L, USR_SN)).thenReturn(1);
+        serviceRatingSummary("0.0", 0L);
 
         reviewService.deleteReview(USR_SN, 900L);
 
         verify(reviewMapper).deleteReview(900L, USR_SN);
+        verify(providerReviewRatingPort).updateReviewRating(
+                COUNTERPART_USR_SN,
+                new BigDecimal("0.0"),
+                0L);
     }
 
     @Test
     void 존재하지_않거나_본인_소유가_아닌_리뷰를_삭제하면_예외가_발생한다() {
         setUp();
-        when(reviewMapper.deleteReview(900L, USR_SN)).thenReturn(0);
 
         assertThatThrownBy(() -> reviewService.deleteReview(USR_SN, 900L))
                 .isInstanceOf(ReviewNotFoundException.class);
+        verify(reviewMapper, never()).deleteReview(anyLong(), anyLong());
     }
+
 }

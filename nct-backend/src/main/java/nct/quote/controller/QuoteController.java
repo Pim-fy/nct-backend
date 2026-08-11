@@ -86,6 +86,18 @@ public class QuoteController {
                 quoteService.getMyQuotes(usrSn, page, size)));
     }
 
+    /** 담당자 7 연결 · F-SVC-005~008: 제공자가 본인 견적 상세를 조회합니다. */
+    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    @GetMapping("/me/{quoteId}")
+    public ResponseEntity<ApiResponse<QuoteResponse>> getMyQuote(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "quoteId") Long quoteId) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getMyQuote(usrSn, quoteId)));
+    }
+
     /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 집계입니다. */
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     @GetMapping("/me/summary")

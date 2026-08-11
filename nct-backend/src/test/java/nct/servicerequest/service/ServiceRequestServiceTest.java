@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.servicerequest.domain.ServiceRequest;
@@ -47,6 +48,8 @@ class ServiceRequestServiceTest {
     private ServiceRequestFormService formService;
     @Mock
     private FileStorageService fileStorageService;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private ServiceRequestService service;
 
@@ -58,7 +61,8 @@ class ServiceRequestServiceTest {
                 imageMapper,
                 commentMapper,
                 formService,
-                fileStorageService);
+                fileStorageService,
+                eventPublisher);
     }
 
     @Test

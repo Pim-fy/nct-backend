@@ -14,8 +14,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import nct.auction.service.AuctionService;
+import nct.common.domain.RefType;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
+import nct.notification.domain.NotificationDomain;
+import nct.notification.domain.NotificationType;
+import nct.notification.service.NotificationService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
@@ -57,6 +61,7 @@ public class ReviewService {
     private final ReviewMapper reviewMapper;
     private final FileStorageService fileStorageService;
     private final ReviewImageMapper reviewImageMapper;
+    private final NotificationService notificationService;
     // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 ReviewService를
     // 주입받고 있어(신뢰지표 소비) 순환 의존을 피하려고 ObjectProvider로 지연 주입한다.
     // AuctionService.productServiceProvider와 같은 패턴이다.
@@ -197,7 +202,7 @@ public class ReviewService {
      */
     @Transactional
     public ReviewCreateResult createReview(long usrSn, long tradeId, int rating, String content,
-            List<MultipartFile> photos) {
+            List<MultipartFile> photos, String reviewerNickname) {
         if (rating < 1 || rating > 5) {
             throw new InvalidRatingException(rating);
         }
@@ -229,6 +234,15 @@ public class ReviewService {
         if (photos != null && !photos.isEmpty()) {
             photoCount = storeReviewImages(photos, review.getRvwSn(), usrSn);
         }
+
+        notificationService.notify(
+                trade.getCounterpartUsrSn(),
+                NotificationType.TRADE,
+                NotificationDomain.TRADE,
+                "리뷰가 등록되었습니다",
+                reviewerNickname + "님이 리뷰를 등록했습니다.",
+                RefType.TRADE,
+                tradeId);
 
         return ReviewCreateResult.builder()
                 .id(review.getRvwSn())

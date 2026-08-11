@@ -110,7 +110,8 @@ public class ReviewController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long usrSn = userDetails.getMember().getId();
-        ReviewCreateResult result = reviewService.createReview(usrSn, targetId, rating, content, photos);
+        String nickname = userDetails.getMember().getNickname();
+        ReviewCreateResult result = reviewService.createReview(usrSn, targetId, rating, content, photos, nickname);
         return ResponseEntity.status(201).body(ApiResponse.created(result));
     }
 

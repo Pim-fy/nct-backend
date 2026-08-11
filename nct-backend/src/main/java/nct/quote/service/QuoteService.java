@@ -17,6 +17,7 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
@@ -26,6 +27,7 @@ import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
 import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
+import nct.quote.dto.MyQuoteSummaryCounts;
 import nct.quote.dto.MyQuoteSummaryResponse;
 import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteCreateResponse;
@@ -185,6 +187,16 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         }
 
         savePhotos(quote.getQutSn(), usrSn, request.photoFlSns());
+
+        String providerNickname = ((CustomUserDetails) authentication.getPrincipal()).getMember().getNickname();
+        notificationService.notify(
+                target.requesterUsrSn(),
+                NotificationType.SERVICE,
+                NotificationDomain.SERVICE,
+                "새 견적이 도착했습니다",
+                providerNickname + "님이 견적을 제출했습니다.",
+                RefType.SERVICE_REQUEST,
+                quote.getSvcReqSn());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 
@@ -235,8 +247,8 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 NotificationDomain.SERVICE,
                 "받은 견적이 수정되었습니다",
                 "견적이 수정되었습니다",
-                RefType.QUOTE,
-                qutSn);
+                RefType.SERVICE_REQUEST,
+                quote.getSvcReqSn());
     }
 
     /** F-SVC-008: 견적 철회. 요청자 선택(QUTC0004) 이후 불가. */
@@ -300,14 +312,39 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .build();
     }
 
-    /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 수를 반환합니다. */
+    /** 담당자 7 · F-PROV-009: 제공자 대시보드용 상태별 견적 수를 반환합니다. */
     @Transactional(readOnly = true)
     public MyQuoteSummaryResponse getMyQuoteSummary(Long usrSn) {
         if (usrSn == null || usrSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         activeProviderGuard.requireActive(usrSn);
-        return new MyQuoteSummaryResponse(quoteMapper.countMyActiveQuotes(usrSn));
+        MyQuoteSummaryCounts summary = quoteMapper.findMyQuoteSummary(usrSn);
+        validateMyQuoteSummary(summary);
+        return new MyQuoteSummaryResponse(
+                summary.getTotalQuoteCount(),
+                summary.getActiveQuoteCount(),
+                summary.getSelectedQuoteCount(),
+                summary.getEndedQuoteCount());
+    }
+
+    private void validateMyQuoteSummary(MyQuoteSummaryCounts summary) {
+        if (summary == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+        long classifiedCount = (long) summary.getActiveQuoteCount()
+                + summary.getSelectedQuoteCount()
+                + summary.getEndedQuoteCount();
+        if (summary.getTotalQuoteCount() < 0
+                || summary.getActiveQuoteCount() < 0
+                || summary.getSelectedQuoteCount() < 0
+                || summary.getEndedQuoteCount() < 0
+                || summary.getUnsupportedQuoteCount() != 0
+                || classifiedCount != summary.getTotalQuoteCount()) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "제공자 견적 요약 데이터가 일관되지 않습니다.");
+        }
     }
 
     /** 제공자가 특정 서비스 요청에 이미 제출한 수정 가능한 견적을 조회한다. */

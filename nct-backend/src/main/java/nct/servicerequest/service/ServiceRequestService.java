@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
 import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
@@ -49,6 +51,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 변경사항 추가는 공개 상태에서만 — 매칭완료 이후로는 요청 내용이 확정된 것으로 보고 막는다
     private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002");
@@ -457,6 +460,10 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 .svcReqCmtRegId(String.valueOf(usrSn))
                 .build();
         svcReqCommentMapper.insertComment(comment);
+        // 요청서 변경사항(F-SVC-006) 커밋 후 견적 제출 제공자 알림 — quote 도메인을 직접 참조하면
+        // QuoteService↔ServiceRequestService 순환참조가 되므로 이벤트로 발행해 방향을 끊는다
+        // (AdminDisputeDecisionCommittedEvent와 동일한 패턴, 리스너는 nct.quote.service에 있다)
+        eventPublisher.publishEvent(new ServiceRequestCommentAddedEvent(svcReqSn, serviceRequest.getSvcReqTtl(), req.getTtl()));
 
         return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT).stream()
                 .filter(c -> c.getSvcReqCmtSn().equals(comment.getSvcReqCmtSn()))

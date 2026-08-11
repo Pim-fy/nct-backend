@@ -647,7 +647,12 @@
                 WHEN st.STLM_STATUS_CD = 'STLC0001' THEN '정산 대기 중입니다.'
                 WHEN st.STLM_STATUS_CD = 'STLC0002' THEN '분쟁 처리로 정산이 보류되었습니다.'
                 WHEN st.STLM_STATUS_CD = 'STLC0003' THEN '정산이 완료되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0004' THEN '보관금이 환불되어 정산이 종료되었습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0008' THEN '서비스 거래가 취소되어 보관금이 환불되었습니다.'
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0005' THEN '서비스 완료 확인 후 정산이 진행됩니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN '거래가 완료되어 정산을 준비하고 있습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0007' THEN '거래가 보류되어 보관금과 정산 처리가 중지되었습니다.'
                 ELSE NULL
             END AS escrowStatusLabel,
             CASE
@@ -712,8 +717,15 @@
         ORDER BY a.SVC_REQ_STEP_SN, a.ADDR_ROLE_KEY, a.SVC_REQ_ADDR_SEQ_NO
     </select>
 
-    <!-- F-SVC-016은 거래 상태를 바꾸지 않아도, 식별 가능한 상태 이력 사유로 요청 내역을 보존한다. -->
+    <!-- 일정·거래·보관금 변동의 공개 이력을 함께 반환한다. 신고 원문과 관리자 내부 사유는 노출하지 않는다. -->
     <select id="findServiceScheduleHistory" resultType="nct.trade.dto.ServiceScheduleHistoryItem">
+        SELECT history.id,
+               history.eventType,
+               history.occurredAt,
+               history.requestedScheduleAt,
+               history.reason,
+               history.actorRole
+        FROM (
         SELECT
             h.TRD_STS_HST_SN AS id,
             CASE
@@ -721,13 +733,24 @@
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%' THEN 'CANCEL_REQUEST'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE '%|APPROVED' THEN 'CANCEL_APPROVED'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE '%|REJECTED' THEN 'CANCEL_REJECTED'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%' THEN 'COMPLETION_REQUESTED'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0003'
+                 AND h.TRD_STS_HST_RSN_CN = '선택 견적으로 서비스 거래가 생성되었습니다.' THEN 'ESCROW_HELD'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0006' THEN 'SETTLEMENT_COMPLETED'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008' THEN 'ESCROW_REFUNDED'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.' THEN 'DISPUTE_REPORTED'
                 ELSE 'CANCEL'
             END AS eventType,
             h.TRD_STS_HST_REG_DT AS occurredAt,
             CASE
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
                     THEN STR_TO_DATE(
-                        SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1),
+                        CASE
+                            WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
+                                THEN SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 3), '|', -1)
+                            ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1)
+                        END,
                         '%Y-%m-%dT%H:%i:%s')
                 ELSE NULL
             END AS requestedScheduleAt,
@@ -736,20 +759,124 @@
                     THEN '상대방이 일정 취소 요청에 동의했습니다. 거래가 취소되고 보관금이 환불되었습니다.'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION%|REJECTED'
                     THEN '상대방이 일정 취소 요청을 거절했습니다. 거래는 계속 진행됩니다.'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
+                    THEN '서비스 완료 요청이 등록되어 의뢰자 확인을 기다립니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0003'
+                 AND h.TRD_STS_HST_RSN_CN = '선택 견적으로 서비스 거래가 생성되었습니다.'
+                    THEN '선택 견적이 확정되어 보관금이 예치되었습니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0005'
+                    THEN '서비스 완료 요청이 등록되어 의뢰자 확인을 기다립니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0006'
+                    THEN '거래가 완료되어 정산이 완료되었습니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
+                    THEN '거래가 취소되어 보관금이 환불되었습니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.'
+                    THEN '거래 문제가 접수되어 거래와 정산이 보류되었습니다.'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
+                    THEN SUBSTRING(
+                        h.TRD_STS_HST_RSN_CN,
+                        LOCATE('|', h.TRD_STS_HST_RSN_CN,
+                            LOCATE('|', h.TRD_STS_HST_RSN_CN,
+                                LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1) + 1)
                 ELSE SUBSTRING(
                     h.TRD_STS_HST_RSN_CN,
                     LOCATE('|', h.TRD_STS_HST_RSN_CN,
                         LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1)
-            END AS reason
+            END AS reason,
+            CASE
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
+                    THEN CASE CAST(SUBSTRING_INDEX(
+                        SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1
+                    ) AS UNSIGNED)
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
+                    THEN CASE CAST(SUBSTRING_INDEX(
+                        SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1
+                    ) AS UNSIGNED)
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION|%|%|%'
+                    THEN CASE CAST(SUBSTRING_INDEX(
+                        SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 3), '|', -1
+                    ) AS UNSIGNED)
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
+                    THEN 'PROVIDER'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.'
+                    THEN CASE (
+                        SELECT d.DSPT_USR_SN
+                        FROM TRADE_DISPUTE d
+                        WHERE d.TRD_SN = h.TRD_SN
+                          AND d.TRD_DSP_REG_DT &lt;= h.TRD_STS_HST_REG_DT
+                        ORDER BY d.TRD_DSP_REG_DT DESC, d.TRD_DSP_SN DESC
+                        LIMIT 1
+                    )
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+            END AS actorRole
         FROM TRADE_STATUS_HIST h
+        JOIN TRADE t ON t.TRD_SN = h.TRD_SN
         WHERE h.TRD_SN = #{tradeId}
           AND (
               h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION|%'
+              OR h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
+              OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0003'
+                  AND h.TRD_STS_HST_RSN_CN = '선택 견적으로 서비스 거래가 생성되었습니다.')
+              OR h.TRD_STS_HST_STATUS_CD = 'TRDC0006'
+              OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM TRADE_DISPUTE refundDispute
+                      WHERE refundDispute.TRD_SN = h.TRD_SN
+                        AND refundDispute.TRD_DSP_STATUS_CD = 'TRDC0018'
+                        AND refundDispute.TRD_DSP_RSLT_CD = 'TRDC0022'
+                  ))
+              OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                  AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.')
           )
-        ORDER BY h.TRD_STS_HST_REG_DT DESC, h.TRD_STS_HST_SN DESC
+        UNION ALL
+        SELECT
+            -d.TRD_DSP_SN AS id,
+            CASE
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0017' AND d.TRD_DSP_RSLT_CD = 'TRDC0023' THEN 'DISPUTE_HOLD'
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0021' THEN 'DISPUTE_COMPLETE'
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0022' THEN 'ADMIN_REFUND'
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0019' THEN 'DISPUTE_REJECTED'
+            END AS eventType,
+            d.TRD_DSP_PROC_DT AS occurredAt,
+            NULL AS requestedScheduleAt,
+            CASE
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0017' AND d.TRD_DSP_RSLT_CD = 'TRDC0023'
+                    THEN '관리자 확인 결과 거래와 정산 보류가 유지됩니다.'
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0021'
+                    THEN '관리자 확인이 완료되어 거래가 이전 상태로 복구되었습니다.'
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0022'
+                    THEN '관리자 판정에 따라 보관금이 환불되어 거래가 취소되었습니다.'
+                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0019'
+                    THEN '관리자 확인 결과 거래 문제가 반려되어 거래가 이전 상태로 복구되었습니다.'
+            END AS reason,
+            'ADMIN' AS actorRole
+        FROM TRADE_DISPUTE d
+        WHERE d.TRD_SN = #{tradeId}
+          AND d.TRD_DSP_PROC_DT IS NOT NULL
+          AND (
+              (d.TRD_DSP_STATUS_CD = 'TRDC0017' AND d.TRD_DSP_RSLT_CD = 'TRDC0023')
+              OR (d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD IN ('TRDC0021', 'TRDC0022'))
+              OR d.TRD_DSP_STATUS_CD = 'TRDC0019'
+          )
+        ) history
+        ORDER BY history.occurredAt DESC, history.id DESC
     </select>
 
     <select id="findPendingServiceScheduleCancellation"

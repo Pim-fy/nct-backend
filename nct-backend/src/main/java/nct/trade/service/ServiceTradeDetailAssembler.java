@@ -82,6 +82,7 @@ public class ServiceTradeDetailAssembler {
                 null,
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
+                source.chatRoomStatus(),
                 false,
                 List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
                 List.of());

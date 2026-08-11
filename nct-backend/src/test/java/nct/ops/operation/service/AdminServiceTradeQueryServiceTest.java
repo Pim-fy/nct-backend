@@ -34,13 +34,15 @@ class AdminServiceTradeQueryServiceTest {
                 "서울시 상세주소",
                 "STLC0002",
                 "정산 보류",
+                "ACTIVE",
                 true,
                 List.of(new ServiceScheduleHistoryItem(
                         1L,
                         "CHANGE",
                         LocalDateTime.of(2026, 8, 11, 10, 0),
                         null,
-                        "연락처 010-9876-5432")),
+                        "연락처 010-9876-5432",
+                        "REQUESTER")),
                 List.of("SUBMIT_DISPUTE")));
         AdminServiceTradeQueryService service = new AdminServiceTradeQueryService(
                 reader,
@@ -52,7 +54,9 @@ class AdminServiceTradeQueryServiceTest {
         assertThat(response.serviceRequestTitle()).doesNotContain("010-1234-5678");
         assertThat(response.quoteSummary()).doesNotContain("test@example.com");
         assertThat(response.scheduleHistory().getFirst().reason()).doesNotContain("010-9876-5432");
+        assertThat(response.scheduleHistory().getFirst().actorRole()).isEqualTo("REQUESTER");
         assertThat(response.serviceAddressLabel()).isNull();
+        assertThat(response.chatRoomStatus()).isEqualTo("ACTIVE");
         assertThat(response.chatAvailable()).isFalse();
         assertThat(response.availableActions()).isEmpty();
     }

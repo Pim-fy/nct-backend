@@ -34,7 +34,8 @@ public class AdminServiceTradeQueryService {
                         item.eventType(),
                         item.occurredAt(),
                         item.requestedScheduleAt(),
-                        sensitiveDataMasker.maskText(item.reason())))
+                        sensitiveDataMasker.maskText(item.reason()),
+                        item.actorRole()))
                 .toList();
 
         return new ServiceTradeDetailResponse(
@@ -50,6 +51,7 @@ public class AdminServiceTradeQueryService {
                 null,
                 source.escrowStatusCode(),
                 source.escrowStatusLabel(),
+                source.chatRoomStatus(),
                 false,
                 maskedHistory,
                 List.of());

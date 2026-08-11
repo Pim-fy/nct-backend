@@ -22,7 +22,10 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import nct.auction.service.AuctionService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
@@ -64,8 +67,12 @@ import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
+import nct.trade.dto.TradeOfflineScheduleProposal;
+import nct.trade.dto.TradeOfflineTradeTarget;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.mapper.TradeMapper;
+import nct.trade.mapper.TradeOfflineProposalMapper;
+import nct.trade.service.TradeOfflineScheduleProposalService;
 import nct.trade.service.TradeService;
 import nct.notification.service.NotificationService;
 import nct.setting.domain.SystemSettingDetail;
@@ -74,6 +81,7 @@ import nct.setting.mapper.SystemSettingAdminMapper;
 class TradeServiceTest {
 
     private TradeMapper tradeMapper;
+    private TradeOfflineProposalMapper tradeOfflineProposalMapper;
     private NotificationService notificationService;
     private SystemSettingAdminMapper systemSettingMapper;
     private FileStorageService fileStorageService;
@@ -83,11 +91,16 @@ class TradeServiceTest {
     private PointService pointService;
     private ReferenceDataService referenceDataService;
     private FieldCryptoService fieldCryptoService;
+    // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
+    private AuctionService auctionService;
+    private ObjectProvider<AuctionService> auctionServiceProvider;
     private TradeService tradeService;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         tradeMapper = mock(TradeMapper.class);
+        tradeOfflineProposalMapper = mock(TradeOfflineProposalMapper.class);
         notificationService = mock(NotificationService.class);
         systemSettingMapper = mock(SystemSettingAdminMapper.class);
         fileStorageService = mock(FileStorageService.class);
@@ -99,6 +112,9 @@ class TradeServiceTest {
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        auctionService = mock(AuctionService.class);
+        auctionServiceProvider = mock(ObjectProvider.class);
+        when(auctionServiceProvider.getObject()).thenReturn(auctionService);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
@@ -109,7 +125,15 @@ class TradeServiceTest {
                 chatService,
                 pointService,
                 referenceDataService,
-                fieldCryptoService);
+                fieldCryptoService,
+                auctionServiceProvider);
+        ReflectionTestUtils.setField(
+                tradeService,
+                "offlineScheduleProposalService",
+                new TradeOfflineScheduleProposalService(
+                        tradeMapper,
+                        tradeOfflineProposalMapper,
+                        fieldCryptoService));
     }
 
     @Test
@@ -214,6 +238,9 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
+        // @ai_generated (담당자1, 2026-08-07): 마지막 파라미터(size)는 primitive int라 any()는
+        // null을 매칭하려다 실패해 Mockito 매처 스택이 오염되고, 실행 순서상 다음 테스트가 연쇄로
+        // 깨졌다(B-1, 여러 차례 확인됨). anyInt()가 맞는 매처다.
         verify(tradeMapper, never()).findMyServiceTrades(
                 anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
@@ -225,6 +252,9 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 
+        // @ai_generated (담당자1, 2026-08-07): 마지막 파라미터(size)는 primitive int라 any()는
+        // null을 매칭하려다 실패해 Mockito 매처 스택이 오염되고, 실행 순서상 다음 테스트가 연쇄로
+        // 깨졌다(B-1, 여러 차례 확인됨). anyInt()가 맞는 매처다.
         verify(tradeMapper, never()).findMyServiceTrades(
                 anyLong(), any(), any(), any(), anyLong(), anyInt());
     }
@@ -797,7 +827,67 @@ class TradeServiceTest {
         assertThat(result.getRecipientName()).isEqualTo("구매자");
         assertThat(result.getRecipientPhone()).isEqualTo("01012345678");
         assertThat(result.getDeliveryAddress()).isEqualTo("서울시 마포구 101호");
-        assertThat(result.getDeliveryDetailAddress()).isEqualTo("101호");
+        // 상세주소는 이미 deliveryAddress에 합쳐졌으므로 응답에 별도로 남기지 않는다
+        // (판매자 화면에서 상세주소가 두 번 표시되던 중복 원인).
+        assertThat(result.getDeliveryDetailAddress()).isNull();
+    }
+
+    // @ai_generated (담당자1, 2026-08-07): auctionId<->productId 왕복 변환(AuctionService 계약
+    // 호출)은 이 테스트가 실제로 검증한다. 반면 viewerRole/userRole/completedAt은 tradeMapper
+    // mock이 그대로 돌려주는 값이라, 이 테스트는 "서비스가 매퍼 결과를 안 건드리고 전달하는지"만
+    // 검증한다 - findMyMaterialTradeDetail의 SQL(CASE 문으로 viewerRole을 계산하는 로직) 자체가
+    // 회귀해도 이 mock 기반 단위 테스트는 잡지 못한다. SQL 계산 로직 자체를 검증하려면 별도의
+    // DB 통합 테스트(예: @MybatisTest)가 필요하며, 이 프로젝트에는 아직 그런 테스트 인프라가 없다.
+    @Test
+    void returnsCurrentUsersTradeDetailByAuctionId() {
+        long productId = 30L;
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setProductId(productId);
+        detail.setTradeId(91L);
+        detail.setViewerRole("BUYER");
+        detail.setUserRole("BUYER");
+        detail.setCompletedAt(LocalDateTime.of(2026, 8, 7, 10, 30));
+        // auctionId<->productId 변환은 AuctionService 계약을 거친다(TradeMapper는 AUCTION을 직접 JOIN하지 않는다).
+        when(auctionService.findProductIdByAuctionId(501L)).thenReturn(productId);
+        when(tradeMapper.findMyMaterialTradeIdByProductId(productId, 10L)).thenReturn(91L);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
+        when(auctionService.findAuctionIdByProductId(productId)).thenReturn(501L);
+
+        TradeDetailResponse result = tradeService.getMyMaterialTradeDetailByAuctionId(501L, 10L);
+
+        assertThat(result).isSameAs(detail);
+        assertThat(result.getAuctionId()).isEqualTo(501L);
+        assertThat(result.getTradeId()).isEqualTo(91L);
+        assertThat(result.getViewerRole()).isEqualTo("BUYER");
+        assertThat(result.getUserRole()).isEqualTo("BUYER");
+        assertThat(result.getCompletedAt()).isEqualTo(LocalDateTime.of(2026, 8, 7, 10, 30));
+    }
+
+    @Test
+    void rejectsAuctionOutsideCurrentUsersTransactions() {
+        when(auctionService.findProductIdByAuctionId(501L)).thenReturn(null);
+
+        assertThatThrownBy(() -> tradeService.getMyMaterialTradeDetailByAuctionId(501L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(tradeMapper, never()).findMyMaterialTradeIdByProductId(anyLong(), anyLong());
+        verify(tradeMapper, never()).findMyMaterialTradeDetail(anyLong(), anyLong());
+    }
+
+    @Test
+    void rejectsAuctionWhenProductHasNoTradeForCurrentUser() {
+        long productId = 30L;
+        when(auctionService.findProductIdByAuctionId(501L)).thenReturn(productId);
+        when(tradeMapper.findMyMaterialTradeIdByProductId(productId, 10L)).thenReturn(null);
+
+        assertThatThrownBy(() -> tradeService.getMyMaterialTradeDetailByAuctionId(501L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(tradeMapper, never()).findMyMaterialTradeDetail(anyLong(), anyLong());
     }
 
     @Test
@@ -949,23 +1039,29 @@ class TradeServiceTest {
         request.setMeetingAddress("서울 마포구 양화로 45");
         TradeDetailResponse detail = new TradeDetailResponse();
         detail.setTradeId(91L);
-        when(tradeMapper.findMyOfflineTradeIdForUpdate(91L, 10L)).thenReturn(91L);
-        when(tradeMapper.startOfflineTrade(91L, "10")).thenReturn(1);
+        TradeOfflineTradeTarget target = new TradeOfflineTradeTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setTradeStatus("TRDC0003");
+        target.setTradeMethod("TRDC0010");
+        when(tradeOfflineProposalMapper.findMyOfflineTradeForUpdate(91L, 10L))
+                .thenReturn(target);
         when(tradeMapper.findMyMaterialTradeDetail(91L, 10L)).thenReturn(detail);
 
         TradeDetailResponse result = tradeService.saveMyOfflineSchedule(91L, 10L, request);
 
-        verify(tradeMapper).upsertOfflineSchedule(
-                91L,
-                LocalDateTime.of(request.getMeetingDate(), request.getMeetingTime()),
-                "합정역 8번 출구 앞",
-                "서울 마포구 양화로 45");
-        verify(tradeMapper).startOfflineTrade(91L, "10");
-        verify(tradeMapper).insertStatusHistory(
-                91L,
-                "TRDC0004",
-                "판매자가 직거래 일정을 제안했습니다.");
-        verify(chatService).createOrGetOfflineTradeChatRoom(91L);
+        ArgumentCaptor<TradeOfflineScheduleProposal> proposalCaptor =
+                ArgumentCaptor.forClass(TradeOfflineScheduleProposal.class);
+        verify(tradeOfflineProposalMapper).insertProposal(proposalCaptor.capture());
+        TradeOfflineScheduleProposal proposal = proposalCaptor.getValue();
+        assertThat(proposal.getTradeId()).isEqualTo(91L);
+        assertThat(proposal.getProposalType()).isEqualTo("TRDC0030");
+        assertThat(proposal.getProposerUserId()).isEqualTo(10L);
+        assertThat(proposal.getMeetingDateTime()).isEqualTo(
+                LocalDateTime.of(request.getMeetingDate(), request.getMeetingTime()));
+        assertThat(proposal.getMeetingPlace()).isEqualTo("합정역 8번 출구 앞");
+        assertThat(proposal.getMeetingAddress()).isEqualTo("서울 마포구 양화로 45");
         assertThat(result).isSameAs(detail);
     }
 
@@ -981,6 +1077,7 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
         verifyNoInteractions(tradeMapper);
+        verifyNoInteractions(tradeOfflineProposalMapper);
     }
 
     @Test
@@ -995,6 +1092,7 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
         verifyNoInteractions(tradeMapper);
+        verifyNoInteractions(tradeOfflineProposalMapper);
     }
 
     @Test

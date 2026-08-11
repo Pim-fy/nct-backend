@@ -14,6 +14,16 @@
         FOR UPDATE
     </select>
 
+    <select id="findMyOfflineMaterialTradeIdForUpdate" resultType="long">
+        SELECT t.TRD_SN
+        FROM TRADE t
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0001'
+          AND t.TRD_METHOD_CD = 'TRDC0010'
+          AND (t.SLLR_USR_SN = #{userId} OR t.BYPR_USR_SN = #{userId})
+        FOR UPDATE
+    </select>
+
     <!-- 서비스 거래는 보관금 예치 성공을 확인한 상위 트랜잭션에서만 이 잠금 조회 뒤 채팅방을 생성한다. -->
     <select id="findServiceTradeIdForUpdate" resultType="long">
         SELECT t.TRD_SN

@@ -43,4 +43,41 @@ public class ProfileUpdateRequest {
 
     @Size(max = 200, message = "상세주소는 200자를 초과할 수 없습니다.")
     private String addressDetail;
+
+    // 담당자 7 · F-AUTH-010: null(미전송)과 빈 문자열(명시적 삭제)은 구분하면서 검증 전 공백을 제거한다.
+    public void setNickname(String nickname) {
+        this.nickname = trimNullable(nickname);
+    }
+
+    public void setEmail(String email) {
+        this.email = trimNullable(email);
+    }
+
+    public void setBankName(String bankName) {
+        this.bankName = trimNullable(bankName);
+    }
+
+    public void setAccountNo(String accountNo) {
+        this.accountNo = trimNullable(accountNo);
+    }
+
+    public void setPhone(String phone) {
+        this.phone = trimNullable(phone);
+    }
+
+    public void setZip(String zip) {
+        this.zip = trimNullable(zip);
+    }
+
+    public void setAddress(String address) {
+        this.address = trimNullable(address);
+    }
+
+    public void setAddressDetail(String addressDetail) {
+        this.addressDetail = trimNullable(addressDetail);
+    }
+
+    private String trimNullable(String value) {
+        return value == null ? null : value.trim();
+    }
 }

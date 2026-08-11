@@ -38,10 +38,12 @@ public class MyBidHistoryItem {
 
     @JsonProperty("displayStatus")
     public String getDisplayStatus() {
+        // @ai_generated (마이페이지 구매 목록 필터 개편, 2026-08-09): 취소 요청 상태도
+        // 참여 경매 목록에서 종료 > 취소로 분류되어야 한다.
         if (BidStatusCode.CANCELED.equals(bidStatusCode)
                 || BidStatusCode.EXCEPTION_CANCELED.equals(bidStatusCode)
                 || AuctionStatusCode.CANCELED.equals(auctionStatusCode)
-                || AuctionStatusCode.FAILED.equals(auctionStatusCode)) {
+                || AuctionStatusCode.CANCEL_REQUESTED.equals(auctionStatusCode)) {
             return "CANCELED";
         }
         if (BidStatusCode.OUTBID.equals(bidStatusCode)) {

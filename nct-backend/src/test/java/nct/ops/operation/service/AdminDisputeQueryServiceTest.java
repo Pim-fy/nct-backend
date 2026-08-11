@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -105,7 +106,7 @@ class AdminDisputeQueryServiceTest {
         assertThat(response.getSize()).isEqualTo(20);
         assertThat(response.getTotalPages()).isZero();
         verify(disputeReader, never()).findPage(org.mockito.ArgumentMatchers.any());
-        verify(settlementService, never()).getSettlementByTrade(org.mockito.ArgumentMatchers.anyLong());
+        verify(settlementService, never()).findSettlementByTrade(org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test
@@ -118,7 +119,7 @@ class AdminDisputeQueryServiceTest {
 
         when(disputeReader.count(org.mockito.ArgumentMatchers.any())).thenReturn(1L);
         when(disputeReader.findPage(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(record));
-        when(settlementService.getSettlementByTrade(25L)).thenReturn(settlement);
+        when(settlementService.findSettlementByTrade(25L)).thenReturn(Optional.of(settlement));
         when(referenceDataService.getActiveCodes(org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(List.of());
 
@@ -128,6 +129,23 @@ class AdminDisputeQueryServiceTest {
         assertThat(response.getItems().getFirst().getTradeSn()).isEqualTo(25L);
         assertThat(response.getItems().getFirst().isSettlementOnHold()).isTrue();
         assertThat(response.getItems().getFirst().getSettlementSn()).isEqualTo(77L);
+    }
+
+    @Test
+    void listTreatsMissingSettlementAsNormalResult() {
+        when(disputeReader.count(org.mockito.ArgumentMatchers.any())).thenReturn(1L);
+        when(disputeReader.findPage(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(record()));
+        when(settlementService.findSettlementByTrade(25L)).thenReturn(Optional.empty());
+        when(referenceDataService.getActiveCodes(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(List.of());
+
+        var response = service.getPage(new AdminDisputeListRequest());
+
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getItems().getFirst().getSettlementSn()).isNull();
+        assertThat(response.getItems().getFirst().isSettlementOnHold()).isFalse();
+        verify(settlementService, never()).getSettlementByTrade(25L);
     }
 
     @Test
@@ -146,10 +164,7 @@ class AdminDisputeQueryServiceTest {
         when(disputeReader.findById(11L)).thenReturn(record);
         when(referenceDataService.getActiveCodes(org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(List.of());
-        when(settlementService.getSettlementByTrade(25L)).thenThrow(
-                new nct.settlement.exception.SettlementException(
-                        ErrorCode.SETTLEMENT_NOT_FOUND,
-                        "정산 없음"));
+        when(settlementService.findSettlementByTrade(25L)).thenReturn(Optional.empty());
         AdminMemberIdentityResponse disputer = AdminMemberIdentityResponse.builder()
                 .userSn(31L)
                 .loginId("disputer01")
@@ -168,6 +183,7 @@ class AdminDisputeQueryServiceTest {
         assertThat(response.getProcessReason()).isEqualTo("처리자 연락처 010-9876-5432");
         assertThat(response.getSettlementSn()).isNull();
         assertThat(response.isSettlementOnHold()).isFalse();
+        verify(settlementService, never()).getSettlementByTrade(25L);
         verify(sensitiveDataMasker).maskText("연락처 010-1234-5678로 안내받았습니다.");
         verify(sensitiveDataMasker).maskText("처리자 연락처 010-9876-5432");
     }

@@ -2,6 +2,8 @@ package nct.review.dto;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,6 +22,13 @@ import lombok.NoArgsConstructor;
 public class MyReviewItem {
 
     private Long id;           // RVW_SN
+    private Long reviewId;     // 수정·삭제 대상 리뷰
+    private Long auctionId;    // 물건 거래의 정식 화면 경로 식별자 (서비스 거래는 null)
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): SQL은 AUCTION을 직접 JOIN하지 않고
+    // 이 값만 채우고, ReviewService가 AuctionService 계약으로 auctionId를 채운다. API 응답에는
+    // 노출하지 않는다.
+    @JsonIgnore
+    private Long productId;
     private Long tradeId;
     private int rating;
     private String content;

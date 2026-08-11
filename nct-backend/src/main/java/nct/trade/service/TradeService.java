@@ -11,10 +11,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.auction.service.AuctionService;
 import nct.common.domain.RefType;
 import nct.chat.service.ChatService;
 import nct.file.domain.FileMeta;
@@ -103,10 +106,17 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private final BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private final SettlementService settlementService;
     private final ChatService chatService;
+    // 기존 단위 테스트와 외부 생성자의 생성자 시그니처를 유지하기 위해 선택 주입한다.
+    @Autowired
+    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
     private final PointService pointService;
     private final ReferenceDataService referenceDataService;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 TradeService를
+    // 주입받고 있어(경매 낙찰 시 거래 생성 호출) 순환 의존을 피하려고 ObjectProvider로 지연 주입한다.
+    // AuctionService.productServiceProvider와 같은 패턴이다.
+    private final ObjectProvider<AuctionService> auctionServiceProvider;
 
     /** 기존 호출부 호환용: 멱등 거래 생성 결과에서 거래번호만 반환한다. */
     @Transactional
@@ -609,14 +619,45 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 거래입니다.");
         }
 
+        // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AUCTION을 여기서 직접 JOIN하지
+        // 않고 AuctionService 계약으로 auctionId를 채운다. 상품에 대응하는 AUCTION 행이 없는
+        // 예외적인 경우에만 auctionId가 null로 남는다(예전 INNER JOIN처럼 상세 조회 전체를
+        // 실패시키지 않는다).
+        detail.setAuctionId(auctionServiceProvider.getObject().findAuctionIdByProductId(detail.getProductId()));
+
         if (detail.getDeliveryId() != null) {
             detail.setDeliveryProofFiles(
                     tradeMapper.findTradeDeliveryProofFiles(detail.getDeliveryId()));
         }
 
         decryptDetailAddresses(detail);
+        if (offlineScheduleProposalService != null) {
+            offlineScheduleProposalService.enrichDetail(detail, userId);
+        }
 
         return detail;
+    }
+
+    /** 정식 auctionId 경로에서 거래 당사자의 기존 물건 거래 상세 계약을 재사용한다. */
+    @Transactional(readOnly = true)
+    // @ai_generated: 외부 경로의 auctionId를 내부 tradeId로 안전하게 변환한다.
+    // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): auctionId->productId 변환은
+    // AuctionService.findProductIdByAuctionId 계약을 쓰고, TRADE 조회는 findMyMaterialTradeIdByProductId
+    // (AUCTION을 직접 JOIN하지 않는 TRADE 전용 쿼리)로 나눴다. 두 단계 모두 실패 시 동일하게
+    // NOT_FOUND만 던지므로, 경매번호 존재 여부가 응답으로 구분되지 않는 인가 안전성은 그대로 유지된다.
+    public TradeDetailResponse getMyMaterialTradeDetailByAuctionId(long auctionId, long userId) {
+        if (auctionId <= 0 || userId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "경매번호와 회원번호가 올바르지 않습니다.");
+        }
+        Long productId = auctionServiceProvider.getObject().findProductIdByAuctionId(auctionId);
+        if (productId == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 경매 거래입니다.");
+        }
+        Long tradeId = tradeMapper.findMyMaterialTradeIdByProductId(productId, userId);
+        if (tradeId == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않거나 접근할 수 없는 경매 거래입니다.");
+        }
+        return getMyMaterialTradeDetail(tradeId, userId);
     }
 
     /** 서비스 거래 당사자에게만 역할별 상세 화면 데이터를 반환한다. */
@@ -770,37 +811,17 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
 
-    /** 판매자 본인의 직거래 일정과 장소를 등록하거나 기존 제안을 수정한다. */
+    /** 기존 판매자 전용 호출부와의 호환을 유지하되, 실제로는 일정 제안을 등록한다. */
     @Transactional
     public TradeDetailResponse saveMyOfflineSchedule(
             long tradeId,
             long sellerUserId,
             TradeOfflineScheduleRequest request) {
-        validateOfflineSchedule(request);
-
-        if (tradeMapper.findMyOfflineTradeIdForUpdate(tradeId, sellerUserId) == null) {
-            throw new CustomException(ErrorCode.NOT_FOUND,
-                    "존재하지 않거나 수정할 수 없는 직거래입니다.");
+        if (offlineScheduleProposalService == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR,
+                    "직거래 일정 협의 기능을 준비하지 못했습니다.");
         }
-
-        tradeMapper.upsertOfflineSchedule(
-                tradeId,
-                request.toMeetingDateTime(),
-                request.getMeetingPlace().trim(),
-                fieldCryptoService.encrypt(normalizeOptional(request.getMeetingAddress())));
-
-        // 일정이 처음 제안되면 구매자도 즉시 직거래 진행 상태를 확인할 수 있게 전이한다.
-        // 이후 일정 수정 때는 이미 진행 상태이므로 상태 이력을 중복해서 남기지 않는다.
-        if (tradeMapper.startOfflineTrade(tradeId, String.valueOf(sellerUserId)) == 1) {
-            tradeMapper.insertStatusHistory(
-                    tradeId,
-                    DELIVERING,
-                    "판매자가 직거래 일정을 제안했습니다.");
-        }
-
-        // 일정이 저장된 직거래만 채팅을 시작한다. 같은 트랜잭션에 참여하므로
-        // 채팅방 생성이 실패하면 일정 저장도 함께 롤백된다.
-        chatService.createOrGetOfflineTradeChatRoom(tradeId);
+        offlineScheduleProposalService.proposeSchedule(tradeId, sellerUserId, request);
 
         return getMyMaterialTradeDetail(tradeId, sellerUserId);
     }
@@ -1222,7 +1243,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         } else {
             detail.setDeliveryAddress(deliveryAddress + " " + deliveryDetailAddress);
         }
-        detail.setDeliveryDetailAddress(deliveryDetailAddress);
+        // @ai_generated (ISS: 판매자 화면 상세주소 중복 표시): deliveryAddress에 상세주소를 이미
+        // 합쳤으므로, deliveryDetailAddress를 별도 값으로 응답에 남기지 않는다 - 남겨두면 화면에
+        // 상세주소가 두 번(합쳐진 주소 안 + 별도 필드) 나타난다.
+        detail.setDeliveryDetailAddress(null);
         detail.setMeetingAddress(fieldCryptoService.decrypt(detail.getMeetingAddress()));
     }
 

@@ -22,7 +22,6 @@ import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.security.service.SensitiveDataMasker;
 import nct.settlement.domain.Settlement;
 import nct.settlement.domain.SettlementStatus;
-import nct.settlement.exception.SettlementException;
 import nct.settlement.service.SettlementService;
 import nct.trade.dto.AdminTradeDisputeQuery;
 import nct.trade.dto.AdminTradeDisputeRecord;
@@ -165,20 +164,20 @@ public class AdminDisputeQueryService {
     }
 
     private SettlementSnapshot getSettlement(Long tradeSn, Map<String, String> settlementStatusNames) {
-        try {
-            Settlement settlement = settlementService.getSettlementByTrade(tradeSn);
-            String code = settlement.getStlmStatusCd();
-            return new SettlementSnapshot(
-                    settlement.getStlmSn(),
-                    code,
-                    settlementStatusNames.getOrDefault(code, code),
-                    SettlementStatus.ON_HOLD.getCode().equals(code));
-        } catch (SettlementException exception) {
-            if (exception.getErrorCode() == ErrorCode.SETTLEMENT_NOT_FOUND) {
-                return SettlementSnapshot.none();
-            }
-            throw exception;
-        }
+        return settlementService.findSettlementByTrade(tradeSn)
+                .map(settlement -> settlementSnapshot(settlement, settlementStatusNames))
+                .orElseGet(SettlementSnapshot::none);
+    }
+
+    private SettlementSnapshot settlementSnapshot(
+            Settlement settlement,
+            Map<String, String> settlementStatusNames) {
+        String code = settlement.getStlmStatusCd();
+        return new SettlementSnapshot(
+                settlement.getStlmSn(),
+                code,
+                settlementStatusNames.getOrDefault(code, code),
+                SettlementStatus.ON_HOLD.getCode().equals(code));
     }
 
     private AdminTradeDisputeQuery toValidatedQuery(AdminDisputeListRequest request) {

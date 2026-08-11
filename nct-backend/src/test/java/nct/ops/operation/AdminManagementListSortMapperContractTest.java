@@ -26,8 +26,10 @@ class AdminManagementListSortMapperContractTest {
                 "findPage");
 
         assertThat(fromWhere)
-                .contains("r.AUC_CNL_REQ_APRV_YN IS NULL")
-                .contains("ORDER BY r.AUC_CNL_REQ_REG_DT DESC, r.AUC_CNL_REQ_SN DESC LIMIT 1");
+                .contains("WHERE r.AUC_SN = a.AUC_SN")
+                .contains("ORDER BY r.AUC_CNL_REQ_REG_DT DESC, r.AUC_CNL_REQ_SN DESC LIMIT 1")
+                .contains("AND cancel_request.AUC_CNL_REQ_APRV_YN IS NULL")
+                .contains("OR cancel_request.AUC_CNL_REQ_APRV_YN IS NOT NULL");
         assertThat(count).contains("<include refid=\"fromWhere\"/>");
         assertThat(select)
                 .contains("<include refid=\"fromWhere\"/>")

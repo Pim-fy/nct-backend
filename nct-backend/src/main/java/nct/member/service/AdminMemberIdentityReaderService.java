@@ -1,6 +1,7 @@
 package nct.member.service;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +33,7 @@ public class AdminMemberIdentityReaderService implements AdminMemberIdentityRead
                         .distinct()
                         .toList();
         if (normalizedUserSns.isEmpty()) {
-            return Map.of();
+            return Collections.emptyMap();
         }
 
         Map<Long, AdminMemberIdentityResponse> identities = new LinkedHashMap<>();
@@ -45,6 +46,6 @@ public class AdminMemberIdentityReaderService implements AdminMemberIdentityRead
             }
             identities.put(identity.getUserSn(), identity);
         }
-        return Map.copyOf(identities);
+        return Collections.unmodifiableMap(identities);
     }
 }

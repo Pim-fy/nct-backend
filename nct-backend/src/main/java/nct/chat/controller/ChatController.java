@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import nct.chat.dto.ChatMessageResponse;
 import nct.chat.dto.ChatMessageSendRequest;
 import nct.chat.dto.ChatRoomResponse;
+import nct.chat.dto.OfflineTradeChatRoomCreateResult;
 import nct.chat.service.ChatService;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
@@ -38,6 +39,17 @@ public class ChatController {
         long userId = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 chatService.getMyChatRooms(userId, tradeId)));
+    }
+
+    /** 직거래 당사자가 채팅 시작을 누른 시점에 거래당 하나의 방을 지연 생성한다. */
+    @PostMapping("/trades/{tradeId}")
+    public ResponseEntity<ApiResponse<OfflineTradeChatRoomCreateResult>> startOfflineTradeChat(
+            @PathVariable(name = "tradeId") long tradeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                chatService.createOrGetOfflineTradeChatRoom(tradeId, userId)));
     }
 
     /** 방 입장 시 상대방이 보낸 미확인 메시지를 읽음으로 처리한 뒤 메시지를 반환한다. */

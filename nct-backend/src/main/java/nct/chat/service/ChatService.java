@@ -57,6 +57,30 @@ public class ChatService {
         return new OfflineTradeChatRoomCreateResult(chatRoom.getRoomId(), true);
     }
 
+    /** 직거래 당사자가 버튼을 누른 시점에만 채팅방을 지연 생성한다. */
+    @Transactional
+    public OfflineTradeChatRoomCreateResult createOrGetOfflineTradeChatRoom(
+            long tradeId,
+            long userId) {
+        if (tradeId <= 0 || userId <= 0
+                || chatMapper.findMyOfflineMaterialTradeIdForUpdate(tradeId, userId) == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "존재하지 않거나 직거래 채팅방을 생성할 수 없는 거래입니다.");
+        }
+
+        Long existingRoomId = chatMapper.findChatRoomIdByTradeId(tradeId);
+        if (existingRoomId != null) {
+            return new OfflineTradeChatRoomCreateResult(existingRoomId, false);
+        }
+
+        ChatRoom chatRoom = new ChatRoom();
+        chatRoom.setTradeId(tradeId);
+        chatRoom.setRoomStatus(ACTIVE_ROOM);
+        chatMapper.insertChatRoom(chatRoom);
+
+        return new OfflineTradeChatRoomCreateResult(chatRoom.getRoomId(), true);
+    }
+
     /**
      * F-SVC-017 공개 계약: 선택 견적·보관금 예치·서비스 거래 생성이 모두 성공한
      * 상위 트랜잭션 안에서만 호출한다. 거래 행 잠금과 CHAT_ROOM의 거래별 유니크 제약을

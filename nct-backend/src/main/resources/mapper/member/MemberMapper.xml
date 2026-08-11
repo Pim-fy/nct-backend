@@ -258,8 +258,8 @@
 
     <!-- @ai_generated: F-AUTH-010 - POL-AUTH-014 대상 필드(닉네임·프로필사진·연락이메일·계좌번호)만 갱신.
          닉네임·이메일·전화번호는 DTO에서 @NotBlank라 항상 값이 온다(전화번호는 ISS-023으로 필수 전환).
-         프로필사진·계좌번호·주소 등은 선택 필드라 COALESCE로 값이 안 온(null) 경우 기존 값을 유지한다
-         (안 그러면 다른 필드만 고칠 때 같이 지워짐). -->
+         계좌 쌍은 clearBankAccount일 때 두 컬럼을 함께 NULL로 지우고, 미전송이면 기존 값을 함께 유지한다.
+         주소 문자열도 각 clear 플래그로 명시적 삭제와 미전송을 구분하고, 프로필사진은 COALESCE로 유지한다. -->
     <update id="updateProfile">
         /* 프로필 기본 정보 수정 */
         UPDATE USERS
@@ -267,12 +267,41 @@
                USR_PRFL_FL_SN = COALESCE(#{profileFileSn}, USR_PRFL_FL_SN),
                USR_EML_ENC = #{emailCiphertext},
                USR_EML_HMAC = #{emailHmac},
-               USR_BANK_NM_ENC = COALESCE(#{bankNameCiphertext}, USR_BANK_NM_ENC),
-               USR_ACNT_NO_ENC = COALESCE(#{accountNoCiphertext}, USR_ACNT_NO_ENC),
+               <choose>
+                   <when test="clearBankAccount">
+                       USR_BANK_NM_ENC = NULL,
+                       USR_ACNT_NO_ENC = NULL,
+                   </when>
+                   <otherwise>
+                       USR_BANK_NM_ENC = COALESCE(#{bankNameCiphertext}, USR_BANK_NM_ENC),
+                       USR_ACNT_NO_ENC = COALESCE(#{accountNoCiphertext}, USR_ACNT_NO_ENC),
+                   </otherwise>
+               </choose>
                USR_TELNO_ENC = #{telnoCiphertext},
-               USR_ZIP_ENC = COALESCE(#{zipCiphertext}, USR_ZIP_ENC),
-               USR_ADDR_ENC = COALESCE(#{addressCiphertext}, USR_ADDR_ENC),
-               USR_DADDR_ENC = COALESCE(#{addressDetailCiphertext}, USR_DADDR_ENC)
+               <choose>
+                   <when test="clearZip">
+                       USR_ZIP_ENC = NULL,
+                   </when>
+                   <otherwise>
+                       USR_ZIP_ENC = COALESCE(#{zipCiphertext}, USR_ZIP_ENC),
+                   </otherwise>
+               </choose>
+               <choose>
+                   <when test="clearAddress">
+                       USR_ADDR_ENC = NULL,
+                   </when>
+                   <otherwise>
+                       USR_ADDR_ENC = COALESCE(#{addressCiphertext}, USR_ADDR_ENC),
+                   </otherwise>
+               </choose>
+               <choose>
+                   <when test="clearAddressDetail">
+                       USR_DADDR_ENC = NULL
+                   </when>
+                   <otherwise>
+                       USR_DADDR_ENC = COALESCE(#{addressDetailCiphertext}, USR_DADDR_ENC)
+                   </otherwise>
+               </choose>
         WHERE  USR_SN = #{usrSn}
     </update>
 

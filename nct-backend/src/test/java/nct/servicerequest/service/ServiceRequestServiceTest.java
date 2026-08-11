@@ -18,10 +18,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
-import nct.notification.service.NotificationService;
-import nct.quote.port.ServiceRequestQuoteProviderReader;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.dto.AdminServiceRequestListItem;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
@@ -50,9 +49,7 @@ class ServiceRequestServiceTest {
     @Mock
     private FileStorageService fileStorageService;
     @Mock
-    private NotificationService notificationService;
-    @Mock
-    private ServiceRequestQuoteProviderReader serviceRequestQuoteProviderReader;
+    private ApplicationEventPublisher eventPublisher;
 
     private ServiceRequestService service;
 
@@ -65,8 +62,7 @@ class ServiceRequestServiceTest {
                 commentMapper,
                 formService,
                 fileStorageService,
-                notificationService,
-                serviceRequestQuoteProviderReader);
+                eventPublisher);
     }
 
     @Test

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,15 +16,11 @@ import com.github.pagehelper.PageInfo;
 
 import lombok.RequiredArgsConstructor;
 import nct.file.service.FileStorageService;
-import nct.common.domain.RefType;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.notification.domain.NotificationDomain;
-import nct.notification.domain.NotificationType;
-import nct.notification.service.NotificationService;
-import nct.quote.port.ServiceRequestQuoteProviderReader;
 import nct.servicerequest.domain.ServiceRequest;
+import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
 import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
@@ -54,8 +51,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
-    private final NotificationService notificationService;
-    private final ServiceRequestQuoteProviderReader serviceRequestQuoteProviderReader;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 변경사항 추가는 공개 상태에서만 — 매칭완료 이후로는 요청 내용이 확정된 것으로 보고 막는다
     private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002");
@@ -464,28 +460,15 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 .svcReqCmtRegId(String.valueOf(usrSn))
                 .build();
         svcReqCommentMapper.insertComment(comment);
-        notifyProvidersOfComment(serviceRequest, req.getTtl());
+        // 요청서 변경사항(F-SVC-006) 커밋 후 견적 제출 제공자 알림 — quote 도메인을 직접 참조하면
+        // QuoteService↔ServiceRequestService 순환참조가 되므로 이벤트로 발행해 방향을 끊는다
+        // (AdminDisputeDecisionCommittedEvent와 동일한 패턴, 리스너는 nct.quote.service에 있다)
+        eventPublisher.publishEvent(new ServiceRequestCommentAddedEvent(svcReqSn, serviceRequest.getSvcReqTtl(), req.getTtl()));
 
         return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT).stream()
                 .filter(c -> c.getSvcReqCmtSn().equals(comment.getSvcReqCmtSn()))
                 .findFirst()
                 .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
-    }
-
-    // 요청서 변경사항(F-SVC-006) 등록 시 이 요청서에 견적을 제출한 제공자 전원에게 알림 — 알림 발행은
-    // NotificationService.notify()로 직접 호출(담당자6 계약 — "다른 도메인은 notify()만 호출")
-    private void notifyProvidersOfComment(ServiceRequest serviceRequest, String changeTitle) {
-        List<Long> providerUsrSns = serviceRequestQuoteProviderReader.findProviderUsrSnBySvcReqSn(serviceRequest.getSvcReqSn());
-        for (Long providerUsrSn : providerUsrSns) {
-            notificationService.notify(
-                    providerUsrSn,
-                    NotificationType.SERVICE,
-                    NotificationDomain.SERVICE,
-                    "견적 제출한 요청서에 변경사항이 추가되었습니다",
-                    serviceRequest.getSvcReqTtl() + " - " + changeTitle,
-                    RefType.SERVICE_REQUEST,
-                    serviceRequest.getSvcReqSn());
-        }
     }
 
     /** 요청서 변경사항 목록 조회 — 최신순 최대 3개 */

@@ -379,6 +379,16 @@ public class NotificationService {
                 RefType.TRADE, tradeId);
     }
 
+    /** 서비스 거래 당사자의 상호 동의 취소 결과를 각 역할에 맞게 알린다. */
+    public void notifyServiceTradeCancelled(long usrSn, long tradeId, boolean requester) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "서비스 거래가 취소되었습니다",
+                requester
+                        ? "상대방이 일정 취소 요청에 동의하여 보관금이 전액 환불되었습니다."
+                        : "일정 취소 요청에 동의하여 서비스 거래가 취소되었습니다.",
+                RefType.TRADE, tradeId);
+    }
+
     /** 새 견적 도착 — 서비스 요청자에게, 서비스 매칭 담당(5, 2단계)이 호출 */
     public void notifyNewQuote(long usrSn, long requestId) {
         notifyForEvent(usrSn, NotificationEvent.NEW_QUOTE, NotificationAudience.GENERAL,

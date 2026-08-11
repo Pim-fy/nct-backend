@@ -24,8 +24,10 @@ import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.dto.TradeSettlementReference;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.ServiceTradeDetailSource;
+import nct.trade.dto.ServiceTradeAddressSource;
 import nct.trade.dto.ServiceTradeListItem;
 import nct.trade.dto.ServiceScheduleHistoryItem;
+import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.AdminServiceTradeSummary;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
@@ -153,8 +155,22 @@ public interface TradeMapper {
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
 
+    /** 선택 견적 거래의 두 당사자에게만 요청서 정확 주소 암호문을 제공한다. */
+    List<ServiceTradeAddressSource> findMyServiceTradeAddresses(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
     /** 일정 이벤트 형식으로 저장한 서비스 거래 상태 이력만 상세 화면에 제공한다. */
     List<ServiceScheduleHistoryItem> findServiceScheduleHistory(@Param("tradeId") long tradeId);
+
+    /** 같은 거래에서 상대방이 남긴 미처리 일정 취소 요청 한 건을 조회한다. */
+    ServiceScheduleCancellationPending findPendingServiceScheduleCancellation(
+            @Param("tradeId") long tradeId);
+
+    /** 상호 동의 취소에 한해 서비스 진행 거래를 취소 상태로 바꾼다. */
+    int cancelServiceTrade(
+            @Param("tradeId") long tradeId,
+            @Param("updaterId") String updaterId);
 
     /** 서비스 거래 당사자의 목록 조회다. 서비스 요청 주소 등 민감 정보는 조회하지 않는다. */
     List<ServiceTradeListItem> findMyServiceTrades(

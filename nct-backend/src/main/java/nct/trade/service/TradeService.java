@@ -41,6 +41,7 @@ import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.ServiceTradeCreateCommand;
 import nct.trade.dto.ServiceTradeCreateResult;
 import nct.trade.dto.ServiceTradeDetailResponse;
+import nct.trade.dto.ServiceTradeAddressSource;
 import nct.trade.dto.ServiceTradeDetailSource;
 import nct.trade.dto.ServiceTradeListItem;
 import nct.trade.dto.ServiceTradeListPageResponse;
@@ -53,6 +54,7 @@ import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.ServiceScheduleChangeCommand;
 import nct.trade.dto.ServiceScheduleCancellationCommand;
+import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
@@ -254,7 +256,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                         + "|" + normalized.reason());
     }
 
-    /** F-SVC-016: 진행 중인 서비스 거래의 일정 취소 요청을 상태 이력으로 기록한다. */
+    /**
+     * 서비스 일정 취소는 상대방의 동의를 받아야 한다. 대기 중 요청은 한 건만 허용하며,
+     * 실제 거래 취소·환불은 상대방의 동의 처리에서만 수행한다.
+     */
     @Transactional
     public void requestServiceScheduleCancellation(
             long tradeId,
@@ -263,13 +268,54 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         ServiceScheduleCancellationCommand normalized = new ServiceScheduleRequestValidator()
                 .validateCancellation(command);
         validateServiceScheduleRequester(tradeId, userId);
+        if (tradeMapper.findPendingServiceScheduleCancellation(tradeId) != null) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "상대방의 응답을 기다리는 일정 취소 요청이 이미 있습니다.");
+        }
         tradeMapper.insertStatusHistory(
                 tradeId,
                 IN_PROGRESS,
-                "SCHEDULE_CANCEL||" + normalized.reason());
+                "SCHEDULE_CANCEL_REQUEST|" + userId + "|" + normalized.reason());
     }
 
-    private void validateServiceScheduleRequester(long tradeId, long userId) {
+    /** 상대방의 일정 취소 동의·거절을 처리한다. 동의는 취소·환불·정산 종결을 원자적으로 수행한다. */
+    @Transactional
+    public void decideServiceScheduleCancellation(long tradeId, long userId, boolean approved) {
+        ServiceTradeCompletionTarget target = validateServiceScheduleRequester(tradeId, userId);
+        ServiceScheduleCancellationPending pending = tradeMapper.findPendingServiceScheduleCancellation(tradeId);
+        if (pending == null) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "응답할 일정 취소 요청이 없습니다.");
+        }
+        if (pending.requesterUserId() == userId) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
+                    "일정 취소를 요청한 회원은 직접 동의하거나 거절할 수 없습니다.");
+        }
+
+        String decision = approved ? "APPROVED" : "REJECTED";
+        if (!approved) {
+            tradeMapper.insertStatusHistory(tradeId, IN_PROGRESS,
+                    "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + decision);
+            return;
+        }
+
+        rejectOpenServiceDispute(tradeId);
+        if (tradeMapper.cancelServiceTrade(tradeId, String.valueOf(userId)) == 0) {
+            throw new CustomException(ErrorCode.CONFLICT,
+                    "거래 상태가 변경되어 일정 취소 동의를 처리할 수 없습니다.");
+        }
+        settlementService.closeRefundedByTradeIfOpen(tradeId, userId);
+        pointService.refundEscrow(
+                target.getRequesterUserId(), tradeId, RefType.TRADE, tradeId,
+                "서비스 일정 취소 상호 동의 환불");
+        chatService.closeServiceTradeChatRoom(tradeId);
+        tradeMapper.insertStatusHistory(tradeId, CANCELED,
+                "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + decision);
+        notificationService.notifyServiceTradeCancelled(target.getRequesterUserId(), tradeId, true);
+        notificationService.notifyServiceTradeCancelled(target.getProviderUserId(), tradeId, false);
+    }
+
+    private ServiceTradeCompletionTarget validateServiceScheduleRequester(long tradeId, long userId) {
         if (tradeId <= 0 || userId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래번호와 회원번호가 필요합니다.");
@@ -283,6 +329,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             throw new CustomException(ErrorCode.CONFLICT,
                     "서비스 진행 상태에서만 일정 요청을 할 수 있습니다.");
         }
+        return target;
     }
 
     /** 만료 시각이 지난 서비스 완료 확인을 자동 완료한다. */
@@ -589,7 +636,28 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         return new ServiceTradeDetailAssembler().assemble(
                 source,
                 userId,
-                tradeMapper.findServiceScheduleHistory(tradeId));
+                tradeMapper.findServiceScheduleHistory(tradeId),
+                serviceAddressLabel(tradeId, userId));
+    }
+
+    private String serviceAddressLabel(long tradeId, long userId) {
+        return tradeMapper.findMyServiceTradeAddresses(tradeId, userId).stream()
+                .map(this::formatServiceAddress)
+                .filter(address -> !address.isBlank())
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(" / "));
+    }
+
+    private String formatServiceAddress(ServiceTradeAddressSource source) {
+        String zonecode = normalizeOptional(fieldCryptoService.decrypt(source.encryptedZonecode()));
+        String address = normalizeOptional(fieldCryptoService.decrypt(source.encryptedAddress()));
+        String detailAddress = normalizeOptional(fieldCryptoService.decrypt(source.encryptedDetailAddress()));
+        return java.util.stream.Stream.of(
+                        zonecode == null ? null : "(" + zonecode + ")",
+                        address,
+                        detailAddress)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.joining(" "));
     }
 
     /** 로그인한 의뢰자 또는 제공자가 본인 서비스 거래 상세로 재진입할 목록을 조회한다. */

@@ -27,12 +27,13 @@ import nct.global.security.service.ProviderAccessGuard;
 import nct.quote.domain.Quote;
 import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
-import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
+import nct.quote.dto.MyQuoteSummaryCounts;
 import nct.quote.dto.QuoteAttachmentResponse;
+import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteSubmitRequest;
 import nct.quote.dto.QuoteUpdateRequest;
-import nct.quote.dto.QuoteResponse;
 import nct.quote.mapper.QuoteMapper;
+import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
 import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
@@ -405,14 +406,40 @@ class QuoteServiceTest {
     }
 
     @Test
-    void myQuoteSummaryReturnsActiveQuoteCount() {
-        when(quoteMapper.countMyActiveQuotes(7L)).thenReturn(2);
+    void myQuoteSummaryReturnsAggregatedStatusCounts() {
+        MyQuoteSummaryCounts summary = new MyQuoteSummaryCounts(8, 2, 1, 5, 0);
+        when(quoteMapper.findMyQuoteSummary(7L)).thenReturn(summary);
 
         var result = service.getMyQuoteSummary(7L);
 
+        assertThat(result.totalQuoteCount()).isEqualTo(8);
         assertThat(result.activeQuoteCount()).isEqualTo(2);
+        assertThat(result.selectedQuoteCount()).isEqualTo(1);
+        assertThat(result.endedQuoteCount()).isEqualTo(5);
         verify(activeProviderGuard).requireActive(7L);
-        verify(quoteMapper).countMyActiveQuotes(7L);
+        verify(quoteMapper).findMyQuoteSummary(7L);
+    }
+
+    @Test
+    void myQuoteSummaryRejectsUnsupportedQuoteStatus() {
+        when(quoteMapper.findMyQuoteSummary(7L))
+                .thenReturn(new MyQuoteSummaryCounts(8, 2, 1, 5, 1));
+
+        assertThatThrownBy(() -> service.getMyQuoteSummary(7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void myQuoteSummaryRejectsUnclassifiedQuoteCount() {
+        when(quoteMapper.findMyQuoteSummary(7L))
+                .thenReturn(new MyQuoteSummaryCounts(9, 2, 1, 5, 0));
+
+        assertThatThrownBy(() -> service.getMyQuoteSummary(7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR);
     }
 
     @Test

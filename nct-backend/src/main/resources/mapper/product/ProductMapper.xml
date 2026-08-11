@@ -106,16 +106,21 @@
                      OR p.PRD_DRAFT_START_DT IS NULL
                      OR p.PRD_DRAFT_START_DT &lt;= NOW())
                </when>
-               <!-- @ai_generated (마이페이지 판매 목록 필터 개편, 2026-08-09): 예약은
-                    임시저장 시 예약 시작을 선택했고 아직 시작시각이 지나지 않은 상품이다. -->
+               <!-- 예약 = ①임시저장 상태에서 예약 시작을 선택해둔 상품 OR ②등록까지 완료했지만
+                    아직 경매 시작 시각이 지나지 않은 상품(AUCC0001). 시작 시각이 지나면
+                    AuctionActivationScheduler가 AUCC0002로 넘겨서 자동으로 "경매중"으로 이동한다. -->
                <when test="filterType == 'RESERVED'">
-                   AND p.PRD_STATUS_CD = 'PRDC0001'
-                   AND p.PRD_DRAFT_START_NOW_YN = 'N'
-                   AND p.PRD_DRAFT_START_DT > NOW()
+                   AND (
+                       (p.PRD_STATUS_CD = 'PRDC0001'
+                         AND p.PRD_DRAFT_START_NOW_YN = 'N'
+                         AND p.PRD_DRAFT_START_DT > NOW())
+                    OR (p.PRD_STATUS_CD = 'PRDC0002'
+                         AND a.AUC_STATUS_CD = 'AUCC0001')
+                   )
                </when>
                <when test="filterType == 'ACTIVE'">
                    AND p.PRD_STATUS_CD = 'PRDC0002'
-                   AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+                   AND a.AUC_STATUS_CD = 'AUCC0002'
                </when>
                <when test="filterType == 'TRADING'">
                    AND (t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
@@ -147,11 +152,13 @@
                                AND (COALESCE(p.PRD_DRAFT_START_NOW_YN, '') != 'N'
                                  OR p.PRD_DRAFT_START_DT IS NULL
                                  OR p.PRD_DRAFT_START_DT &lt;= NOW()) THEN 1 ELSE 0 END), 0) AS draft,
-            COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0001'
+            COALESCE(SUM(CASE WHEN (p.PRD_STATUS_CD = 'PRDC0001'
                                AND p.PRD_DRAFT_START_NOW_YN = 'N'
-                               AND p.PRD_DRAFT_START_DT > NOW() THEN 1 ELSE 0 END), 0) AS reserved,
+                               AND p.PRD_DRAFT_START_DT > NOW())
+                            OR (p.PRD_STATUS_CD = 'PRDC0002'
+                               AND a.AUC_STATUS_CD = 'AUCC0001') THEN 1 ELSE 0 END), 0) AS reserved,
             COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0002'
-                               AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002') THEN 1 ELSE 0 END), 0) AS active,
+                               AND a.AUC_STATUS_CD = 'AUCC0002' THEN 1 ELSE 0 END), 0) AS active,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                                OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL) THEN 1 ELSE 0 END), 0) AS trading,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0006'

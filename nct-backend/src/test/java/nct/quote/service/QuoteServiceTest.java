@@ -24,6 +24,7 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.service.ProviderAccessGuard;
+import nct.notification.service.NotificationService;
 import nct.quote.domain.Quote;
 import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
@@ -53,6 +54,8 @@ class QuoteServiceTest {
     @Mock
     private FileStorageService fileStorageService;
     @Mock
+    private NotificationService notificationService;
+    @Mock
     private Authentication authentication;
 
     private QuoteService service;
@@ -64,7 +67,8 @@ class QuoteServiceTest {
                 serviceRequestQuoteReader,
                 providerAccessGuard,
                 activeProviderGuard,
-                fileStorageService);
+                fileStorageService,
+                notificationService);
     }
 
     @Test

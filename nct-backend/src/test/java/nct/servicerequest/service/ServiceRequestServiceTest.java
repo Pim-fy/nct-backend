@@ -20,6 +20,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
+import nct.notification.service.NotificationService;
+import nct.quote.port.ServiceRequestQuoteProviderReader;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.dto.AdminServiceRequestListItem;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
@@ -47,6 +49,10 @@ class ServiceRequestServiceTest {
     private ServiceRequestFormService formService;
     @Mock
     private FileStorageService fileStorageService;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private ServiceRequestQuoteProviderReader serviceRequestQuoteProviderReader;
 
     private ServiceRequestService service;
 
@@ -58,7 +64,9 @@ class ServiceRequestServiceTest {
                 imageMapper,
                 commentMapper,
                 formService,
-                fileStorageService);
+                fileStorageService,
+                notificationService,
+                serviceRequestQuoteProviderReader);
     }
 
     @Test

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -64,6 +65,18 @@ class ServiceTradeDetailAssemblerTest {
     void nonPartyCannotAssembleServiceTradeDetail() {
         assertThatThrownBy(() -> assembler.assemble(source("TRDC0003"), 33L))
                 .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void adminDetailHasNoPartyActionsChatOrExactAddress() {
+        ServiceTradeDetailResponse response = assembler.assembleForAdmin(
+                source("TRDC0003"),
+                List.of());
+
+        assertThat(response.viewerRole()).isEqualTo("ADMIN");
+        assertThat(response.availableActions()).isEmpty();
+        assertThat(response.chatAvailable()).isFalse();
+        assertThat(response.serviceAddressLabel()).isNull();
     }
 
     private ServiceTradeDetailSource source(String statusCode) {

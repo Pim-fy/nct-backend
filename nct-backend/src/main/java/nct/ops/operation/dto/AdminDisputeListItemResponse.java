@@ -28,4 +28,5 @@ public class AdminDisputeListItemResponse {
     private final String settlementStatusName;
     private final boolean settlementOnHold;
     private final LocalDateTime registeredAt;
+    private final LocalDateTime processedAt;
 }

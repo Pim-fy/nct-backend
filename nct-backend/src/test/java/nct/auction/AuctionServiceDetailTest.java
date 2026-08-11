@@ -141,8 +141,12 @@ class AuctionServiceDetailTest {
         when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
         when(reviewService.getTrustScore(30L)).thenReturn(TrustScoreResponse.builder()
                 .usrSn(30L)
-                .totalScore(4.2)
-                .totalCount(12)
+                .totalScore(3.8)
+                .totalCount(20)
+                .goodsScore(4.2)
+                .goodsCount(12)
+                .serviceScore(3.1)
+                .serviceCount(8)
                 .hasReviews(true)
                 .build());
 

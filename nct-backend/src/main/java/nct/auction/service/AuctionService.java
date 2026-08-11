@@ -399,8 +399,8 @@ public class AuctionService {
             return;
         }
 
-        detail.setSellerRating(trustScore.getTotalScore());
-        detail.setSellerReviewCount(trustScore.getTotalCount());
+        detail.setSellerRating(trustScore.getGoodsScore());
+        detail.setSellerReviewCount(trustScore.getGoodsCount());
     }
 
     private List<AuctionProductUpdateItem> loadProductUpdates(Long productId) {

@@ -4,11 +4,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,10 +22,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import nct.audit.dto.AuditLogResponse;
+import nct.audit.dto.DisputeChatMessageResponse;
+import nct.audit.dto.DisputeChatViewRequest;
+import nct.audit.dto.DisputeChatViewResponse;
 import nct.audit.dto.SensitiveViewRequest;
 import nct.audit.dto.SensitiveViewResponse;
 import nct.audit.mapper.ChatMessageView;
 import nct.audit.service.AuditLogService;
+import nct.audit.service.DisputeChatViewResult;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.member.dto.AdminMemberIdentityResponse;
@@ -40,6 +47,7 @@ import nct.member.port.AdminMemberIdentityReader;
 @RestController
 @RequestMapping("/api/admin/audit")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 public class AdminAuditController {
 
     /** 화면 한 번에 내리는 최대 행 수 — 3년치 로그를 통째로 내리는 사고 방지 */
@@ -87,5 +95,46 @@ public class AdminAuditController {
                 adminUsrSn, request.getChMsgSn(), request.getTrdDspSn(),
                 request.getReason(), httpRequest.getRemoteAddr());
         return ResponseEntity.ok(ApiResponse.success(SensitiveViewResponse.from(message)));
+    }
+
+    /** 담당자 7 · F-OPS-005/014: 분쟁 거래의 채팅을 사유·감사기록 후 읽기 전용으로 조회합니다. */
+    @PostMapping("/disputes/{disputeSn}/chat-view")
+    public ResponseEntity<ApiResponse<DisputeChatViewResponse>> viewDisputeChat(
+            @PathVariable(name = "disputeSn") long disputeSn,
+            @Valid @RequestBody DisputeChatViewRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            HttpServletRequest httpRequest) {
+        long adminUsrSn = userDetails.getMember().getId();
+        DisputeChatViewResult result = auditLogService.viewDisputeChatMessages(
+                adminUsrSn,
+                disputeSn,
+                request.getReason(),
+                httpRequest.getRemoteAddr(),
+                request.getPage(),
+                request.getSize());
+
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                result.messages().stream()
+                        .map(ChatMessageView::getUsrSn)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList());
+        List<DisputeChatMessageResponse> messages = result.messages().stream()
+                .map(message -> DisputeChatMessageResponse.from(
+                        message,
+                        identities.get(message.getUsrSn())))
+                .toList();
+
+        DisputeChatViewResponse response = DisputeChatViewResponse.builder()
+                .disputeSn(result.disputeSn())
+                .tradeSn(result.tradeSn())
+                .chatRoomExists(result.chatRoomExists())
+                .messages(messages)
+                .page(result.page())
+                .size(result.size())
+                .totalItems(result.totalItems())
+                .totalPages(result.totalPages())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

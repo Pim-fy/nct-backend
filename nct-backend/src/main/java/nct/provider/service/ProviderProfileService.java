@@ -3,6 +3,7 @@ package nct.provider.service;
 import java.math.BigDecimal;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -11,14 +12,16 @@ import nct.global.exception.ErrorCode;
 import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
 import nct.provider.mapper.ProviderProfileMapper;
+import nct.review.dto.ServiceReviewRatingSummary;
+import nct.review.port.ServiceReviewRatingReader;
 
-/** 담당자 6, F-PROV-004: 승인·제재 계약을 소비해 제공자 프로필을 관리한다.
- *  (헤더의 "담당자 7" 표기는 업무분장 변경 전 잔재라 정정 — 2026-08-05) */
+/** 담당자 7 · F-PROV-004/F-COM-009: 제공자 프로필과 서비스 리뷰 평균 캐시를 관리한다. */
 @Service
 @RequiredArgsConstructor
 public class ProviderProfileService {
     private final ProviderProfileMapper mapper;
     private final ActiveProviderGuard activeProviderGuard;
+    private final ServiceReviewRatingReader serviceReviewRatingReader;
 
     @Transactional(readOnly = true)
     public ProviderProfileResponse getMine(Long userSn) {
@@ -33,11 +36,17 @@ public class ProviderProfileService {
         return profile;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ProviderProfileResponse updateMine(Long userSn, ProviderProfileRequest request) {
         requireActiveProvider(userSn);
         if (request == null) throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         mapper.upsert(userSn, trimToNull(request.getIntroduction()), trimToNull(request.getAvailableArea()), String.valueOf(userSn));
+        ServiceReviewRatingSummary rating = serviceReviewRatingReader.read(userSn);
+        mapper.updateReviewRating(
+                userSn,
+                rating.getAverageScore(),
+                rating.getReviewCount(),
+                String.valueOf(userSn));
         return mapper.findActiveByUserSn(userSn).orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
     }
 

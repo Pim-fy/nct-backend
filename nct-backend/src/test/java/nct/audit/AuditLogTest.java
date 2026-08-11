@@ -81,9 +81,10 @@ class AuditLogTest {
     @Test
     @DisplayName("민감정보 제한 조회: 사유가 없으면 실패한다 — 감사로그도 남지 않는다 (F-OPS-014)")
     void sensitiveViewWithoutReasonFails() {
-        long chMsgSn = insertChatMessage("원문 테스트 메시지");
+        ChatFixture fixture = insertChatMessage("원문 테스트 메시지");
 
-        assertThatThrownBy(() -> auditLogService.viewChatMessage(adminSn, chMsgSn, 1L, " ", "127.0.0.1"))
+        assertThatThrownBy(() -> auditLogService.viewChatMessage(
+                adminSn, fixture.messageSn(), fixture.disputeSn(), " ", "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining("사유");
 
@@ -95,16 +96,21 @@ class AuditLogTest {
     @Test
     @DisplayName("민감정보 제한 조회: 사유·분쟁 건과 함께 요청하면 원문이 반환되고 원문조회 감사로그가 남는다 (F-OPS-014)")
     void sensitiveViewRecordsAuditLog() {
-        long chMsgSn = insertChatMessage("분쟁 증거 원문입니다");
+        ChatFixture fixture = insertChatMessage("분쟁 증거 원문입니다");
 
-        var view = auditLogService.viewChatMessage(adminSn, chMsgSn, 77L, "거래 분쟁 증거 확인", "127.0.0.1");
+        var view = auditLogService.viewChatMessage(
+                adminSn,
+                fixture.messageSn(),
+                fixture.disputeSn(),
+                "거래 분쟁 증거 확인",
+                "127.0.0.1");
 
         assertThat(view.getChMsgCn()).isEqualTo("분쟁 증거 원문입니다");
         assertThat(auditLogService.search(adminSn, AuditLogType.SENSITIVE_VIEW.getCode(), null, null, 10))
                 .singleElement().satisfies(log -> {
-                    assertThat(log.getAudLogRefSn()).isEqualTo(77L);              // 분쟁 건 연결
+                    assertThat(log.getAudLogRefSn()).isEqualTo(fixture.disputeSn()); // 분쟁 건 연결
                     assertThat(log.getAudLogRsonCn()).contains("거래 분쟁 증거 확인"); // 사유 보존
-                    assertThat(log.getAudLogRsonCn()).contains(String.valueOf(chMsgSn)); // 어떤 메시지였는지
+                    assertThat(log.getAudLogRsonCn()).contains(String.valueOf(fixture.messageSn())); // 어떤 메시지였는지
                 });
     }
 
@@ -121,7 +127,7 @@ class AuditLogTest {
     }
 
     /** 제한 조회 대상 채팅 메시지 픽스처 — 채팅방은 거래에 1:1로 묶이므로 상품·거래부터 만든다 */
-    private long insertChatMessage(String content) {
+    private ChatFixture insertChatMessage(String content) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
                 VALUES (?, 2, '감사 테스트 상품', 'PRDC0003', 10000,
@@ -138,6 +144,14 @@ class AuditLogTest {
         long trdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         jdbc.update("""
+                INSERT INTO TRADE_DISPUTE (
+                    TRD_SN, DSPT_USR_SN, TRD_DSP_TYPE_CD, TRD_DSP_STATUS_CD, TRD_DSP_CN
+                )
+                VALUES (?, ?, 'TRDC0014', 'TRDC0016', '감사 테스트 거래 분쟁')
+                """, trdSn, targetSn);
+        long disputeSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
                 INSERT INTO CHAT_ROOM (TRD_SN, CH_RM_STATUS_CD)
                 VALUES (?, (SELECT C.CMM_CD FROM CMM_CODE C
                             JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
@@ -149,6 +163,10 @@ class AuditLogTest {
                 INSERT INTO CHAT_MESSAGE (CH_RM_SN, USR_SN, CH_MSG_CN)
                 VALUES (?, ?, ?)
                 """, roomSn, targetSn, content);
-        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        long messageSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        return new ChatFixture(disputeSn, messageSn);
+    }
+
+    private record ChatFixture(long disputeSn, long messageSn) {
     }
 }

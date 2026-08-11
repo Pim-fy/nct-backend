@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +27,7 @@ import nct.settlement.domain.Settlement;
 import nct.settlement.service.SettlementService;
 import nct.trade.dto.AdminTradeDisputeQuery;
 import nct.trade.dto.AdminTradeDisputeRecord;
+import nct.trade.dto.TradeDisputeEvidenceFile;
 import nct.trade.port.AdminTradeDisputeReader;
 
 /** 담당자 7 · F-OPS-005: 관리자 분쟁 조회의 페이징·상세·정산 조립 회귀 테스트입니다. */
@@ -49,6 +51,8 @@ class AdminDisputeQueryServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
+        when(disputeReader.findEvidenceFiles(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(List.of());
         service = new AdminDisputeQueryService(
                 disputeReader,
                 settlementService,
@@ -129,6 +133,8 @@ class AdminDisputeQueryServiceTest {
         assertThat(response.getItems().getFirst().getTradeSn()).isEqualTo(25L);
         assertThat(response.getItems().getFirst().isSettlementOnHold()).isTrue();
         assertThat(response.getItems().getFirst().getSettlementSn()).isEqualTo(77L);
+        assertThat(response.getItems().getFirst().getProcessedAt())
+                .isEqualTo(LocalDateTime.of(2026, 8, 7, 10, 10));
     }
 
     @Test
@@ -188,6 +194,22 @@ class AdminDisputeQueryServiceTest {
         verify(sensitiveDataMasker).maskText("처리자 연락처 010-9876-5432");
     }
 
+    @Test
+    void detailReturnsEvidenceMetadataWithoutStoragePath() {
+        when(disputeReader.findById(11L)).thenReturn(record());
+        when(disputeReader.findEvidenceFiles(11L)).thenReturn(List.of(
+                new TradeDisputeEvidenceFile(91L, "proof.pdf", "pdf", BigDecimal.valueOf(2048))));
+        when(referenceDataService.getActiveCodes(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(List.of());
+        when(settlementService.findSettlementByTrade(25L)).thenReturn(Optional.empty());
+
+        var response = service.getDetail(11L);
+
+        assertThat(response.getEvidenceFiles()).hasSize(1);
+        assertThat(response.getEvidenceFiles().getFirst().fileSn()).isEqualTo(91L);
+        assertThat(response.getEvidenceFiles().getFirst().originalName()).isEqualTo("proof.pdf");
+    }
+
     private AdminTradeDisputeRecord record() {
         AdminTradeDisputeRecord record = new AdminTradeDisputeRecord();
         record.setDisputeSn(11L);
@@ -199,6 +221,7 @@ class AdminDisputeQueryServiceTest {
         record.setProcessReason("처리자 연락처 010-9876-5432");
         record.setRegisteredAt(LocalDateTime.of(2026, 8, 7, 10, 0));
         record.setUpdatedAt(LocalDateTime.of(2026, 8, 7, 10, 5));
+        record.setProcessedAt(LocalDateTime.of(2026, 8, 7, 10, 10));
         record.setTradeTypeCode("TRDC0002");
         record.setTradeStatusCode("TRDC0007");
         record.setRequesterUserSn(32L);

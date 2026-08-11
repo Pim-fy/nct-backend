@@ -1,6 +1,8 @@
 package nct.audit.service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -11,6 +13,7 @@ import nct.audit.domain.AuditLog;
 import nct.audit.domain.AuditLogType;
 import nct.audit.mapper.AuditLogMapper;
 import nct.audit.mapper.ChatMessageView;
+import nct.audit.mapper.DisputeChatTarget;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -31,6 +34,10 @@ import nct.global.exception.ErrorCode;
 @Service
 @RequiredArgsConstructor
 public class AuditLogService {
+
+    private static final int DEFAULT_DISPUTE_CHAT_PAGE_SIZE = 50;
+    private static final int MAX_DISPUTE_CHAT_PAGE_SIZE = 100;
+    private static final int MAX_DISPUTE_CHAT_PAGE = 1_000_000;
 
     private final AuditLogMapper auditLogMapper;
 
@@ -94,15 +101,97 @@ public class AuditLogService {
             throw new CustomException(ErrorCode.MISSING_REQUIRED_FIELD, "민감정보 제한 조회 사유를 입력해야 합니다.");
         }
 
-        ChatMessageView message = auditLogMapper.selectChatMessageView(chMsgSn);
-        if (message == null) {
+        if (reason.trim().length() > 400) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "민감정보 제한 조회 사유는 400자 이하여야 합니다.");
+        }
+
+        if (chMsgSn <= 0 || trdDspSn <= 0
+                || auditLogMapper.countDisputeChatMessageLink(chMsgSn, trdDspSn) == 0) {
             throw new CustomException(ErrorCode.CHAT_MESSAGE_NOT_FOUND,
-                    "존재하지 않는 채팅 메시지입니다: " + chMsgSn);
+                    "해당 거래 분쟁에 연결된 채팅 메시지를 찾을 수 없습니다.");
         }
 
         // 원문조회 감사로그 — 참조는 근거가 된 거래 분쟁 건, 사유에 조회 대상 메시지를 함께 기록
         record(adminUsrSn, AuditLogType.SENSITIVE_VIEW, RefType.TRADE_DISPUTE, trdDspSn,
-                String.format("채팅 메시지 %d번 원문 조회 — 사유: %s", chMsgSn, reason), ipAddr);
+                String.format("채팅 메시지 %d번 원문 조회 — 사유: %s", chMsgSn, reason.trim()), ipAddr);
+
+        ChatMessageView message = auditLogMapper.selectChatMessageView(chMsgSn);
+        if (message == null) {
+            throw new CustomException(ErrorCode.CHAT_MESSAGE_NOT_FOUND);
+        }
         return message;
+    }
+
+    /**
+     * 담당자 7 연계 · F-OPS-005/014: 분쟁에 실제로 연결된 채팅만 사유·감사기록 후 제한 조회합니다.
+     * 메시지 원문은 감사 INSERT가 성공한 뒤에만 읽으며, 페이지 크기를 제한해 무제한 조회를 막습니다.
+     */
+    @Transactional
+    public DisputeChatViewResult viewDisputeChatMessages(
+            long adminUsrSn,
+            long trdDspSn,
+            String reason,
+            String ipAddr,
+            Integer requestedPage,
+            Integer requestedSize) {
+        String normalizedReason = reason == null ? "" : reason.trim();
+        if (normalizedReason.isEmpty()) {
+            throw new CustomException(ErrorCode.MISSING_REQUIRED_FIELD,
+                    "채팅 내역 열람 사유를 입력해야 합니다.");
+        }
+        if (normalizedReason.length() > 400) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "채팅 내역 열람 사유는 400자 이하여야 합니다.");
+        }
+        if (trdDspSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 분쟁 번호가 올바르지 않습니다.");
+        }
+
+        int page = requestedPage == null ? 1 : requestedPage;
+        int size = requestedSize == null ? DEFAULT_DISPUTE_CHAT_PAGE_SIZE : requestedSize;
+        if (page < 1 || page > MAX_DISPUTE_CHAT_PAGE
+                || size < 1 || size > MAX_DISPUTE_CHAT_PAGE_SIZE) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "채팅 내역 페이지 조건이 올바르지 않습니다.");
+        }
+
+        DisputeChatTarget target = auditLogMapper.selectDisputeChatTarget(trdDspSn);
+        if (target == null) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "존재하지 않는 거래 분쟁입니다.");
+        }
+
+        long totalItems = target.getMessageCount();
+        int totalPages = totalItems == 0
+                ? 0
+                : (int) Math.min(Integer.MAX_VALUE, (totalItems + size - 1) / size);
+        if (page > Math.max(totalPages, 1)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "존재하지 않는 채팅 내역 페이지입니다.");
+        }
+
+        record(adminUsrSn, AuditLogType.SENSITIVE_VIEW, RefType.TRADE_DISPUTE, trdDspSn,
+                String.format("분쟁 채팅 내역 원문 조회 (페이지 %d) — 사유: %s",
+                        page, normalizedReason),
+                ipAddr);
+
+        List<ChatMessageView> messages = new ArrayList<>();
+        if (target.getRoomSn() != null && target.getMessageCount() > 0) {
+            long offset = (long) (page - 1) * size;
+            messages.addAll(auditLogMapper.selectDisputeChatMessages(trdDspSn, size, offset));
+            Collections.reverse(messages);
+        }
+
+        return new DisputeChatViewResult(
+                target.getDisputeSn(),
+                target.getTradeSn(),
+                target.getRoomSn() != null,
+                List.copyOf(messages),
+                page,
+                size,
+                totalItems,
+                totalPages);
     }
 }

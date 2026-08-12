@@ -52,19 +52,7 @@
         )
     </insert>
 
-    <!-- 완료된 직거래는 기존 메시지만 열람하고 새 메시지는 전송할 수 없게 한다. -->
-    <update id="closeOfflineTradeChatRoom">
-        UPDATE CHAT_ROOM r
-        JOIN TRADE t
-          ON t.TRD_SN = r.TRD_SN
-        SET r.CH_RM_STATUS_CD = 'CHRC0002'
-        WHERE r.TRD_SN = #{tradeId}
-          AND t.TRD_TYPE_CD = 'TRDC0001'
-          AND t.TRD_METHOD_CD = 'TRDC0010'
-          AND r.CH_RM_STATUS_CD = 'CHRC0001'
-    </update>
-
-    <!-- 완료·취소·분쟁 접수로 확정된 서비스 거래만 기존 메시지 열람용으로 닫는다. -->
+    <!-- 완료 거래는 48시간 유예 후 조회 시점에 읽기 전용으로 판정한다. 취소·분쟁만 즉시 닫는다. -->
     <update id="closeServiceTradeChatRoom">
         UPDATE CHAT_ROOM r
         JOIN TRADE t
@@ -72,7 +60,18 @@
         SET r.CH_RM_STATUS_CD = 'CHRC0002'
         WHERE r.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0002'
-          AND t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008')
+          AND t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008')
+          AND r.CH_RM_STATUS_CD = 'CHRC0001'
+    </update>
+
+    <!-- 거래 유형과 무관하게 취소·분쟁 상태는 즉시 채팅을 읽기 전용으로 전환한다. -->
+    <update id="closeTradeChatRoom">
+        UPDATE CHAT_ROOM r
+        JOIN TRADE t
+          ON t.TRD_SN = r.TRD_SN
+        SET r.CH_RM_STATUS_CD = 'CHRC0002'
+        WHERE r.TRD_SN = #{tradeId}
+          AND t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008')
           AND r.CH_RM_STATUS_CD = 'CHRC0001'
     </update>
 
@@ -103,7 +102,12 @@
                 ELSE 'PROVIDER'
             END AS viewerRole,
             CASE
-                WHEN t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008') THEN 'CHRC0002'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006'
+                 AND completedHist.completedAt IS NOT NULL
+                 AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP THEN 'CHRC0001'
+                WHEN r.CH_RM_STATUS_CD = 'CHRC0002' THEN 'CHRC0002'
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN 'CHRC0002'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN 'CHRC0002'
                 ELSE r.CH_RM_STATUS_CD
             END AS roomStatus,
             (
@@ -142,6 +146,13 @@
           ON requester.USR_SN = t.REQ_USR_SN
         LEFT JOIN USERS provider
           ON provider.USR_SN = t.PRV_USR_SN
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist
+          ON completedHist.TRD_SN = t.TRD_SN
         WHERE (
             (t.TRD_TYPE_CD = 'TRDC0001'
              AND t.TRD_METHOD_CD = 'TRDC0010'
@@ -166,11 +177,25 @@
                 WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
                 ELSE t.REQ_USR_SN
             END AS counterpartUserId,
-            r.CH_RM_STATUS_CD AS roomStatus,
-            t.TRD_STATUS_CD AS tradeStatus
+            CASE
+                WHEN t.TRD_STATUS_CD = 'TRDC0006'
+                 AND completedHist.completedAt IS NOT NULL
+                 AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP THEN 'CHRC0001'
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN 'CHRC0002'
+                ELSE r.CH_RM_STATUS_CD
+            END AS roomStatus,
+            t.TRD_STATUS_CD AS tradeStatus,
+            completedHist.completedAt AS completedAt
         FROM CHAT_ROOM r
         JOIN TRADE t
           ON t.TRD_SN = r.TRD_SN
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist
+          ON completedHist.TRD_SN = t.TRD_SN
         WHERE r.CH_RM_SN = #{roomId}
           AND (
               (t.TRD_TYPE_CD = 'TRDC0001'

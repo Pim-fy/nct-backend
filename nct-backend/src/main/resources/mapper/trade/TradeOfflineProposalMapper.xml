@@ -69,6 +69,14 @@
         LIMIT 1
     </select>
 
+    <select id="countScheduleProposalsByTradeAndProposer" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE_OFFLINE_PROPOSAL p
+        WHERE p.TRD_SN = #{tradeId}
+          AND p.TRD_OFL_PPS_PROPOSER_USR_SN = #{userId}
+          AND p.TRD_OFL_PPS_TYPE_CD IN ('TRDC0030', 'TRDC0031')
+    </select>
+
     <select id="findProposalForUpdate" resultMap="offlineProposalMap">
         SELECT
             p.TRD_OFL_PPS_SN AS proposalId,

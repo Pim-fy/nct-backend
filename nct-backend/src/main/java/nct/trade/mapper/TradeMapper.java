@@ -88,6 +88,11 @@ public interface TradeMapper {
     /** 담당자 7 · F-OPS-020: 제한 대상자의 모든 진행 거래를 잠금 조회합니다. */
     List<MemberActiveTradeTarget> findActiveTradesByMemberForUpdate(@Param("userSn") long userSn);
 
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 전 하드 차단용. 물건(SLLR/BYPR)·서비스(REQ/PRV)
+    // 거래 모두, 진행중·배송중·완료확인대기·보류(TRDC0003/0004/0005/0007) 건수를 센다.
+    // findActiveTradesByMemberForUpdate(위)는 물건 거래 전용이고 보류를 포함하지 않아 재사용하지 않는다.
+    int countBlockingTradesByUser(@Param("userSn") long userSn);
+
     /** 담당자 7 · F-OPS-020: 잠금 시점 상태가 유지된 거래만 보류합니다. */
     int holdTradeForMemberRestriction(
             @Param("tradeId") long tradeId,
@@ -290,6 +295,17 @@ public interface TradeMapper {
             @Param("tradeId") long tradeId,
             @Param("completionRequesterId") String completionRequesterId,
             @Param("updaterId") String updaterId);
+
+    /** 직거래 완료 요청을 받은 상대방이 거절하면 자동 완료 시각을 제거하고 직거래 진행으로 돌린다. */
+    int rejectOfflineCompletionByCounterpart(
+            @Param("tradeId") long tradeId,
+            @Param("completionRequesterId") String completionRequesterId,
+            @Param("updaterId") String updaterId);
+
+    /** 직거래 완료 확인 요청만 요청자별로 누적해 반복 완료 요청을 제한한다. */
+    int countOfflineCompletionRequestsByRequester(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
 
     /** 자동 완료 시각이 지난 확인 대기 거래를 배치 단위로 조회한다. */
     List<Long> findExpiredAutoCompletionTradeIds(

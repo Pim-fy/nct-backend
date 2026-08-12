@@ -17,11 +17,13 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
-import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
+import nct.audit.domain.AuditLogType;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
@@ -75,6 +77,8 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private final ActiveProviderGuard activeProviderGuard;
     private final FileStorageService fileStorageService;
     private final NotificationService notificationService;
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011 회원 탈퇴 자동철회 감사 기록용
+    private final AuditLogPort auditLogPort;
 
     /** F-OPS-021: 관리자 목록과 상세가 사용할 견적 요약을 요청 단위로 일괄 제공합니다. */
     @Override
@@ -265,15 +269,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
 
         savePhotos(quote.getQutSn(), usrSn, request.photoFlSns());
 
-        String providerNickname = ((CustomUserDetails) authentication.getPrincipal()).getMember().getNickname();
-        notificationService.notify(
-                target.requesterUsrSn(),
-                NotificationType.SERVICE,
-                NotificationDomain.SERVICE,
-                "새 견적이 도착했습니다",
-                providerNickname + "님이 견적을 제출했습니다.",
-                RefType.SERVICE_REQUEST,
-                quote.getSvcReqSn());
+        notificationService.notifyNewQuote(target.requesterUsrSn(), quote.getSvcReqSn());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 
@@ -354,6 +350,25 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         int updated = quoteMapper.withdrawQuote(qutSn, String.valueOf(usrSn));
         if (updated != 1) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+    }
+
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 회원 탈퇴 시
+    // MemberService.withdraw() 트랜잭션 안에서 호출된다. 본인(제공자) 소유 진행 중 견적을 전부
+    // 철회 처리하고 감사 로그만 남긴다(상대방 알림 없음 - 사용자 결정, ISS-026).
+    @Transactional
+    public void withdrawAllQuotesByUser(Long usrSn) {
+        int updated = quoteMapper.withdrawAllByUser(usrSn, String.valueOf(usrSn));
+        if (updated > 0) {
+            auditLogPort.record(new AuditLogCommand(
+                    AuditLogType.STATUS_CHANGE.name(),
+                    String.valueOf(usrSn),
+                    RefType.QUOTE.getCode(),
+                    usrSn,
+                    "회원 탈퇴에 따른 진행 중 견적 자동 철회",
+                    "QUTC0001/QUTC0002",
+                    "QUTC0005(" + updated + "건)",
+                    null));
         }
     }
 
@@ -601,6 +616,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
         quoteMapper.withdrawCompetingQuotes(svcReqSn, quoteId, actorId);
+        notificationService.notifyQuoteSelected(quote.getUsrSn(), quoteId);
 
         return new SelectedQuoteResult(quote.getQutSn(), quote.getUsrSn(), quote.getQutAmt());
     }

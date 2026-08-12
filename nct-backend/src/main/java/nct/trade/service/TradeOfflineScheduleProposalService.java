@@ -36,6 +36,7 @@ public class TradeOfflineScheduleProposalService {
     private static final String SCHEDULE = "TRDC0030";
     private static final String CHANGE = "TRDC0031";
     private static final String CANCEL = "TRDC0032";
+    private static final int MAX_SCHEDULE_PROPOSALS_PER_PARTY = 3;
 
     private final TradeMapper tradeMapper;
     private final TradeOfflineProposalMapper proposalMapper;
@@ -48,6 +49,7 @@ public class TradeOfflineScheduleProposalService {
         TradeOfflineTradeTarget target = requireTrade(tradeId, userId);
         validateNegotiableTrade(target);
         ensureNoPendingProposal(tradeId);
+        ensureScheduleProposalLimit(tradeId, userId);
 
         TradeOfflineScheduleProposal proposal = new TradeOfflineScheduleProposal();
         proposal.setTradeId(tradeId);
@@ -159,6 +161,12 @@ public class TradeOfflineScheduleProposalService {
     /** 거래 상세에 현재 확정 일정과 구분되는 대기 제안 정보를 붙인다. */
     @Transactional(readOnly = true)
     public void enrichDetail(TradeDetailResponse detail, long userId) {
+        int scheduleProposalCount = proposalMapper.countScheduleProposalsByTradeAndProposer(
+                detail.getTradeId(), userId);
+        detail.setMyScheduleProposalCount(scheduleProposalCount);
+        detail.setRemainingScheduleProposalCount(
+                Math.max(0, MAX_SCHEDULE_PROPOSALS_PER_PARTY - scheduleProposalCount));
+
         TradeOfflineScheduleProposal pending = proposalMapper.findPendingProposal(detail.getTradeId());
         if (pending == null) {
             return;
@@ -229,6 +237,14 @@ public class TradeOfflineScheduleProposalService {
         if (proposalMapper.findPendingProposal(tradeId) != null) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "이미 응답을 기다리는 일정 제안이 있습니다.");
+        }
+    }
+
+    private void ensureScheduleProposalLimit(long tradeId, long userId) {
+        if (proposalMapper.countScheduleProposalsByTradeAndProposer(tradeId, userId)
+                >= MAX_SCHEDULE_PROPOSALS_PER_PARTY) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "직거래 일정 제안은 판매자와 구매자 각각 최초 제안을 포함해 최대 3회까지 할 수 있습니다.");
         }
     }
 

@@ -54,6 +54,13 @@ public class AdminServiceTradeQueryService {
                 source.chatRoomStatus(),
                 false,
                 maskedHistory,
-                List.of());
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                0,
+                sensitiveDataMasker.maskText(source.serviceRequestContent()),
+                0L);
     }
 }

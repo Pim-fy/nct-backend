@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -222,16 +223,29 @@ class ChatServiceTest {
     }
 
     @Test
-    void rejectsMessageWhenCompletedTradeHasLegacyActiveChatRoom() {
-        ChatRoomAccess legacyActiveRoom = chatRoom(11L, 91L, "CHRC0001");
-        legacyActiveRoom.setTradeStatus("TRDC0006");
-        when(chatMapper.findMyChatRoom(11L, 10L)).thenReturn(legacyActiveRoom);
+    void allowsCompletedTradeChatDuringFortyEightHourGracePeriod() {
+        ChatRoomAccess completedRoom = chatRoom(11L, 91L, "CHRC0001");
+        completedRoom.setTradeStatus("TRDC0006");
+        completedRoom.setCompletedAt(LocalDateTime.now().minusHours(47));
+        when(chatMapper.findMyChatRoom(11L, 10L)).thenReturn(completedRoom);
+
+        ChatRoomAccess result = chatService.requireMyActiveChatRoom(11L, 10L);
+
+        assertThat(result).isSameAs(completedRoom);
+    }
+
+    @Test
+    void rejectsMessageWhenCompletedTradeChatGracePeriodExpires() {
+        ChatRoomAccess completedRoom = chatRoom(11L, 91L, "CHRC0001");
+        completedRoom.setTradeStatus("TRDC0006");
+        completedRoom.setCompletedAt(LocalDateTime.now().minusHours(48));
+        when(chatMapper.findMyChatRoom(11L, 10L)).thenReturn(completedRoom);
 
         assertThatThrownBy(() -> chatService.sendMessage(
                 11L,
                 10L,
                 "10",
-                request("완료 뒤에는 전송할 수 없습니다.")))
+                request("48시간이 지난 완료 거래에서는 전송할 수 없습니다.")))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ALREADY_PROCESSED);

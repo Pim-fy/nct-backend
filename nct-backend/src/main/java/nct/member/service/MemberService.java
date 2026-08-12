@@ -20,6 +20,8 @@ import nct.member.dto.PasswordChangeRequest;
 import nct.member.dto.ProfileUpdateRequest;
 import nct.member.dto.ProfileUpdateResponse;
 import nct.member.mapper.MemberMapper;
+import nct.member.port.CustomerInquiryWithdrawalPort;
+import nct.quote.service.QuoteService;
 
 // @ai_generated
 /**
@@ -43,6 +45,14 @@ public class MemberService {
     private final FieldCryptoService fieldCryptoService;
     // @ai_generated: ISS-022 - 프로필사진 flSn을 화면에 그릴 URL로 바꿀 때만 사용(FILES 직접 조회 금지 원칙 준수).
     private final FileStorageService fileStorageService;
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 전 하드 차단 검증
+    private final MemberWithdrawalPreCheckService withdrawalPreCheckService;
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 시 본인 진행 중 견적 자동 철회(quote 모듈은
+    // member를 참조하지 않아 순환 의존 없이 직접 주입 가능)
+    private final QuoteService quoteService;
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 시 본인 미답변 문의 자동 종결. customerinquiry
+    // 모듈이 이미 member를 참조하므로 순환 의존을 피하기 위해 포트로만 주입한다.
+    private final CustomerInquiryWithdrawalPort customerInquiryWithdrawalPort;
 
     /** F-AUTH-010: 닉네임이 기존과 다를 때만 중복 확인하고, DB 제약 위반도 최종 방어선으로 대비한다. */
     @Transactional
@@ -188,27 +198,58 @@ public class MemberService {
         AuthMember member = authMemberPort.findById(usrSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // @ai_generated: 저장된 해시와 대조하는 신원 재확인이라 AuthService.login과 동일하게
-        // INVALID_CREDENTIALS(401)를 쓴다 - PASSWORD_MISMATCH(400)는 같은 요청 내 필드 매칭용이라 부적합.
-        if (member.getPassword() == null || !passwordEncoder.matches(currentPassword, member.getPassword())) {
-            throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
+        // @ai_generated: 소셜 전용 계정은 비밀번호 자체가 없어(changePassword와 동일 판정) 비밀번호
+        // 재확인을 건너뛰고 세션만으로 진행한다(A안, 2026-08-12 사용자 결정) - 비밀번호 보유 계정이
+        // 얻는 "세션 탈취 시 추가 방어" 수준의 보호는 소셜 계정엔 적용되지 않는다는 트레이드오프를
+        // 인지한 선택이다. OAuth 재인증 등 대체 확인 수단은 이번 범위에 포함하지 않는다.
+        if (!isSystemGeneratedLoginId(member.getLoginId())) {
+            // @ai_generated: 저장된 해시와 대조하는 신원 재확인이라 AuthService.login과 동일하게
+            // INVALID_CREDENTIALS(401)를 쓴다 - PASSWORD_MISMATCH(400)는 같은 요청 내 필드 매칭용이라 부적합.
+            // currentPassword가 비어있으면(WithdrawRequest에 @NotBlank가 없어졌다) matches() 호출
+            // 없이 바로 차단한다 - BCryptPasswordEncoder.matches(null, ...)은 예외를 던진다.
+            if (member.getPassword() == null
+                    || currentPassword == null || currentPassword.isBlank()
+                    || !passwordEncoder.matches(currentPassword, member.getPassword())) {
+                throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
+            }
         }
 
-        withdraw(usrSn);
+        withdraw(usrSn, false);
     }
 
     /**
      * F-AUTH-011/POL-AUTH-013: 활성·정지 두 경로가 공유하는 공통 탈퇴 처리.
-     * USR_STATUS_CD 전환 + 컬럼별 보존 범위 반영(MemberMapper.withdraw) + 리프레시 토큰 무효화를
-     * 하나의 트랜잭션으로 묶는다.
+     * 회원 행을 잠근 뒤(TOCTOU 방지) 하드 차단 조건을 검증하고, 통과 시에만 USR_STATUS_CD 전환 +
+     * 컬럼별 보존 범위 반영(MemberMapper.withdraw) + 리프레시 토큰 무효화 + 부수 상태 자동 정리
+     * (견적 철회·문의 종결)를 하나의 트랜잭션으로 묶는다.
+     *
+     * @ai_generated: (QA P1-1, 2026-08-12) 이 메서드는 항상 이미 @Transactional인 호출자
+     * (withdrawActive 또는 MemberWithdrawalRequestService.confirmWithdrawal) 안에서만 불린다.
+     * 여기에 별도로 @Transactional을 붙이면, 이 메서드 경계에서 CustomException(WITHDRAWAL_BLOCKED)이
+     * 전파될 때 이 메서드 자신의(호출자와 다른) 기본 롤백 규칙이 먼저 적용돼 트랜잭션을 rollback-only로
+     * 표시해버린다. confirmWithdrawal은 noRollbackFor=CustomException.class라 커밋을 시도하지만
+     * 이미 rollback-only로 표시된 뒤라 UnexpectedRollbackException(500)이 난다. @Transactional을
+     * 떼면 호출자의 트랜잭션 경계·롤백 규칙에 그대로 참여해 이 충돌이 사라진다.
+     *
+     * @param skipTradeCheck 정지 계정 전용 - 정지 처리 시 이미 거래가 관리자 조치로 보류(TRDC0007)되고
+     *                       이를 재개시키는 정책이 없어 본인이 해소할 수 없으므로 거래 관련 하드 차단을
+     *                       건너뛴다(ISS-027). 활성 계정 경로는 항상 false.
      */
-    @Transactional
-    public void withdraw(Long usrSn) {
+    public void withdraw(Long usrSn, boolean skipTradeCheck) {
+        // @ai_generated: 검증~처리 사이 동시성 방지 - 검증 시점 이후 다른 트랜잭션이 상태를 바꿀 수 없게
+        // 회원 행을 잠근다(MemberWithdrawalRequestService.confirmWithdrawal과 동일 패턴).
+        memberMapper.findMemberByIdForUpdate(usrSn);
+        withdrawalPreCheckService.check(usrSn, skipTradeCheck);
+
         String anonymizedEmail = anonymizedEmail(usrSn);
         memberMapper.withdraw(usrSn, fieldCryptoService.encrypt(anonymizedEmail),
                 fieldCryptoService.emailHmac(anonymizedEmail), anonymizedNickname(usrSn));
         // @ai_generated: 전 기기 로그아웃 - AuthService.logout과 동일 패턴(null 저장)
         authMemberPort.updateRefreshToken(usrSn, null);
+
+        // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 시 부수 상태 자동 정리(감사 로그만, 알림 없음)
+        quoteService.withdrawAllQuotesByUser(usrSn);
+        customerInquiryWithdrawalPort.closeUnansweredByUser(usrSn);
     }
 
     /**

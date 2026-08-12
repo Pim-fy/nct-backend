@@ -202,6 +202,15 @@
         FOR UPDATE
     </select>
 
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 탈퇴 전 하드 차단 - 물건·서비스 거래 모두, 보류 포함 -->
+    <select id="countBlockingTradesByUser" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE
+        WHERE (SLLR_USR_SN = #{userSn} OR BYPR_USR_SN = #{userSn}
+               OR REQ_USR_SN = #{userSn} OR PRV_USR_SN = #{userSn})
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005', 'TRDC0007')
+    </select>
+
     <update id="holdTradeForMemberRestriction">
         UPDATE TRADE
         SET TRD_UPDT_ID = CASE
@@ -622,10 +631,22 @@
             END AS tradeMethod,
             CASE
                 WHEN chatRoom.CH_RM_SN IS NULL THEN 'NOT_STARTED'
-                WHEN t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008') THEN 'CLOSED'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006'
+                 AND completedHist.completedAt IS NOT NULL
+                 AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP THEN 'ACTIVE'
+                WHEN chatRoom.CH_RM_STATUS_CD = 'CHRC0002' THEN 'CLOSED'
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN 'CLOSED'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN 'CLOSED'
                 WHEN chatRoom.CH_RM_STATUS_CD = 'CHRC0001' THEN 'ACTIVE'
                 ELSE 'CLOSED'
             END AS chatRoomStatus,
+            CASE
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN FALSE
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN
+                    completedHist.completedAt IS NOT NULL
+                    AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP
+                ELSE TRUE
+            END AS chatAvailable,
             t.TRD_REG_DT AS createdAt,
             completedHist.completedAt AS completedAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
@@ -719,6 +740,31 @@
             q.QUT_CN AS quoteSummary,
             requestedSchedule.scheduleLabel,
             CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
+                ELSE t.REQ_USR_SN
+            END AS counterpartUserId,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
+                ELSE requester.USR_NM
+            END AS counterpartNickname,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN providerProfileFile.FL_PATH
+                ELSE requesterProfileFile.FL_PATH
+            END AS counterpartProfileImageUrl,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_REG_DT
+                ELSE requester.USR_REG_DT
+            END AS counterpartJoinedAt,
+            (
+                SELECT COUNT(*)
+                FROM TRADE completedTrade
+                WHERE completedTrade.TRD_STATUS_CD = 'TRDC0006'
+                  AND (
+                      completedTrade.REQ_USR_SN = CASE WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN ELSE t.REQ_USR_SN END
+                      OR completedTrade.PRV_USR_SN = CASE WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN ELSE t.REQ_USR_SN END
+                  )
+            ) AS counterpartCompletedTradeCount,
+            CASE
                 WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
                 ELSE NULL
@@ -736,12 +782,26 @@
                 ELSE NULL
             END AS escrowStatusLabel,
             CASE
-                WHEN EXISTS (
+                WHEN t.TRD_STATUS_CD NOT IN ('TRDC0007', 'TRDC0008')
+                 AND (
+                    (t.TRD_STATUS_CD = 'TRDC0006'
+                     AND completedHist.completedAt IS NOT NULL
+                     AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP)
+                    OR (
+                        t.TRD_STATUS_CD &lt;&gt; 'TRDC0006'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM CHAT_ROOM cr
+                            WHERE cr.TRD_SN = t.TRD_SN
+                              AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                        )
+                    )
+                 )
+                 AND EXISTS (
                     SELECT 1
                     FROM CHAT_ROOM cr
                     WHERE cr.TRD_SN = t.TRD_SN
-                      AND cr.CH_RM_STATUS_CD = 'CHRC0001'
-                ) THEN 'ACTIVE'
+                 ) THEN 'ACTIVE'
                 WHEN EXISTS (
                     SELECT 1
                     FROM CHAT_ROOM cr
@@ -750,12 +810,25 @@
                 ELSE 'NOT_STARTED'
             END AS chatRoomStatus,
             CASE
-                WHEN t.TRD_STATUS_CD = 'TRDC0003'
+                WHEN t.TRD_STATUS_CD NOT IN ('TRDC0007', 'TRDC0008')
+                 AND (
+                    (t.TRD_STATUS_CD = 'TRDC0006'
+                     AND completedHist.completedAt IS NOT NULL
+                     AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP)
+                    OR (
+                        t.TRD_STATUS_CD &lt;&gt; 'TRDC0006'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM CHAT_ROOM cr
+                            WHERE cr.TRD_SN = t.TRD_SN
+                              AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                        )
+                    )
+                 )
                  AND EXISTS (
                     SELECT 1
                     FROM CHAT_ROOM cr
                     WHERE cr.TRD_SN = t.TRD_SN
-                      AND cr.CH_RM_STATUS_CD = 'CHRC0001'
                  ) THEN TRUE
                 ELSE FALSE
             END AS chatAvailable,
@@ -779,9 +852,19 @@
                  ) THEN TRUE
                 ELSE FALSE
             END AS cancellationDecisionAvailable
+            , sr.SVC_REQ_CN AS serviceRequestContent,
+            t.QUT_SN AS selectedQuoteId
         FROM TRADE t
         JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
         JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
+        JOIN USERS requester ON requester.USR_SN = t.REQ_USR_SN
+        JOIN USERS provider ON provider.USR_SN = t.PRV_USR_SN
+        LEFT JOIN FILES requesterProfileFile
+          ON requesterProfileFile.FL_SN = requester.USR_PRFL_FL_SN
+         AND requesterProfileFile.FL_USE_YN = 'Y'
+        LEFT JOIN FILES providerProfileFile
+          ON providerProfileFile.FL_SN = provider.USR_PRFL_FL_SN
+         AND providerProfileFile.FL_USE_YN = 'Y'
         LEFT JOIN (
             /* 요청서의 카테고리별 날짜 필드 중 가장 이른 선택일을 기본 서비스 일정으로 표시한다. */
             SELECT i.SVC_REQ_SN,
@@ -792,6 +875,12 @@
             GROUP BY i.SVC_REQ_SN
         ) requestedSchedule ON requestedSchedule.SVC_REQ_SN = t.SVC_REQ_SN
         LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist ON completedHist.TRD_SN = t.TRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0002'
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
@@ -810,6 +899,11 @@
             sr.SVC_REQ_TTL AS serviceRequestTitle,
             q.QUT_CN AS quoteSummary,
             requestedSchedule.scheduleLabel,
+            NULL AS counterpartUserId,
+            NULL AS counterpartNickname,
+            NULL AS counterpartProfileImageUrl,
+            NULL AS counterpartJoinedAt,
+            0 AS counterpartCompletedTradeCount,
             CASE
                 WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
@@ -824,7 +918,9 @@
                 ELSE NULL
             END AS escrowStatusLabel,
             FALSE AS chatAvailable,
-            FALSE AS cancellationDecisionAvailable
+            FALSE AS cancellationDecisionAvailable,
+            sr.SVC_REQ_CN AS serviceRequestContent,
+            t.QUT_SN AS selectedQuoteId
         FROM TRADE t
         JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
         JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
@@ -1085,6 +1181,17 @@
             tradeStatus.CMM_NM AS tradeStatusName,
             t.TRD_AMT AS tradeAmount,
             sr.SVC_REQ_TTL AS serviceRequestTitle,
+            (
+                SELECT CONCAT('/api/service-requests/', image.SVC_REQ_SN, '/images/', image.FL_SN)
+                FROM SVC_REQ_IMAGE image
+                JOIN FILES file
+                  ON file.FL_SN = image.FL_SN
+                 AND file.FL_USE_YN = 'Y'
+                WHERE image.SVC_REQ_SN = sr.SVC_REQ_SN
+                ORDER BY image.SVC_REQ_IMG_SORT_NO ASC, image.FL_SN ASC
+                LIMIT 1
+            ) AS serviceRequestImageUrl,
+            category.CAT_NM AS categoryName,
             q.QUT_CN AS quoteSummary,
             CASE
                 WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
@@ -1105,6 +1212,8 @@
         FROM TRADE t
         JOIN SERVICE_REQUEST sr
           ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN CATEGORY category
+          ON category.CAT_SN = sr.CAT_SN
         JOIN QUOTE q
           ON q.QUT_SN = t.QUT_SN
         JOIN USERS requester
@@ -1350,6 +1459,25 @@
           AND TRD_STATUS_CD = 'TRDC0005'
           AND TRD_UPDT_ID = #{completionRequesterId}
     </update>
+
+    <update id="rejectOfflineCompletionByCounterpart">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0004',
+            TRD_AUTO_CMPL_DT = NULL,
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_METHOD_CD = 'TRDC0010'
+          AND TRD_STATUS_CD = 'TRDC0005'
+          AND TRD_UPDT_ID = #{completionRequesterId}
+    </update>
+
+    <select id="countOfflineCompletionRequestsByRequester" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE_STATUS_HIST h
+        WHERE h.TRD_SN = #{tradeId}
+          AND h.TRD_STS_HST_STATUS_CD = 'TRDC0005'
+          AND h.TRD_STS_HST_RSN_CN LIKE CONCAT('OFFLINE_COMPLETION_REQUEST|', #{userId}, '|%')
+    </select>
 
     <!-- 한 번의 스케줄 실행이 과도한 행을 잡지 않도록 만료 거래를 배치 크기로 나눠 조회한다. -->
     <select id="findExpiredAutoCompletionTradeIds" resultType="long">

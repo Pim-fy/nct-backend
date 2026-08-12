@@ -57,7 +57,14 @@ public class ServiceTradeDetailAssembler {
                 source.chatAvailable(),
                 List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
                 resolveAvailableActions(source.tradeStatusCode(), viewerRole,
-                        source.cancellationDecisionAvailable()));
+                        source.cancellationDecisionAvailable()),
+                source.counterpartUserId(),
+                source.counterpartNickname(),
+                source.counterpartProfileImageUrl(),
+                source.counterpartJoinedAt(),
+                source.counterpartCompletedTradeCount(),
+                source.serviceRequestContent(),
+                source.selectedQuoteId());
     }
 
     /** 담당자 7 · F-OPS-005: 관리자에게는 원문 주소와 당사자 처리 버튼을 제외한 읽기 전용 상세만 제공합니다. */
@@ -85,7 +92,14 @@ public class ServiceTradeDetailAssembler {
                 source.chatRoomStatus(),
                 false,
                 List.copyOf(scheduleHistory == null ? List.of() : scheduleHistory),
-                List.of());
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                0,
+                null,
+                0L);
     }
 
     private String resolveViewerRole(ServiceTradeDetailSource source, long viewerUserId) {

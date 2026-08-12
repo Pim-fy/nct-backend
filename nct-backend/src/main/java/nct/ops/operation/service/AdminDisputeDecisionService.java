@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -19,7 +20,6 @@ import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.operation.domain.AdminDisputeDecision;
 import nct.ops.operation.domain.AdminDisputeDecisionCommittedEvent;
-import nct.ops.operation.dto.AdminDisputeDecisionResponse;
 import nct.point.service.PointService;
 import nct.settlement.service.SettlementService;
 import nct.trade.dto.AdminTradeDisputeDecisionTarget;
@@ -35,29 +35,30 @@ public class AdminDisputeDecisionService {
 
     private static final String MATERIAL_TRADE = "TRDC0001";
     private static final String SERVICE_TRADE = "TRDC0002";
-    private static final String RECEIVED = "TRDC0016";
-    private static final String PROCESSING = "TRDC0017";
-    private static final String COMPLETED = "TRDC0018";
-    private static final String REJECTED = "TRDC0019";
+    private static final String RECEIVED = "ABSC0001";
+    private static final String PROCESSING = "ABSC0002";
+    private static final String COMPLETED = "ABSC0003";
+    private static final String REJECTED = "ABSC0004";
 
     private final AdminTradeDisputeCommandPort disputeCommandPort;
     private final SettlementService settlementService;
     private final PointService pointService;
+    private final ChatService chatService;
     private final AuditLogPort auditLogPort;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public AdminDisputeDecisionResponse decide(
-            Long disputeSn,
+    public void decide(
+            Long reportSn,
             AdminDisputeDecision decision,
             String reason,
             Long adminUserSn) {
-        validate(disputeSn, decision, reason, adminUserSn);
+        validate(reportSn, decision, reason, adminUserSn);
         String normalizedReason = reason.trim();
-        AdminTradeDisputeDecisionTarget target = disputeCommandPort.lockByDisputeSn(disputeSn);
+        AdminTradeDisputeDecisionTarget target = disputeCommandPort.lockByReportSn(reportSn);
 
         if (isSameDecision(target, decision)) {
-            return response(target, decision, false, 0L);
+            return;
         }
         requireOpen(target);
 
@@ -70,15 +71,15 @@ public class AdminDisputeDecisionService {
             }
             case COMPLETE -> {
                 disputeCommandPort.restoreAndClose(
-                        target, decision.getResultCode(), decision.getStatusCode(),
+                        target, decision.getResultCode(),
                         normalizedReason, adminUserSn);
-                settlementService.resumeByTradeIfOnHold(target.getTradeSn(), adminUserSn);
+                restoreReportEffects(target, adminUserSn);
                 yield 0L;
             }
             case REJECT -> {
                 disputeCommandPort.restoreAndClose(
-                        target, null, decision.getStatusCode(), normalizedReason, adminUserSn);
-                settlementService.resumeByTradeIfOnHold(target.getTradeSn(), adminUserSn);
+                        target, null, normalizedReason, adminUserSn);
+                restoreReportEffects(target, adminUserSn);
                 yield 0L;
             }
             case REFUND -> refund(target, decision, normalizedReason, adminUserSn);
@@ -86,15 +87,17 @@ public class AdminDisputeDecisionService {
 
         recordAudit(target, decision, normalizedReason, adminUserSn);
         publishFinalDecisionNotification(target, decision);
-        return AdminDisputeDecisionResponse.builder()
-                .disputeSn(target.getDisputeSn())
-                .tradeSn(target.getTradeSn())
-                .decision(decision.name())
-                .disputeStatusCode(decision.getStatusCode())
-                .disputeResultCode(decision.getResultCode())
-                .changed(true)
-                .refundedAmount(refundedAmount)
-                .build();
+    }
+
+    private void restoreReportEffects(
+            AdminTradeDisputeDecisionTarget target,
+            Long adminUserSn) {
+        if (target.isSettlementHoldApplied()) {
+            settlementService.resumeByTradeIfOnHold(target.getTradeSn(), adminUserSn);
+        }
+        if (target.isChatClosed()) {
+            chatService.reopenTradeChatRoom(target.getTradeSn());
+        }
     }
 
     private long refund(
@@ -111,7 +114,7 @@ public class AdminDisputeDecisionService {
                 target.getTradeSn(),
                 escrowOwner.refType(),
                 escrowOwner.refSn(),
-                "관리자 거래 분쟁 전액 환불: " + reason);
+                "관리자 거래 신고 전액 환불: " + reason);
     }
 
     private EscrowOwner escrowOwner(AdminTradeDisputeDecisionTarget target) {
@@ -138,18 +141,18 @@ public class AdminDisputeDecisionService {
             AdminTradeDisputeDecisionTarget target,
             AdminDisputeDecision decision) {
         return switch (decision) {
-            case REJECT -> REJECTED.equals(target.getDisputeStatusCode());
-            case HOLD -> PROCESSING.equals(target.getDisputeStatusCode())
-                    && decision.getResultCode().equals(target.getDisputeResultCode());
-            case COMPLETE, REFUND -> COMPLETED.equals(target.getDisputeStatusCode())
-                    && decision.getResultCode().equals(target.getDisputeResultCode());
+            case REJECT -> REJECTED.equals(target.getReportStatusCode());
+            case HOLD -> PROCESSING.equals(target.getReportStatusCode())
+                    && decision.getResultCode().equals(target.getTradeDecisionResultCode());
+            case COMPLETE, REFUND -> COMPLETED.equals(target.getReportStatusCode())
+                    && decision.getResultCode().equals(target.getTradeDecisionResultCode());
         };
     }
 
     private void requireOpen(AdminTradeDisputeDecisionTarget target) {
-        if (!RECEIVED.equals(target.getDisputeStatusCode())
-                && !PROCESSING.equals(target.getDisputeStatusCode())) {
-            throw new CustomException(ErrorCode.CONFLICT, "이미 다른 판정으로 종료된 거래 분쟁입니다.");
+        if (!RECEIVED.equals(target.getReportStatusCode())
+                && !PROCESSING.equals(target.getReportStatusCode())) {
+            throw new CustomException(ErrorCode.CONFLICT, "이미 다른 판정으로 종료된 거래 신고입니다.");
         }
     }
 
@@ -161,14 +164,14 @@ public class AdminDisputeDecisionService {
         auditLogPort.record(new AuditLogCommand(
                 "STATUS_CHANGE",
                 String.valueOf(adminUserSn),
-                RefType.TRADE_DISPUTE.getCode(),
-                target.getDisputeSn(),
+                RefType.ABUSE_REPORT.getCode(),
+                target.getReportSn(),
                 reason,
-                "disputeStatus=" + target.getDisputeStatusCode()
+                "reportStatus=" + target.getReportStatusCode()
                         + ",tradeStatus=" + target.getTradeStatusCode(),
                 "decision=" + decision.name()
-                        + ",disputeStatus=" + decision.getStatusCode(),
-                requestId(adminUserSn, target.getDisputeSn(), decision, reason),
+                        + ",reportStatus=" + decision.getStatusCode(),
+                requestId(adminUserSn, target.getReportSn(), decision, reason),
                 RefType.TRADE.getCode(),
                 target.getTradeSn()));
     }
@@ -185,7 +188,7 @@ public class AdminDisputeDecisionService {
         addRecipient(recipients, target.getRequesterUserSn());
         addRecipient(recipients, target.getProviderUserSn());
         eventPublisher.publishEvent(new AdminDisputeDecisionCommittedEvent(
-                recipients, target.getDisputeSn(), decision.getLabel()));
+                recipients, target.getReportSn(), decision.getLabel()));
     }
 
     private void addRecipient(Set<Long> recipients, Long userSn) {
@@ -194,33 +197,17 @@ public class AdminDisputeDecisionService {
         }
     }
 
-    private AdminDisputeDecisionResponse response(
-            AdminTradeDisputeDecisionTarget target,
-            AdminDisputeDecision decision,
-            boolean changed,
-            long refundedAmount) {
-        return AdminDisputeDecisionResponse.builder()
-                .disputeSn(target.getDisputeSn())
-                .tradeSn(target.getTradeSn())
-                .decision(decision.name())
-                .disputeStatusCode(target.getDisputeStatusCode())
-                .disputeResultCode(target.getDisputeResultCode())
-                .changed(changed)
-                .refundedAmount(refundedAmount)
-                .build();
-    }
-
     private void validate(
-            Long disputeSn,
+            Long reportSn,
             AdminDisputeDecision decision,
             String reason,
             Long adminUserSn) {
-        if (disputeSn == null
-                || disputeSn <= 0
+        if (reportSn == null
+                || reportSn <= 0
                 || decision == null
                 || reason == null
                 || reason.isBlank()
-                || reason.trim().length() > 1000
+                || reason.trim().length() > 4000
                 || adminUserSn == null
                 || adminUserSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
@@ -229,13 +216,13 @@ public class AdminDisputeDecisionService {
 
     private String requestId(
             Long adminUserSn,
-            Long disputeSn,
+            Long reportSn,
             AdminDisputeDecision decision,
             String reason) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            String source = adminUserSn + "|" + disputeSn + "|" + decision + "|" + reason;
-            return "dispute-decision:"
+            String source = adminUserSn + "|" + reportSn + "|" + decision + "|" + reason;
+            return "trade-report-decision:"
                     + HexFormat.of().formatHex(digest.digest(source.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);

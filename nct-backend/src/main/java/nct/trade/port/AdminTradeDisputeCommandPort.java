@@ -2,10 +2,10 @@ package nct.trade.port;
 
 import nct.trade.dto.AdminTradeDisputeDecisionTarget;
 
-/** 담당자 7 · F-OPS-006: TRADE·TRADE_DISPUTE 소유 경계가 제공하는 관리자 판정 명령입니다. */
+/** 담당자 7 · F-OPS-005/006: 거래와 거래 신고 문맥의 관리자 판정 명령입니다. */
 public interface AdminTradeDisputeCommandPort {
 
-    AdminTradeDisputeDecisionTarget lockByDisputeSn(Long disputeSn);
+    AdminTradeDisputeDecisionTarget lockByReportSn(Long reportSn);
 
     void keepOnHold(
             AdminTradeDisputeDecisionTarget target,
@@ -16,7 +16,6 @@ public interface AdminTradeDisputeCommandPort {
     void restoreAndClose(
             AdminTradeDisputeDecisionTarget target,
             String resultCode,
-            String disputeStatusCode,
             String reason,
             Long adminUserSn);
 

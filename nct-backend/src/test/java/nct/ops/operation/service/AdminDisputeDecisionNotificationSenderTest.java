@@ -17,6 +17,6 @@ class AdminDisputeDecisionNotificationSenderTest {
 
         sender.send(32L, 11L, "전액 환불");
 
-        verify(notificationService).notifyDisputeResolved(32L, 11L, "전액 환불");
+        verify(notificationService).notifyTradeReportResolved(32L, 11L, "전액 환불");
     }
 }

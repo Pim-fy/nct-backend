@@ -22,7 +22,6 @@ public class AgreeHistory {
     private Long bidSn;
     private Long aucSn;
     private Long ptLdgSn;
-    private Long trdDspSn;
     private Long trdSn;
 
     /** 동의유형공통코드(AGRG01) — 무엇에 동의했나 */

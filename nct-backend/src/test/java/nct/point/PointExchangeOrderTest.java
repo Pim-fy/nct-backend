@@ -212,7 +212,7 @@ class PointExchangeOrderTest {
     @DisplayName("정산가능분을 쓰는 신청은 진행 중인 거래 문제가 있으면 차단된다")
     void applyBlockedByDisputeWhenUsingSettleable() {
         pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
-        insertDispute("TRDC0016"); // 접수 상태
+        insertTradeReport("ABSC0001");
 
         assertThatThrownBy(() -> pointExchangeService.apply(usrSn, 10_000))
                 .isInstanceOf(PointException.class)
@@ -230,7 +230,7 @@ class PointExchangeOrderTest {
                 INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)
                 VALUES (?, 'PTLC0001', 'PTLC0004', 100000, 100000, '테스트 충전')
                 """, usrSn);
-        insertDispute("TRDC0016"); // 접수 상태 — 하지만 정산가능을 안 건드리므로 무관해야 한다
+        insertTradeReport("ABSC0001"); // 정산가능 포인트를 사용하지 않으므로 차단 대상이 아니다.
 
         pointExchangeService.apply(usrSn, 30_000);
 
@@ -257,8 +257,8 @@ class PointExchangeOrderTest {
         assertThat(pointService.getBalance(usrSn).getSettleableAmt()).isEqualTo(20_000);
     }
 
-    /** usrSn이 판매자인 거래에 지정 상태의 거래 문제를 건다 (PointConvertTest와 같은 방식) */
-    private void insertDispute(String statusCd) {
+    /** 담당자 7 · F-OPS-005: usrSn이 판매자인 거래에 새 통합 거래 신고 fixture를 연결합니다. */
+    private void insertTradeReport(String statusCd) {
         long counterpartSn = insertUser("t_exc_counterpart");
 
         jdbc.update("""
@@ -277,9 +277,22 @@ class PointExchangeOrderTest {
         long trdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         jdbc.update("""
-                INSERT INTO TRADE_DISPUTE (TRD_SN, DSPT_USR_SN, TRD_DSP_TYPE_CD, TRD_DSP_STATUS_CD, TRD_DSP_CN)
-                VALUES (?, ?, 'TRDC0014', ?, '환전 차단 테스트용 거래 문제')
-                """, trdSn, counterpartSn, statusCd);
+                INSERT INTO ABUSE_REPORT (
+                    RPRT_USR_SN, RPTD_USR_SN, ABR_TYPE_CD, ABR_STATUS_CD,
+                    ABR_REF_TYPE_CD, ABR_REF_SN, ABR_CN, ABR_REG_ID, ABR_UPDT_ID
+                ) VALUES (?, ?, 'ABRC0011', ?, 'REFC0005', ?,
+                          '환전 차단 테스트용 거래 신고', ?, ?)
+                """, counterpartSn, usrSn, statusCd, trdSn,
+                String.valueOf(counterpartSn), String.valueOf(counterpartSn));
+        long reportSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO ABUSE_REPORT_TRADE (
+                    ABR_SN, TRD_SN, ABR_TRD_PREV_STATUS_CD,
+                    ABR_TRD_REG_ID, ABR_TRD_UPDT_ID
+                ) VALUES (?, ?, 'TRDC0006', ?, ?)
+                """, reportSn, trdSn,
+                String.valueOf(counterpartSn), String.valueOf(counterpartSn));
     }
 
     private long insertUser(String prefix) {

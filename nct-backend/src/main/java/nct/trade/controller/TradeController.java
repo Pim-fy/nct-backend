@@ -241,25 +241,14 @@ public class TradeController {
                 tradeService.requestCompletionConfirmation(tradeId, userId)));
     }
 
-    /** 서비스 거래 당사자가 거래 문제를 접수하면 거래·정산을 같은 트랜잭션으로 보류한다. */
-    @PostMapping("/{tradeId}/service-disputes")
-    public ResponseEntity<ApiResponse<Void>> registerServiceTradeDispute(
+    /** 담당자 7 · REQ-AUC-027/F-SVC-012: 상품ㆍ서비스 거래 당사자의 통합 신고 접수 API입니다. */
+    @PostMapping("/{tradeId}/reports")
+    public ResponseEntity<ApiResponse<Void>> registerTradeReport(
             @PathVariable(name = "tradeId") long tradeId,
             @Valid @RequestBody ServiceTradeDisputeRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        tradeService.registerServiceTradeDispute(tradeId, userDetails.getMember().getId(), request);
-        return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-    /** 담당자 7 · REQ-AUC-027/F-SVC-012: 상품·서비스 거래 당사자의 공통 거래 문제 접수 API다. */
-    @PostMapping("/{tradeId}/disputes")
-    public ResponseEntity<ApiResponse<Void>> registerTradeDispute(
-            @PathVariable(name = "tradeId") long tradeId,
-            @Valid @RequestBody ServiceTradeDisputeRequest request,
-            @AuthenticationPrincipal CustomUserDetails userDetails) {
-
-        tradeService.registerTradeDispute(tradeId, userDetails.getMember().getId(), request);
+        tradeService.registerTradeReport(tradeId, userDetails.getMember().getId(), request);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

@@ -7,7 +7,11 @@ public record TradeIncidentReportCommand(
         Long tradeSn,
         Long reporterUserSn,
         Long reportedUserSn,
-        String disputeTypeCode,
+        String reportTypeCode,
         String content,
-        List<Long> fileSns) {
+        List<Long> fileSns,
+        String previousTradeStatusCode,
+        Long remainingAutoCompleteSeconds,
+        boolean settlementHoldApplied,
+        boolean chatClosed) {
 }

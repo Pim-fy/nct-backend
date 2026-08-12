@@ -21,8 +21,8 @@ public enum AgreeActType {
     POINT_HOLD("AGRC0006"),
     /** 거래 완료 확인 */
     TRADE_COMPLETE_CONFIRM("AGRC0007"),
-    /** 거래 문제(환불/분쟁) 접수 */
-    TRADE_DISPUTE_SUBMIT("AGRC0008");
+    /** 거래 문제 신고 접수 */
+    TRADE_REPORT_SUBMIT("AGRC0008");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

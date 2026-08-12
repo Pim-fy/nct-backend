@@ -81,16 +81,18 @@
         )
     </insert>
 
-    <!-- 진행 중인 거래 문제 건수 (F-PAY-010 "분쟁 없음 확인 후 전환" 차단 조건).
-         ⚠️ TRADE(담당자4)·TRADE_DISPUTE(담당자5)는 타 담당자 소유 테이블 — 읽기 전용 SELECT만, 변경 금지.
-         상태 코드: TRDC0016(접수)·TRDC0017(처리중)만 "진행 중"으로 본다 (완료·반려는 해소된 것) -->
+    <!-- 담당자 7 · F-PAY-010: 접수ㆍ처리중인 거래 신고가 있으면 환전을 차단합니다. -->
     <select id="countActiveDisputes" resultType="int">
         /* 포인트: 진행 중 거래 문제 건수 (전환 차단 검사, 읽기 전용) */
         SELECT COUNT(*)
-        FROM TRADE_DISPUTE D
-        JOIN TRADE T ON T.TRD_SN = D.TRD_SN
-        WHERE (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn})
-          AND D.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+        FROM ABUSE_REPORT_TRADE RT
+        JOIN ABUSE_REPORT R ON R.ABR_SN = RT.ABR_SN
+        JOIN TRADE T ON T.TRD_SN = RT.TRD_SN
+        WHERE (T.SLLR_USR_SN = #{usrSn}
+               OR T.BYPR_USR_SN = #{usrSn}
+               OR T.REQ_USR_SN = #{usrSn}
+               OR T.PRV_USR_SN = #{usrSn})
+          AND R.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
     </select>
 
     <!-- 보관금(에스크로) 잔존 판정: 보관금전환(PTLC0007, −)과 환불(PTLC0013, +)을 참조 건 기준으로 합산한다.
@@ -126,14 +128,14 @@
           AND PT_LDG_REF_SN = #{refSn}
     </select>
 
-    <!-- 특정 거래의 진행 중 거래 문제 건수 (F-SVC-015 정산 전환 차단 — 거래 단위).
-         ⚠️ TRADE_DISPUTE(담당자5)는 타 담당자 소유 테이블 — 읽기 전용 SELECT만, 변경 금지 -->
+    <!-- 담당자 7 · F-SVC-015: 특정 거래의 접수ㆍ처리중 신고를 정산 전환에서 차단합니다. -->
     <select id="countActiveDisputesByTrade" resultType="int">
         /* 포인트: 거래 건별 진행 중 거래 문제 건수 (정산 전환 차단 검사, 읽기 전용) */
         SELECT COUNT(*)
-        FROM TRADE_DISPUTE
-        WHERE TRD_SN = #{trdSn}
-          AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+        FROM ABUSE_REPORT_TRADE RT
+        JOIN ABUSE_REPORT R ON R.ABR_SN = RT.ABR_SN
+        WHERE RT.TRD_SN = #{trdSn}
+          AND R.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
     </select>
 
     <!-- 대사 배치: 전 회원 원장 전체 합계 (총 발행량 = 총 충전 − 총 환전 항등식의 좌변) -->

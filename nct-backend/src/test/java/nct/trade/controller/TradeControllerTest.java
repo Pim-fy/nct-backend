@@ -51,23 +51,23 @@ class TradeControllerTest {
     }
 
     @Test
-    void forwardsCommonTradeDisputeAndReturnsOk() {
+    void forwardsCommonTradeReportAndReturnsOk() {
         ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
-        request.setDisputeTypeCode("TRDC0012");
+        request.setReportTypeCode("ABRC0009");
         request.setContent("배송 중 상품이 파손되었습니다.");
 
         var response = new TradeController(tradeService)
-                .registerTradeDispute(81L, request, providerUserDetails(22L));
+                .registerTradeReport(81L, request, providerUserDetails(22L));
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
-        verify(tradeService).registerTradeDispute(81L, 22L, request);
+        verify(tradeService).registerTradeReport(81L, 22L, request);
     }
 
     @Test
-    void rejectsBlankCommonTradeDisputeBeforeCallingService() throws Exception {
-        mockMvc.perform(post("/api/trades/81/disputes")
+    void rejectsBlankCommonTradeReportBeforeCallingService() throws Exception {
+        mockMvc.perform(post("/api/trades/81/reports")
                         .contentType("application/json")
-                        .content("{\"disputeTypeCode\":\"TRDC0012\",\"content\":\"   \"}"))
+                        .content("{\"reportTypeCode\":\"ABRC0009\",\"content\":\"   \"}"))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(tradeService);

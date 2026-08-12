@@ -143,13 +143,6 @@
          WHERE FL_SN = #{flSn}
     </select>
 
-    <!-- 삭제 가드: 거래 분쟁 증빙으로 연결된 파일인지 (F-SVC-012/F-OPS-005) -->
-    <select id="countTradeDisputeFileRefs" resultType="int">
-        SELECT COUNT(*)
-          FROM TRADE_DISPUTE_FILE
-         WHERE FL_SN = #{flSn}
-    </select>
-
     <!-- 담당자 7 · F-COM-018: 신고 첨부 연결과 파일 교체·삭제 사이의 시점 경쟁을 막는 행 잠금 조회 -->
     <select id="findByIdForUpdate" resultType="nct.file.domain.FileMeta">
         /* 파일: 신고 증거 연결·변경 직렬화 */

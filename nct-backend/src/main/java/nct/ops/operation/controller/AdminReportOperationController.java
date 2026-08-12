@@ -64,6 +64,7 @@ public class AdminReportOperationController {
         adminReportOperationService.decide(
                 reportSn,
                 request.getDecision(),
+                request.getTradeDecision(),
                 request.getEnforcementAction(),
                 request.getReason(),
                 userId(userDetails));

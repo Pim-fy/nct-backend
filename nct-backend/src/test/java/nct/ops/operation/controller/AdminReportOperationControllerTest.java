@@ -16,6 +16,7 @@ import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
 import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.port.AdminReportDecision;
+import nct.ops.operation.domain.AdminDisputeDecision;
 import nct.ops.operation.domain.ReportEnforcementAction;
 import nct.ops.operation.service.AdminReportOperationService;
 
@@ -36,6 +37,7 @@ class AdminReportOperationControllerTest {
         AdminReportOperationController controller = new AdminReportOperationController(service);
         AdminReportDecisionRequest request = new AdminReportDecisionRequest();
         request.setDecision(AdminReportDecision.REJECTED);
+        request.setTradeDecision(AdminDisputeDecision.REJECT);
         request.setReason(" insufficient evidence ");
 
         controller.decide(91L, request, adminUserDetails(7L));
@@ -43,6 +45,7 @@ class AdminReportOperationControllerTest {
         verify(service).decide(
                 91L,
                 AdminReportDecision.REJECTED,
+                AdminDisputeDecision.REJECT,
                 ReportEnforcementAction.NONE,
                 " insufficient evidence ",
                 7L);
@@ -71,11 +74,11 @@ class AdminReportOperationControllerTest {
                 .totalItems(21)
                 .totalPages(2)
                 .build();
-        when(service.getReports("ABRC0007", "신고", "TRADE_ISSUE", 2, 20)).thenReturn(page);
+        when(service.getReports("ABSC0003", "신고", "TRADE_ISSUE", 2, 20)).thenReturn(page);
 
-        controller.getReports("ABRC0007", "신고", "TRADE_ISSUE", 2, 20);
+        controller.getReports("ABSC0003", "신고", "TRADE_ISSUE", 2, 20);
 
-        verify(service).getReports("ABRC0007", "신고", "TRADE_ISSUE", 2, 20);
+        verify(service).getReports("ABSC0003", "신고", "TRADE_ISSUE", 2, 20);
     }
 
     @Test

@@ -42,7 +42,7 @@ public class PublicGuideService {
                             "예산, 지역, 작업 조건처럼 견적 비교에 필요한 내용을 입력합니다.",
                             "요청을 공개하면 승인된 제공자만 견적을 제출할 수 있습니다.",
                             "제출된 견적을 비교한 뒤 하나를 선택하면 서비스 거래가 시작됩니다."),
-                    List.of("/service-requests/new", "/user/mypage/services/requests"),
+                    List.of("/services/requests/new", "/user/mypage/services/requests"),
                     20),
             new PublicGuideDetailResponse(
                     "quote-selection",

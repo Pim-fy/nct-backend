@@ -269,7 +269,7 @@ public class ProductService {
         productImageMapper.insertAll(images);
     }
 
-    // 희망 거래지역 저장 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)에서만 프론트가 값을 보내지만,
+    // 희망 거래지역 저장 — 직거래(TRDC0010)·둘 다 가능(TRDC0015)에서만 프론트가 값을 보내지만,
     // 어떤 거래방식이든 보낸 값 그대로 저장한다(검증은 요청 시점 @Size(max=5)로 충분)
     private void saveTradeRegions(Long prdSn, List<ProductTradeRegionItem> tradeRegions) {
         if (tradeRegions == null || tradeRegions.isEmpty()) return;

@@ -79,9 +79,9 @@ class PointConvertTest {
     }
 
     @Test
-    @DisplayName("전환: 진행 중(접수) 거래 문제가 있으면 거부된다 — 분쟁 없음 확인 조건")
+    @DisplayName("전환: 접수 중인 거래 신고가 있으면 거부된다")
     void convertBlockedByActiveDispute() {
-        insertDispute("TRDC0016"); // 접수 상태
+        insertTradeReport("ABSC0001");
 
         assertThatThrownBy(() -> pointService.convertSettleableToAvailable(sellerSn, 10000))
                 .isInstanceOf(PointException.class)
@@ -94,9 +94,9 @@ class PointConvertTest {
     }
 
     @Test
-    @DisplayName("전환: 처리 완료된 거래 문제는 막지 않는다 — 해소된 분쟁은 무관")
+    @DisplayName("전환: 처리 완료된 거래 신고는 막지 않는다")
     void convertAllowedWhenDisputeResolved() {
-        insertDispute("TRDC0018"); // 완료 상태
+        insertTradeReport("ABSC0003");
 
         pointService.convertSettleableToAvailable(sellerSn, 10000);
 
@@ -115,8 +115,8 @@ class PointConvertTest {
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
-    /** 판매자(sellerSn)가 당사자인 거래에 지정 상태의 거래 문제를 건다 */
-    private void insertDispute(String statusCd) {
+    /** 담당자 7 · F-OPS-005: 판매자 거래에 새 통합 거래 신고 fixture를 연결합니다. */
+    private void insertTradeReport(String statusCd) {
         jdbc.update("""
                 INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
                 VALUES (?, 2, '전환 테스트 상품', 'PRDC0003', 10000,
@@ -133,8 +133,20 @@ class PointConvertTest {
         long trdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         jdbc.update("""
-                INSERT INTO TRADE_DISPUTE (TRD_SN, DSPT_USR_SN, TRD_DSP_TYPE_CD, TRD_DSP_STATUS_CD, TRD_DSP_CN)
-                VALUES (?, ?, 'TRDC0014', ?, '전환 차단 테스트용 거래 문제')
-                """, trdSn, buyerSn, statusCd);
+                INSERT INTO ABUSE_REPORT (
+                    RPRT_USR_SN, RPTD_USR_SN, ABR_TYPE_CD, ABR_STATUS_CD,
+                    ABR_REF_TYPE_CD, ABR_REF_SN, ABR_CN, ABR_REG_ID, ABR_UPDT_ID
+                ) VALUES (?, ?, 'ABRC0011', ?, 'REFC0005', ?,
+                          '전환 차단 테스트용 거래 신고', ?, ?)
+                """, buyerSn, sellerSn, statusCd, trdSn,
+                String.valueOf(buyerSn), String.valueOf(buyerSn));
+        long reportSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO ABUSE_REPORT_TRADE (
+                    ABR_SN, TRD_SN, ABR_TRD_PREV_STATUS_CD,
+                    ABR_TRD_REG_ID, ABR_TRD_UPDT_ID
+                ) VALUES (?, ?, 'TRDC0006', ?, ?)
+                """, reportSn, trdSn, String.valueOf(buyerSn), String.valueOf(buyerSn));
     }
 }

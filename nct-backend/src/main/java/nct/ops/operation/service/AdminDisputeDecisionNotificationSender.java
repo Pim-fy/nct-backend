@@ -15,7 +15,7 @@ public class AdminDisputeDecisionNotificationSender {
     private final NotificationService notificationService;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void send(Long userSn, Long disputeSn, String resultText) {
-        notificationService.notifyDisputeResolved(userSn, disputeSn, resultText);
+    public void send(Long userSn, Long reportSn, String resultText) {
+        notificationService.notifyTradeReportResolved(userSn, reportSn, resultText);
     }
 }

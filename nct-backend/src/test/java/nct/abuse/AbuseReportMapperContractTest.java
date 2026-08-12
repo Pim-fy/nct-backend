@@ -12,7 +12,7 @@ import org.springframework.core.io.ClassPathResource;
 class AbuseReportMapperContractTest {
 
     @Test
-    void selectsDynamicReportTypeNameForAdminResponses() throws IOException {
+    void selectsUnifiedReportAndTradeContextForAdminResponses() throws IOException {
         String mapper = new ClassPathResource("mapper/abuse/AbuseReportMapper.xml")
                 .getContentAsString(StandardCharsets.UTF_8)
                 .replaceAll("\\s+", " ")
@@ -20,15 +20,20 @@ class AbuseReportMapperContractTest {
         String columns = mapper.substring(
                 mapper.indexOf("<sql id=\"adminReportColumns\">"),
                 mapper.indexOf("</sql>", mapper.indexOf("<sql id=\"adminReportColumns\">")));
+        String joins = mapper.substring(
+                mapper.indexOf("<sql id=\"adminReportJoins\">"),
+                mapper.indexOf("</sql>", mapper.indexOf("<sql id=\"adminReportJoins\">")));
 
         assertThat(columns)
-                .contains("FROM CMM_CODE")
-                .contains("WHERE CMM_CD = ABR_TYPE_CD")
-                .contains("AS reportTypeName")
-                .contains("WHERE d.ABR_SN = ABUSE_REPORT.ABR_SN")
-                .contains("AS linkedDisputeSn")
-                .contains("AS linkedDisputeStatusCode")
-                .contains("AS linkedDisputeResultCode");
+                .contains("reportType.CMM_NM AS reportTypeName")
+                .contains("WHEN rt.ABR_SN IS NOT NULL THEN 'TRADE_ISSUE'")
+                .contains("rt.TRD_SN AS tradeSn")
+                .contains("rt.ABR_TRD_RSLT_CD AS tradeResultCode")
+                .doesNotContain("linkedDispute");
+        assertThat(joins)
+                .contains("LEFT JOIN ABUSE_REPORT_TRADE rt ON rt.ABR_SN = ar.ABR_SN")
+                .contains("LEFT JOIN TRADE t ON t.TRD_SN = rt.TRD_SN")
+                .contains("LEFT JOIN CMM_CODE reportType ON reportType.CMM_CD = ar.ABR_TYPE_CD");
     }
 
     @Test

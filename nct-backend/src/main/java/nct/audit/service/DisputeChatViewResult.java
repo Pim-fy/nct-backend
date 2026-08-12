@@ -6,7 +6,7 @@ import nct.audit.mapper.ChatMessageView;
 
 /** 담당자 7 · F-OPS-014: Controller가 회원 식별정보를 일괄 조립하기 전의 내부 조회 결과입니다. */
 public record DisputeChatViewResult(
-        long disputeSn,
+        long reportSn,
         long tradeSn,
         boolean chatRoomExists,
         List<ChatMessageView> messages,

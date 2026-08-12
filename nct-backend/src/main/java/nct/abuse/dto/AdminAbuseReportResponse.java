@@ -1,5 +1,6 @@
 package nct.abuse.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -31,11 +32,24 @@ public class AdminAbuseReportResponse {
     private String referenceTypeCode;
     private Long referenceSn;
     private String processReason;
-    private Long linkedDisputeSn;
-    private String linkedDisputeTypeCode;
-    private String linkedDisputeStatusCode;
-    private String linkedDisputeResultCode;
-    private String linkedPreviousTradeStatusCode;
+    private Long tradeSn;
+    private Long productSn;
+    private Long serviceRequestSn;
+    private Long quoteSn;
+    private BigDecimal tradeAmount;
+    private String tradeTypeCode;
+    private String tradeTypeName;
+    private String tradeMethodCode;
+    private String tradeMethodName;
+    private String tradeStatusCode;
+    private String tradeStatusName;
+    private String tradeResultCode;
+    private String tradeResultName;
+    private String previousTradeStatusCode;
+    private Long remainingAutoCompleteSeconds;
+    private boolean settlementHoldApplied;
+    private boolean chatClosed;
+    private LocalDateTime tradeAutoCompleteAt;
     private String enforcementAction;
     private Long sanctionSn;
     private LocalDateTime sanctionStartedAt;

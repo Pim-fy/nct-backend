@@ -1,6 +1,7 @@
 package nct.trade.service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -63,7 +64,6 @@ import nct.trade.dto.ServiceScheduleCancellationCommand;
 import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.ServiceTradeCompletionTarget;
 import nct.trade.dto.TradeDisputeTarget;
-import nct.trade.dto.TradeDisputeRegistration;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -89,29 +89,26 @@ public class TradeService implements
     private static final String SERVICE_TRADE = "TRDC0002";
     private static final String DELIVERY_METHOD = "TRDC0009";
     private static final String OFFLINE_METHOD = "TRDC0010";
-    private static final String BOTH_METHOD = "TRDC0020";
+    private static final String BOTH_METHOD = "TRDC0015";
     private static final String IN_PROGRESS = "TRDC0003";
     private static final String DELIVERING = "TRDC0004";
     private static final String WAITING_CONFIRMATION = "TRDC0005";
     private static final String COMPLETED = "TRDC0006";
     private static final String CANCELED = "TRDC0008";
     private static final String ON_HOLD = "TRDC0007";
-    private static final String TRADE_DISPUTE_TYPE_GROUP = "TRDG04";
-    private static final Set<String> SERVICE_TRADE_DISPUTE_TYPES = Set.of(
-            "TRDC0011", // 제공자 미방문·연락 두절
-            "TRDC0013", // 작업 내용·품질·일정 문제
-            "TRDC0014", // 보관금·환불·정산 문제
-            "TRDC0015"  // 기타
+    private static final String REPORT_TYPE_GROUP = "ABRG01";
+    private static final Set<String> SERVICE_TRADE_REPORT_TYPES = Set.of(
+            "ABRC0008", // 제공자 미방문·연락 두절
+            "ABRC0010", // 작업 내용·품질·일정 문제
+            "ABRC0011"  // 보관금·환불·정산 문제
     );
-    private static final Set<String> DELIVERY_TRADE_DISPUTE_TYPES = Set.of(
-            "TRDC0012", // 분실·파손·오배송
-            "TRDC0014", // 포인트·정산 문제
-            "TRDC0015"  // 기타
+    private static final Set<String> DELIVERY_TRADE_REPORT_TYPES = Set.of(
+            "ABRC0009", // 분실·파손·오배송
+            "ABRC0011"  // 포인트·정산 문제
     );
-    private static final Set<String> OFFLINE_TRADE_DISPUTE_TYPES = Set.of(
-            "TRDC0011", // 직거래 미도착·미응답
-            "TRDC0014", // 포인트·정산 문제
-            "TRDC0015"  // 기타
+    private static final Set<String> OFFLINE_TRADE_REPORT_TYPES = Set.of(
+            "ABRC0008", // 직거래 미도착·미응답
+            "ABRC0011"  // 포인트·정산 문제
     );
     private static final Set<String> SERVICE_DISPUTE_ALLOWED_STATUSES = Set.of(
             IN_PROGRESS, WAITING_CONFIRMATION);
@@ -121,7 +118,7 @@ public class TradeService implements
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
     private static final String SCHEDULER_UPDATER = "SYSTEM";
     private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
-    private static final int MAX_TRADE_DISPUTE_FILES = 5;
+    private static final int MAX_TRADE_REPORT_FILES = 5;
     private static final int MAX_OFFLINE_COMPLETION_REQUESTS_PER_PARTY = 2;
 
     private final TradeMapper tradeMapper;
@@ -169,41 +166,22 @@ public class TradeService implements
                 tradeMapper.findAuctionTradeEscrowInfoByProductId(productId));
     }
 
-    /** 기존 서비스 전용 경로의 계약을 유지하면서 공통 거래 문제 접수 흐름을 사용한다. */
-    @Transactional
-    public void registerServiceTradeDispute(
-            long tradeId,
-            long userId,
-            ServiceTradeDisputeRequest request) {
-        registerTradeDispute(tradeId, userId, request, SERVICE_TRADE);
-    }
-
     /**
      * 담당자 7 · REQ-AUC-027/F-SVC-012/F-PAY-005: 상품·서비스 거래 문제를 같은 트랜잭션으로
      * 접수한다. 완료 거래의 사후 이의제기 정책은 미확정이므로 기존 활성 상태만 허용한다.
      */
     @Transactional
-    public void registerTradeDispute(
+    public void registerTradeReport(
             long tradeId,
             long userId,
             ServiceTradeDisputeRequest request) {
-        registerTradeDispute(tradeId, userId, request, null);
-    }
-
-    private void registerTradeDispute(
-            long tradeId,
-            long userId,
-            ServiceTradeDisputeRequest request,
-            String requiredTradeType) {
         if (tradeId <= 0 || userId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래번호와 회원번호가 필요합니다.");
         }
 
-        TradeDisputeTarget target = tradeMapper.findTradeDisputeTargetForUpdate(tradeId);
+        TradeDisputeTarget target = tradeMapper.findTradeReportTargetForUpdate(tradeId);
         if (target == null
-                || (requiredTradeType != null
-                        && !requiredTradeType.equals(target.getTradeTypeCode()))
                 || (!MATERIAL_TRADE.equals(target.getTradeTypeCode())
                         && !SERVICE_TRADE.equals(target.getTradeTypeCode()))) {
             throw new CustomException(ErrorCode.NOT_FOUND,
@@ -213,64 +191,45 @@ public class TradeService implements
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
                     "거래 당사자만 거래 문제를 접수할 수 있습니다.");
         }
-        if (!allowedDisputeStatuses(target).contains(target.getTradeStatusCode())) {
+        if (!allowedReportStatuses(target).contains(target.getTradeStatusCode())) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "진행 중인 거래에서만 거래 문제를 접수할 수 있습니다.");
         }
-        if (tradeMapper.hasOpenTradeDispute(tradeId)
-                || activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(tradeId, null)) {
+        if (activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(tradeId, null)) {
             throw new CustomException(ErrorCode.ALREADY_PROCESSED,
                     "이미 처리 중인 거래 문제가 있습니다.");
         }
 
-        String disputeTypeCode = request.getDisputeTypeCode().trim();
-        if (!allowedDisputeTypes(target).contains(disputeTypeCode)) {
+        String reportTypeCode = request.getReportTypeCode().trim();
+        if (!allowedTradeReportTypes(target).contains(reportTypeCode)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "해당 거래에 사용할 수 없는 거래 문제 유형입니다.");
         }
-        referenceDataService.requireActiveCode(TRADE_DISPUTE_TYPE_GROUP, disputeTypeCode);
-        List<Long> evidenceFileSns = validateTradeDisputeEvidenceFiles(request.getFileSns(), userId);
+        referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, reportTypeCode);
+        List<Long> evidenceFileSns = validateTradeReportFiles(request.getFileSns(), userId);
         String updaterId = String.valueOf(userId);
-        Long reportSn = tradeIncidentReportPort.create(new TradeIncidentReportCommand(
-                tradeId,
-                userId,
-                tradeCounterpartUserId(target, userId),
-                disputeTypeCode,
-                request.getContent().trim(),
-                evidenceFileSns));
-        TradeDisputeRegistration registration = TradeDisputeRegistration.builder()
-                .reportSn(reportSn)
-                .tradeId(tradeId)
-                .disputerUserId(userId)
-                .disputeTypeCode(disputeTypeCode)
-                .content(request.getContent().trim())
-                .previousTradeStatusCode(target.getTradeStatusCode())
-                .updaterId(updaterId)
-                .build();
-        if (tradeMapper.insertTradeDispute(registration) == 0
-                || registration.getDisputeSn() == null
-                || registration.getDisputeSn() <= 0) {
-            throw new CustomException(ErrorCode.DATABASE_ERROR,
-                    "거래 문제 접수 정보를 저장하지 못했습니다.");
-        }
-        for (int index = 0; index < evidenceFileSns.size(); index++) {
-            int inserted = tradeMapper.insertTradeDisputeFile(
-                    registration.getDisputeSn(),
-                    evidenceFileSns.get(index),
-                    index + 1,
-                    updaterId);
-            if (inserted != 1) {
-                throw new CustomException(ErrorCode.DATABASE_ERROR,
-                        "거래 분쟁 증빙 파일을 연결하지 못했습니다.");
-            }
-        }
-        settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
-        if (tradeMapper.holdTradeForDispute(tradeId, updaterId) == 0) {
+        Long remainingSeconds = remainingAutoCompleteSeconds(target);
+        boolean settlementHoldApplied = settlementService.holdUpByTradeIfPending(
+                tradeId, "거래 문제 신고 접수");
+        if (tradeMapper.holdTradeForReport(tradeId, updaterId) == 0) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "거래 상태가 변경되어 거래 문제를 접수할 수 없습니다.");
         }
-        closeTradeChatForDispute(target);
-        tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 접수되었습니다.");
+        boolean chatClosed = closeTradeChatForReport(target);
+        tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 신고되었습니다.");
+        Long counterpartUserId = tradeCounterpartUserId(target, userId);
+        Long reportSn = tradeIncidentReportPort.create(new TradeIncidentReportCommand(
+                tradeId,
+                userId,
+                counterpartUserId,
+                reportTypeCode,
+                request.getContent().trim(),
+                evidenceFileSns,
+                target.getTradeStatusCode(),
+                remainingSeconds,
+                settlementHoldApplied,
+                chatClosed));
+        notificationService.notifyTradeReportReceived(counterpartUserId, reportSn);
     }
 
     private boolean isTradeParty(TradeDisputeTarget target, long userId) {
@@ -282,40 +241,53 @@ public class TradeService implements
                 || Objects.equals(userId, target.getBuyerUserId());
     }
 
-    private Set<String> allowedDisputeStatuses(TradeDisputeTarget target) {
+    private Set<String> allowedReportStatuses(TradeDisputeTarget target) {
         return SERVICE_TRADE.equals(target.getTradeTypeCode())
                 ? SERVICE_DISPUTE_ALLOWED_STATUSES
                 : MATERIAL_DISPUTE_ALLOWED_STATUSES;
     }
 
-    private Set<String> allowedDisputeTypes(TradeDisputeTarget target) {
+    private Set<String> allowedTradeReportTypes(TradeDisputeTarget target) {
         if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
-            return SERVICE_TRADE_DISPUTE_TYPES;
+            return SERVICE_TRADE_REPORT_TYPES;
         }
         if (DELIVERY_METHOD.equals(target.getTradeMethodCode())) {
-            return DELIVERY_TRADE_DISPUTE_TYPES;
+            return DELIVERY_TRADE_REPORT_TYPES;
         }
         if (OFFLINE_METHOD.equals(target.getTradeMethodCode())) {
-            return OFFLINE_TRADE_DISPUTE_TYPES;
+            return OFFLINE_TRADE_REPORT_TYPES;
         }
         throw new CustomException(ErrorCode.CONFLICT,
                 "상품 거래방식을 확인할 수 없어 거래 문제를 접수할 수 없습니다.");
     }
 
-    private void closeTradeChatForDispute(TradeDisputeTarget target) {
+    private boolean closeTradeChatForReport(TradeDisputeTarget target) {
         if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
-            chatService.closeServiceTradeChatRoom(target.getTradeSn());
-        } else if (OFFLINE_METHOD.equals(target.getTradeMethodCode())) {
-            chatService.closeTradeChatRoom(target.getTradeSn());
+            return chatService.closeServiceTradeChatRoom(target.getTradeSn());
         }
+        if (OFFLINE_METHOD.equals(target.getTradeMethodCode())) {
+            return chatService.closeTradeChatRoom(target.getTradeSn());
+        }
+        return false;
     }
 
-    /** 분쟁 증빙은 접수자 본인이 trade-dispute 구분으로 올린 활성 파일만 연결합니다. */
-    private List<Long> validateTradeDisputeEvidenceFiles(List<Long> fileSns, long userId) {
+    private Long remainingAutoCompleteSeconds(TradeDisputeTarget target) {
+        if (!WAITING_CONFIRMATION.equals(target.getTradeStatusCode())
+                || target.getAutoCompleteAt() == null) {
+            return null;
+        }
+        LocalDateTime baseline = target.getDatabaseNow() == null
+                ? LocalDateTime.now()
+                : target.getDatabaseNow();
+        return Math.max(Duration.between(baseline, target.getAutoCompleteAt()).getSeconds(), 0L);
+    }
+
+    /** 거래 신고 증빙은 접수자 본인이 abuse-report 구분으로 올린 미연결 활성 파일만 연결합니다. */
+    private List<Long> validateTradeReportFiles(List<Long> fileSns, long userId) {
         if (fileSns == null || fileSns.isEmpty()) {
             return List.of();
         }
-        if (fileSns.size() > MAX_TRADE_DISPUTE_FILES) {
+        if (fileSns.size() > MAX_TRADE_REPORT_FILES) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래 문제 증빙은 최대 5개까지 첨부할 수 있습니다.");
         }
@@ -327,7 +299,9 @@ public class TradeService implements
                     "증빙 파일 번호가 올바르지 않습니다.");
         }
 
-        fileSns.forEach(fileSn -> fileStorageService.requireOwnedTradeDisputeFile(fileSn, userId));
+        fileSns.stream()
+                .sorted()
+                .forEach(fileSn -> fileStorageService.requireOwnedAbuseReportFile(fileSn, userId));
         return List.copyOf(fileSns);
     }
 
@@ -496,11 +470,8 @@ public class TradeService implements
             return false;
         }
 
-        boolean otherActiveReport = activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(
-                command.tradeSn(), command.sourceReportSn());
-        boolean otherLegacyDispute = tradeMapper.hasOtherOpenTradeDispute(
-                command.tradeSn(), command.sourceReportSn());
-        if (otherActiveReport || otherLegacyDispute) {
+        if (activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(
+                command.tradeSn(), command.sourceReportSn())) {
             return false;
         }
 
@@ -588,7 +559,7 @@ public class TradeService implements
     }
 
     private void rejectOpenServiceDispute(long tradeId) {
-        if (tradeMapper.hasOpenTradeDispute(tradeId)) {
+        if (activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(tradeId, null)) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "처리 중인 거래 문제가 있어 완료 처리할 수 없습니다.");
         }
@@ -1328,10 +1299,8 @@ public class TradeService implements
         }
 
         if (command.sourceReportSn() != null
-                && (activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(
-                        target.getTradeId(), command.sourceReportSn())
-                    || tradeMapper.hasOtherOpenTradeDispute(
-                            target.getTradeId(), command.sourceReportSn()))) {
+                && activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(
+                        target.getTradeId(), command.sourceReportSn())) {
             throw new CustomException(
                     ErrorCode.CONFLICT,
                     "같은 거래의 다른 미해결 신고가 있어 자동 취소할 수 없습니다.");

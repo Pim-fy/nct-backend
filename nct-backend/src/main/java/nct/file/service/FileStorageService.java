@@ -56,8 +56,6 @@ import nct.global.exception.ErrorCode;
  *     (SVC_REQ_IMAGE 연결 테이블 — 소유 담당자2, 2026-08-04)
  *   - quote(견적 작업사진): 이미지만 — service-request와 동일하게 보호 API로 서빙
  *     (QUOTE_PHOTO 연결 테이블 — 소유 담당자3, 2026-08-06)
- *   - trade-dispute(거래 분쟁 증빙): pdf + 이미지 — 공개 서빙 금지, 관리자 전용 열람
- *     (TRADE_DISPUTE_FILE 연결 테이블 — 담당자 7 통합, F-SVC-012/F-OPS-005)
  *   - abuse-report(신고 첨부): pdf + 이미지 — 공개 서빙 금지, 신고자 본인·관리자만 보호 API로 열람
  *     (ABUSE_REPORT_FILE 연결 테이블 — 담당자 7, F-COM-018/F-OPS-007)
  *
@@ -94,7 +92,6 @@ public class FileStorageService {
             "portfolio", Set.of("jpg", "jpeg", "png", "webp"),
             "service-request", Set.of("jpg", "jpeg", "png", "gif", "webp"),
             "quote", Set.of("pdf", "jpg", "jpeg", "png", "gif", "webp"),
-            "trade-dispute", Set.of("pdf", "jpg", "jpeg", "png", "webp"),
             "abuse-report", Set.of("pdf", "jpg", "jpeg", "png", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
@@ -148,14 +145,13 @@ public class FileStorageService {
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
         // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20) + 리뷰 사진(CHG-021, 실DB 적용 2026-07-21)
         //  + 제공자 포트폴리오(F-PROV-005, 2026-07-28) + 서비스요청 첨부사진(F-SVC-001, 2026-08-04)
-        //  + 견적 작업사진(QUOTE_PHOTO, 2026-08-06) + 거래 분쟁 증빙(F-SVC-012/F-OPS-005))
+        //  + 견적 작업사진(QUOTE_PHOTO, 2026-08-06) + 통합 신고 증빙(F-SVC-012/F-OPS-005))
         if (fileMapper.countProductImageRefs(flSn) > 0
                 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
                 || fileMapper.countReviewImageRefs(flSn) > 0
                 || fileMapper.countPortfolioFileRefs(flSn) > 0
                 || fileMapper.countServiceRequestImageRefs(flSn) > 0
                 || fileMapper.countQuotePhotoRefs(flSn) > 0
-                || fileMapper.countTradeDisputeFileRefs(flSn) > 0
                 || ("abuse-report".equals(extractService(fileMeta.getFlPath()))
                         && fileMapper.countAbuseReportFileRefs(flSn) > 0)) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
@@ -328,26 +324,6 @@ public class FileStorageService {
         FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
         if (!"quote".equals(extractService(fileMeta.getFlPath()))) {
             throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
-        }
-        return fileMeta;
-    }
-
-    /** 거래 문제 접수 전, 접수자 소유의 보호된 분쟁 증빙 파일인지 검증합니다. */
-    @Transactional(readOnly = true)
-    public FileMeta requireOwnedTradeDisputeFile(Long flSn, Long usrSn) {
-        FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
-        if (!"trade-dispute".equals(extractService(fileMeta.getFlPath()))) {
-            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
-        }
-        return fileMeta;
-    }
-
-    /** 담당자 7 · F-OPS-005: 관리자 열람 전 보호된 분쟁 증빙 파일인지 다시 검증합니다. */
-    @Transactional(readOnly = true)
-    public FileMeta requireTradeDisputeFile(Long flSn) {
-        FileMeta fileMeta = requireActiveFile(flSn);
-        if (!"trade-dispute".equals(extractService(fileMeta.getFlPath()))) {
-            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
         }
         return fileMeta;
     }

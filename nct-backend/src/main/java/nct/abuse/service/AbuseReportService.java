@@ -59,22 +59,21 @@ public class AbuseReportService implements
         ActiveAbuseReportReferenceReader,
         TradeIncidentReportPort {
 
-    static final String LEGACY_CONTENT_REPORT_TYPE = "ABRC0001";
-    static final String FALSE_INFORMATION_FRAUD_REPORT_TYPE = "ABRC0009";
-    static final String EXTERNAL_CONTACT_PAYMENT_REPORT_TYPE = "ABRC0010";
-    static final String ABUSE_HARASSMENT_REPORT_TYPE = "ABRC0011";
-    static final String PROHIBITED_ILLEGAL_REPORT_TYPE = "ABRC0012";
-    static final String PRIVACY_REPORT_TYPE = "ABRC0013";
-    static final String SPAM_ADVERTISEMENT_REPORT_TYPE = "ABRC0014";
-    static final String OTHER_REPORT_TYPE = "ABRC0015";
-    static final String TRADE_NO_SHOW_REPORT_TYPE = "ABRC0016";
-    static final String TRADE_DELIVERY_REPORT_TYPE = "ABRC0017";
-    static final String TRADE_SERVICE_REPORT_TYPE = "ABRC0018";
-    static final String TRADE_PAYMENT_REPORT_TYPE = "ABRC0019";
-    static final String RECEIVED_STATUS = "ABRC0005";
-    static final String PROCESSING_STATUS = "ABRC0006";
-    static final String PROCESSED_STATUS = "ABRC0007";
-    static final String REJECTED_STATUS = "ABRC0008";
+    static final String FALSE_INFORMATION_FRAUD_REPORT_TYPE = "ABRC0001";
+    static final String EXTERNAL_CONTACT_PAYMENT_REPORT_TYPE = "ABRC0002";
+    static final String ABUSE_HARASSMENT_REPORT_TYPE = "ABRC0003";
+    static final String PROHIBITED_ILLEGAL_REPORT_TYPE = "ABRC0004";
+    static final String PRIVACY_REPORT_TYPE = "ABRC0005";
+    static final String SPAM_ADVERTISEMENT_REPORT_TYPE = "ABRC0006";
+    static final String OTHER_REPORT_TYPE = "ABRC0007";
+    static final String TRADE_NO_SHOW_REPORT_TYPE = "ABRC0008";
+    static final String TRADE_DELIVERY_REPORT_TYPE = "ABRC0009";
+    static final String TRADE_SERVICE_REPORT_TYPE = "ABRC0010";
+    static final String TRADE_PAYMENT_REPORT_TYPE = "ABRC0011";
+    static final String RECEIVED_STATUS = "ABSC0001";
+    static final String PROCESSING_STATUS = "ABSC0002";
+    static final String PROCESSED_STATUS = "ABSC0003";
+    static final String REJECTED_STATUS = "ABSC0004";
     static final String PRODUCT_COMMENT_REFERENCE_TYPE = "REFC0012";
     static final String AUCTION_REFERENCE_TYPE = "REFC0003";
     static final String TRADE_REFERENCE_TYPE = "REFC0005";
@@ -91,12 +90,11 @@ public class AbuseReportService implements
     private static final int MAX_ADMIN_REPORT_PAGE_SIZE = 50;
     private static final int MAX_ADMIN_REPORT_KEYWORD_LENGTH = 100;
     private static final int MAX_REPORT_FILES = 5;
-    private static final Map<String, String> TRADE_INCIDENT_REPORT_TYPES = Map.of(
-            "TRDC0011", TRADE_NO_SHOW_REPORT_TYPE,
-            "TRDC0012", TRADE_DELIVERY_REPORT_TYPE,
-            "TRDC0013", TRADE_SERVICE_REPORT_TYPE,
-            "TRDC0014", TRADE_PAYMENT_REPORT_TYPE,
-            "TRDC0015", OTHER_REPORT_TYPE);
+    private static final Set<String> TRADE_INCIDENT_REPORT_TYPES = Set.of(
+            TRADE_NO_SHOW_REPORT_TYPE,
+            TRADE_DELIVERY_REPORT_TYPE,
+            TRADE_SERVICE_REPORT_TYPE,
+            TRADE_PAYMENT_REPORT_TYPE);
     private static final Set<String> CUSTOMER_REPORT_TYPES = Set.of(
             FALSE_INFORMATION_FRAUD_REPORT_TYPE,
             EXTERNAL_CONTACT_PAYMENT_REPORT_TYPE,
@@ -127,9 +125,13 @@ public class AbuseReportService implements
                 || command.reporterUserSn() == null || command.reporterUserSn() <= 0
                 || command.reportedUserSn() == null || command.reportedUserSn() <= 0
                 || command.reporterUserSn().equals(command.reportedUserSn())
-                || command.disputeTypeCode() == null || command.disputeTypeCode().isBlank()
+                || command.reportTypeCode() == null || command.reportTypeCode().isBlank()
                 || command.content() == null || command.content().isBlank()
-                || command.content().trim().length() > 4000) {
+                || command.content().trim().length() > 4000
+                || command.previousTradeStatusCode() == null
+                || command.previousTradeStatusCode().isBlank()
+                || (command.remainingAutoCompleteSeconds() != null
+                    && command.remainingAutoCompleteSeconds() < 0)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         List<Long> fileSns = command.fileSns() == null ? List.of() : List.copyOf(command.fileSns());
@@ -139,9 +141,8 @@ public class AbuseReportService implements
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
 
-        String disputeTypeCode = command.disputeTypeCode().trim();
-        String reportTypeCode = TRADE_INCIDENT_REPORT_TYPES.get(disputeTypeCode);
-        if (reportTypeCode == null) {
+        String reportTypeCode = command.reportTypeCode().trim();
+        if (!TRADE_INCIDENT_REPORT_TYPES.contains(reportTypeCode)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, reportTypeCode);
@@ -170,6 +171,16 @@ public class AbuseReportService implements
                     report.getReportSn(), fileSns.get(index), index, actorId) != 1) {
                 throw new CustomException(ErrorCode.DATABASE_ERROR);
             }
+        }
+        if (abuseReportMapper.insertTradeContext(
+                report.getReportSn(),
+                command.tradeSn(),
+                command.previousTradeStatusCode().trim(),
+                command.remainingAutoCompleteSeconds(),
+                command.settlementHoldApplied(),
+                command.chatClosed(),
+                actorId) != 1) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
         return report.getReportSn();
     }
@@ -511,6 +522,7 @@ public class AbuseReportService implements
                 report.getStatusCode(),
                 values.newStatusCode(),
                 values.reason(),
+                Long.valueOf(values.adminId()),
                 values.adminId(),
                 values.requestId());
         if (updated != 1) {
@@ -702,6 +714,15 @@ public class AbuseReportService implements
             throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
         }
         return report;
+    }
+
+    /** 담당자 7 · F-OPS-005/007: 관리자 신고 처리에서 거래 판정이 필요한 사건인지 확인합니다. */
+    @Transactional(readOnly = true)
+    public boolean hasTradeContext(Long reportSn) {
+        if (reportSn == null || reportSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return abuseReportMapper.existsTradeContext(reportSn);
     }
 
     @Override

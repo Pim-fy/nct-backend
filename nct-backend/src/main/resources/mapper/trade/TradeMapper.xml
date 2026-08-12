@@ -79,7 +79,7 @@
         거래 문제 접수와 정산 보류가 같은 TRADE 행을 기준으로 직렬화되도록 잠근다.
         서비스 거래는 REQ_USR_SN·PRV_USR_SN을, 물건 거래는 SLLR_USR_SN·BYPR_USR_SN을 소비한다.
     -->
-    <select id="findTradeDisputeTargetForUpdate"
+    <select id="findTradeReportTargetForUpdate"
             resultType="nct.trade.dto.TradeDisputeTarget">
         SELECT
             t.TRD_SN AS tradeSn,
@@ -89,80 +89,15 @@
             t.PRV_USR_SN AS providerUserId,
             t.TRD_TYPE_CD AS tradeTypeCode,
             t.TRD_METHOD_CD AS tradeMethodCode,
-            t.TRD_STATUS_CD AS tradeStatusCode
+            t.TRD_STATUS_CD AS tradeStatusCode,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            NOW() AS databaseNow
         FROM TRADE t
         WHERE t.TRD_SN = #{tradeId}
         FOR UPDATE
     </select>
 
-    <select id="hasOpenTradeDispute" resultType="boolean">
-        SELECT EXISTS (
-            SELECT 1
-            FROM TRADE_DISPUTE
-            WHERE TRD_SN = #{tradeId}
-              AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-        )
-    </select>
-
-    <select id="hasOtherOpenTradeDispute" resultType="boolean">
-        SELECT EXISTS (
-            SELECT 1
-              FROM TRADE_DISPUTE
-             WHERE TRD_SN = #{tradeId}
-               AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-               AND (
-                   #{excludedReportSn} IS NULL
-                   OR ABR_SN IS NULL
-                   OR ABR_SN != #{excludedReportSn}
-               )
-        )
-    </select>
-
-    <insert id="insertTradeDispute"
-            parameterType="nct.trade.dto.TradeDisputeRegistration"
-            useGeneratedKeys="true"
-            keyProperty="disputeSn"
-            keyColumn="TRD_DSP_SN">
-        INSERT INTO TRADE_DISPUTE (
-            ABR_SN,
-            TRD_SN,
-            DSPT_USR_SN,
-            TRD_DSP_TYPE_CD,
-            TRD_DSP_STATUS_CD,
-            TRD_DSP_CN,
-            TRD_DSP_PREV_TRD_STATUS_CD,
-            TRD_DSP_REG_ID,
-            TRD_DSP_UPDT_ID
-        ) VALUES (
-            #{reportSn},
-            #{tradeId},
-            #{disputerUserId},
-            #{disputeTypeCode},
-            'TRDC0016',
-            #{content},
-            #{previousTradeStatusCode},
-            #{updaterId},
-            #{updaterId}
-        )
-    </insert>
-
-    <insert id="insertTradeDisputeFile">
-        INSERT INTO TRADE_DISPUTE_FILE (
-            TRD_DSP_SN,
-            FL_SN,
-            TRD_DSP_FL_SORT_NO,
-            TRD_DSP_FL_REG_ID,
-            TRD_DSP_FL_UPDT_ID
-        ) VALUES (
-            #{disputeSn},
-            #{fileSn},
-            #{sortOrder},
-            #{registrantId},
-            #{registrantId}
-        )
-    </insert>
-
-    <update id="holdTradeForDispute">
+    <update id="holdTradeForReport">
         UPDATE TRADE
         SET TRD_UPDT_ID = CASE
                 WHEN TRD_STATUS_CD = 'TRDC0005' THEN TRD_UPDT_ID
@@ -186,9 +121,10 @@
                NOW() AS databaseNow,
                EXISTS (
                    SELECT 1
-                     FROM TRADE_DISPUTE d
-                    WHERE d.TRD_SN = t.TRD_SN
-                      AND d.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+                     FROM ABUSE_REPORT_TRADE rt
+                     JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+                    WHERE rt.TRD_SN = t.TRD_SN
+                      AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
                ) AS activeDispute
         FROM TRADE t
         WHERE (
@@ -241,9 +177,10 @@
            AND t.TRD_STATUS_CD = 'TRDC0007'
            AND NOT EXISTS (
                SELECT 1
-                 FROM TRADE_DISPUTE d
-                WHERE d.TRD_SN = t.TRD_SN
-                  AND d.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+                 FROM ABUSE_REPORT_TRADE rt
+                 JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+                WHERE rt.TRD_SN = t.TRD_SN
+                  AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
            )
     </update>
 
@@ -362,24 +299,26 @@
                t.QUT_SN AS quoteId,
                t.TRD_STATUS_CD AS tradeStatusCode,
                tradeStatus.CMM_NM AS tradeStatusName,
-               SUM(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017') THEN 1 ELSE 0 END)
+               SUM(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002') THEN 1 ELSE 0 END)
                    AS activeDisputeCount,
-               SUM(CASE WHEN dispute.TRD_DSP_STATUS_CD IS NOT NULL
-                   AND dispute.TRD_DSP_STATUS_CD NOT IN ('TRDC0016', 'TRDC0017', 'TRDC0018', 'TRDC0019')
+               SUM(CASE WHEN report.ABR_STATUS_CD IS NOT NULL
+                   AND report.ABR_STATUS_CD NOT IN ('ABSC0001', 'ABSC0002', 'ABSC0003', 'ABSC0004')
                    THEN 1 ELSE 0 END) AS unsupportedDisputeCount,
-               MAX(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-                   THEN dispute.TRD_DSP_SN END) AS activeDisputeId,
-               MAX(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-                   THEN dispute.TRD_DSP_STATUS_CD END) AS activeDisputeStatusCode,
-               MAX(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-                   THEN disputeStatus.CMM_NM END) AS activeDisputeStatusName
+               MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+                   THEN report.ABR_SN END) AS activeDisputeId,
+               MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+                   THEN report.ABR_STATUS_CD END) AS activeDisputeStatusCode,
+               MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+                   THEN reportStatus.CMM_NM END) AS activeDisputeStatusName
           FROM TRADE t
           LEFT JOIN CMM_CODE tradeStatus
             ON tradeStatus.CMM_CD = t.TRD_STATUS_CD
-          LEFT JOIN TRADE_DISPUTE dispute
-            ON dispute.TRD_SN = t.TRD_SN
-          LEFT JOIN CMM_CODE disputeStatus
-            ON disputeStatus.CMM_CD = dispute.TRD_DSP_STATUS_CD
+          LEFT JOIN ABUSE_REPORT_TRADE reportTrade
+            ON reportTrade.TRD_SN = t.TRD_SN
+          LEFT JOIN ABUSE_REPORT report
+            ON report.ABR_SN = reportTrade.ABR_SN
+          LEFT JOIN CMM_CODE reportStatus
+            ON reportStatus.CMM_CD = report.ABR_STATUS_CD
          WHERE t.TRD_TYPE_CD = 'TRDC0002'
            AND t.SVC_REQ_SN IN
         <foreach collection="serviceRequestIds" item="serviceRequestId" open="(" separator="," close=")">
@@ -1043,13 +982,14 @@
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
                     THEN 'PROVIDER'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
-                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.'
                     THEN CASE (
-                        SELECT d.DSPT_USR_SN
-                        FROM TRADE_DISPUTE d
-                        WHERE d.TRD_SN = h.TRD_SN
-                          AND d.TRD_DSP_REG_DT &lt;= h.TRD_STS_HST_REG_DT
-                        ORDER BY d.TRD_DSP_REG_DT DESC, d.TRD_DSP_SN DESC
+                        SELECT r.RPRT_USR_SN
+                        FROM ABUSE_REPORT_TRADE rt
+                        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+                        WHERE rt.TRD_SN = h.TRD_SN
+                          AND rt.ABR_TRD_REG_DT &lt;= h.TRD_STS_HST_REG_DT
+                        ORDER BY rt.ABR_TRD_REG_DT DESC, r.ABR_SN DESC
                         LIMIT 1
                     )
                         WHEN t.REQ_USR_SN THEN 'REQUESTER'
@@ -1071,43 +1011,46 @@
               OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
                   AND NOT EXISTS (
                       SELECT 1
-                      FROM TRADE_DISPUTE refundDispute
-                      WHERE refundDispute.TRD_SN = h.TRD_SN
-                        AND refundDispute.TRD_DSP_STATUS_CD = 'TRDC0018'
-                        AND refundDispute.TRD_DSP_RSLT_CD = 'TRDC0022'
+                      FROM ABUSE_REPORT_TRADE refundReportTrade
+                      JOIN ABUSE_REPORT refundReport
+                        ON refundReport.ABR_SN = refundReportTrade.ABR_SN
+                      WHERE refundReportTrade.TRD_SN = h.TRD_SN
+                        AND refundReport.ABR_STATUS_CD = 'ABSC0003'
+                        AND refundReportTrade.ABR_TRD_RSLT_CD = 'TRDC0012'
                   ))
               OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
-                  AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.')
+                  AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.')
           )
         UNION ALL
         SELECT
-            -d.TRD_DSP_SN AS id,
+            -r.ABR_SN AS id,
             CASE
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0017' AND d.TRD_DSP_RSLT_CD = 'TRDC0023' THEN 'DISPUTE_HOLD'
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0021' THEN 'DISPUTE_COMPLETE'
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0022' THEN 'ADMIN_REFUND'
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0019' THEN 'DISPUTE_REJECTED'
+                WHEN r.ABR_STATUS_CD = 'ABSC0002' AND rt.ABR_TRD_RSLT_CD = 'TRDC0013' THEN 'DISPUTE_HOLD'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0011' THEN 'DISPUTE_COMPLETE'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0012' THEN 'ADMIN_REFUND'
+                WHEN r.ABR_STATUS_CD = 'ABSC0004' THEN 'DISPUTE_REJECTED'
             END AS eventType,
-            d.TRD_DSP_PROC_DT AS occurredAt,
+            r.ABR_PROC_DT AS occurredAt,
             NULL AS requestedScheduleAt,
             CASE
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0017' AND d.TRD_DSP_RSLT_CD = 'TRDC0023'
+                WHEN r.ABR_STATUS_CD = 'ABSC0002' AND rt.ABR_TRD_RSLT_CD = 'TRDC0013'
                     THEN '관리자 확인 결과 거래와 정산 보류가 유지됩니다.'
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0021'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0011'
                     THEN '관리자 확인이 완료되어 거래가 이전 상태로 복구되었습니다.'
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD = 'TRDC0022'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0012'
                     THEN '관리자 판정에 따라 보관금이 환불되어 거래가 취소되었습니다.'
-                WHEN d.TRD_DSP_STATUS_CD = 'TRDC0019'
+                WHEN r.ABR_STATUS_CD = 'ABSC0004'
                     THEN '관리자 확인 결과 거래 문제가 반려되어 거래가 이전 상태로 복구되었습니다.'
             END AS reason,
             'ADMIN' AS actorRole
-        FROM TRADE_DISPUTE d
-        WHERE d.TRD_SN = #{tradeId}
-          AND d.TRD_DSP_PROC_DT IS NOT NULL
+        FROM ABUSE_REPORT_TRADE rt
+        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+        WHERE rt.TRD_SN = #{tradeId}
+          AND r.ABR_PROC_DT IS NOT NULL
           AND (
-              (d.TRD_DSP_STATUS_CD = 'TRDC0017' AND d.TRD_DSP_RSLT_CD = 'TRDC0023')
-              OR (d.TRD_DSP_STATUS_CD = 'TRDC0018' AND d.TRD_DSP_RSLT_CD IN ('TRDC0021', 'TRDC0022'))
-              OR d.TRD_DSP_STATUS_CD = 'TRDC0019'
+              (r.ABR_STATUS_CD = 'ABSC0002' AND rt.ABR_TRD_RSLT_CD = 'TRDC0013')
+              OR (r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD IN ('TRDC0011', 'TRDC0012'))
+              OR r.ABR_STATUS_CD = 'ABSC0004'
           )
         ) history
         ORDER BY history.occurredAt DESC, history.id DESC
@@ -1155,17 +1098,14 @@
     </update>
 
     <update id="completeCurrentTradeIncidentAfterPermanentCancellation">
-        UPDATE TRADE_DISPUTE
-           SET TRD_DSP_RSLT_CD = 'TRDC0022',
-               TRD_DSP_STATUS_CD = 'TRDC0018',
-               TRD_DSP_PROC_RSN_CN = #{reason},
-               TRD_DSP_PROC_USR_SN = #{adminUserSn},
-               TRD_DSP_PROC_DT = NOW(),
-               TRD_DSP_UPDT_ID = #{updaterId},
-               TRD_DSP_UPDT_DT = NOW()
-         WHERE TRD_SN = #{tradeId}
-           AND ABR_SN = #{sourceReportSn}
-           AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+        UPDATE ABUSE_REPORT_TRADE rt
+        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+           SET rt.ABR_TRD_RSLT_CD = 'TRDC0012',
+               rt.ABR_TRD_UPDT_ID = #{updaterId},
+               rt.ABR_TRD_UPDT_DT = NOW()
+         WHERE rt.TRD_SN = #{tradeId}
+           AND rt.ABR_SN = #{sourceReportSn}
+           AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
     </update>
 
     <!-- 서비스 거래 당사자가 재진입할 목록이다. 요청서 주소·세부 항목 같은 민감 정보는 포함하지 않는다. -->
@@ -1205,9 +1145,10 @@
             t.TRD_REG_DT AS createdAt,
             EXISTS (
                 SELECT 1
-                FROM TRADE_DISPUTE dispute
-                WHERE dispute.TRD_SN = t.TRD_SN
-                  AND dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+                FROM ABUSE_REPORT_TRADE reportTrade
+                JOIN ABUSE_REPORT report ON report.ABR_SN = reportTrade.ABR_SN
+                WHERE reportTrade.TRD_SN = t.TRD_SN
+                  AND report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
             ) AS hasActiveDispute
         FROM TRADE t
         JOIN SERVICE_REQUEST sr

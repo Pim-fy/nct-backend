@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import nct.ops.operation.domain.AdminDisputeDecisionCommittedEvent;
 
-/** 담당자 7 · F-OPS-006: 판정 커밋 후에만 분쟁 결과 알림과 이메일을 발행합니다. */
+/** 담당자 7 · F-OPS-005/006: 판정 커밋 후에만 거래 신고 결과 알림과 이메일을 발행합니다. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -20,11 +20,11 @@ public class AdminDisputeDecisionNotificationListener {
     public void notifyParticipants(AdminDisputeDecisionCommittedEvent event) {
         for (Long userSn : event.recipientUserSns()) {
             try {
-                notificationSender.send(userSn, event.disputeSn(), event.resultText());
+                notificationSender.send(userSn, event.reportSn(), event.resultText());
             } catch (RuntimeException exception) {
                 log.warn(
-                        "분쟁 판정 커밋 후 알림 발행 실패: disputeSn={}, userSn={}, errorType={}",
-                        event.disputeSn(), userSn, exception.getClass().getSimpleName());
+                        "거래 신고 판정 커밋 후 알림 발행 실패: reportSn={}, userSn={}, errorType={}",
+                        event.reportSn(), userSn, exception.getClass().getSimpleName());
             }
         }
     }

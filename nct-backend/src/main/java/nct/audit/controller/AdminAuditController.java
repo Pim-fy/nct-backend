@@ -115,7 +115,7 @@ public class AdminAuditController {
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
     }
 
-    /** 민감정보 원문 제한 조회 (F-OPS-014) — 사유·분쟁 건 필수, 조회 즉시 감사로그가 남는다 */
+    /** 민감정보 원문 제한 조회 (F-OPS-014) — 사유ㆍ거래 신고 필수, 조회 즉시 감사로그가 남는다. */
     @PostMapping("/sensitive-view")
     public ResponseEntity<ApiResponse<SensitiveViewResponse>> sensitiveView(
             @Valid @RequestBody SensitiveViewRequest request,
@@ -124,22 +124,22 @@ public class AdminAuditController {
 
         long adminUsrSn = userDetails.getMember().getId();
         ChatMessageView message = auditLogService.viewChatMessage(
-                adminUsrSn, request.getChMsgSn(), request.getTrdDspSn(),
+                adminUsrSn, request.getChMsgSn(), request.getReportSn(),
                 request.getReason(), httpRequest.getRemoteAddr());
         return ResponseEntity.ok(ApiResponse.success(SensitiveViewResponse.from(message)));
     }
 
-    /** 담당자 7 · F-OPS-005/014: 분쟁 거래의 채팅을 사유·감사기록 후 읽기 전용으로 조회합니다. */
-    @PostMapping("/disputes/{disputeSn}/chat-view")
+    /** 담당자 7 · F-OPS-005/014: 거래 신고 채팅을 사유ㆍ감사기록 후 읽기 전용으로 조회합니다. */
+    @PostMapping("/reports/{reportSn}/chat-view")
     public ResponseEntity<ApiResponse<DisputeChatViewResponse>> viewDisputeChat(
-            @PathVariable(name = "disputeSn") long disputeSn,
+            @PathVariable(name = "reportSn") long reportSn,
             @Valid @RequestBody DisputeChatViewRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails,
             HttpServletRequest httpRequest) {
         long adminUsrSn = userDetails.getMember().getId();
         DisputeChatViewResult result = auditLogService.viewDisputeChatMessages(
                 adminUsrSn,
-                disputeSn,
+                reportSn,
                 request.getReason(),
                 httpRequest.getRemoteAddr(),
                 request.getPage(),
@@ -158,7 +158,7 @@ public class AdminAuditController {
                 .toList();
 
         DisputeChatViewResponse response = DisputeChatViewResponse.builder()
-                .disputeSn(result.disputeSn())
+                .reportSn(result.reportSn())
                 .tradeSn(result.tradeSn())
                 .chatRoomExists(result.chatRoomExists())
                 .messages(messages)

@@ -78,7 +78,7 @@ class ReportEnforcementServiceTest {
         AbuseReport report = new AbuseReport();
         report.setReportSn(501L);
         report.setReportedUserSn(11L);
-        report.setStatusCode("ABRC0006");
+        report.setStatusCode("ABSC0002");
         when(abuseReportService.lockForAdminDecision(501L)).thenReturn(report);
 
         SanctionRecord sanction = sanction(701L, 501L, 11L, null);

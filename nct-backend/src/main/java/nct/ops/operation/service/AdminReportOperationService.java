@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.domain.AbuseReport;
 import nct.abuse.service.AbuseReportService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -22,6 +23,7 @@ import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.domain.ReportEnforcementAction;
+import nct.ops.operation.domain.AdminDisputeDecision;
 import nct.ops.operation.port.AdminReportDecision;
 import nct.ops.sanction.domain.SanctionRecord;
 import nct.ops.sanction.dto.SanctionImpactResponse;
@@ -37,6 +39,7 @@ public class AdminReportOperationService {
     private final AbuseReportService abuseReportService;
     private final AdminMemberIdentityReader memberIdentityReader;
     private final ReportEnforcementService reportEnforcementService;
+    private final AdminDisputeDecisionService tradeReportDecisionService;
     private final ReportSanctionService reportSanctionService;
     private final SanctionImpactMapper sanctionImpactMapper;
 
@@ -139,6 +142,7 @@ public class AdminReportOperationService {
     public void decide(
             Long reportSn,
             AdminReportDecision decision,
+            AdminDisputeDecision tradeDecision,
             ReportEnforcementAction enforcementAction,
             String reason,
             Long adminUserId) {
@@ -146,7 +150,28 @@ public class AdminReportOperationService {
 
         String normalizedReason = reason.trim();
         String requestId = requestId(
-                adminUserId, reportSn, decision, enforcementAction, normalizedReason);
+                adminUserId, reportSn, decision, tradeDecision,
+                enforcementAction, normalizedReason);
+        AbuseReport report = abuseReportService.lockForAdminDecision(reportSn);
+        boolean tradeReport = abuseReportService.hasTradeContext(reportSn);
+        validateDecisionShape(
+                tradeReport, decision, tradeDecision, enforcementAction);
+
+        if ((decision == AdminReportDecision.PROCESSED
+                || decision == AdminReportDecision.REJECTED)
+                && "ABSC0001".equals(report.getStatusCode())) {
+            reportEnforcementService.decide(
+                    reportSn,
+                    AdminReportDecision.PROCESSING,
+                    ReportEnforcementAction.NONE,
+                    normalizedReason,
+                    adminUserId,
+                    requestId + ":processing");
+        }
+        if (tradeReport) {
+            tradeReportDecisionService.decide(
+                    reportSn, tradeDecision, normalizedReason, adminUserId);
+        }
         reportEnforcementService.decide(
                 reportSn,
                 decision,
@@ -154,6 +179,49 @@ public class AdminReportOperationService {
                 normalizedReason,
                 adminUserId,
                 requestId);
+    }
+
+    private void validateDecisionShape(
+            boolean tradeReport,
+            AdminReportDecision decision,
+            AdminDisputeDecision tradeDecision,
+            ReportEnforcementAction enforcementAction) {
+        if (!tradeReport && tradeDecision != null) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "일반 신고에는 거래 판정을 지정할 수 없습니다.");
+        }
+        if (tradeReport && tradeDecision == null) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 신고에는 거래 판정이 필요합니다.");
+        }
+        if (tradeReport && expectedReportDecision(tradeDecision) != decision) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "신고 처리 상태와 거래 판정이 일치하지 않습니다.");
+        }
+        if (decision != AdminReportDecision.PROCESSED
+                && enforcementAction != ReportEnforcementAction.NONE) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "처리 완료 신고에만 계정 제재를 적용할 수 있습니다.");
+        }
+        if (tradeReport
+                && enforcementAction == ReportEnforcementAction.PERMANENT_SUSPENSION
+                && tradeDecision != AdminDisputeDecision.REFUND) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "영구 이용정지는 해당 거래 전액 환불 판정과 함께 처리해야 합니다.");
+        }
+    }
+
+    private AdminReportDecision expectedReportDecision(AdminDisputeDecision tradeDecision) {
+        return switch (tradeDecision) {
+            case HOLD -> AdminReportDecision.PROCESSING;
+            case COMPLETE, REFUND -> AdminReportDecision.PROCESSED;
+            case REJECT -> AdminReportDecision.REJECTED;
+        };
     }
 
     @Transactional
@@ -193,10 +261,12 @@ public class AdminReportOperationService {
             Long adminUserId,
             Long reportSn,
             AdminReportDecision decision,
+            AdminDisputeDecision tradeDecision,
             ReportEnforcementAction enforcementAction,
             String reason) {
         return "admin-report:" + sha256(
-                adminUserId + "|" + reportSn + "|" + decision + "|" + enforcementAction + "|" + reason);
+                adminUserId + "|" + reportSn + "|" + decision + "|"
+                        + tradeDecision + "|" + enforcementAction + "|" + reason);
     }
 
     private void enrichSanctions(List<AdminAbuseReportResponse> reports) {

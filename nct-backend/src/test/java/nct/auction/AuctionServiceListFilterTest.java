@@ -151,7 +151,7 @@ class AuctionServiceListFilterTest {
         auctionService.findAuctions(deliveryRequest);
 
         assertThat(deliveryRequest.getTradeMethodCodes())
-                .containsExactly("TRDC0009", "TRDC0020");
+                .containsExactly("TRDC0009", "TRDC0015");
 
         AuctionListRequest directRequest = new AuctionListRequest();
         directRequest.setTradeMethod("direct");
@@ -159,7 +159,7 @@ class AuctionServiceListFilterTest {
         auctionService.findAuctions(directRequest);
 
         assertThat(directRequest.getTradeMethodCodes())
-                .containsExactly("TRDC0010", "TRDC0020");
+                .containsExactly("TRDC0010", "TRDC0015");
     }
 
     @Test

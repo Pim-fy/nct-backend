@@ -15,6 +15,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import nct.chat.service.ChatService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.ops.audit.port.AuditLogPort;
@@ -33,6 +34,7 @@ class AdminDisputeDecisionServiceTest {
     @Mock private AdminTradeDisputeCommandPort disputeCommandPort;
     @Mock private SettlementService settlementService;
     @Mock private PointService pointService;
+    @Mock private ChatService chatService;
     @Mock private AuditLogPort auditLogPort;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -44,6 +46,7 @@ class AdminDisputeDecisionServiceTest {
                 disputeCommandPort,
                 settlementService,
                 pointService,
+                chatService,
                 auditLogPort,
                 eventPublisher);
     }
@@ -51,27 +54,23 @@ class AdminDisputeDecisionServiceTest {
     @Test
     void refundsServiceTradeEscrowToRequesterAndClosesSettlement() {
         AdminTradeDisputeDecisionTarget target = serviceTarget();
-        when(disputeCommandPort.lockByDisputeSn(11L)).thenReturn(target);
+        when(disputeCommandPort.lockByReportSn(11L)).thenReturn(target);
         when(pointService.refundEscrow(
                 32L, 25L, RefType.TRADE, 25L,
-                "관리자 거래 분쟁 전액 환불: 전액 환불 확정"))
+                "관리자 거래 신고 전액 환불: 전액 환불 확정"))
                 .thenReturn(70_000L);
 
-        var response = service.decide(
-                11L, AdminDisputeDecision.REFUND, "전액 환불 확정", 99L);
-
-        assertThat(response.changed()).isTrue();
-        assertThat(response.refundedAmount()).isEqualTo(70_000L);
+        service.decide(11L, AdminDisputeDecision.REFUND, "전액 환불 확정", 99L);
         verify(disputeCommandPort).cancelAndClose(
-                target, "TRDC0022", "전액 환불 확정", 99L);
+                target, "TRDC0012", "전액 환불 확정", 99L);
         verify(settlementService).closeRefundedByTradeIfOpen(25L, 99L);
         verify(pointService).refundEscrow(
                 32L, 25L, RefType.TRADE, 25L,
-                "관리자 거래 분쟁 전액 환불: 전액 환불 확정");
+                "관리자 거래 신고 전액 환불: 전액 환불 확정");
         ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogPort).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().referenceTypeCode())
-                .isEqualTo(RefType.TRADE_DISPUTE.getCode());
+                .isEqualTo(RefType.ABUSE_REPORT.getCode());
         assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(11L);
         assertThat(auditCaptor.getValue().relatedReferenceTypeCode())
                 .isEqualTo(RefType.TRADE.getCode());
@@ -82,14 +81,11 @@ class AdminDisputeDecisionServiceTest {
     @Test
     void sameFinalDecisionIsIdempotentWithoutDuplicateSideEffects() {
         AdminTradeDisputeDecisionTarget target = serviceTarget();
-        target.setDisputeStatusCode("TRDC0018");
-        target.setDisputeResultCode("TRDC0022");
-        when(disputeCommandPort.lockByDisputeSn(11L)).thenReturn(target);
+        target.setReportStatusCode("ABSC0003");
+        target.setTradeDecisionResultCode("TRDC0012");
+        when(disputeCommandPort.lockByReportSn(11L)).thenReturn(target);
 
-        var response = service.decide(
-                11L, AdminDisputeDecision.REFUND, "재요청", 99L);
-
-        assertThat(response.changed()).isFalse();
+        service.decide(11L, AdminDisputeDecision.REFUND, "재요청", 99L);
         verify(disputeCommandPort, never()).cancelAndClose(any(), any(), any(), any());
         verify(settlementService, never()).closeRefundedByTradeIfOpen(
                 org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong());
@@ -106,15 +102,13 @@ class AdminDisputeDecisionServiceTest {
     @Test
     void completeRestoresTradeAndResumesHeldSettlement() {
         AdminTradeDisputeDecisionTarget target = serviceTarget();
-        when(disputeCommandPort.lockByDisputeSn(11L)).thenReturn(target);
+        when(disputeCommandPort.lockByReportSn(11L)).thenReturn(target);
 
-        var response = service.decide(
-                11L, AdminDisputeDecision.COMPLETE, "당사자 조정 완료", 99L);
-
-        assertThat(response.changed()).isTrue();
+        service.decide(11L, AdminDisputeDecision.COMPLETE, "당사자 조정 완료", 99L);
         verify(disputeCommandPort).restoreAndClose(
-                target, "TRDC0021", "TRDC0018", "당사자 조정 완료", 99L);
+                target, "TRDC0011", "당사자 조정 완료", 99L);
         verify(settlementService).resumeByTradeIfOnHold(25L, 99L);
+        verify(chatService).reopenTradeChatRoom(25L);
         verify(pointService, never()).refundEscrow(
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
@@ -126,9 +120,9 @@ class AdminDisputeDecisionServiceTest {
     @Test
     void differentDecisionCannotOverwriteClosedDispute() {
         AdminTradeDisputeDecisionTarget target = serviceTarget();
-        target.setDisputeStatusCode("TRDC0018");
-        target.setDisputeResultCode("TRDC0021");
-        when(disputeCommandPort.lockByDisputeSn(11L)).thenReturn(target);
+        target.setReportStatusCode("ABSC0003");
+        target.setTradeDecisionResultCode("TRDC0011");
+        when(disputeCommandPort.lockByReportSn(11L)).thenReturn(target);
 
         assertThatThrownBy(() -> service.decide(
                 11L, AdminDisputeDecision.REFUND, "결과 변경", 99L))
@@ -139,26 +133,28 @@ class AdminDisputeDecisionServiceTest {
     @Test
     void holdEnsuresSettlementHoldWithoutResolvedNotification() {
         AdminTradeDisputeDecisionTarget target = serviceTarget();
-        when(disputeCommandPort.lockByDisputeSn(11L)).thenReturn(target);
+        when(disputeCommandPort.lockByReportSn(11L)).thenReturn(target);
 
         service.decide(11L, AdminDisputeDecision.HOLD, "추가 확인 중", 99L);
 
         verify(settlementService).holdUpByTradeIfPending(25L, "추가 확인 중");
         verify(disputeCommandPort).keepOnHold(
-                target, "TRDC0023", "추가 확인 중", 99L);
+                target, "TRDC0013", "추가 확인 중", 99L);
         verify(eventPublisher, never()).publishEvent(any());
     }
 
     private AdminTradeDisputeDecisionTarget serviceTarget() {
         AdminTradeDisputeDecisionTarget target = new AdminTradeDisputeDecisionTarget();
-        target.setDisputeSn(11L);
+        target.setReportSn(11L);
         target.setTradeSn(25L);
-        target.setDisputeStatusCode("TRDC0016");
+        target.setReportStatusCode("ABSC0001");
         target.setPreviousTradeStatusCode("TRDC0003");
         target.setTradeTypeCode("TRDC0002");
         target.setTradeStatusCode("TRDC0007");
         target.setRequesterUserSn(32L);
         target.setProviderUserSn(33L);
+        target.setSettlementHoldApplied(true);
+        target.setChatClosed(true);
         return target;
     }
 }

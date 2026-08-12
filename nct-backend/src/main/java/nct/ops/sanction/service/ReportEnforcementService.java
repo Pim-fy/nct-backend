@@ -58,8 +58,8 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
 
     private static final String ACTIVE_MEMBER = "USRC0001";
     private static final String SUSPENDED_MEMBER = "USRC0002";
-    private static final String PROCESSING_REPORT = "ABRC0006";
-    private static final String PROCESSED_REPORT = "ABRC0007";
+    private static final String PROCESSING_REPORT = "ABSC0002";
+    private static final String PROCESSED_REPORT = "ABSC0003";
     private static final String ACTIVE_IMPACT = "ACTIVE";
     private static final String RELEASE_PENDING_IMPACT = "RELEASE_PENDING";
     private static final String RESOLVED_IMPACT = "RESOLVED";

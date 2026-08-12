@@ -273,6 +273,17 @@ public interface TradeMapper {
             @Param("completionRequesterId") String completionRequesterId,
             @Param("updaterId") String updaterId);
 
+    /** 직거래 완료 요청을 받은 상대방이 거절하면 자동 완료 시각을 제거하고 직거래 진행으로 돌린다. */
+    int rejectOfflineCompletionByCounterpart(
+            @Param("tradeId") long tradeId,
+            @Param("completionRequesterId") String completionRequesterId,
+            @Param("updaterId") String updaterId);
+
+    /** 직거래 완료 확인 요청만 요청자별로 누적해 반복 완료 요청을 제한한다. */
+    int countOfflineCompletionRequestsByRequester(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
     /** 자동 완료 시각이 지난 확인 대기 거래를 배치 단위로 조회한다. */
     List<Long> findExpiredAutoCompletionTradeIds(
             @Param("now") LocalDateTime now,

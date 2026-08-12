@@ -189,11 +189,18 @@ class TradeServiceTest {
                 "입주 청소 요청",
                 "주방과 욕실 청소 · 150,000원",
                 null,
+                20L,
+                "제공자",
+                "/profiles/provider.png",
+                null,
+                3,
                 "ESCROW_HELD",
                 "보관금이 안전하게 보관 중입니다.",
                 "ACTIVE",
                 true,
-                false);
+                false,
+                "의뢰자가 등록한 서비스 요청 내용",
+                41L);
         when(tradeMapper.findMyServiceTradeDetail(91L, 10L)).thenReturn(source);
         when(tradeMapper.findMyServiceTradeAddresses(91L, 10L)).thenReturn(List.of(
                 new ServiceTradeAddressSource("서울 마포구", "101호", "01234")));
@@ -711,14 +718,14 @@ class TradeServiceTest {
 
         verify(settlementService).createPending(81L, 22L, 150000L);
         verify(settlementService).completeAutomatically(61L);
-        verify(chatService).closeServiceTradeChatRoom(81L);
+        verify(chatService, never()).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
         verify(notificationService).notifyTradeComplete(11L, 81L, false);
         verify(notificationService).notifyTradeComplete(22L, 81L, false);
     }
 
     @Test
-    void expiredServiceConfirmationClosesChatRoomAfterAutomaticCompletion() {
+    void expiredServiceConfirmationKeepsChatRoomForGracePeriod() {
         ServiceTradeCompletionTarget target = serviceCompletionTarget("TRDC0005", LocalDateTime.now().minusMinutes(1));
         when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
         when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
@@ -728,7 +735,7 @@ class TradeServiceTest {
         boolean completed = tradeService.completeExpiredServiceConfirmation(81L, LocalDateTime.now());
 
         assertThat(completed).isTrue();
-        verify(chatService).closeServiceTradeChatRoom(81L);
+        verify(chatService, never()).closeServiceTradeChatRoom(81L);
         verify(notificationService).notifyTradeComplete(11L, 81L, true);
         verify(notificationService).notifyTradeComplete(22L, 81L, true);
     }
@@ -1274,6 +1281,124 @@ class TradeServiceTest {
     }
 
     @Test
+    void rejectsFourthOfflineScheduleProposalForEachParty() {
+        TradeOfflineScheduleRequest request = new TradeOfflineScheduleRequest();
+        request.setMeetingDate(LocalDate.now().plusDays(1));
+        request.setMeetingTime(LocalTime.of(14, 30));
+        request.setMeetingPlace("합정역 8번 출구 앞");
+        TradeOfflineTradeTarget target = new TradeOfflineTradeTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setTradeStatus("TRDC0003");
+        target.setTradeMethod("TRDC0010");
+        when(tradeOfflineProposalMapper.findMyOfflineTradeForUpdate(91L, 10L)).thenReturn(target);
+        when(tradeOfflineProposalMapper.countScheduleProposalsByTradeAndProposer(91L, 10L))
+                .thenReturn(3);
+
+        assertThatThrownBy(() -> tradeService.saveMyOfflineSchedule(91L, 10L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verify(tradeOfflineProposalMapper, never()).insertProposal(any(TradeOfflineScheduleProposal.class));
+    }
+
+    @Test
+    void rejectsThirdOfflineCompletionRequestFromSameRequester() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setTradeStatus("TRDC0004");
+        target.setTradeMethod("TRDC0010");
+        when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 10L)).thenReturn(target);
+        when(tradeMapper.hasOfflineSchedule(91L)).thenReturn(true);
+        when(tradeMapper.countOfflineCompletionRequestsByRequester(91L, 10L)).thenReturn(2);
+
+        assertThatThrownBy(() -> tradeService.requestCompletionConfirmation(91L, 10L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verify(tradeMapper, never()).startCompletionConfirmation(anyLong(), any(), any());
+    }
+
+    @Test
+    void rejectsOfflineCompletionRequestAndReturnsTradeToProgress() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setTradeStatus("TRDC0005");
+        target.setTradeMethod("TRDC0010");
+        target.setCompletionRequesterId("10");
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setTradeId(91L);
+        detail.setTradeMethod("OFFLINE");
+        when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 20L)).thenReturn(target);
+        when(tradeMapper.rejectOfflineCompletionByCounterpart(91L, "10", "20")).thenReturn(1);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
+
+        TradeDetailResponse result = tradeService.respondOfflineCompletionRequest(91L, 20L, false);
+
+        assertThat(result).isSameAs(detail);
+        verify(tradeMapper).insertStatusHistory(
+                91L, "TRDC0004", "OFFLINE_COMPLETION_REJECTED|10|20");
+    }
+
+    @Test
+    void approvesOfflineCompletionRequestAndCompletesTrade() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setTradeStatus("TRDC0005");
+        target.setTradeMethod("TRDC0010");
+        target.setCompletionRequesterId("10");
+        target.setTradeAmount(BigDecimal.valueOf(30000L));
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setTradeId(91L);
+        detail.setTradeMethod("OFFLINE");
+        when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 20L)).thenReturn(target);
+        when(tradeMapper.completeConfirmationByCounterpart(91L, "10", "20")).thenReturn(1);
+        when(settlementService.createPending(91L, 10L, 30000L)).thenReturn(501L);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
+
+        TradeDetailResponse result = tradeService.respondOfflineCompletionRequest(91L, 20L, true);
+
+        assertThat(result).isSameAs(detail);
+        verify(settlementService).completeAutomatically(501L);
+        verify(tradeMapper).insertStatusHistory(
+                91L, "TRDC0006", "구매자와 판매자가 모두 거래 완료를 확인했습니다.");
+    }
+
+    @Test
+    void keepsScheduleProposalCountAtZeroForCounterpartWhoOnlyRejects() {
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setTradeId(91L);
+        TradeOfflineScheduleProposal pending = new TradeOfflineScheduleProposal();
+        pending.setProposalId(701L);
+        pending.setProposalType("TRDC0030");
+        pending.setProposalStatus("TRDC0025");
+        pending.setProposerUserId(10L);
+        pending.setMeetingPlace("합정역 8번 출구 앞");
+        detail.setCounterpartUserId(10L);
+        detail.setViewerRole("BUYER");
+        when(tradeOfflineProposalMapper.countScheduleProposalsByTradeAndProposer(91L, 20L))
+                .thenReturn(0);
+        when(tradeOfflineProposalMapper.findPendingProposal(91L)).thenReturn(pending);
+
+        new TradeOfflineScheduleProposalService(
+                tradeMapper,
+                tradeOfflineProposalMapper,
+                fieldCryptoService).enrichDetail(detail, 20L);
+
+        assertThat(detail.getMyScheduleProposalCount()).isZero();
+        assertThat(detail.getRemainingScheduleProposalCount()).isEqualTo(3);
+        assertThat(detail.isCanRespondToScheduleProposal()).isTrue();
+        verify(tradeOfflineProposalMapper).countScheduleProposalsByTradeAndProposer(91L, 20L);
+    }
+
+    @Test
     void rejectsPastOfflineScheduleBeforeDatabaseAccess() {
         TradeOfflineScheduleRequest request = new TradeOfflineScheduleRequest();
         request.setMeetingDate(LocalDate.now().minusDays(1));
@@ -1341,6 +1466,55 @@ class TradeServiceTest {
     }
 
     @Test
+    void rejectsBuyerDeliveryCompletionRequestBeforeSellerRegistersDeliveryProof() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setBuyerUserId(20L);
+        target.setSellerUserId(10L);
+        target.setTradeStatus("TRDC0003");
+        target.setTradeMethod("TRDC0009");
+        when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 20L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.requestCompletionConfirmation(91L, 20L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+        verify(tradeMapper, never()).startCompletionConfirmation(anyLong(), any(), any());
+        verifyNoInteractions(systemSettingMapper, notificationService);
+    }
+
+    @Test
+    void allowsOfflineCompletionRequestAgainAfterCounterpartRejectedIt() {
+        TradeConfirmationTarget target = new TradeConfirmationTarget();
+        target.setTradeId(91L);
+        target.setBuyerUserId(20L);
+        target.setSellerUserId(10L);
+        target.setTradeStatus("TRDC0004");
+        target.setTradeMethod("TRDC0010");
+        TradeDetailResponse detail = new TradeDetailResponse();
+        detail.setTradeId(91L);
+        SystemSettingDetail setting = new SystemSettingDetail();
+        setting.setTrdCfmnDays(5);
+
+        when(tradeMapper.findMyTradeForConfirmationForUpdate(91L, 20L)).thenReturn(target);
+        when(tradeMapper.hasOfflineSchedule(91L)).thenReturn(true);
+        when(tradeMapper.countOfflineCompletionRequestsByRequester(91L, 20L)).thenReturn(1);
+        when(systemSettingMapper.selectOne()).thenReturn(setting);
+        when(tradeMapper.startCompletionConfirmation(
+                eq(91L), any(LocalDateTime.class), eq("20"))).thenReturn(1);
+        when(tradeMapper.findMyMaterialTradeDetail(91L, 20L)).thenReturn(detail);
+
+        TradeDetailResponse result = tradeService.requestCompletionConfirmation(91L, 20L);
+
+        verify(tradeMapper).startCompletionConfirmation(eq(91L), any(LocalDateTime.class), eq("20"));
+        verify(tradeMapper).insertStatusHistory(
+                91L,
+                "TRDC0005",
+                "OFFLINE_COMPLETION_REQUEST|20|구매자가 거래 완료 확인을 요청했습니다.");
+        assertThat(result).isSameAs(detail);
+    }
+
+    @Test
     void rejectsOfflineCompletionRequestBeforeScheduleIsSaved() {
         TradeConfirmationTarget target = new TradeConfirmationTarget();
         target.setTradeId(91L);
@@ -1397,7 +1571,6 @@ class TradeServiceTest {
 
         verify(settlementService).createPending(91L, 10L, 30000L);
         verify(settlementService).completeAutomatically(501L);
-        verify(chatService).closeOfflineTradeChatRoom(91L);
         verify(tradeMapper).insertStatusHistory(
                 91L,
                 "TRDC0006",
@@ -1430,7 +1603,6 @@ class TradeServiceTest {
                 "상대방 확인 기한이 지나 자동으로 거래가 완료되었습니다.");
         verify(settlementService).createPending(91L, 10L, 30000L);
         verify(settlementService).completeAutomatically(501L);
-        verify(chatService).closeOfflineTradeChatRoom(91L);
         verify(notificationService).notifyTradeComplete(20L, 91L, true);
         verify(notificationService).notifyTradeComplete(10L, 91L, true);
     }

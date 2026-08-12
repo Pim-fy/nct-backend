@@ -18,9 +18,16 @@ public record ServiceTradeDetailSource(
         String serviceRequestTitle,
         String quoteSummary,
         String scheduleLabel,
+        Long counterpartUserId,
+        String counterpartNickname,
+        String counterpartProfileImageUrl,
+        LocalDateTime counterpartJoinedAt,
+        int counterpartCompletedTradeCount,
         String escrowStatusCode,
         String escrowStatusLabel,
         String chatRoomStatus,
         boolean chatAvailable,
-        boolean cancellationDecisionAvailable) {
+        boolean cancellationDecisionAvailable,
+        String serviceRequestContent,
+        long selectedQuoteId) {
 }

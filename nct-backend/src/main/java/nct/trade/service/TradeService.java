@@ -114,6 +114,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private static final String SCHEDULER_UPDATER = "SYSTEM";
     private static final int MAX_SERVICE_TRADE_PAGE_SIZE = 100;
     private static final int MAX_TRADE_DISPUTE_FILES = 5;
+    private static final int MAX_OFFLINE_COMPLETION_REQUESTS_PER_PARTY = 2;
 
     private final TradeMapper tradeMapper;
     private final NotificationService notificationService;
@@ -520,7 +521,6 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         long settlementId = settlementService.createPending(
                 target.getTradeId(), target.getProviderUserId(), settlementAmount);
         settlementService.completeAutomatically(settlementId);
-        chatService.closeServiceTradeChatRoom(target.getTradeId());
         tradeMapper.insertStatusHistory(target.getTradeId(), COMPLETED, historyReason);
         notificationService.notifyTradeComplete(
                 target.getRequesterUserId(), target.getTradeId(), automaticallyCompleted);
@@ -748,8 +748,24 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         if (offlineScheduleProposalService != null) {
             offlineScheduleProposalService.enrichDetail(detail, userId);
         }
+        enrichOfflineCompletionDetail(detail, userId);
 
         return detail;
+    }
+
+    private void enrichOfflineCompletionDetail(TradeDetailResponse detail, long userId) {
+        if (!"OFFLINE".equals(detail.getTradeMethod())) {
+            return;
+        }
+
+        int requestCount = tradeMapper.countOfflineCompletionRequestsByRequester(detail.getTradeId(), userId);
+        detail.setMyOfflineCompletionRequestCount(requestCount);
+        detail.setRemainingOfflineCompletionRequestCount(
+                Math.max(0, MAX_OFFLINE_COMPLETION_REQUESTS_PER_PARTY - requestCount));
+        detail.setCanRespondToOfflineCompletionRequest(
+                WAITING_CONFIRMATION.equals(detail.getTradeStatus())
+                        && detail.getCompletionRequestedBy() != null
+                        && !detail.getCompletionRequestedBy().equals(detail.getViewerRole()));
     }
 
     /** 정식 auctionId 경로에서 거래 당사자의 기존 물건 거래 상세 계약을 재사용한다. */
@@ -941,8 +957,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     }
 
     /**
-     * 거래 당사자의 첫 완료 확인은 상대방 확인 대기 상태를 시작하고,
-     * 다른 당사자의 두 번째 확인은 거래 완료·정산 대기 생성을 한 트랜잭션으로 처리한다.
+     * 거래 당사자의 첫 완료 확인은 상대방 동의·거절 대기 상태를 시작한다.
+     * 직거래의 상대방 응답은 전용 동의·거절 API로 처리하고, 택배는 기존 두 번째 확인 흐름을 유지한다.
      * 알림은 담당자6의 공개 서비스 계약을 사용하며 NOTIFICATION 테이블을 직접 쓰지 않는다.
      */
     @Transactional
@@ -957,12 +973,20 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         if (WAITING_CONFIRMATION.equals(target.getTradeStatus())) {
+            if (OFFLINE_METHOD.equals(target.getTradeMethod())) {
+                throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                        "상대방의 거래 완료 요청에 동의하거나 거절해 주세요.");
+            }
             completeConfirmationByCounterpart(target, userId);
             return getMyMaterialTradeDetail(tradeId, userId);
         }
 
         validateCompletionRequestStatus(target.getTradeStatus());
+        validateDeliveryCompletionRequest(target, userId);
         validateOfflineCompletionSchedule(target);
+        if (OFFLINE_METHOD.equals(target.getTradeMethod())) {
+            ensureOfflineCompletionRequestLimit(tradeId, userId);
+        }
 
         int confirmDays = getConfirmDays();
         LocalDateTime autoCompleteAt = LocalDateTime.now().plusDays(confirmDays);
@@ -982,6 +1006,39 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 getCounterpartUserId(target, userId),
                 tradeId,
                 confirmDays);
+
+        return getMyMaterialTradeDetail(tradeId, userId);
+    }
+
+    /** 직거래 완료 요청을 받은 상대방이 명시적으로 동의 또는 거절한다. */
+    @Transactional
+    public TradeDetailResponse respondOfflineCompletionRequest(long tradeId, long userId, boolean approve) {
+        TradeConfirmationTarget target = tradeMapper.findMyTradeForConfirmationForUpdate(tradeId, userId);
+        if (target == null || !OFFLINE_METHOD.equals(target.getTradeMethod())
+                || !WAITING_CONFIRMATION.equals(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "응답할 수 있는 직거래 완료 요청을 찾을 수 없습니다.");
+        }
+
+        String requesterId = normalizeCompletionRequesterId(target.getCompletionRequesterId());
+        if (String.valueOf(userId).equals(requesterId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN,
+                    "본인이 요청한 거래 완료 확인에는 응답할 수 없습니다.");
+        }
+
+        if (approve) {
+            completeConfirmationByCounterpart(target, userId);
+        } else {
+            if (tradeMapper.rejectOfflineCompletionByCounterpart(
+                    tradeId, requesterId, String.valueOf(userId)) == 0) {
+                throw new CustomException(ErrorCode.CONFLICT,
+                        "거래 완료 요청 상태가 변경되어 다시 확인해 주세요.");
+            }
+            tradeMapper.insertStatusHistory(
+                    tradeId,
+                    DELIVERING,
+                    "OFFLINE_COMPLETION_REJECTED|" + requesterId + "|" + userId);
+        }
 
         return getMyMaterialTradeDetail(tradeId, userId);
     }
@@ -1011,13 +1068,20 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 target.getSellerUserId(),
                 resolveSettlementAmount(target));
         settlementService.completeAutomatically(settlementId);
-        chatService.closeOfflineTradeChatRoom(target.getTradeId());
         tradeMapper.insertStatusHistory(
                 target.getTradeId(),
                 COMPLETED,
                 "구매자와 판매자가 모두 거래 완료를 확인했습니다.");
         notificationService.notifyTradeComplete(target.getBuyerUserId(), target.getTradeId(), false);
         notificationService.notifyTradeComplete(target.getSellerUserId(), target.getTradeId(), false);
+    }
+
+    private void ensureOfflineCompletionRequestLimit(long tradeId, long userId) {
+        if (tradeMapper.countOfflineCompletionRequestsByRequester(tradeId, userId)
+                >= MAX_OFFLINE_COMPLETION_REQUESTS_PER_PARTY) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "직거래 완료 확인 요청은 구매자와 판매자 각각 최대 2회까지 할 수 있습니다.");
+        }
     }
 
     /**
@@ -1050,7 +1114,6 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 target.getSellerUserId(),
                 resolveSettlementAmount(target));
         settlementService.completeAutomatically(settlementId);
-        chatService.closeOfflineTradeChatRoom(target.getTradeId());
 
         tradeMapper.insertStatusHistory(
                 tradeId,
@@ -1113,6 +1176,12 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
     // 첫 확인이 누구인지에 따라 상대방에게 발행할 안내 문구와 수신 대상을 정확히 선택한다.
     private String completionRequestReason(TradeConfirmationTarget target, long userId) {
+        if (OFFLINE_METHOD.equals(target.getTradeMethod())) {
+            return "OFFLINE_COMPLETION_REQUEST|" + userId + "|"
+                    + (target.getBuyerUserId() != null && target.getBuyerUserId() == userId
+                    ? "구매자가 거래 완료 확인을 요청했습니다."
+                    : "판매자가 거래 완료 확인을 요청했습니다.");
+        }
         return target.getBuyerUserId() != null && target.getBuyerUserId() == userId
                 ? "구매자가 거래 완료 확인을 요청했습니다."
                 : "판매자가 거래 완료 확인을 요청했습니다.";
@@ -1203,6 +1272,24 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
 
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                 "직거래 일정이 저장된 후 완료 확인을 요청할 수 있습니다.");
+    }
+
+    // 배송 거래의 첫 완료 확인은 판매자 발송 인증 뒤 구매자가 시작한다.
+    // 확인 대기 상태의 판매자 확인은 이 메서드보다 앞선 분기에서 별도로 처리한다.
+    private void validateDeliveryCompletionRequest(TradeConfirmationTarget target, long userId) {
+        if (!DELIVERY_METHOD.equals(target.getTradeMethod())) {
+            return;
+        }
+
+        if (!DELIVERING.equals(target.getTradeStatus())) {
+            throw new CustomException(ErrorCode.ALREADY_PROCESSED,
+                    "판매자가 발송 인증을 등록한 후 완료 확인을 요청할 수 있습니다.");
+        }
+
+        if (target.getBuyerUserId() == null || target.getBuyerUserId() != userId) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
+                    "배송 거래의 완료 확인은 구매자가 먼저 요청할 수 있습니다.");
+        }
     }
 
     // 배송·직거래 진행 및 완료 확인 대기 거래만 관리자의 판매자 취소 승인 대상으로 허용한다.

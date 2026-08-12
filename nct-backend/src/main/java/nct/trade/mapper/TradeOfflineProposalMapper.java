@@ -22,6 +22,11 @@ public interface TradeOfflineProposalMapper {
 
     TradeOfflineScheduleProposal findPendingProposal(@Param("tradeId") long tradeId);
 
+    /** 일정 신규·변경 제안만 당사자별 누적 횟수로 센다. 일정 취소 제안은 별도 흐름이라 제외한다. */
+    int countScheduleProposalsByTradeAndProposer(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
+
     TradeOfflineScheduleProposal findProposalForUpdate(
             @Param("tradeId") long tradeId,
             @Param("proposalId") long proposalId);

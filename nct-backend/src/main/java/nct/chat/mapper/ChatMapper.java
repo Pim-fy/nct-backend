@@ -30,10 +30,7 @@ public interface ChatMapper {
 
     int insertChatRoom(ChatRoom chatRoom);
 
-    /** 거래가 완료되면 직거래 채팅방을 읽기 전용 상태로 전환한다. */
-    int closeOfflineTradeChatRoom(@Param("tradeId") long tradeId);
-
-    /** 서비스 거래가 완료·취소·분쟁 상태가 되면 채팅방을 읽기 전용으로 전환한다. */
+    /** 서비스 거래가 취소·분쟁 상태가 되면 채팅방을 읽기 전용으로 전환한다. */
     int closeServiceTradeChatRoom(@Param("tradeId") long tradeId);
 
     List<ChatRoomResponse> findMyChatRooms(

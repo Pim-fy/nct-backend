@@ -172,6 +172,15 @@
         FOR UPDATE
     </select>
 
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 탈퇴 전 하드 차단 - 물건·서비스 거래 모두, 보류 포함 -->
+    <select id="countBlockingTradesByUser" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE
+        WHERE (SLLR_USR_SN = #{userSn} OR BYPR_USR_SN = #{userSn}
+               OR REQ_USR_SN = #{userSn} OR PRV_USR_SN = #{userSn})
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005', 'TRDC0007')
+    </select>
+
     <update id="holdTradeForMemberRestriction">
         UPDATE TRADE
         SET TRD_STATUS_CD = 'TRDC0007',

@@ -665,4 +665,15 @@
           AND AUC_STATUS_CD = #{expectedStatusCode}
     </update>
 
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 탈퇴 전 하드 차단 - 본인 판매 미종료 경매.
+         AUCC0001(준비/시작 전)·AUCC0002(진행중) 둘 다 미종료다(QA P1-2, ProductMapper.xml의
+         기존 미종료 판정과 동일 기준으로 맞춤). -->
+    <select id="countActiveSellerAuctions" resultType="int">
+        SELECT COUNT(*)
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        WHERE p.USR_SN = #{userSn}
+          AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+    </select>
+
 </mapper>

@@ -133,6 +133,31 @@
         FOR UPDATE
     </select>
 
+    <!-- @ai_generated F-AUTH-017/POL-AUTH-016: 정지 계정 비로그인 문의 토큰(EMVC0009) -->
+    <insert id="insertSuspendedInquiry" parameterType="nct.auth.domain.EmailVerification"
+            useGeneratedKeys="true" keyProperty="emlVrfSn">
+        INSERT INTO EMAIL_VERIFICATION (
+            EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH, EML_VRF_STATUS_CD,
+            EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT, EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT
+        ) VALUES (
+            #{emlVrfEmail}, #{emlVrfEmailHmac}, 'EMVC0009', #{emlVrfCodeHash}, 'EMVC0003',
+            #{emlVrfExpiresAt}, #{emlVrfLastSentAt}, 0, 0
+        )
+    </insert>
+
+    <select id="findSuspendedInquiryByTokenHashForUpdate" resultMap="emailVerificationMap">
+        SELECT EML_VRF_SN, EML_VRF_EMAIL_ENC, EML_VRF_EMAIL_HMAC, EML_VRF_PURPOSE_CD, EML_VRF_CODE_HASH,
+               EML_VRF_STATUS_CD, EML_VRF_EXPIRES_AT, EML_VRF_LAST_SENT_AT,
+               EML_VRF_FAIL_CNT, EML_VRF_RESEND_CNT, EML_VRF_RETRY_AT,
+               EML_VRF_VERIFIED_AT, EML_VRF_USED_AT
+        FROM EMAIL_VERIFICATION
+        WHERE EML_VRF_CODE_HASH = #{tokenHash}
+          AND EML_VRF_PURPOSE_CD = 'EMVC0009'
+        ORDER BY EML_VRF_SN DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
     <update id="resend">
         UPDATE EMAIL_VERIFICATION
         SET EML_VRF_CODE_HASH = #{codeHash},

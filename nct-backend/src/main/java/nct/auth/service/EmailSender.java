@@ -11,4 +11,8 @@ public interface EmailSender {
 
     // @ai_generated: F-AUTH-011 - 정지 계정용 탈퇴 확인도 링크(URL) 방식이다.
     void sendWithdrawalLink(String email, String link);
+
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 비로그인 문의(INQC0010)에 관리자가
+    // 답변하면 등록된 이메일로 원문 질문+답변을 통보한다. 일방향(회신 불가) 안내를 포함한다.
+    void sendSuspendedInquiryAnswer(String email, String question, String answer);
 }

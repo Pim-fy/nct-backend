@@ -67,4 +67,13 @@ public interface CustomerInquiryMapper {
             @Param("actorId") String actorId,
             @Param("processingStatusCode") String processingStatusCode,
             @Param("answeredStatusCode") String answeredStatusCode);
+
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 회원 탈퇴 시
+    // 본인의 미답변(접수·처리중) 문의를 종결 상태로 일괄 전환한다. 영향 행 수를 반환한다.
+    int closeUnansweredByUser(
+            @Param("userSn") Long userSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode,
+            @Param("closedStatusCode") String closedStatusCode,
+            @Param("actorId") String actorId);
 }

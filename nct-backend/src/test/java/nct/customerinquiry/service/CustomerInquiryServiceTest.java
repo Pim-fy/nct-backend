@@ -37,8 +37,10 @@ import nct.customerinquiry.mapper.CustomerInquiryMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.auth.service.EmailSender;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
+import nct.member.port.MemberEmailReader;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
@@ -53,6 +55,10 @@ class CustomerInquiryServiceTest {
     private SensitiveContentInspectionUseCase inspectionUseCase;
     private AuditLogPort auditLogPort;
     private AdminMemberIdentityReader memberIdentityReader;
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 문의 답변 통보 협력자(기본 Mockito
+    // 동작으로 충분해 개별 테스트에서 별도 stub 불필요)
+    private MemberEmailReader memberEmailReader;
+    private EmailSender emailSender;
     private CustomerInquiryService service;
 
     @BeforeEach
@@ -62,13 +68,17 @@ class CustomerInquiryServiceTest {
         inspectionUseCase = mock(SensitiveContentInspectionUseCase.class);
         auditLogPort = mock(AuditLogPort.class);
         memberIdentityReader = mock(AdminMemberIdentityReader.class);
+        memberEmailReader = mock(MemberEmailReader.class);
+        emailSender = mock(EmailSender.class);
         when(memberIdentityReader.findByUserSns(any())).thenReturn(Map.of());
         service = new CustomerInquiryService(
                 mapper,
                 referenceDataService,
                 inspectionUseCase,
                 auditLogPort,
-                memberIdentityReader);
+                memberIdentityReader,
+                memberEmailReader,
+                emailSender);
     }
 
     @Test

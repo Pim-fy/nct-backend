@@ -58,6 +58,9 @@ class AuthServiceTest {
     private ProviderApplicationService providerApplicationService;
     @Mock
     private SanctionStatusReader sanctionStatusReader;
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 문의 토큰 발급 협력자
+    @Mock
+    private SuspendedInquiryTokenService suspendedInquiryTokenService;
 
     private AuthService authService;
 
@@ -72,7 +75,8 @@ class AuthServiceTest {
                 Validation.buildDefaultValidatorFactory().getValidator(),
                 tokenHashUtil,
                 providerApplicationService,
-                sanctionStatusReader);
+                sanctionStatusReader,
+                suspendedInquiryTokenService);
     }
 
     // @ai_generated: 가입 DTO·중복확인 API가 4자 경계값을 같은 규칙으로 적용하는지 검증한다.
@@ -376,15 +380,16 @@ class AuthServiceTest {
     }
 
     @Test
-    void 정지된_계정은_비밀번호가_맞아도_로그인을_차단한다() {
+    void 정지된_계정은_비밀번호가_맞아도_로그인을_차단하고_문의_토큰을_발급한다() {
         AuthMember member = memberWithStatus("USRC0002");
         when(authMemberPort.findByLoginId("buyer01")).thenReturn(java.util.Optional.of(member));
         when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
+        when(suspendedInquiryTokenService.issueToken(any())).thenReturn("issued-token");
 
         assertThatThrownBy(() -> authService.login(loginRequest("buyer01", "Password1!")))
-                .isInstanceOf(CustomException.class)
-                .extracting(exception -> ((CustomException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.ACCOUNT_SUSPENDED);
+                .isInstanceOf(SuspendedAccountException.class)
+                .extracting(exception -> ((SuspendedAccountException) exception).getInquiryToken())
+                .isEqualTo("issued-token");
 
         verify(jwtTokenProvider, never()).createAccessToken(any());
         verify(authMemberPort, never()).updateRefreshToken(any(), any());

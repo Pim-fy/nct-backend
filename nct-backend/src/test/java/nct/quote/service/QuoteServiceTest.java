@@ -25,6 +25,7 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogPort;
 import nct.quote.domain.Quote;
 import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
@@ -55,6 +56,9 @@ class QuoteServiceTest {
     private FileStorageService fileStorageService;
     @Mock
     private NotificationService notificationService;
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 회원 탈퇴 자동철회 감사 기록용(기본 no-op으로 충분)
+    @Mock
+    private AuditLogPort auditLogPort;
     @Mock
     private Authentication authentication;
 
@@ -68,7 +72,8 @@ class QuoteServiceTest {
                 providerAccessGuard,
                 activeProviderGuard,
                 fileStorageService,
-                notificationService);
+                notificationService,
+                auditLogPort);
     }
 
     @Test

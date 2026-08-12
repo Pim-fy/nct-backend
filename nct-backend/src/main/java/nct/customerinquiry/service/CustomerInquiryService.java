@@ -28,6 +28,7 @@ import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
+import nct.member.port.CustomerInquiryWithdrawalPort;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
@@ -39,7 +40,7 @@ import nct.ops.security.port.SensitiveContentInspectionUseCase;
  */
 @Service
 @RequiredArgsConstructor
-public class CustomerInquiryService {
+public class CustomerInquiryService implements CustomerInquiryWithdrawalPort {
 
     static final String TYPE_GROUP = "INQG01";
     static final String STATUS_GROUP = "INQG02";
@@ -258,6 +259,30 @@ public class CustomerInquiryService {
                 PROCESSING_STATUS,
                 ANSWERED_STATUS,
                 detectionKey);
+    }
+
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - CustomerInquiryWithdrawalPort 구현.
+    // MemberService.withdraw() 트랜잭션 안에서 호출된다. 실제 답변 없이 상태만 종결로 전환하고,
+    // 감사 로그만 남긴다(상대방은 항상 관리자라 별도 알림이 필요 없다 - 사용자 결정, ISS-026).
+    @Override
+    @Transactional
+    public void closeUnansweredByUser(Long usrSn) {
+        // @ai_generated: (QA P2-1) 기존 answer()와 동일하게, 전이 대상 상태가 활성 공통코드인지
+        // 먼저 확인한다(startProcessing()도 같은 패턴).
+        referenceDataService.requireActiveCode(STATUS_GROUP, ANSWERED_STATUS);
+        int updated = customerInquiryMapper.closeUnansweredByUser(
+                usrSn, RECEIVED_STATUS, PROCESSING_STATUS, ANSWERED_STATUS, String.valueOf(usrSn));
+        if (updated > 0) {
+            auditLogPort.record(new AuditLogCommand(
+                    AuditLogType.STATUS_CHANGE.name(),
+                    String.valueOf(usrSn),
+                    RefType.CUSTOMER_INQUIRY.getCode(),
+                    usrSn,
+                    "회원 탈퇴에 따른 미답변 문의 자동 종결",
+                    RECEIVED_STATUS + "/" + PROCESSING_STATUS,
+                    ANSWERED_STATUS + "(" + updated + "건)",
+                    null));
+        }
     }
 
     private AdminCustomerInquiryDetailResponse requireAdminInquiry(Long inquirySn) {

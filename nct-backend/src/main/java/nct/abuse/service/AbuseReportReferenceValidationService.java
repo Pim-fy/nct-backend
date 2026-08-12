@@ -77,7 +77,9 @@ public class AbuseReportReferenceValidationService {
         if (auction == null || !reportedUserSn.equals(auction.getSellerId())) {
             throw invalidReference();
         }
-        return "경매 #" + referenceSn;
+        return auction.getTitle() == null || auction.getTitle().isBlank()
+                ? "경매 #" + referenceSn
+                : auction.getTitle().trim();
     }
 
     private String requireTradeReference(

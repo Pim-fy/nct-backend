@@ -64,14 +64,26 @@ class AbuseReportReferenceValidationServiceTest {
     }
 
     @Test
-    void validatesAuctionSellerFromAuctionDetail() {
+    void returnsVerifiedAuctionTitleAfterValidatingSeller() {
         AuctionDetailResponse auction = new AuctionDetailResponse();
         auction.setSellerId(20L);
+        auction.setTitle("  검증된 경매 제목  ");
         when(auctionService.findAuctionDetail(301L, 10L, false)).thenReturn(auction);
 
         assertThat(service.requireValid(10L, 20L, "REFC0003", 301L))
-                .isEqualTo("경매 #301");
+                .isEqualTo("검증된 경매 제목");
         assertInvalid(() -> service.requireValid(10L, 21L, "REFC0003", 301L));
+    }
+
+    @Test
+    void fallsBackToAuctionNumberWhenVerifiedTitleIsBlank() {
+        AuctionDetailResponse auction = new AuctionDetailResponse();
+        auction.setSellerId(20L);
+        auction.setTitle("   ");
+        when(auctionService.findAuctionDetail(302L, 10L, false)).thenReturn(auction);
+
+        assertThat(service.requireValid(10L, 20L, "REFC0003", 302L))
+                .isEqualTo("경매 #302");
     }
 
     @Test

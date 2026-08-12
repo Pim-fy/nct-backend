@@ -6,21 +6,21 @@ import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.ops.reference.port.BidUnitChangeHistoryCommand;
 import nct.ops.reference.port.BidUnitChangeHistoryPort;
 import nct.ops.security.service.SensitiveDataMasker;
 
 /**
  * 담당자 7 · F-AUC-013/F-OPS-003/F-OPS-015: 입찰 단위 변경 전후와 사유를 감사로그에 남깁니다.
- * 공통 참조유형에 CMM_CODE가 없으므로 대상 번호와 전후값은 감사 사유에 기록합니다.
+ * 공통코드 번호를 주 참조로 사용해 입찰 단위 상세 이력에서 조회할 수 있게 합니다.
  */
 @Component
 @Primary
 @RequiredArgsConstructor
 public class AuditBidUnitChangeHistoryAdapter implements BidUnitChangeHistoryPort {
 
-    private static final int MAX_REASON_LENGTH = 500;
-    private static final int MAX_SUMMARY_LENGTH = 120;
+    private static final int MAX_CONTENT_LENGTH = 4000;
 
     private final AuditLogService auditLogService;
     private final SensitiveDataMasker sensitiveDataMasker;
@@ -33,9 +33,14 @@ public class AuditBidUnitChangeHistoryAdapter implements BidUnitChangeHistoryPor
         auditLogService.record(
                 command.actorUserId(),
                 type(command.action()),
-                null,
+                RefType.COMMON_CODE,
                 command.bidUnitSn(),
-                reason(command),
+                safe(command.reason()),
+                safe(command.beforeSummary()),
+                safe(command.afterSummary()),
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -47,20 +52,11 @@ public class AuditBidUnitChangeHistoryAdapter implements BidUnitChangeHistoryPor
         };
     }
 
-    private String reason(BidUnitChangeHistoryCommand command) {
-        String prefix = "입찰 단위 변경 bidUnitSn=" + command.bidUnitSn() + "; reason=";
-        String summaries = "; before=" + limit(safe(command.beforeSummary()), MAX_SUMMARY_LENGTH)
-                + "; after=" + limit(safe(command.afterSummary()), MAX_SUMMARY_LENGTH);
-        int reasonLength = Math.max(0, MAX_REASON_LENGTH - prefix.length() - summaries.length());
-        return prefix + limit(safe(command.reason()), reasonLength) + summaries;
-    }
-
     private String safe(String value) {
-        return sensitiveDataMasker.maskText(value == null ? "-" : value)
+        String masked = sensitiveDataMasker.maskText(value == null ? "-" : value)
                 .replaceAll("[\\r\\n\\t]+", " ");
-    }
-
-    private String limit(String value, int maxLength) {
-        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+        return masked.length() <= MAX_CONTENT_LENGTH
+                ? masked
+                : masked.substring(0, MAX_CONTENT_LENGTH);
     }
 }

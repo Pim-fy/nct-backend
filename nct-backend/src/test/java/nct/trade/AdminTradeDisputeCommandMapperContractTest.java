@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
-/** 담당자 7 · F-OPS-006: 분쟁 복구 시 첫 완료 확인자 보존 SQL 계약을 검증한다. */
+/** 담당자 7 · F-OPS-005/006: 거래 신고 복구 시 첫 완료 확인자 보존 SQL 계약을 검증합니다. */
 class AdminTradeDisputeCommandMapperContractTest {
 
     @Test

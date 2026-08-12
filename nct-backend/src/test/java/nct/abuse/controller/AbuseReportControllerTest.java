@@ -46,7 +46,7 @@ class AbuseReportControllerTest {
         AbuseReportService service = mock(AbuseReportService.class);
         AbuseReportController controller = new AbuseReportController(service);
         List<ManualAbuseReportStatusResponse> reports = List.of(
-                new ManualAbuseReportStatusResponse(501L, 55L, "ABRC0005"));
+                new ManualAbuseReportStatusResponse(501L, 55L, "ABSC0001"));
         when(service.getMyManualReportReferences(10L, "REFC0012"))
                 .thenReturn(reports);
 
@@ -64,7 +64,7 @@ class AbuseReportControllerTest {
         AbuseReportService service = mock(AbuseReportService.class);
         AbuseReportController controller = new AbuseReportController(service);
         List<ManualAbuseReportStatusResponse> reports = List.of(
-                new ManualAbuseReportStatusResponse(501L, 55L, "ABRC0005"));
+                new ManualAbuseReportStatusResponse(501L, 55L, "ABSC0001"));
         when(service.getActiveManualReportReferences(
                 "REFC0012",
                 List.of(55L, 56L)))

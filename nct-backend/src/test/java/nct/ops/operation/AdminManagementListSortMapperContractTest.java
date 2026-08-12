@@ -90,9 +90,9 @@ class AdminManagementListSortMapperContractTest {
         String select = loadNormalizedSelect("mapper/abuse/AbuseReportMapper.xml", "findAdminReports");
 
         assertThat(select)
-                .contains("CASE ABR_STATUS_CD WHEN 'ABRC0005' THEN 0 "
-                        + "WHEN 'ABRC0006' THEN 1 WHEN 'ABRC0007' THEN 2 "
-                        + "WHEN 'ABRC0008' THEN 3 ELSE 4 END ASC, "
+                .contains("CASE ABR_STATUS_CD WHEN 'ABSC0001' THEN 0 "
+                        + "WHEN 'ABSC0002' THEN 1 WHEN 'ABSC0003' THEN 2 "
+                        + "WHEN 'ABSC0004' THEN 3 ELSE 4 END ASC, "
                         + "ABR_REG_DT DESC, ABR_SN DESC");
         assertOrderBeforeLimit(select);
     }

@@ -368,6 +368,29 @@ class ServiceRequestServiceTest {
         assertThat(result.getTotalPages()).isEqualTo(2);
     }
 
+    /** 담당자 7 · F-OPS-021: 운영 숨김은 취소 가능 여부를 바꾸지 않습니다. */
+    @Test
+    void adminCanCancelHiddenOpenServiceRequest() {
+        ServiceRequest hiddenOpenRequest = ServiceRequest.builder()
+                .svcReqSn(1256L)
+                .usrSn(7L)
+                .catSn(3L)
+                .svcReqStatusCd("SVCC0002")
+                .svcReqUseYn('N')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityByIdForUpdate(1256L))
+                .thenReturn(Optional.of(hiddenOpenRequest));
+        when(serviceRequestMapper.adminCancelOpenServiceRequest(1256L, "99"))
+                .thenReturn(1);
+
+        var result = service.cancelOpen(1256L, 99L);
+
+        assertThat(result.changed()).isTrue();
+        assertThat(result.previousStatusCode()).isEqualTo("SVCC0002");
+        assertThat(result.statusCode()).isEqualTo("SVCC0004");
+        verify(serviceRequestMapper).adminCancelOpenServiceRequest(1256L, "99");
+    }
+
     @Test
     void rejectsMissingAdminServiceRequestDetail() {
         when(serviceRequestMapper.findAdminServiceRequestDetail(1256L)).thenReturn(Optional.empty());

@@ -21,6 +21,12 @@ public interface SanctionMapper {
 
     SanctionRecord findByReleaseRequestId(@Param("requestId") String requestId);
 
+    SanctionRecord findBySourceReportForUpdate(@Param("reportSn") Long reportSn);
+
+    SanctionRecord findBySourceReport(@Param("reportSn") Long reportSn);
+
+    SanctionRecord findBySanctionIdForUpdate(@Param("sanctionSn") Long sanctionSn);
+
     /** 계정 정지(SNCC0003) 중 현재 유효한 행을 모두 잠가 조회한다. */
     List<SanctionRecord> findActiveAccountSuspensionsForUpdate(@Param("userSn") Long userSn);
 
@@ -31,10 +37,28 @@ public interface SanctionMapper {
             @Param("requestId") String requestId,
             @Param("actorId") String actorId);
 
+    int insertReportAccountSuspension(SanctionRecord sanction);
+
     int releaseAccountSuspension(
             @Param("sanctionSn") Long sanctionSn,
             @Param("releaseRequestId") String releaseRequestId,
             @Param("actorId") String actorId);
+
+    int releaseTemporaryReportSanction(
+            @Param("sanctionSn") Long sanctionSn,
+            @Param("releaseRequestId") String releaseRequestId,
+            @Param("actorId") String actorId,
+            @Param("automatic") boolean automatic);
+
+    List<Long> findExpiredUnprocessedReportSanctionIds(@Param("limit") int limit);
+
+    int countOtherActiveAccountSuspensions(
+            @Param("userSn") Long userSn,
+            @Param("excludeSanctionSn") Long excludeSanctionSn);
+
+    boolean existsActiveReportSanction(@Param("userSn") Long userSn);
+
+    boolean existsActiveAccountSuspension(@Param("userSn") Long userSn);
 
     List<SanctionRecord> findHistory(
             @Param("userSn") Long userSn,

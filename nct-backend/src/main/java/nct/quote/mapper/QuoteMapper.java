@@ -15,6 +15,7 @@ import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteUpdateRequest;
+import nct.quote.dto.QuoteSanctionTarget;
 import nct.quote.dto.ReceivedQuoteResponse;
 
 @Mapper
@@ -36,6 +37,29 @@ public interface QuoteMapper {
     int withdrawQuote(
             @Param("qutSn") Long qutSn,
             @Param("updtId") String updtId);
+
+    int adminInvalidateActiveQuote(
+            @Param("qutSn") Long qutSn,
+            @Param("updtId") String updtId);
+
+    List<Quote> findActiveQuotesByServiceRequestIdForUpdate(
+            @Param("svcReqSn") Long svcReqSn);
+
+    int adminInvalidateActiveQuotes(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("updtId") String updtId);
+
+    List<QuoteSanctionTarget> findSanctionTargetsByMemberForUpdate(
+            @Param("userSn") Long userSn);
+
+    int withdrawQuoteForSanction(
+            @Param("quoteId") Long quoteId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("actorId") String actorId);
+
+    int withdrawSelectedQuoteAfterTradeCancellation(
+            @Param("quoteId") Long quoteId,
+            @Param("actorId") String actorId);
 
     List<QuoteResponse> findMyQuotes(
             @Param("usrSn") Long usrSn,

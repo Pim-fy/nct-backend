@@ -36,6 +36,9 @@ public interface ChatMapper {
     /** 물건·서비스 거래가 취소·분쟁 상태가 되면 채팅방을 즉시 읽기 전용으로 전환한다. */
     int closeTradeChatRoom(@Param("tradeId") long tradeId);
 
+    /** 담당자 7 · F-OPS-005/006: 신고 처리로 닫힌 거래 채팅을 거래 복구와 함께 다시 엽니다. */
+    int reopenTradeChatRoom(@Param("tradeId") long tradeId);
+
     List<ChatRoomResponse> findMyChatRooms(
             @Param("userId") long userId,
             @Param("tradeId") Long tradeId);

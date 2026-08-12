@@ -15,6 +15,11 @@
     <result column="PROC_USR_SN" property="processorUserSn"/>
     <result column="PRV_STS_REG_DT" property="processedAt"/>
     <result column="PRV_STS_RSN_CN" property="processedReason"/>
+    <result column="PRV_CAT_PRM_SN" property="permissionSn"/>
+    <result column="PRV_CAT_PRM_STATUS_CD" property="permissionStatusCode"/>
+    <result column="PERMISSION_STATUS_NM" property="permissionStatusName"/>
+    <result column="PRV_CAT_PRM_USE_YN" property="permissionUseYn"/>
+    <result column="PRV_CAT_PRM_UPDT_DT" property="permissionUpdatedAt"/>
   </resultMap>
   <sql id="columns">
     a.PRV_APLY_SN,
@@ -54,7 +59,12 @@
         ELSE NULL
       END AS PROC_USR_SN,
       decision_status.PRV_STS_REG_DT,
-      decision_status.PRV_STS_RSN_CN
+      decision_status.PRV_STS_RSN_CN,
+      permission.PRV_CAT_PRM_SN,
+      permission.PRV_CAT_PRM_STATUS_CD,
+      permission_status.CMM_NM AS PERMISSION_STATUS_NM,
+      permission.PRV_CAT_PRM_USE_YN,
+      permission.PRV_CAT_PRM_UPDT_DT
     FROM PROVIDER_APPLY a
       JOIN USERS u ON u.USR_SN = a.USR_SN
       JOIN CATEGORY c ON c.CAT_SN = a.CAT_SN
@@ -67,6 +77,15 @@
          ORDER BY history.PRV_STS_REG_DT DESC, history.PRV_STS_SN DESC
          LIMIT 1
       )
+      LEFT JOIN PROVIDER_CATEGORY_PERMISSION permission ON permission.PRV_CAT_PRM_SN = (
+        SELECT permission_history.PRV_CAT_PRM_SN
+          FROM PROVIDER_CATEGORY_PERMISSION permission_history
+         WHERE permission_history.PRV_APLY_SN = a.PRV_APLY_SN
+         ORDER BY permission_history.PRV_CAT_PRM_SN DESC
+         LIMIT 1
+      )
+      LEFT JOIN CMM_CODE permission_status
+        ON permission_status.CMM_CD = permission.PRV_CAT_PRM_STATUS_CD
     WHERE a.PRV_APLY_ACTV_YN = 'Y'
       AND a.PRV_APLY_STATUS_CD IN ('PRVC0002', 'PRVC0003', 'PRVC0004')
     <if test="statusCode != null">
@@ -84,11 +103,25 @@
   </select>
 
   <select id="findForUpdate" resultMap="application">
-    SELECT <include refid="columns"/>
+    SELECT <include refid="columns"/>,
+      permission.PRV_CAT_PRM_SN,
+      permission.PRV_CAT_PRM_STATUS_CD,
+      permission_status.CMM_NM AS PERMISSION_STATUS_NM,
+      permission.PRV_CAT_PRM_USE_YN,
+      permission.PRV_CAT_PRM_UPDT_DT
     FROM PROVIDER_APPLY a
       JOIN USERS u ON u.USR_SN = a.USR_SN
       JOIN CATEGORY c ON c.CAT_SN = a.CAT_SN
       JOIN CMM_CODE status_code ON status_code.CMM_CD = a.PRV_APLY_STATUS_CD
+      LEFT JOIN PROVIDER_CATEGORY_PERMISSION permission ON permission.PRV_CAT_PRM_SN = (
+        SELECT permission_history.PRV_CAT_PRM_SN
+          FROM PROVIDER_CATEGORY_PERMISSION permission_history
+         WHERE permission_history.PRV_APLY_SN = a.PRV_APLY_SN
+         ORDER BY permission_history.PRV_CAT_PRM_SN DESC
+         LIMIT 1
+      )
+      LEFT JOIN CMM_CODE permission_status
+        ON permission_status.CMM_CD = permission.PRV_CAT_PRM_STATUS_CD
     WHERE a.PRV_APLY_SN = #{applicationSn}
       AND a.PRV_APLY_ACTV_YN = 'Y'
     FOR UPDATE
@@ -204,6 +237,17 @@
       #{actorId}
     )
   </insert>
+
+  <!-- 담당자 7 · F-PROV-007: 신청 이력은 보존하고 해당 신청에서 발급된 권한 상태만 전환한다. -->
+  <update id="updatePermissionStatus">
+    UPDATE PROVIDER_CATEGORY_PERMISSION
+       SET PRV_CAT_PRM_STATUS_CD = #{targetStatusCode},
+           PRV_CAT_PRM_USE_YN = #{targetUseYn},
+           PRV_CAT_PRM_UPDT_ID = #{actorId}
+     WHERE PRV_CAT_PRM_SN = #{permissionSn}
+       AND PRV_CAT_PRM_STATUS_CD = #{expectedStatusCode}
+       AND PRV_CAT_PRM_USE_YN = #{expectedUseYn}
+  </update>
 
   <select id="hasActivePermission" resultType="boolean">
     SELECT EXISTS (

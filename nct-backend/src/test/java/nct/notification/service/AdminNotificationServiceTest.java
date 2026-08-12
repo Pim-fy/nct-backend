@@ -59,7 +59,7 @@ class AdminNotificationServiceTest {
         assertThat(linkPath(response.getAuctionService(), "마감임박 경매"))
                 .isEqualTo("/admin/auctions");
         assertThat(linkPath(response.getAuctionService(), "신규 서비스 요청"))
-                .isEqualTo("/admin/services");
+                .isEqualTo("/admin/services/requests");
         assertThat(linkPath(response.getExchangeSystem(), "환전 대기"))
                 .isEqualTo("/admin/exchanges");
         assertThat(linkPath(response.getExchangeSystem(), "최근 감사로그"))

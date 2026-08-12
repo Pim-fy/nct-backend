@@ -92,7 +92,10 @@ class AdminSettlementServiceTest {
         ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogPort).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().requestId()).isEqualTo("req-hold");
-        assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(91L);
+        assertThat(auditCaptor.getValue().referenceTypeCode()).isEqualTo("SETTLEMENT");
+        assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(501L);
+        assertThat(auditCaptor.getValue().relatedReferenceTypeCode()).isEqualTo("TRADE");
+        assertThat(auditCaptor.getValue().relatedReferenceSn()).isEqualTo(91L);
         verify(notificationService).notifySettlement(
                 10L,
                 "정산 보류",

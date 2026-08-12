@@ -128,7 +128,7 @@ class AuctionListFilterTest extends ApprovedDatabaseWriteIntegrationTest {
                 null,
                 BigDecimal.valueOf(14000),
                 AuctionStatusCode.ACTIVE,
-                "TRDC0020");
+                "TRDC0015");
 
         AuctionListRequest request = keywordRequest("t_reference");
         request.setTradeMethod("delivery");

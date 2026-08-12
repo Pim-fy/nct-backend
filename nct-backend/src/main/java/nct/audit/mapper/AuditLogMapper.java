@@ -34,6 +34,11 @@ public interface AuditLogMapper {
     AuditLog selectLatestByReference(@Param("refTypeCd") String refTypeCd,
                                      @Param("refSn") Long refSn);
 
+    /** 담당자 7 · F-OPS-016: 주 대상 또는 연관 대상의 전체 처리 이력을 조회합니다. */
+    List<AuditLog> selectHistory(@Param("refTypeCd") String refTypeCd,
+                                 @Param("refSn") Long refSn,
+                                 @Param("limit") int limit);
+
     /**
      * 민감정보 제한 조회 대상 채팅 메시지 원문 (F-OPS-014)
      * - CHAT_MESSAGE는 담당자4 소유 테이블 — 여기서는 읽기 전용 SELECT만 하며 절대 변경하지 않는다
@@ -43,14 +48,14 @@ public interface AuditLogMapper {
     /** 전달된 메시지가 해당 거래 분쟁의 거래 채팅방에 실제로 속하는지 확인합니다. */
     int countDisputeChatMessageLink(
             @Param("chMsgSn") long chMsgSn,
-            @Param("trdDspSn") long trdDspSn);
+            @Param("reportSn") long reportSn);
 
     /** 원문 조회 전에 분쟁·거래·채팅방 연결과 전체 메시지 수만 확인합니다. */
-    DisputeChatTarget selectDisputeChatTarget(@Param("trdDspSn") long trdDspSn);
+    DisputeChatTarget selectDisputeChatTarget(@Param("reportSn") long reportSn);
 
     /** 검증된 거래 분쟁의 채팅 메시지를 최신 페이지부터 제한 조회합니다. */
     List<ChatMessageView> selectDisputeChatMessages(
-            @Param("trdDspSn") long trdDspSn,
+            @Param("reportSn") long reportSn,
             @Param("limit") int limit,
             @Param("offset") long offset);
 }

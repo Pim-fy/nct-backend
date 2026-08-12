@@ -62,7 +62,7 @@ public class AuctionService {
     private static final String SYSTEM_ACTOR = "SYSTEM";
     private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
-    private static final String BOTH_TRADE_METHOD_CODE = "TRDC0020";
+    private static final String BOTH_TRADE_METHOD_CODE = "TRDC0015";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -93,6 +93,7 @@ public class AuctionService {
                 .totalPages(totalPages)
                 .build();
     }
+
 
     @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {

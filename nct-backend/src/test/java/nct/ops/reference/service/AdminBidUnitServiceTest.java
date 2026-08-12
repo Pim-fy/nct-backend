@@ -123,7 +123,7 @@ class AdminBidUnitServiceTest {
     }
 
     @Test
-    void reordersExactListAndNormalizesVisibleSequence() {
+    void reordersStoredSequenceButReturnsAutomaticAmountOrder() {
         CommonCode first = code(20L, "AUCC0008", "1000", 20, "Y");
         CommonCode second = code(21L, "AUCC0009", "5000", 40, "Y");
         when(mapper.findGroupByCodeForUpdate("AUCG02")).thenReturn(Optional.of(group()));
@@ -132,9 +132,9 @@ class AdminBidUnitServiceTest {
 
         var result = service.reorder(new AdminBidUnitReorderRequest(List.of(21L, 20L)), 7L);
 
-        assertThat(result).extracting("bidUnitSn").containsExactly(21L, 20L);
+        assertThat(result).extracting("bidUnitSn").containsExactly(20L, 21L);
         assertThat(result).extracting("sortNo")
-                .containsExactly(BigDecimal.TEN, BigDecimal.valueOf(20));
+                .containsExactly(BigDecimal.valueOf(20), BigDecimal.TEN);
         verify(mapper).updateSortNo(21L, "AUCG02", BigDecimal.TEN, "USR:7");
     }
 

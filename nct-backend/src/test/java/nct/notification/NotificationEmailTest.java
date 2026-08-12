@@ -81,7 +81,7 @@ class NotificationEmailTest {
                 VALUES (?, 'Y', 'Y', 'Y', 'N', 'Y', 'Y')
                 """, usrSn);
 
-        notificationService.notifyDisputeReceived(usrSn, 1L);
+        notificationService.notifyTradeReportReceived(usrSn, 1L);
 
         verify(mailSender, never()).send(anyString(), anyString(), anyString());
         assertThat(emailStatusOfLatest()).isEqualTo("NTFC0006"); // 미대상

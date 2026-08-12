@@ -28,6 +28,13 @@ public interface ProviderApplicationMapper {
                                 @Param("reason") String reason, @Param("actorId") String actorId);
     int insertActivePermission(@Param("userSn") Long userSn, @Param("categorySn") Long categorySn,
                                @Param("applicationSn") Long applicationSn, @Param("actorId") String actorId);
+    int updatePermissionStatus(
+            @Param("permissionSn") Long permissionSn,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("expectedUseYn") String expectedUseYn,
+            @Param("targetStatusCode") String targetStatusCode,
+            @Param("targetUseYn") String targetUseYn,
+            @Param("actorId") String actorId);
     boolean hasActivePermission(@Param("userSn") Long userSn, @Param("categorySn") Long categorySn);
     // @ai_generated: F-PROV-015 SERVICE 모드 진입 전 활성 제공자 권한 보유 여부를 읽는다.
     boolean hasAnyActivePermission(@Param("userSn") Long userSn);

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 
 import org.junit.jupiter.api.Test;
 
+import nct.ops.servicequery.service.AdminServiceRequestOperationService;
 import nct.ops.servicequery.service.AdminServiceRequestQueryService;
 
 /** 담당자 7: 관리자 서비스 요청 상세 번호가 서비스 계층으로 전달되는지 검증한다. */
@@ -14,7 +15,9 @@ class AdminServiceRequestQueryControllerTest {
     @Test
     void forwardsServiceRequestIdToService() {
         AdminServiceRequestQueryService service = mock(AdminServiceRequestQueryService.class);
-        AdminServiceRequestQueryController controller = new AdminServiceRequestQueryController(service);
+        AdminServiceRequestQueryController controller = new AdminServiceRequestQueryController(
+                service,
+                mock(AdminServiceRequestOperationService.class));
 
         var response = controller.getDetail(1256L);
 

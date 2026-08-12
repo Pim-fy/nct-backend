@@ -110,24 +110,34 @@ public class ChatService {
 
     /** 서비스 거래의 취소·분쟁 확정 트랜잭션에 합류해 채팅방을 읽기 전용으로 닫는다. */
     @Transactional
-    public void closeServiceTradeChatRoom(long tradeId) {
+    public boolean closeServiceTradeChatRoom(long tradeId) {
         if (tradeId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래 번호가 올바르지 않습니다.");
         }
 
-        chatMapper.closeServiceTradeChatRoom(tradeId);
+        return chatMapper.closeServiceTradeChatRoom(tradeId) > 0;
     }
 
     /** 거래 취소·분쟁은 완료 48시간 채팅 유예와 달리 즉시 채팅을 종료한다. */
     @Transactional
-    public void closeTradeChatRoom(long tradeId) {
+    public boolean closeTradeChatRoom(long tradeId) {
         if (tradeId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래 번호가 올바르지 않습니다.");
         }
 
-        chatMapper.closeTradeChatRoom(tradeId);
+        return chatMapper.closeTradeChatRoom(tradeId) > 0;
+    }
+
+    /** 담당자 7 · F-OPS-005/006: 거래 신고 완료ㆍ반려로 복구된 채팅을 조건부로 다시 엽니다. */
+    @Transactional
+    public boolean reopenTradeChatRoom(long tradeId) {
+        if (tradeId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 번호가 올바르지 않습니다.");
+        }
+        return chatMapper.reopenTradeChatRoom(tradeId) > 0;
     }
 
     /** 로그인 사용자가 참여하는 대면 거래 채팅방만 조회한다. */

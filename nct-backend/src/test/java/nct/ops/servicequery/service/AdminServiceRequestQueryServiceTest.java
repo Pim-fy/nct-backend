@@ -319,7 +319,7 @@ class AdminServiceRequestQueryServiceTest {
         trade.setTradeStatusName("보류");
         trade.setActiveDisputeCount(1);
         trade.setActiveDisputeId(700L);
-        trade.setActiveDisputeStatusCode("TRDC0017");
+        trade.setActiveDisputeStatusCode("ABSC0002");
         trade.setActiveDisputeStatusName("처리중");
         when(tradeSummaryReader.findSummaries(List.of(5L))).thenReturn(Map.of(5L, trade));
 

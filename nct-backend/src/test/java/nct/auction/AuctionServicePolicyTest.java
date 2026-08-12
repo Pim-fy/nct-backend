@@ -241,7 +241,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidRejectsMixedAuctionDeliverySelectionWhenBuyerAddressIsIncomplete() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         AuctionBidRequest request = bidRequest(12000);
         request.setTradeMethod("TRDC0009");
         doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))
@@ -259,7 +259,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidRejectsMixedAuctionWithoutTradeMethodSelection() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
 
         assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, bidRequest(12000)))
                 .isInstanceOf(CustomException.class)
@@ -270,7 +270,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidStoresMixedAuctionOfflineSelectionWithoutCheckingDeliveryAddress() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
         when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
@@ -293,7 +293,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void currentHighestBidderChangesMixedAuctionTradeMethodToDelivery() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -378,7 +378,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeRejectsUserWhoIsNotCurrentHighestBidder() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(41L);
 
@@ -395,7 +395,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeRejectsDeliveryWhenBuyerAddressIsIncomplete() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -417,7 +417,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeReturnsCurrentDetailWhenMethodIsUnchanged() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -437,7 +437,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeFailsWhenHighestBidChangedDuringUpdate() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");

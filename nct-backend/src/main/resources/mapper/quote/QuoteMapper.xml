@@ -107,6 +107,85 @@
          WHERE QUT_SN = #{qutSn}
     </update>
 
+    <!-- 담당자 7 · F-OPS-021: 거래 생성 전 활성 견적만 관리자 운영 명령으로 무효화한다. -->
+    <update id="adminInvalidateActiveQuote">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{updtId}
+         WHERE QUT_SN = #{qutSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <select id="findActiveQuotesByServiceRequestIdForUpdate" resultMap="QuoteEntityMap">
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_TTL,
+               QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+         ORDER BY QUT_SN
+        FOR UPDATE
+    </select>
+
+    <update id="adminInvalidateActiveQuotes">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <select id="findSanctionTargetsByMemberForUpdate"
+            resultType="nct.quote.dto.QuoteSanctionTarget">
+        SELECT q.QUT_SN AS quoteId,
+               q.SVC_REQ_SN AS serviceRequestId,
+               q.USR_SN AS providerUserSn,
+               sr.USR_SN AS requestOwnerUserSn,
+               q.QUT_STATUS_CD AS statusCode,
+               (
+                   SELECT t.TRD_STATUS_CD
+                     FROM TRADE t
+                    WHERE t.SVC_REQ_SN = q.SVC_REQ_SN
+                    ORDER BY t.TRD_SN DESC
+                    LIMIT 1
+               ) AS linkedTradeStatusCode
+          FROM QUOTE q
+          JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
+         WHERE (q.USR_SN = #{userSn} OR sr.USR_SN = #{userSn})
+           AND q.QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002', 'QUTC0004')
+         ORDER BY q.QUT_SN
+         FOR UPDATE
+    </select>
+
+    <update id="withdrawQuoteForSanction">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{actorId},
+               QUT_UPDT_DT = NOW()
+         WHERE QUT_SN = #{quoteId}
+           AND QUT_STATUS_CD = #{expectedStatusCode}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <update id="withdrawSelectedQuoteAfterTradeCancellation">
+        UPDATE QUOTE q
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{actorId},
+               QUT_UPDT_DT = NOW()
+         WHERE q.QUT_SN = #{quoteId}
+           AND q.QUT_STATUS_CD = 'QUTC0004'
+           AND EXISTS (
+               SELECT 1
+                 FROM TRADE t
+                WHERE t.SVC_REQ_SN = q.SVC_REQ_SN
+           )
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE t
+                WHERE t.SVC_REQ_SN = q.SVC_REQ_SN
+                  AND t.TRD_STATUS_CD != 'TRDC0008'
+           )
+    </update>
+
     <!-- ── 내 견적 목록 (제공자 본인) ─────────────────── -->
     <select id="findMyQuotes" resultMap="QuoteResponseMap">
         /* QuoteMapper.findMyQuotes */

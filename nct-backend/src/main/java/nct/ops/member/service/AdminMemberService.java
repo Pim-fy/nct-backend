@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ import nct.ops.member.dto.AdminMemberStatusChangeResponse;
 import nct.ops.member.port.AccountSanctionCommand;
 import nct.ops.member.port.AccountSanctionHistory;
 import nct.ops.member.port.AccountSanctionPort;
+import nct.ops.member.port.AccountRestrictionRecoveryPort;
 import nct.trade.port.MemberTradeRestrictionCommand;
 import nct.trade.port.MemberTradeRestrictionPort;
 import nct.trade.port.MemberTradeRestrictionResult;
@@ -58,6 +60,8 @@ public class AdminMemberService {
     private final MemberStatusCommandPort memberStatusCommandPort;
     private final AbuseReportMapper abuseReportMapper;
     private final ObjectProvider<AccountSanctionPort> accountSanctionPortProvider;
+    @Autowired(required = false)
+    private AccountRestrictionRecoveryPort recoveryPort;
     private final MemberTradeRestrictionPort memberTradeRestrictionPort;
     private final AuditLogPort auditLogPort;
     private final NotificationService notificationService;
@@ -136,38 +140,55 @@ public class AdminMemberService {
                     ErrorCode.SERVICE_UNAVAILABLE,
                     "담당자 5의 제재 생성·해제 계약이 아직 연결되지 않았습니다.");
         }
-
-        MemberStatusChangeResult statusResult = memberStatusCommandPort.changeStatus(
-                new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
-        String previousStatus = statusResult.previousStatusCode();
-        if (!statusResult.changed()) {
-            return new AdminMemberStatusChangeResponse(
-                    userSn, previousStatus, previousStatus, false, 0, 0);
-        }
-
         String normalizedReason = reason.trim();
         AccountSanctionCommand sanctionCommand = new AccountSanctionCommand(
                 userSn, adminUserSn, normalizedReason, requestId.trim());
 
         MemberTradeRestrictionResult tradeResult = new MemberTradeRestrictionResult(List.of(), 0);
+        MemberStatusChangeResult statusResult;
         if (SUSPENDED.equals(targetStatusCode)) {
+            statusResult = memberStatusCommandPort.changeStatus(
+                    new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
+            if (!statusResult.changed()) {
+                return new AdminMemberStatusChangeResponse(
+                        userSn,
+                        statusResult.previousStatusCode(),
+                        statusResult.currentStatusCode(),
+                        false,
+                        0,
+                        0);
+            }
             sanctionPort.restrict(sanctionCommand);
             tradeResult = memberTradeRestrictionPort.restrictActiveTrades(
                     new MemberTradeRestrictionCommand(userSn, adminUserSn, normalizedReason));
         } else {
             sanctionPort.release(sanctionCommand);
-            // 보류 거래의 재개 정책은 정본에 없어 자동 복구하지 않는다.
+            if (sanctionPort.hasActiveSuspension(userSn)) {
+                recordAudit(userSn, adminUserSn, normalizedReason, requestId.trim(),
+                        SUSPENDED, SUSPENDED, tradeResult);
+                return new AdminMemberStatusChangeResponse(
+                        userSn, SUSPENDED, SUSPENDED, false, 0, 0);
+            }
+            if (recoveryPort != null) {
+                recoveryPort.restorePending(userSn, adminUserSn, normalizedReason);
+            }
+            statusResult = memberStatusCommandPort.changeStatus(
+                    new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
         }
 
+        String previousStatus = statusResult.previousStatusCode();
+
         recordAudit(userSn, adminUserSn, normalizedReason, requestId.trim(),
-                previousStatus, targetStatusCode, tradeResult);
-        notifyMembers(userSn, targetStatusCode, tradeResult);
+                previousStatus, statusResult.currentStatusCode(), tradeResult);
+        if (statusResult.changed()) {
+            notifyMembers(userSn, statusResult.currentStatusCode(), tradeResult);
+        }
 
         return new AdminMemberStatusChangeResponse(
                 userSn,
                 previousStatus,
-                targetStatusCode,
-                true,
+                statusResult.currentStatusCode(),
+                statusResult.changed(),
                 tradeResult.restrictedTradeCount(),
                 tradeResult.heldSettlementCount());
     }

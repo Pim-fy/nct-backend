@@ -8,10 +8,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum AdminDisputeDecision {
 
-    COMPLETE("TRDC0021", "TRDC0018", "처리 완료"),
-    REFUND("TRDC0022", "TRDC0018", "전액 환불"),
-    HOLD("TRDC0023", "TRDC0017", "정산 보류"),
-    REJECT(null, "TRDC0019", "반려");
+    COMPLETE("TRDC0011", "ABSC0003", "처리 완료"),
+    REFUND("TRDC0012", "ABSC0003", "전액 환불"),
+    HOLD("TRDC0013", "ABSC0002", "정산 보류"),
+    REJECT(null, "ABSC0004", "반려");
 
     private final String resultCode;
     private final String statusCode;

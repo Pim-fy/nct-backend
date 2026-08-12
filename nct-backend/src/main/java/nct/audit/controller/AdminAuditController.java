@@ -3,6 +3,7 @@ package nct.audit.controller;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,6 +31,9 @@ import nct.audit.dto.SensitiveViewResponse;
 import nct.audit.mapper.ChatMessageView;
 import nct.audit.service.AuditLogService;
 import nct.audit.service.DisputeChatViewResult;
+import nct.common.domain.RefType;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.member.dto.AdminMemberIdentityResponse;
@@ -53,6 +57,7 @@ public class AdminAuditController {
     /** 화면 한 번에 내리는 최대 행 수 — 3년치 로그를 통째로 내리는 사고 방지 */
     private static final int MAX_LIMIT = 500;
     private static final int DEFAULT_LIMIT = 100;
+    private static final int MAX_HISTORY_LIMIT = 200;
 
     private final AuditLogService auditLogService;
     private final AdminMemberIdentityReader memberIdentityReader;
@@ -83,7 +88,34 @@ public class AdminAuditController {
         return ResponseEntity.ok(ApiResponse.success(body));
     }
 
-    /** 민감정보 원문 제한 조회 (F-OPS-014) — 사유·분쟁 건 필수, 조회 즉시 감사로그가 남는다 */
+    /** 담당자 7 · F-OPS-016: 관리자 상세 화면에서 대상별 처리 이력을 공통 조회합니다. */
+    @GetMapping("/history")
+    public ResponseEntity<ApiResponse<List<AuditLogResponse>>> getHistory(
+            @RequestParam(name = "refType") String refType,
+            @RequestParam(name = "refSn") Long refSn,
+            @RequestParam(name = "limit", required = false) Integer limit) {
+        RefType parsedRefType = parseRefType(refType);
+        int rows = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(limit, 1), MAX_HISTORY_LIMIT);
+        var logs = auditLogService.findHistory(parsedRefType, refSn, rows);
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                logs.stream().map(log -> log.getUsrSn()).toList());
+        List<AuditLogResponse> body = logs.stream()
+                .map(log -> AuditLogResponse.from(log, identities.get(log.getUsrSn())))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    private RefType parseRefType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        for (RefType type : RefType.values()) {
+            if (type.name().equals(normalized) || type.getCode().equals(normalized)) {
+                return type;
+            }
+        }
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    /** 민감정보 원문 제한 조회 (F-OPS-014) — 사유ㆍ거래 신고 필수, 조회 즉시 감사로그가 남는다. */
     @PostMapping("/sensitive-view")
     public ResponseEntity<ApiResponse<SensitiveViewResponse>> sensitiveView(
             @Valid @RequestBody SensitiveViewRequest request,
@@ -92,22 +124,22 @@ public class AdminAuditController {
 
         long adminUsrSn = userDetails.getMember().getId();
         ChatMessageView message = auditLogService.viewChatMessage(
-                adminUsrSn, request.getChMsgSn(), request.getTrdDspSn(),
+                adminUsrSn, request.getChMsgSn(), request.getReportSn(),
                 request.getReason(), httpRequest.getRemoteAddr());
         return ResponseEntity.ok(ApiResponse.success(SensitiveViewResponse.from(message)));
     }
 
-    /** 담당자 7 · F-OPS-005/014: 분쟁 거래의 채팅을 사유·감사기록 후 읽기 전용으로 조회합니다. */
-    @PostMapping("/disputes/{disputeSn}/chat-view")
+    /** 담당자 7 · F-OPS-005/014: 거래 신고 채팅을 사유ㆍ감사기록 후 읽기 전용으로 조회합니다. */
+    @PostMapping("/reports/{reportSn}/chat-view")
     public ResponseEntity<ApiResponse<DisputeChatViewResponse>> viewDisputeChat(
-            @PathVariable(name = "disputeSn") long disputeSn,
+            @PathVariable(name = "reportSn") long reportSn,
             @Valid @RequestBody DisputeChatViewRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails,
             HttpServletRequest httpRequest) {
         long adminUsrSn = userDetails.getMember().getId();
         DisputeChatViewResult result = auditLogService.viewDisputeChatMessages(
                 adminUsrSn,
-                disputeSn,
+                reportSn,
                 request.getReason(),
                 httpRequest.getRemoteAddr(),
                 request.getPage(),
@@ -126,7 +158,7 @@ public class AdminAuditController {
                 .toList();
 
         DisputeChatViewResponse response = DisputeChatViewResponse.builder()
-                .disputeSn(result.disputeSn())
+                .reportSn(result.reportSn())
                 .tradeSn(result.tradeSn())
                 .chatRoomExists(result.chatRoomExists())
                 .messages(messages)

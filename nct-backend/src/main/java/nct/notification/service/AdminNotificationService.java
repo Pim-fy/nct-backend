@@ -99,7 +99,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("신규 서비스 요청")
                     .detail(String.format("오늘 등록된 서비스 요청이 %d건 있습니다", newServiceRequests))
-                    .linkPath("/admin/services")
+                    .linkPath("/admin/services/requests")
                     .build());
         }
         return items;

@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import jakarta.mail.Session;
+import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 
 // @ai_generated
@@ -28,14 +29,16 @@ class SmtpEmailSenderTest {
         MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
         when(javaMailSender.createMimeMessage()).thenReturn(message);
         SmtpEmailSender emailSender = new SmtpEmailSender(
-                javaMailSender, "sender@example.com", "NCT");
+                javaMailSender, "sender@example.com", "에누리컷");
 
         emailSender.sendVerificationCode("recipient@example.com", "123456");
 
         verify(javaMailSender).send(message);
-        assertThat(message.getFrom()[0].toString()).contains("NCT").contains("sender@example.com");
+        InternetAddress from = (InternetAddress) message.getFrom()[0];
+        assertThat(from.getPersonal()).isEqualTo("에누리컷");
+        assertThat(from.getAddress()).isEqualTo("sender@example.com");
         assertThat(message.getAllRecipients()[0].toString()).isEqualTo("recipient@example.com");
-        assertThat(message.getSubject()).isEqualTo("[NCT] 회원가입 이메일 인증번호");
+        assertThat(message.getSubject()).isEqualTo("[에누리컷] 회원가입 이메일 인증번호");
         assertThat((String) message.getContent()).contains("123456").contains("3분");
     }
 
@@ -44,13 +47,13 @@ class SmtpEmailSenderTest {
         MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
         when(javaMailSender.createMimeMessage()).thenReturn(message);
         SmtpEmailSender emailSender = new SmtpEmailSender(
-                javaMailSender, "sender@example.com", "NCT");
+                javaMailSender, "sender@example.com", "에누리컷");
 
         emailSender.sendPasswordResetLink("recipient@example.com",
                 "http://localhost:5173/reset-password?token=abc123");
 
         verify(javaMailSender).send(message);
-        assertThat(message.getSubject()).isEqualTo("[NCT] 비밀번호 재설정 안내");
+        assertThat(message.getSubject()).isEqualTo("[에누리컷] 비밀번호 재설정 안내");
         assertThat((String) message.getContent())
                 .contains("http://localhost:5173/reset-password?token=abc123")
                 .contains("1시간");

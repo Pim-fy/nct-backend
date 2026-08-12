@@ -21,6 +21,7 @@ import nct.member.dto.ProfileUpdateRequest;
 import nct.member.dto.ProfileUpdateResponse;
 import nct.member.mapper.MemberMapper;
 import nct.member.port.CustomerInquiryWithdrawalPort;
+import nct.member.port.MemberEmailReader;
 import nct.quote.service.QuoteService;
 
 // @ai_generated
@@ -31,7 +32,7 @@ import nct.quote.service.QuoteService;
  */
 @Service
 @RequiredArgsConstructor
-public class MemberService {
+public class MemberService implements MemberEmailReader {
 
     private static final String WITHDRAWN_EMAIL_DOMAIN = "@withdrawn.local";
     // @ai_generated: POL-AUTH-010 - 시스템 생성 로그인ID 예약 접두어(AuthService.normalizeLoginId·
@@ -250,6 +251,15 @@ public class MemberService {
         // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 시 부수 상태 자동 정리(감사 로그만, 알림 없음)
         quoteService.withdrawAllQuotesByUser(usrSn);
         customerInquiryWithdrawalPort.closeUnansweredByUser(usrSn);
+    }
+
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - MemberEmailReader 구현. 존재하지 않으면 null(다른
+    // 도메인이 굳이 예외 처리하지 않아도 되도록 findById와 달리 조용히 비어있음을 알린다).
+    @Override
+    public String findEmailByUserSn(Long usrSn) {
+        return memberMapper.findMemberById(usrSn)
+                .map(member -> fieldCryptoService.decrypt(member.getUsrEml()))
+                .orElse(null);
     }
 
     /**

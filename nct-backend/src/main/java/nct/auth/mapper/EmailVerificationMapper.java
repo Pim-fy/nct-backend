@@ -34,6 +34,12 @@ public interface EmailVerificationMapper {
 
     Optional<EmailVerification> findWithdrawalByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - SUSPENDED_INQUIRY(EMVC0009) 전용. 이메일 발송 없이
+    // 토큰을 응답에 직접 반환하므로 재발송(resend) 개념이 없다 - insert/조회만 사용한다.
+    void insertSuspendedInquiry(EmailVerification verification);
+
+    Optional<EmailVerification> findSuspendedInquiryByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
+
     int resend(@Param("verificationId") Long verificationId,
                @Param("codeHash") String codeHash,
                @Param("expiresAt") LocalDateTime expiresAt,

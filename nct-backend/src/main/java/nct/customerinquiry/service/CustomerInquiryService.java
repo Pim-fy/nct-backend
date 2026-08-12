@@ -26,9 +26,11 @@ import nct.customerinquiry.mapper.CustomerInquiryMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
+import nct.auth.service.EmailSender;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.member.port.CustomerInquiryWithdrawalPort;
+import nct.member.port.MemberEmailReader;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
@@ -47,6 +49,8 @@ public class CustomerInquiryService implements CustomerInquiryWithdrawalPort {
     static final String RECEIVED_STATUS = "INQC0007";
     static final String PROCESSING_STATUS = "INQC0008";
     static final String ANSWERED_STATUS = "INQC0009";
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 비로그인 문의 유형
+    static final String SUSPENDED_INQUIRY_TYPE = "INQC0010";
 
     private static final String PLACEHOLDER = "[민감정보 검사 중]";
     private static final String REFERENCE_TYPE = "REFC0013";
@@ -58,6 +62,9 @@ public class CustomerInquiryService implements CustomerInquiryWithdrawalPort {
     private final SensitiveContentInspectionUseCase inspectionUseCase;
     private final AuditLogPort auditLogPort;
     private final AdminMemberIdentityReader memberIdentityReader;
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 문의(INQC0010) 답변 통보용
+    private final MemberEmailReader memberEmailReader;
+    private final EmailSender emailSender;
 
     /** 원문을 DB에 넣지 않고 문의 번호 발급 후 필드별 검사 결과만 저장한다. */
     @Transactional
@@ -259,6 +266,16 @@ public class CustomerInquiryService implements CustomerInquiryWithdrawalPort {
                 PROCESSING_STATUS,
                 ANSWERED_STATUS,
                 detectionKey);
+
+        // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정이 접수한 문의(INQC0010)만 이메일로
+        // 통보한다. 일반 로그인 사용자의 문의는 마이페이지에서 직접 확인하므로 이메일을 보내지 않는다
+        // (기존 동작 유지 - 이번에 새로 뭔가를 막은 게 아니라 원래도 없던 알림이다).
+        if (SUSPENDED_INQUIRY_TYPE.equals(inquiry.getInquiryTypeCode())) {
+            String email = memberEmailReader.findEmailByUserSn(inquiry.getUserSn());
+            if (email != null) {
+                emailSender.sendSuspendedInquiryAnswer(email, inquiry.getTitle() + "\n" + inquiry.getContent(), answer);
+            }
+        }
     }
 
     // @ai_generated: F-AUTH-011/POL-AUTH-013 - CustomerInquiryWithdrawalPort 구현.

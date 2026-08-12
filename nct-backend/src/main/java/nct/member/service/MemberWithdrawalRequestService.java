@@ -135,7 +135,10 @@ public class MemberWithdrawalRequestService {
             throw new CustomException(ErrorCode.CONFLICT);
         }
 
-        memberService.withdraw(member.getUsrSn());
+        // @ai_generated: F-AUTH-011/POL-AUTH-013(ISS-027) - 이 경로는 항상 정지 계정이라 거래 관련
+        // 하드 차단을 건너뛴다(정지 시 이미 관리자 조치로 거래가 보류되고, 재개 정책이 없어 본인이
+        // 해소할 수 없다).
+        memberService.withdraw(member.getUsrSn(), true);
     }
 
     /** 로그인ID+이메일이 일치하고 정지 상태인 계정만 발송 대상이다(활성 계정은 이 경로를 쓰지 않는다). */

@@ -23,6 +23,7 @@ import nct.point.service.PointExchangeService;
  * 운영 현황까지 모아 보여준다. 각 도메인이 아직 "몇 건 있다"를 내려주는 계약을 안 만들어놔서,
  * 여기서는 그 도메인 테이블을 직접 읽기 전용으로 집계한다(AdminNotificationMapper).
  *
+ * 담당자 7: linkPath는 API 주소가 아니라 React 관리자 UI의 계층형 브라우저 경로 계약이다.
  * linkPath는 현재 실제로 존재하는 관리자 화면에만 채운다. 대상 화면·계약이 아직 없는
  * 항목은 죽은 링크를 만들지 않도록 비워둔다.
  */
@@ -62,7 +63,7 @@ public class AdminNotificationService {
             items.add(AdminNotificationItem.builder()
                     .title("제공자 심사 대기")
                     .detail(String.format("심사 대기 중인 제공자 신청이 %d건 있습니다", pendingProvider))
-                    .linkPath("/admin/provider-applications")
+                    .linkPath("/admin/providers/applications")
                     .build());
         }
         return items;
@@ -113,7 +114,7 @@ public class AdminNotificationService {
             long totalAmt = pending.stream().mapToLong(PointExchangeOrder::getPtExcOrdAmt).sum();
             items.add(AdminNotificationItem.builder()
                     .title("환전 대기")
-                    .detail(String.format("환전 대기 요청이 %d건, %,d원입니다", pending.size(), totalAmt))
+                    .detail(String.format("환전 대기 요청이 %d건, %,dP입니다", pending.size(), totalAmt))
                     .linkPath("/admin/exchanges")
                     .build());
         }
@@ -126,7 +127,7 @@ public class AdminNotificationService {
                     .title("최근 감사로그")
                     .detail((latest.getAudLogTypeNm() != null ? latest.getAudLogTypeNm() : "조치") + " 기록이 남았습니다: "
                             + latest.getAudLogRsonCn())
-                    .linkPath("/admin/operations-records?tab=audit")
+                    .linkPath("/admin/operations/records?tab=audit")
                     .build());
         }
         return items;

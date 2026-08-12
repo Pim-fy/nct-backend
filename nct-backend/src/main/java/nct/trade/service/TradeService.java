@@ -4,9 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -95,6 +95,20 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             "TRDC0014", // 보관금·환불·정산 문제
             "TRDC0015"  // 기타
     );
+    private static final Set<String> DELIVERY_TRADE_DISPUTE_TYPES = Set.of(
+            "TRDC0012", // 분실·파손·오배송
+            "TRDC0014", // 포인트·정산 문제
+            "TRDC0015"  // 기타
+    );
+    private static final Set<String> OFFLINE_TRADE_DISPUTE_TYPES = Set.of(
+            "TRDC0011", // 직거래 미도착·미응답
+            "TRDC0014", // 포인트·정산 문제
+            "TRDC0015"  // 기타
+    );
+    private static final Set<String> SERVICE_DISPUTE_ALLOWED_STATUSES = Set.of(
+            IN_PROGRESS, WAITING_CONFIRMATION);
+    private static final Set<String> MATERIAL_DISPUTE_ALLOWED_STATUSES = Set.of(
+            IN_PROGRESS, DELIVERING, WAITING_CONFIRMATION);
     private static final DateTimeFormatter SERVICE_SCHEDULE_AT_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
     private static final String SCHEDULER_UPDATER = "SYSTEM";
@@ -143,34 +157,53 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 tradeMapper.findAuctionTradeEscrowInfoByProductId(productId));
     }
 
-    /**
-     * F-SVC-012: 서비스 거래 당사자가 진행 또는 완료 확인 대기 상태에서 문제를 접수한다.
-     * TRADE 행을 먼저 잠가 자동 완료와 직렬화하고, 분쟁 이력·정산 보류·상태 이력을 하나의
-     * 트랜잭션으로 확정한다. 완료된 거래의 사후 분쟁 정책은 미확정이므로 허용하지 않는다.
-     */
+    /** 기존 서비스 전용 경로의 계약을 유지하면서 공통 거래 문제 접수 흐름을 사용한다. */
     @Transactional
     public void registerServiceTradeDispute(
             long tradeId,
             long userId,
             ServiceTradeDisputeRequest request) {
+        registerTradeDispute(tradeId, userId, request, SERVICE_TRADE);
+    }
+
+    /**
+     * 담당자 7 · REQ-AUC-027/F-SVC-012/F-PAY-005: 상품·서비스 거래 문제를 같은 트랜잭션으로
+     * 접수한다. 완료 거래의 사후 이의제기 정책은 미확정이므로 기존 활성 상태만 허용한다.
+     */
+    @Transactional
+    public void registerTradeDispute(
+            long tradeId,
+            long userId,
+            ServiceTradeDisputeRequest request) {
+        registerTradeDispute(tradeId, userId, request, null);
+    }
+
+    private void registerTradeDispute(
+            long tradeId,
+            long userId,
+            ServiceTradeDisputeRequest request,
+            String requiredTradeType) {
         if (tradeId <= 0 || userId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래번호와 회원번호가 필요합니다.");
         }
 
         TradeDisputeTarget target = tradeMapper.findTradeDisputeTargetForUpdate(tradeId);
-        if (target == null || !SERVICE_TRADE.equals(target.getTradeTypeCode())) {
-            throw new CustomException(ErrorCode.NOT_FOUND, "서비스 거래를 찾을 수 없습니다.");
+        if (target == null
+                || (requiredTradeType != null
+                        && !requiredTradeType.equals(target.getTradeTypeCode()))
+                || (!MATERIAL_TRADE.equals(target.getTradeTypeCode())
+                        && !SERVICE_TRADE.equals(target.getTradeTypeCode()))) {
+            throw new CustomException(ErrorCode.NOT_FOUND,
+                    "거래 문제 접수 대상 거래를 찾을 수 없습니다.");
         }
-        if (!Objects.equals(userId, target.getRequesterUserId())
-                && !Objects.equals(userId, target.getProviderUserId())) {
+        if (!isTradeParty(target, userId)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER,
-                    "서비스 거래 당사자만 거래 문제를 접수할 수 있습니다.");
+                    "거래 당사자만 거래 문제를 접수할 수 있습니다.");
         }
-        if (!IN_PROGRESS.equals(target.getTradeStatusCode())
-                && !WAITING_CONFIRMATION.equals(target.getTradeStatusCode())) {
+        if (!allowedDisputeStatuses(target).contains(target.getTradeStatusCode())) {
             throw new CustomException(ErrorCode.CONFLICT,
-                    "진행 또는 완료 확인 대기 상태에서만 거래 문제를 접수할 수 있습니다.");
+                    "진행 중인 거래에서만 거래 문제를 접수할 수 있습니다.");
         }
         if (tradeMapper.hasOpenTradeDispute(tradeId)) {
             throw new CustomException(ErrorCode.ALREADY_PROCESSED,
@@ -178,9 +211,9 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         }
 
         String disputeTypeCode = request.getDisputeTypeCode().trim();
-        if (!SERVICE_TRADE_DISPUTE_TYPES.contains(disputeTypeCode)) {
+        if (!allowedDisputeTypes(target).contains(disputeTypeCode)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "서비스 거래에 사용할 수 없는 거래 문제 유형입니다.");
+                    "해당 거래에 사용할 수 없는 거래 문제 유형입니다.");
         }
         referenceDataService.requireActiveCode(TRADE_DISPUTE_TYPE_GROUP, disputeTypeCode);
         List<Long> evidenceFileSns = validateTradeDisputeEvidenceFiles(request.getFileSns(), userId);
@@ -211,12 +244,49 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             }
         }
         settlementService.holdUpByTradeIfPending(tradeId, "거래 문제 접수");
-        if (tradeMapper.holdServiceTradeForDispute(tradeId, updaterId) == 0) {
+        if (tradeMapper.holdTradeForDispute(tradeId, updaterId) == 0) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "거래 상태가 변경되어 거래 문제를 접수할 수 없습니다.");
         }
-        chatService.closeServiceTradeChatRoom(tradeId);
+        closeTradeChatForDispute(target);
         tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 접수되었습니다.");
+    }
+
+    private boolean isTradeParty(TradeDisputeTarget target, long userId) {
+        if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
+            return Objects.equals(userId, target.getRequesterUserId())
+                    || Objects.equals(userId, target.getProviderUserId());
+        }
+        return Objects.equals(userId, target.getSellerUserId())
+                || Objects.equals(userId, target.getBuyerUserId());
+    }
+
+    private Set<String> allowedDisputeStatuses(TradeDisputeTarget target) {
+        return SERVICE_TRADE.equals(target.getTradeTypeCode())
+                ? SERVICE_DISPUTE_ALLOWED_STATUSES
+                : MATERIAL_DISPUTE_ALLOWED_STATUSES;
+    }
+
+    private Set<String> allowedDisputeTypes(TradeDisputeTarget target) {
+        if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
+            return SERVICE_TRADE_DISPUTE_TYPES;
+        }
+        if (DELIVERY_METHOD.equals(target.getTradeMethodCode())) {
+            return DELIVERY_TRADE_DISPUTE_TYPES;
+        }
+        if (OFFLINE_METHOD.equals(target.getTradeMethodCode())) {
+            return OFFLINE_TRADE_DISPUTE_TYPES;
+        }
+        throw new CustomException(ErrorCode.CONFLICT,
+                "상품 거래방식을 확인할 수 없어 거래 문제를 접수할 수 없습니다.");
+    }
+
+    private void closeTradeChatForDispute(TradeDisputeTarget target) {
+        if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
+            chatService.closeServiceTradeChatRoom(target.getTradeSn());
+        } else if (OFFLINE_METHOD.equals(target.getTradeMethodCode())) {
+            chatService.closeOfflineTradeChatRoom(target.getTradeSn());
+        }
     }
 
     /** 분쟁 증빙은 접수자 본인이 trade-dispute 구분으로 올린 활성 파일만 연결합니다. */

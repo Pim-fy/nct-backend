@@ -15,6 +15,7 @@ public record SensitiveDetectionReportCommand(
         Long riskEventSn,
         String referenceTypeCode,
         Long referenceSn,
+        Long reportedUserSn,
         Set<SensitiveDataType> detectedTypes,
         String actorId) {
 }

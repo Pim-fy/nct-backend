@@ -252,6 +252,17 @@ public class TradeController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
+    /** 담당자 7 · REQ-AUC-027/F-SVC-012: 상품·서비스 거래 당사자의 공통 거래 문제 접수 API다. */
+    @PostMapping("/{tradeId}/disputes")
+    public ResponseEntity<ApiResponse<Void>> registerTradeDispute(
+            @PathVariable(name = "tradeId") long tradeId,
+            @Valid @RequestBody ServiceTradeDisputeRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        tradeService.registerTradeDispute(tradeId, userDetails.getMember().getId(), request);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
     /** 서비스 제공자가 완료 요청을 등록하고 의뢰자 확인 기한을 시작한다. */
     @PostMapping("/{tradeId}/service-completion-requests")
     public ResponseEntity<ApiResponse<Void>> requestServiceCompletion(

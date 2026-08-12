@@ -73,15 +73,15 @@ public class ProductService {
         }
     }
 
-    // 시작가·즉시구매가 상한 — 1억 원 (사용자 확정, 260810)
+    // 시작가·즉시구매가 상한 — 100,000,000P (사용자 확정, 260810)
     private static final BigDecimal MAX_PRICE_AMT = BigDecimal.valueOf(100_000_000);
 
     private void validatePriceUnderMax(BigDecimal prdStartAmt, BigDecimal prdIbyAmt) {
         if (prdStartAmt != null && prdStartAmt.compareTo(MAX_PRICE_AMT) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "시작가는 " + MAX_PRICE_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "시작가는 " + MAX_PRICE_AMT.toPlainString() + "P 이하로 입력해 주세요.");
         }
         if (prdIbyAmt != null && prdIbyAmt.compareTo(MAX_PRICE_AMT) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "즉시구매가는 " + MAX_PRICE_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "즉시구매가는 " + MAX_PRICE_AMT.toPlainString() + "P 이하로 입력해 주세요.");
         }
     }
 
@@ -469,7 +469,7 @@ public class ProductService {
             }
         });
 
-        checkBannedKeyword(req.getCn(), "문의 내용", bannedKeywordMapper.findActiveBannedKeywords());
+        validateInquiryContent(req.getCn());
 
         ProductComment inquiry = ProductComment.builder()
                 .prdSn(prdSn)
@@ -501,7 +501,7 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        checkBannedKeyword(req.getCn(), "문의 내용", bannedKeywordMapper.findActiveBannedKeywords());
+        validateInquiryContent(req.getCn());
 
         int updated = productCommentMapper.updateInquiry(ProductComment.builder()
                 .prdCmtSn(inquirySn)
@@ -532,6 +532,13 @@ public class ProductService {
         productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
         return productCommentMapper.findInquiries(prdSn);
+    }
+
+    private void validateInquiryContent(String content) {
+        checkBannedKeyword(
+                content,
+                "문의 내용",
+                bannedKeywordMapper.findActiveBannedKeywords());
     }
 
     /** 판매자 답변 등록 (F-AUC-012) */

@@ -50,6 +50,29 @@
         END
     </sql>
 
+    <!-- 물건거래 대표 이미지 조회 — AuctionMapper/BidMapper/ProductFavoriteMapper와 동일 패턴.
+         대표이미지(PRD_IMG_RPRS_YN='Y') 우선, 없으면 정렬순 첫 번째. P가 NULL이면 thumb도 NULL. -->
+    <sql id="productThumbnailJoin">
+        LEFT JOIN (
+            SELECT
+                pi.PRD_SN,
+                f.FL_PATH AS THUMBNAIL_PATH
+            FROM PRODUCT_IMAGE pi
+            JOIN FILES f
+              ON f.FL_SN = pi.FL_SN
+             AND f.FL_USE_YN = 'Y'
+            JOIN (
+                SELECT
+                    PRD_SN,
+                    MIN(CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) AS SORT_KEY
+                FROM PRODUCT_IMAGE
+                GROUP BY PRD_SN
+            ) picked
+              ON picked.PRD_SN = pi.PRD_SN
+             AND (CASE WHEN PRD_IMG_RPRS_YN = 'Y' THEN 0 ELSE 1 END * 100000 + PRD_IMG_SORT_NO) = picked.SORT_KEY
+        ) thumb ON thumb.PRD_SN = P.PRD_SN
+    </sql>
+
     <!-- @ai_generated: 리뷰 목록에서도 거래 목록·상세와 같은 실제 완료 상태이력 시각을 사용한다. -->
     <sql id="completedTradeDateJoin">
         LEFT JOIN (
@@ -80,12 +103,24 @@
             DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
-                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider
+                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider,
+            CASE WHEN T.TRD_TYPE_CD = 'TRDC0001'
+                 THEN thumb.THUMBNAIL_PATH
+                 ELSE (
+                     SELECT CONCAT('/api/service-requests/', i.SVC_REQ_SN, '/images/', i.FL_SN)
+                       FROM SVC_REQ_IMAGE i
+                       JOIN FILES f ON f.FL_SN = i.FL_SN AND f.FL_USE_YN = 'Y'
+                      WHERE i.SVC_REQ_SN = S.SVC_REQ_SN
+                      ORDER BY i.SVC_REQ_IMG_SORT_NO ASC, i.FL_SN ASC
+                      LIMIT 1
+                 )
+            END AS thumbnail
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
         LEFT JOIN USERS U ON U.USR_SN = <include refid="counterpartUsrSnCase"/>
         <include refid="completedTradeDateJoin"/>
+        <include refid="productThumbnailJoin"/>
         WHERE T.TRD_STATUS_CD = 'TRDC0006'
           AND (T.SLLR_USR_SN = #{usrSn} OR T.BYPR_USR_SN = #{usrSn}
                OR T.REQ_USR_SN = #{usrSn} OR T.PRV_USR_SN = #{usrSn})
@@ -164,13 +199,25 @@
                 WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.PRV_USR_SN = #{usrSn} THEN '요청자'
             END          AS partyLabel,
             U.USR_NM     AS partyName,
-            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate
+            DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d') AS completedDate,
+            CASE WHEN T.TRD_TYPE_CD = 'TRDC0001'
+                 THEN thumb.THUMBNAIL_PATH
+                 ELSE (
+                     SELECT CONCAT('/api/service-requests/', i.SVC_REQ_SN, '/images/', i.FL_SN)
+                       FROM SVC_REQ_IMAGE i
+                       JOIN FILES f ON f.FL_SN = i.FL_SN AND f.FL_USE_YN = 'Y'
+                      WHERE i.SVC_REQ_SN = S.SVC_REQ_SN
+                      ORDER BY i.SVC_REQ_IMG_SORT_NO ASC, i.FL_SN ASC
+                      LIMIT 1
+                 )
+            END AS thumbnail
         FROM REVIEW R
         JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
         JOIN USERS U ON U.USR_SN = R.REVWD_USR_SN
         <include refid="completedTradeDateJoin"/>
+        <include refid="productThumbnailJoin"/>
         WHERE R.REVWR_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
         ORDER BY R.RVW_REG_DT DESC

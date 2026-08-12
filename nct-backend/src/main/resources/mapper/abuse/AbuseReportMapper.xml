@@ -24,6 +24,10 @@
         RPRT_USR_SN AS reporterUserSn,
         RPTD_USR_SN AS reportedUserSn,
         ABR_TYPE_CD AS reportTypeCode,
+        (SELECT CMM_NM
+           FROM CMM_CODE
+          WHERE CMM_CD = ABR_TYPE_CD
+          LIMIT 1) AS reportTypeName,
         ABR_STATUS_CD AS statusCode,
         ABR_TITLE_NM AS title,
         ABR_TRG_NM AS targetName,
@@ -240,6 +244,58 @@
            AND ar.RSK_EVT_SN IS NULL
     </select>
 
+    <!-- 담당자 7 · F-COM-018: NULL 대상도 같은 조합으로 비교해 미처리 중복 신고를 차단합니다. -->
+    <select id="findActiveCustomerReportId" resultType="long">
+        SELECT ABR_SN
+          FROM ABUSE_REPORT
+         WHERE RPRT_USR_SN = #{reporterUserSn}
+           AND RPTD_USR_SN &lt;=&gt; #{reportedUserSn}
+           AND ABR_TYPE_CD = #{reportTypeCode}
+           AND ABR_REF_TYPE_CD &lt;=&gt; #{referenceTypeCode}
+           AND ABR_REF_SN &lt;=&gt; #{referenceSn}
+           AND ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+         ORDER BY ABR_SN DESC
+         LIMIT 1
+    </select>
+
+    <insert id="insertReportFile">
+        INSERT INTO ABUSE_REPORT_FILE (
+            ABR_SN,
+            FL_SN,
+            ABR_FL_SORT_NO,
+            ABR_FL_REG_ID,
+            ABR_FL_UPDT_ID
+        ) VALUES (
+            #{reportSn},
+            #{fileSn},
+            #{sortNo},
+            #{actorId},
+            #{actorId}
+        )
+    </insert>
+
+    <select id="findReportFiles" resultType="nct.abuse.dto.AbuseReportFileResponse">
+        SELECT f.FL_SN AS fileSn,
+               f.FL_ORG_NM AS originalName,
+               f.FL_EXT AS extension,
+               f.FL_SIZE_AMT AS sizeAmount,
+               rf.ABR_FL_SORT_NO AS sortNo
+          FROM ABUSE_REPORT_FILE rf
+          JOIN FILES f ON f.FL_SN = rf.FL_SN
+         WHERE rf.ABR_SN = #{reportSn}
+           AND f.FL_USE_YN = 'Y'
+         ORDER BY rf.ABR_FL_SORT_NO, rf.ABR_FL_SN
+    </select>
+
+    <select id="countReportFileLink" resultType="int">
+        SELECT COUNT(*)
+          FROM ABUSE_REPORT_FILE rf
+          JOIN FILES f ON f.FL_SN = rf.FL_SN
+         WHERE rf.ABR_SN = #{reportSn}
+           AND rf.FL_SN = #{fileSn}
+           AND f.FL_USE_YN = 'Y'
+    </select>
+
     <!-- 중복 INSERT가 선행 트랜잭션을 기다린 뒤 실패해도 최신 커밋 행을 읽는 current read다. -->
     <select id="findReportIdByRiskEventIdForUpdate" resultType="long">
         SELECT ABR_SN
@@ -324,5 +380,13 @@
          WHERE ABR_SN = #{reportSn}
            AND ABR_STATUS_CD = #{expectedStatusCode}
     </update>
+
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 탈퇴 전 하드 차단 - 본인 관련 접수·처리중 신고 -->
+    <select id="countOpenReportsByUser" resultType="int">
+        SELECT COUNT(*)
+        FROM ABUSE_REPORT
+        WHERE (RPRT_USR_SN = #{userSn} OR RPTD_USR_SN = #{userSn})
+          AND ABR_STATUS_CD IN ('ABRC0005', 'ABRC0006')
+    </select>
 
 </mapper>

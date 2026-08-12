@@ -3,6 +3,7 @@ package nct.ops.operation.controller;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +27,7 @@ import nct.ops.operation.service.AdminReportOperationService;
 /** 담당자 7 · F-OPS-007: 관리자 신고 조회·처리·반려 API입니다. */
 @RestController
 @RequestMapping("/api/admin/reports")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 @RequiredArgsConstructor
 public class AdminReportOperationController {
 

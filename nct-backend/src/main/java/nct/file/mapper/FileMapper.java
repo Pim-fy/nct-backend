@@ -21,6 +21,9 @@ public interface FileMapper {
     /** FILES 행 조회 — 소프트 삭제(FL_USE_YN='N')된 행은 제외 */
     Optional<FileMeta> findById(@Param("flSn") Long flSn);
 
+    /** 담당자 7 · F-COM-018: 신고 연결과 교체·삭제의 동시 실행을 직렬화하는 행 잠금 조회. */
+    Optional<FileMeta> findByIdForUpdate(@Param("flSn") Long flSn);
+
     /** 파일 교체 시 메타 갱신 — 같은 행(flSn 유지)의 파일 정보만 새 파일 것으로 바꾼다 */
     int updateMeta(FileMeta fileMeta);
 
@@ -83,4 +86,7 @@ public interface FileMapper {
 
     /** 거래 분쟁 증빙으로 연결된 파일은 일반 첨부 삭제 API로 지울 수 없습니다. */
     int countTradeDisputeFileRefs(@Param("flSn") Long flSn);
+
+    /** 담당자 7 · F-COM-018: 신고에 연결된 보호 파일은 일반 삭제 API로 지울 수 없습니다. */
+    int countAbuseReportFileRefs(@Param("flSn") Long flSn);
 }

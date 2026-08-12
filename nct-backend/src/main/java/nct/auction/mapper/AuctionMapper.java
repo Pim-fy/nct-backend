@@ -117,4 +117,8 @@ public interface AuctionMapper {
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
             @Param("actor") String actor);
+
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 탈퇴 전
+    // 하드 차단용. 본인이 판매자인 상품 중 진행 중(AUCC0002) 경매 건수를 센다.
+    int countActiveSellerAuctions(@Param("userSn") Long userSn);
 }

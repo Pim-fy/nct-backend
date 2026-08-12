@@ -21,4 +21,9 @@ public class UnavailableEmailSender implements EmailSender {
     public void sendWithdrawalLink(String email, String link) {
         throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
     }
+
+    @Override
+    public void sendSuspendedInquiryAnswer(String email, String question, String answer) {
+        throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
+    }
 }

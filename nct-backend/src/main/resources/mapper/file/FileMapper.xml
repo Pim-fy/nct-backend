@@ -150,4 +150,32 @@
          WHERE FL_SN = #{flSn}
     </select>
 
+    <!-- 담당자 7 · F-COM-018: 신고 첨부 연결과 파일 교체·삭제 사이의 시점 경쟁을 막는 행 잠금 조회 -->
+    <select id="findByIdForUpdate" resultType="nct.file.domain.FileMeta">
+        /* 파일: 신고 증거 연결·변경 직렬화 */
+        SELECT FL_SN       AS flSn,
+               FL_ORG_NM   AS flOrgNm,
+               FL_SAVE_NM  AS flSaveNm,
+               FL_PATH     AS flPath,
+               FL_EXT      AS flExt,
+               FL_SIZE_AMT AS flSizeAmt,
+               FL_TYPE_CD  AS flTypeCd,
+               FL_USE_YN   AS flUseYn,
+               FL_REG_ID   AS flRegId,
+               FL_REG_DT   AS flRegDt,
+               FL_UPDT_ID  AS flUpdtId,
+               FL_UPDT_DT  AS flUpdtDt
+          FROM FILES
+         WHERE FL_SN = #{flSn}
+           AND FL_USE_YN = 'Y'
+           FOR UPDATE
+    </select>
+
+    <!-- 담당자 7 · F-COM-018: 신고 첨부로 연결된 파일의 삭제 가드 -->
+    <select id="countAbuseReportFileRefs" resultType="int">
+        SELECT COUNT(*)
+          FROM ABUSE_REPORT_FILE
+         WHERE FL_SN = #{flSn}
+    </select>
+
 </mapper>

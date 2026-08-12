@@ -73,4 +73,13 @@ class RiskEventServiceTest {
                 .isInstanceOf(CustomException.class);
         verify(riskEventMapper, never()).insertRiskEvent(any());
     }
+
+    @Test
+    void marksLinkedRiskEventProcessed() {
+        when(riskEventMapper.markProcessed(77L, "7")).thenReturn(1);
+
+        service.markProcessed(77L, " 7 ");
+
+        verify(riskEventMapper).markProcessed(77L, "7");
+    }
 }

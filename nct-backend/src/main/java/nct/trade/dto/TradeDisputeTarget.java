@@ -15,5 +15,6 @@ public class TradeDisputeTarget {
     private Long requesterUserId;
     private Long providerUserId;
     private String tradeTypeCode;
+    private String tradeMethodCode;
     private String tradeStatusCode;
 }

@@ -41,6 +41,14 @@
         )
     </insert>
 
+    <update id="markProcessed">
+        UPDATE RISK_EVENT
+           SET RSK_EVT_PROC_YN = 'Y',
+               RSK_EVT_UPDT_ID = #{actorId},
+               RSK_EVT_UPDT_DT = NOW()
+         WHERE RSK_EVT_SN = #{riskEventSn}
+    </update>
+
     <!-- 담당자 7 · F-OPS-011: 다른 도메인 테이블 없이 RISK_EVENT만 조회한다. -->
     <sql id="adminRiskEventSearchWhere">
         <where>

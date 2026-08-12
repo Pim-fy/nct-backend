@@ -1,5 +1,6 @@
 package nct.ops.operation.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -7,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
@@ -18,6 +20,14 @@ import nct.ops.operation.service.AdminReportOperationService;
 
 /** 담당자 7 · F-OPS-007: 관리자 신고 처리 컨트롤러 전달값을 검증합니다. */
 class AdminReportOperationControllerTest {
+
+    @Test
+    void requiresAdminRoleForEveryReportOperation() {
+        PreAuthorize annotation = AdminReportOperationController.class.getAnnotation(PreAuthorize.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.value()).isEqualTo("hasAuthority('ROLE_ADMIN')");
+    }
 
     @Test
     void forwardsDecisionWithAuthenticatedAdmin() {

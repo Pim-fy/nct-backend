@@ -343,7 +343,7 @@ class TradeServiceTest {
             registration.setDisputeSn(701L);
             return 1;
         }).when(tradeMapper).insertTradeDispute(any(TradeDisputeRegistration.class));
-        when(tradeMapper.holdServiceTradeForDispute(81L, "11")).thenReturn(1);
+        when(tradeMapper.holdTradeForDispute(81L, "11")).thenReturn(1);
 
         tradeService.registerServiceTradeDispute(81L, 11L, request);
 
@@ -358,8 +358,148 @@ class TradeServiceTest {
         assertThat(captor.getValue().getUpdaterId()).isEqualTo("11");
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
+        verify(tradeMapper).holdTradeForDispute(81L, "11");
         verify(chatService).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0007", "거래 문제가 접수되었습니다.");
+    }
+
+    @Test
+    void registersDeliveryTradeDisputeWhileDeliveryIsInProgress() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(82L);
+        target.setSellerUserId(11L);
+        target.setBuyerUserId(22L);
+        target.setTradeTypeCode("TRDC0001");
+        target.setTradeMethodCode("TRDC0009");
+        target.setTradeStatusCode("TRDC0004");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0012");
+        request.setContent("배송 중 상품이 파손되었습니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(82L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(82L)).thenReturn(false);
+        doAnswer(invocation -> {
+            TradeDisputeRegistration registration = invocation.getArgument(0);
+            registration.setDisputeSn(702L);
+            return 1;
+        }).when(tradeMapper).insertTradeDispute(any(TradeDisputeRegistration.class));
+        when(tradeMapper.holdTradeForDispute(82L, "22")).thenReturn(1);
+
+        tradeService.registerTradeDispute(82L, 22L, request);
+
+        ArgumentCaptor<TradeDisputeRegistration> captor =
+                ArgumentCaptor.forClass(TradeDisputeRegistration.class);
+        verify(tradeMapper).insertTradeDispute(captor.capture());
+        assertThat(captor.getValue().getDisputeTypeCode()).isEqualTo("TRDC0012");
+        assertThat(captor.getValue().getPreviousTradeStatusCode()).isEqualTo("TRDC0004");
+        verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0012");
+        verify(settlementService).holdUpByTradeIfPending(82L, "거래 문제 접수");
+        verify(tradeMapper).holdTradeForDispute(82L, "22");
+        verify(chatService, never()).closeOfflineTradeChatRoom(anyLong());
+        verify(chatService, never()).closeServiceTradeChatRoom(anyLong());
+        verify(tradeMapper).insertStatusHistory(82L, "TRDC0007", "거래 문제가 접수되었습니다.");
+    }
+
+    @Test
+    void registersOfflineTradeDisputeAndClosesOfflineChat() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(83L);
+        target.setSellerUserId(11L);
+        target.setBuyerUserId(22L);
+        target.setTradeTypeCode("TRDC0001");
+        target.setTradeMethodCode("TRDC0010");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("직거래 상대방이 약속 장소에 오지 않았습니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(83L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(83L)).thenReturn(false);
+        doAnswer(invocation -> {
+            TradeDisputeRegistration registration = invocation.getArgument(0);
+            registration.setDisputeSn(703L);
+            return 1;
+        }).when(tradeMapper).insertTradeDispute(any(TradeDisputeRegistration.class));
+        when(tradeMapper.holdTradeForDispute(83L, "11")).thenReturn(1);
+
+        tradeService.registerTradeDispute(83L, 11L, request);
+
+        verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
+        verify(settlementService).holdUpByTradeIfPending(83L, "거래 문제 접수");
+        verify(tradeMapper).holdTradeForDispute(83L, "11");
+        verify(chatService).closeOfflineTradeChatRoom(83L);
+        verify(chatService, never()).closeServiceTradeChatRoom(anyLong());
+        verify(tradeMapper).insertStatusHistory(83L, "TRDC0007", "거래 문제가 접수되었습니다.");
+    }
+
+    @Test
+    void rejectsDisputeTypeThatDoesNotMatchMaterialTradeMethod() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(82L);
+        target.setSellerUserId(11L);
+        target.setBuyerUserId(22L);
+        target.setTradeTypeCode("TRDC0001");
+        target.setTradeMethodCode("TRDC0009");
+        target.setTradeStatusCode("TRDC0004");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("배송 거래에 직거래 노쇼 유형을 제출합니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(82L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(82L)).thenReturn(false);
+
+        assertThatThrownBy(() -> tradeService.registerTradeDispute(82L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(referenceDataService, never()).requireActiveCode(any(), any());
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
+        verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void rejectsMaterialTradeDisputeFromNonPartyUser() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(82L);
+        target.setSellerUserId(11L);
+        target.setBuyerUserId(22L);
+        target.setTradeTypeCode("TRDC0001");
+        target.setTradeMethodCode("TRDC0009");
+        target.setTradeStatusCode("TRDC0004");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0012");
+        request.setContent("거래 당사자가 아닌 사용자의 접수 시도입니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(82L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.registerTradeDispute(82L, 99L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+
+        verify(tradeMapper, never()).hasOpenTradeDispute(anyLong());
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
+        verify(settlementService, never()).holdUpByTradeIfPending(anyLong(), any());
+    }
+
+    @Test
+    void serviceDisputeAliasRejectsMaterialTrade() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(82L);
+        target.setSellerUserId(11L);
+        target.setBuyerUserId(22L);
+        target.setTradeTypeCode("TRDC0001");
+        target.setTradeMethodCode("TRDC0009");
+        target.setTradeStatusCode("TRDC0004");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0012");
+        request.setContent("서비스 전용 구 경로로 상품 분쟁을 제출합니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(82L)).thenReturn(target);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(82L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
+
+        verify(tradeMapper, never()).hasOpenTradeDispute(anyLong());
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
     }
 
     @Test
@@ -454,7 +594,7 @@ class TradeServiceTest {
         }).when(tradeMapper).insertTradeDispute(any(TradeDisputeRegistration.class));
         when(tradeMapper.insertTradeDisputeFile(anyLong(), anyLong(), anyInt(), any()))
                 .thenReturn(1);
-        when(tradeMapper.holdServiceTradeForDispute(81L, "11")).thenReturn(1);
+        when(tradeMapper.holdTradeForDispute(81L, "11")).thenReturn(1);
 
         tradeService.registerServiceTradeDispute(81L, 11L, request);
 

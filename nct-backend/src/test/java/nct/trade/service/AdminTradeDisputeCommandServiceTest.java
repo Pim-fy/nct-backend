@@ -29,7 +29,7 @@ class AdminTradeDisputeCommandServiceTest {
     }
 
     @Test
-    void restoresPreviousTradeStatusAndClosesDispute() {
+    void restoresWaitingConfirmationStatusAndClosesDispute() {
         AdminTradeDisputeDecisionTarget target = openTarget("TRDC0005");
         when(mapper.updateTradeStatus(25L, "TRDC0007", "TRDC0005", "99")).thenReturn(1);
         when(mapper.insertTradeStatusHistory(25L, "TRDC0005", "조정 완료", "99")).thenReturn(1);
@@ -40,6 +40,7 @@ class AdminTradeDisputeCommandServiceTest {
         service.restoreAndClose(target, "TRDC0021", "TRDC0018", "조정 완료", 99L);
 
         verify(mapper).updateTradeStatus(25L, "TRDC0007", "TRDC0005", "99");
+        verify(mapper).insertTradeStatusHistory(25L, "TRDC0005", "조정 완료", "99");
         verify(mapper).updateDisputeDecision(
                 11L, "TRDC0021", "TRDC0018", "조정 완료", 99L, "99");
     }

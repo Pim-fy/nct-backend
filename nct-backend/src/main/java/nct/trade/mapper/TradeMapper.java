@@ -75,8 +75,8 @@ public interface TradeMapper {
             @Param("sortOrder") int sortOrder,
             @Param("registrantId") String registrantId);
 
-    /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
-    int holdServiceTradeForDispute(
+    /** 거래 문제 접수 성공 후에만 활성 거래를 보류 상태로 전환한다. */
+    int holdTradeForDispute(
             @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
 

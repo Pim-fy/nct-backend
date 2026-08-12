@@ -69,12 +69,12 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
     }
 
-    // 희망 예산 상한 — 10억 원 (사용자 확정, 260810)
+    // 희망 예산 상한 — 1,000,000,000P (사용자 확정, 260810)
     private static final BigDecimal MAX_BUDGET_AMT = BigDecimal.valueOf(1_000_000_000);
 
     private void validateBudgetUnderMax(BigDecimal svcReqBdgtAmt) {
         if (svcReqBdgtAmt != null && svcReqBdgtAmt.compareTo(MAX_BUDGET_AMT) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "희망 예산은 " + MAX_BUDGET_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "희망 예산은 " + MAX_BUDGET_AMT.toPlainString() + "P 이하로 입력해 주세요.");
         }
     }
 

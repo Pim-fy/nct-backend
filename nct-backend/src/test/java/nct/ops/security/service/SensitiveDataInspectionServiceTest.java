@@ -45,7 +45,7 @@ class SensitiveDataInspectionServiceTest {
 
         SensitiveDataInspectionResult result = service.inspect(
                 "contact me at user@example.com", REQUEST_ID,
-                "REFC0004", 7L, "SYSTEM");
+                "REFC0004", 7L, "9");
 
         assertThat(result.detected()).isTrue();
         assertThat(result.maskedText()).doesNotContain("user@example.com");
@@ -59,6 +59,7 @@ class SensitiveDataInspectionServiceTest {
         var reportCaptor = forClass(SensitiveDetectionReportCommand.class);
         verify(reportPort).requestReport(reportCaptor.capture());
         assertThat(reportCaptor.getValue().riskEventSn()).isEqualTo(10L);
+        assertThat(reportCaptor.getValue().reportedUserSn()).isEqualTo(9L);
         assertThat(reportCaptor.getValue().toString()).doesNotContain("user@example.com", REQUEST_ID);
         assertThat(result.report().status())
                 .isEqualTo(SensitiveDetectionReportResult.Status.CREATED);
@@ -96,7 +97,7 @@ class SensitiveDataInspectionServiceTest {
 
         SensitiveDataInspectionResult result = service.inspect(
                 "contact me at user@example.com", REQUEST_ID,
-                "REFC0004", 7L, "SYSTEM");
+                "REFC0004", 7L, "9");
 
         assertThat(result.riskEvent().created()).isFalse();
         assertThat(result.report().status())

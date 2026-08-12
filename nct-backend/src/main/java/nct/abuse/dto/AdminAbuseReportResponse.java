@@ -1,6 +1,7 @@
 package nct.abuse.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,6 +20,7 @@ public class AdminAbuseReportResponse {
     private AdminMemberIdentityResponse reporterMember;
     private AdminMemberIdentityResponse reportedMember;
     private String reportTypeCode;
+    private String reportTypeName;
     private String statusCode;
     private String title;
     private String targetName;
@@ -30,6 +32,7 @@ public class AdminAbuseReportResponse {
     private AdminMemberIdentityResponse processorMember;
     private LocalDateTime registeredAt;
     private LocalDateTime processedAt;
+    private List<AbuseReportFileResponse> files;
 
     public AdminAbuseReportResponse(
             Long reportSn,

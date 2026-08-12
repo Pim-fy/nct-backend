@@ -1,6 +1,7 @@
 package nct.abuse.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -24,4 +25,5 @@ public class MyAbuseReportResponse {
     private String processReason;
     private LocalDateTime registeredAt;
     private LocalDateTime updatedAt;
+    private List<AbuseReportFileResponse> files;
 }

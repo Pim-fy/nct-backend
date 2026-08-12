@@ -275,7 +275,7 @@ public class NotificationService {
     public void notifyBidUpdated(long usrSn, long auctionId, long newPrice) {
         notifyForEvent(usrSn, NotificationEvent.BID_UPDATED, NotificationAudience.GENERAL,
                 "입찰가가 갱신되었습니다",
-                String.format("관심 경매의 입찰가가 %,d원으로 갱신되었습니다.", newPrice),
+                String.format("관심 경매의 입찰가가 %,dP로 갱신되었습니다.", newPrice),
                 RefType.AUCTION, auctionId);
     }
 

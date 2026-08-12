@@ -62,6 +62,7 @@ public class SensitiveDataInspectionService implements SensitiveContentInspectio
             return new SensitiveDataInspectionResult(
                     masking.maskedText(), masking.detectedTypes(), null, null);
         }
+        Long reportedUserSn = authenticatedActorUserSn(actorId);
 
         // UUID 원문도 운영 화면에 그대로 남기지 않고 해시로 바꿔 이벤트 식별에만 쓴다.
         String safeSummary = "Sensitive data detected; request=" + sha256(detectionKey.trim());
@@ -78,7 +79,7 @@ public class SensitiveDataInspectionService implements SensitiveContentInspectio
         SensitiveDetectionReportResult report = sensitiveDetectionReportPort.requestReport(
                 new SensitiveDetectionReportCommand(
                         riskEvent.riskEventSn(), referenceTypeCode, referenceSn,
-                        masking.detectedTypes(), actorId));
+                        reportedUserSn, masking.detectedTypes(), actorId));
         return new SensitiveDataInspectionResult(
                 masking.maskedText(), masking.detectedTypes(), riskEvent, report);
     }
@@ -89,6 +90,23 @@ public class SensitiveDataInspectionService implements SensitiveContentInspectio
             return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is unavailable", ex);
+        }
+    }
+
+    /** 담당자 7 · F-OPS-013: 자동 신고 대상은 민감정보를 입력한 인증 사용자입니다. */
+    private Long authenticatedActorUserSn(String actorId) {
+        if (actorId == null || actorId.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        String normalized = actorId.trim().replaceFirst("(?i)^USR:", "");
+        try {
+            long userSn = Long.parseLong(normalized);
+            if (userSn <= 0) {
+                throw new NumberFormatException();
+            }
+            return userSn;
+        } catch (NumberFormatException exception) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
     }
 

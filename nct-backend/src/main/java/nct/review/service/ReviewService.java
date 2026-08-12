@@ -319,7 +319,7 @@ public class ReviewService {
 
     /**
      * 특정 회원이 받은 리뷰 목록 (F-COM-008, 담당자4 정민재 소비).
-     * 작성자 이름은 마스킹 처리(홍*동)해서 반환한다.
+     * 작성자 닉네임은 USERS.USR_NM 값을 그대로 반환한다.
      *
      * @param dealType "goods" | "service" | null(전체)
      * @param page     0-indexed 페이지 번호
@@ -335,19 +335,16 @@ public class ReviewService {
         int safeSize = Math.min(size, 50);
         int offset = page * safeSize;
 
-        List<UserReviewItem> raw = reviewMapper.selectReviewsByReceiver(
+        List<UserReviewItem> reviews = reviewMapper.selectReviewsByReceiver(
                 usrSn,
                 dealType,
                 normalizedRole,
                 offset,
                 safeSize);
-        List<UserReviewItem> masked = raw.stream()
-                .map(item -> item.toBuilder().reviewerName(maskName(item.getReviewerName())).build())
-                .toList();
 
         long total = reviewMapper.countReviewsByReceiver(usrSn, dealType, normalizedRole);
         return PageResponse.<UserReviewItem>builder()
-                .content(masked)
+                .content(reviews)
                 .totalCount(total)
                 .page(page)
                 .size(safeSize)
@@ -436,10 +433,4 @@ public class ReviewService {
         return images.size();
     }
 
-    /** 한국식 이름 마스킹: 홍길동→홍*동, 홍길→홍*, 홍→홍 */
-    private String maskName(String name) {
-        if (name == null || name.length() <= 1) return name;
-        if (name.length() == 2) return name.charAt(0) + "*";
-        return name.charAt(0) + "*" + name.charAt(name.length() - 1);
-    }
 }

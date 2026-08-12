@@ -469,7 +469,7 @@ public class ProductService {
             }
         });
 
-        checkBannedKeyword(req.getCn(), "문의 내용", bannedKeywordMapper.findActiveBannedKeywords());
+        validateInquiryContent(req.getCn());
 
         ProductComment inquiry = ProductComment.builder()
                 .prdSn(prdSn)
@@ -501,7 +501,7 @@ public class ProductService {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        checkBannedKeyword(req.getCn(), "문의 내용", bannedKeywordMapper.findActiveBannedKeywords());
+        validateInquiryContent(req.getCn());
 
         int updated = productCommentMapper.updateInquiry(ProductComment.builder()
                 .prdCmtSn(inquirySn)
@@ -532,6 +532,13 @@ public class ProductService {
         productMapper.findProductById(prdSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
         return productCommentMapper.findInquiries(prdSn);
+    }
+
+    private void validateInquiryContent(String content) {
+        checkBannedKeyword(
+                content,
+                "문의 내용",
+                bannedKeywordMapper.findActiveBannedKeywords());
     }
 
     /** 판매자 답변 등록 (F-AUC-012) */

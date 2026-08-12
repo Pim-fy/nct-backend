@@ -584,6 +584,13 @@
                 WHEN chatRoom.CH_RM_STATUS_CD = 'CHRC0001' THEN 'ACTIVE'
                 ELSE 'CLOSED'
             END AS chatRoomStatus,
+            CASE
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN FALSE
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN
+                    completedHist.completedAt IS NOT NULL
+                    AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP
+                ELSE TRUE
+            END AS chatAvailable,
             t.TRD_REG_DT AS createdAt,
             completedHist.completedAt AS completedAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
@@ -1092,6 +1099,17 @@
             tradeStatus.CMM_NM AS tradeStatusName,
             t.TRD_AMT AS tradeAmount,
             sr.SVC_REQ_TTL AS serviceRequestTitle,
+            (
+                SELECT CONCAT('/api/service-requests/', image.SVC_REQ_SN, '/images/', image.FL_SN)
+                FROM SVC_REQ_IMAGE image
+                JOIN FILES file
+                  ON file.FL_SN = image.FL_SN
+                 AND file.FL_USE_YN = 'Y'
+                WHERE image.SVC_REQ_SN = sr.SVC_REQ_SN
+                ORDER BY image.SVC_REQ_IMG_SORT_NO ASC, image.FL_SN ASC
+                LIMIT 1
+            ) AS serviceRequestImageUrl,
+            category.CAT_NM AS categoryName,
             q.QUT_CN AS quoteSummary,
             CASE
                 WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
@@ -1112,6 +1130,8 @@
         FROM TRADE t
         JOIN SERVICE_REQUEST sr
           ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN CATEGORY category
+          ON category.CAT_SN = sr.CAT_SN
         JOIN QUOTE q
           ON q.QUT_SN = t.QUT_SN
         JOIN USERS requester

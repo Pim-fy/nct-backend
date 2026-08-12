@@ -16,6 +16,8 @@ public class ServiceTradeListItem {
     private String tradeStatusName;
     private BigDecimal tradeAmount;
     private String serviceRequestTitle;
+    private String serviceRequestImageUrl;
+    private String categoryName;
     private String quoteSummary;
     private Long counterpartUserId;
     private String counterpartNickname;

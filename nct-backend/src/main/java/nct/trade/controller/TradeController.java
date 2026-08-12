@@ -195,6 +195,18 @@ public class TradeController {
                 tradeService.getMyMaterialTradeDetail(tradeId, userId)));
     }
 
+    /** 직거래 완료 확인 요청을 받은 상대방이 동의 또는 거절한다. */
+    @PostMapping("/{tradeId}/offline-completion-requests/respond")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> respondOfflineCompletionRequest(
+            @PathVariable(name = "tradeId") long tradeId,
+            @RequestParam(name = "approve") boolean approve,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.respondOfflineCompletionRequest(tradeId, userId, approve)));
+    }
+
     /** 직거래 일정 제안·응답 이력을 거래 당사자에게 반환한다. */
     @GetMapping("/{tradeId}/offline-schedule/proposals")
     public ResponseEntity<ApiResponse<List<TradeOfflineScheduleProposal>>> getOfflineScheduleProposalHistory(

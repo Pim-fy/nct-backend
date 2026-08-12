@@ -21,5 +21,12 @@ public record ServiceTradeDetailResponse(
         String chatRoomStatus,
         boolean chatAvailable,
         List<ServiceScheduleHistoryItem> scheduleHistory,
-        List<String> availableActions) {
+        List<String> availableActions,
+        Long counterpartUserId,
+        String counterpartNickname,
+        String counterpartProfileImageUrl,
+        LocalDateTime counterpartJoinedAt,
+        int counterpartCompletedTradeCount,
+        String serviceRequestContent,
+        long selectedQuoteId) {
 }

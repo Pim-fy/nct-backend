@@ -119,6 +119,17 @@ public class ChatService {
         chatMapper.closeServiceTradeChatRoom(tradeId);
     }
 
+    /** 거래 취소·분쟁은 완료 48시간 채팅 유예와 달리 즉시 채팅을 종료한다. */
+    @Transactional
+    public void closeTradeChatRoom(long tradeId) {
+        if (tradeId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 번호가 올바르지 않습니다.");
+        }
+
+        chatMapper.closeTradeChatRoom(tradeId);
+    }
+
     /** 로그인 사용자가 참여하는 대면 거래 채팅방만 조회한다. */
     @Transactional(readOnly = true)
     public List<ChatRoomResponse> getMyChatRooms(long userId, Long tradeId) {

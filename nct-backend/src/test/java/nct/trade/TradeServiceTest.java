@@ -401,7 +401,7 @@ class TradeServiceTest {
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0012");
         verify(settlementService).holdUpByTradeIfPending(82L, "거래 문제 접수");
         verify(tradeMapper).holdTradeForDispute(82L, "22");
-        verify(chatService, never()).closeOfflineTradeChatRoom(anyLong());
+        verify(chatService, never()).closeTradeChatRoom(anyLong());
         verify(chatService, never()).closeServiceTradeChatRoom(anyLong());
         verify(tradeMapper).insertStatusHistory(82L, "TRDC0007", "거래 문제가 접수되었습니다.");
     }
@@ -432,7 +432,7 @@ class TradeServiceTest {
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(83L, "거래 문제 접수");
         verify(tradeMapper).holdTradeForDispute(83L, "11");
-        verify(chatService).closeOfflineTradeChatRoom(83L);
+        verify(chatService).closeTradeChatRoom(83L);
         verify(chatService, never()).closeServiceTradeChatRoom(anyLong());
         verify(tradeMapper).insertStatusHistory(83L, "TRDC0007", "거래 문제가 접수되었습니다.");
     }
@@ -692,7 +692,10 @@ class TradeServiceTest {
         tradeService.requestServiceCompletion(81L, 22L, "  에어컨 분해 청소와 시운전을 완료했습니다.  ");
 
         verify(tradeMapper).startServiceCompletionRequest(eq(81L), any(), eq("22"));
-        verify(tradeMapper).insertStatusHistory(81L, "TRDC0005", "에어컨 분해 청소와 시운전을 완료했습니다.");
+        verify(tradeMapper).insertStatusHistory(
+                81L,
+                "TRDC0005",
+                "SERVICE_COMPLETION_REQUEST|에어컨 분해 청소와 시운전을 완료했습니다.");
         verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5);
     }
 

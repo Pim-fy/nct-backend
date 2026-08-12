@@ -35,6 +35,8 @@ public class TradeDetailResponse {
     private String tradeMethod;
     /** 직거래 채팅방이 아직 없거나 활성·종료되었는지 상세 화면에 제공한다. */
     private String chatRoomStatus;
+    /** 완료 뒤 48시간 유예를 포함해, 현재 사용자가 직거래 채팅을 시작·전송할 수 있는지 제공한다. */
+    private boolean chatAvailable;
     // 확인 대기 상태에서 첫 완료 확인을 누른 당사자 역할(BUYER/SELLER)을 화면에 제공한다.
     private String completionRequestedBy;
     private LocalDateTime createdAt;

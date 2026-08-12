@@ -33,6 +33,9 @@ public interface ChatMapper {
     /** 서비스 거래가 취소·분쟁 상태가 되면 채팅방을 읽기 전용으로 전환한다. */
     int closeServiceTradeChatRoom(@Param("tradeId") long tradeId);
 
+    /** 물건·서비스 거래가 취소·분쟁 상태가 되면 채팅방을 즉시 읽기 전용으로 전환한다. */
+    int closeTradeChatRoom(@Param("tradeId") long tradeId);
+
     List<ChatRoomResponse> findMyChatRooms(
             @Param("userId") long userId,
             @Param("tradeId") Long tradeId);

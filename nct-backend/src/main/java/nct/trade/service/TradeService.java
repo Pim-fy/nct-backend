@@ -285,7 +285,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
             chatService.closeServiceTradeChatRoom(target.getTradeSn());
         } else if (OFFLINE_METHOD.equals(target.getTradeMethodCode())) {
-            chatService.closeOfflineTradeChatRoom(target.getTradeSn());
+            chatService.closeTradeChatRoom(target.getTradeSn());
         }
     }
 

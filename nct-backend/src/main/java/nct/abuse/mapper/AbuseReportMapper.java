@@ -114,8 +114,7 @@ public interface AbuseReportMapper {
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
             @Param("processReason") String processReason,
-            @Param("actorId") String actorId,
-            @Param("requestId") String requestId);
+            @Param("actorId") String actorId);
 
     // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 탈퇴 전
     // 하드 차단용. 본인이 신고자 또는 피신고자인 접수·처리중(ABRC0005·0006) 신고 건수를 센다.

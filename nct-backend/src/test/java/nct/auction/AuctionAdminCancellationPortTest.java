@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import nct.auction.constant.AuctionStatusCode;
+import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.mapper.AuctionCancelRequestMapper;
 import nct.auction.mapper.AuctionMapper;
@@ -52,6 +53,9 @@ class AuctionAdminCancellationPortTest {
     @Mock
     private PointService pointService;
 
+    @Mock
+    private ActiveAbuseReportReferenceReader activeReportReferenceReader;
+
     @InjectMocks
     private AuctionCancellationService service;
 
@@ -68,7 +72,8 @@ class AuctionAdminCancellationPortTest {
         assertThat(result.previousStatusCode()).isEqualTo(AuctionStatusCode.READY);
         assertThat(result.statusCode()).isEqualTo(AuctionStatusCode.CANCELED);
         assertThat(result.changed()).isTrue();
-        verifyNoInteractions(cancelRequestMapper, tradeService, pointService);
+        verify(cancelRequestMapper).findPendingByAuctionId(11L);
+        verifyNoInteractions(tradeService, pointService);
     }
 
     @Test
@@ -87,7 +92,8 @@ class AuctionAdminCancellationPortTest {
                 RefType.BID,
                 101L,
                 "경매 취소 승인 홀딩 반환: 허위 매물 신고 확인");
-        verifyNoInteractions(cancelRequestMapper, tradeService);
+        verify(cancelRequestMapper).findPendingByAuctionId(12L);
+        verifyNoInteractions(tradeService);
     }
 
     @Test
@@ -108,7 +114,12 @@ class AuctionAdminCancellationPortTest {
                 13L, AuctionStatusCode.ENDED, AuctionStatusCode.CANCELED, "7"))
                 .thenReturn(1);
 
-        service.cancel(command(13L));
+        service.cancel(new AdminAuctionCancellationCommand(
+                13L,
+                7L,
+                "허위 매물 신고 확인",
+                "admin-auction-cancel:11",
+                501L));
 
         ArgumentCaptor<SellerCancellationDecisionCommand> captor =
                 ArgumentCaptor.forClass(SellerCancellationDecisionCommand.class);
@@ -116,6 +127,8 @@ class AuctionAdminCancellationPortTest {
         assertThat(captor.getValue().tradeSn()).isEqualTo(401L);
         assertThat(captor.getValue().decision()).isEqualTo(SellerCancellationDecision.APPROVED);
         assertThat(captor.getValue().requestId()).isEqualTo("admin-auction-cancel:11");
+        assertThat(captor.getValue().sourceReportSn()).isEqualTo(501L);
+        verify(activeReportReferenceReader).hasOtherActiveReportLinkedToAuction(13L, 501L);
         verify(pointService, never()).releaseHold(any(Long.class), any(), any(Long.class), any());
     }
 
@@ -156,7 +169,8 @@ class AuctionAdminCancellationPortTest {
 
         verify(auctionMapper, never()).updateAuctionStatusForCancellation(
                 any(Long.class), any(), any(), any());
-        verifyNoInteractions(cancelRequestMapper, tradeService, pointService);
+        verify(cancelRequestMapper).findPendingByAuctionId(15L);
+        verifyNoInteractions(tradeService, pointService);
     }
 
     @Test
@@ -169,7 +183,8 @@ class AuctionAdminCancellationPortTest {
         assertThat(result.previousStatusCode()).isEqualTo(AuctionStatusCode.CANCELED);
         assertThat(result.statusCode()).isEqualTo(AuctionStatusCode.CANCELED);
         assertThat(result.changed()).isFalse();
-        verifyNoInteractions(cancelRequestMapper, referenceDataService, tradeService, pointService);
+        verify(cancelRequestMapper).findPendingByAuctionId(16L);
+        verifyNoInteractions(referenceDataService, tradeService, pointService);
         verify(auctionMapper, never()).exceptionCancelHighestBid(any(), any(), any());
         verify(auctionMapper, never()).updateAuctionStatusForCancellation(
                 any(Long.class), any(), any(), any());

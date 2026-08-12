@@ -58,6 +58,7 @@ class PointChargeConfirmFailureTest {
     @MockitoBean NotificationService notificationService;
 
     long usrSn;
+    long validChargeAmount;
 
     @BeforeEach
     void setUpUser() {
@@ -68,12 +69,13 @@ class PointChargeConfirmFailureTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        validChargeAmount = pointChargeService.getChargeLimits().getMinChrgAmt();
     }
 
     @Test
     @DisplayName("승인 거절: 예외가 나도 주문이 '실패' 상태와 사유로 남는다 (대기로 되돌아가지 않음)")
     void rejectedConfirmPersistsFailedStatus() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
                 .thenReturn(TossConfirmResult.failure("카드 한도 초과"));
 
@@ -94,10 +96,10 @@ class PointChargeConfirmFailureTest {
     @Test
     @DisplayName("금액 불일치: '실패' 상태·사유가 남고 포인트는 지급되지 않는다")
     void mismatchPersistsFailedStatusWithoutCredit() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
-        // 사전 기록(50,000)과 다른 금액(49,000)이 승인된 상황 — 위변조 의심 케이스
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
+        // 사전 기록과 다른 금액이 승인된 상황 — 위변조 의심 케이스
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
-                .thenReturn(TossConfirmResult.success(49000));
+                .thenReturn(TossConfirmResult.success(validChargeAmount + 1));
 
         assertThatThrownBy(() -> pointChargeService.confirm(orderNo, "test-payment-key"))
                 .isInstanceOf(PointException.class);
@@ -118,9 +120,9 @@ class PointChargeConfirmFailureTest {
     @Test
     @DisplayName("보상(D-027): 승인 후 내부 반영 실패 시 자동 결제취소하고 지급분을 회수한다")
     void internalFailureTriggersAutoCancelAndReversal() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
-                .thenReturn(TossConfirmResult.success(50000));
+                .thenReturn(TossConfirmResult.success(validChargeAmount));
         when(tossPaymentsClient.cancel(anyString(), anyString())).thenReturn(true); // ⓐ 자동취소 성공
         // 지급·완료까지 끝난 뒤 마지막 단계(알림 저장)에서 터지는 상황 재현
         doThrow(new RuntimeException("알림 저장 실패"))
@@ -140,7 +142,7 @@ class PointChargeConfirmFailureTest {
         assertThat(order.getPtChgOrdStatusCd()).isEqualTo(PointChargeOrderStatus.FAILED.getCode());
         assertThat(order.getPtChgOrdFailRsnCn()).contains("자동취소 완료");
 
-        // 원장: 지급(+50000)과 회수(-50000) 두 행이 짝으로 남고 합계는 0 — 잔액 원상복구
+        // 원장: 지급과 회수 두 행이 짝으로 남고 합계는 0 — 잔액 원상복구
         Long ledgerCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM POINT_LEDGER WHERE USR_SN = ?", Long.class, usrSn);
         Long ledgerSum = jdbc.queryForObject(
@@ -152,9 +154,9 @@ class PointChargeConfirmFailureTest {
     @Test
     @DisplayName("보상(D-027): 자동취소마저 실패하면 '관리자 확인 필요' 사유로 남긴다")
     void cancelFailureLeavesAdminNote() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
-                .thenReturn(TossConfirmResult.success(50000));
+                .thenReturn(TossConfirmResult.success(validChargeAmount));
         when(tossPaymentsClient.cancel(anyString(), anyString())).thenReturn(false); // ⓑ 취소 실패
         doThrow(new RuntimeException("알림 저장 실패"))
                 .when(notificationService).notifyCharge(anyLong(), anyLong());

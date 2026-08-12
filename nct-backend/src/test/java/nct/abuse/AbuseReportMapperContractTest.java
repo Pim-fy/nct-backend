@@ -24,6 +24,25 @@ class AbuseReportMapperContractTest {
         assertThat(columns)
                 .contains("FROM CMM_CODE")
                 .contains("WHERE CMM_CD = ABR_TYPE_CD")
-                .contains("AS reportTypeName");
+                .contains("AS reportTypeName")
+                .contains("WHERE d.ABR_SN = ABUSE_REPORT.ABR_SN")
+                .contains("AS linkedDisputeSn")
+                .contains("AS linkedDisputeStatusCode")
+                .contains("AS linkedDisputeResultCode");
+    }
+
+    @Test
+    void selectsInternalReferenceFieldsForMyReportTargetEnrichment() throws IOException {
+        String mapper = new ClassPathResource("mapper/abuse/AbuseReportMapper.xml")
+                .getContentAsString(StandardCharsets.UTF_8)
+                .replaceAll("\\s+", " ")
+                .trim();
+        String columns = mapper.substring(
+                mapper.indexOf("<sql id=\"myReportColumns\">") ,
+                mapper.indexOf("</sql>", mapper.indexOf("<sql id=\"myReportColumns\">")));
+
+        assertThat(columns)
+                .contains("ar.ABR_REF_TYPE_CD AS referenceTypeCode")
+                .contains("ar.ABR_REF_SN AS referenceSn");
     }
 }

@@ -4,5 +4,10 @@ package nct.trade.port;
 public record MemberTradeRestrictionCommand(
         Long userSn,
         Long adminUserSn,
-        String reason) {
+        String reason,
+        Long sourceReportSn) {
+
+    public MemberTradeRestrictionCommand(Long userSn, Long adminUserSn, String reason) {
+        this(userSn, adminUserSn, reason, null);
+    }
 }

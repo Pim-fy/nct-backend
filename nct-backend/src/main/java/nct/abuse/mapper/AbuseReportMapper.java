@@ -37,6 +37,18 @@ public interface AbuseReportMapper {
 
     AbuseReport findReportByIdForUpdate(@Param("reportSn") Long reportSn);
 
+    boolean existsOtherActiveReportLinkedToTrade(
+            @Param("tradeSn") Long tradeSn,
+            @Param("excludedReportSn") Long excludedReportSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
+
+    boolean existsOtherActiveReportLinkedToAuction(
+            @Param("auctionSn") Long auctionSn,
+            @Param("excludedReportSn") Long excludedReportSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
+
     List<AdminAbuseReportResponse> findPendingReports(
             @Param("receivedStatusCode") String receivedStatusCode,
             @Param("processingStatusCode") String processingStatusCode);
@@ -102,5 +114,6 @@ public interface AbuseReportMapper {
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
             @Param("processReason") String processReason,
-            @Param("actorId") String actorId);
+            @Param("actorId") String actorId,
+            @Param("requestId") String requestId);
 }

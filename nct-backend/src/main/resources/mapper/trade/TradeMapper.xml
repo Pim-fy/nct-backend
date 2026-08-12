@@ -104,12 +104,27 @@
         )
     </select>
 
+    <select id="hasOtherOpenTradeDispute" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM TRADE_DISPUTE
+             WHERE TRD_SN = #{tradeId}
+               AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+               AND (
+                   #{excludedReportSn} IS NULL
+                   OR ABR_SN IS NULL
+                   OR ABR_SN != #{excludedReportSn}
+               )
+        )
+    </select>
+
     <insert id="insertTradeDispute"
             parameterType="nct.trade.dto.TradeDisputeRegistration"
             useGeneratedKeys="true"
             keyProperty="disputeSn"
             keyColumn="TRD_DSP_SN">
         INSERT INTO TRADE_DISPUTE (
+            ABR_SN,
             TRD_SN,
             DSPT_USR_SN,
             TRD_DSP_TYPE_CD,
@@ -119,6 +134,7 @@
             TRD_DSP_REG_ID,
             TRD_DSP_UPDT_ID
         ) VALUES (
+            #{reportSn},
             #{tradeId},
             #{disputerUserId},
             #{disputeTypeCode},
@@ -161,25 +177,65 @@
     <!-- 담당자 7 · F-OPS-020: 완료·취소·기존 보류를 건드리지 않고 진행 거래만 일관된 순서로 잠근다. -->
     <select id="findActiveTradesByMemberForUpdate"
             resultType="nct.trade.dto.MemberActiveTradeTarget">
-        SELECT TRD_SN AS tradeId,
-               SLLR_USR_SN AS sellerUserId,
-               BYPR_USR_SN AS buyerUserId,
-               TRD_STATUS_CD AS tradeStatusCode
-        FROM TRADE
-        WHERE (SLLR_USR_SN = #{userSn} OR BYPR_USR_SN = #{userSn})
-          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
-        ORDER BY TRD_SN ASC
+        SELECT t.TRD_SN AS tradeId,
+               COALESCE(t.SLLR_USR_SN, t.REQ_USR_SN) AS sellerUserId,
+               COALESCE(t.BYPR_USR_SN, t.PRV_USR_SN) AS buyerUserId,
+               t.TRD_TYPE_CD AS tradeTypeCode,
+               t.TRD_STATUS_CD AS tradeStatusCode,
+               t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+               NOW() AS databaseNow,
+               EXISTS (
+                   SELECT 1
+                     FROM TRADE_DISPUTE d
+                    WHERE d.TRD_SN = t.TRD_SN
+                      AND d.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+               ) AS activeDispute
+        FROM TRADE t
+        WHERE (
+              t.SLLR_USR_SN = #{userSn}
+              OR t.BYPR_USR_SN = #{userSn}
+              OR t.REQ_USR_SN = #{userSn}
+              OR t.PRV_USR_SN = #{userSn}
+          )
+          AND t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005', 'TRDC0007')
+        ORDER BY t.TRD_SN ASC
         FOR UPDATE
     </select>
 
     <update id="holdTradeForMemberRestriction">
         UPDATE TRADE
-        SET TRD_STATUS_CD = 'TRDC0007',
+        SET TRD_UPDT_ID = CASE
+                WHEN TRD_STATUS_CD = 'TRDC0005' THEN TRD_UPDT_ID
+                ELSE #{updaterId}
+            END,
+            TRD_STATUS_CD = 'TRDC0007',
             TRD_AUTO_CMPL_DT = NULL,
-            TRD_UPDT_ID = #{updaterId}
+            TRD_UPDT_DT = NOW()
         WHERE TRD_SN = #{tradeId}
           AND TRD_STATUS_CD = #{expectedStatusCode}
           AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+    </update>
+
+    <update id="restoreTradeAfterMemberRestriction">
+        UPDATE TRADE t
+           SET t.TRD_STATUS_CD = #{targetStatusCode},
+               t.TRD_AUTO_CMPL_DT = CASE
+                   WHEN #{targetStatusCode} = 'TRDC0005'
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   ELSE NULL
+               END,
+               t.TRD_UPDT_ID = CASE
+                   WHEN #{targetStatusCode} = 'TRDC0005' THEN t.TRD_UPDT_ID
+                   ELSE #{updaterId}
+               END
+         WHERE t.TRD_SN = #{tradeId}
+           AND t.TRD_STATUS_CD = 'TRDC0007'
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE_DISPUTE d
+                WHERE d.TRD_SN = t.TRD_SN
+                  AND d.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+           )
     </update>
 
     <!-- 서비스 완료 요청·확인·자동 완료가 같은 TRADE 행 잠금 기준으로 경합한다. -->
@@ -988,6 +1044,32 @@
         WHERE TRD_SN = #{tradeId}
           AND TRD_TYPE_CD = 'TRDC0002'
           AND TRD_STATUS_CD = 'TRDC0003'
+    </update>
+
+    <update id="cancelServiceTradeForAdmin">
+        UPDATE TRADE
+           SET TRD_STATUS_CD = 'TRDC0008',
+               TRD_AUTO_CMPL_DT = NULL,
+               TRD_UPDT_ID = #{updaterId},
+               TRD_UPDT_DT = NOW()
+         WHERE TRD_SN = #{tradeId}
+           AND TRD_TYPE_CD = 'TRDC0002'
+           AND TRD_STATUS_CD = #{expectedStatusCode}
+           AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005', 'TRDC0007')
+    </update>
+
+    <update id="completeCurrentTradeIncidentAfterPermanentCancellation">
+        UPDATE TRADE_DISPUTE
+           SET TRD_DSP_RSLT_CD = 'TRDC0022',
+               TRD_DSP_STATUS_CD = 'TRDC0018',
+               TRD_DSP_PROC_RSN_CN = #{reason},
+               TRD_DSP_PROC_USR_SN = #{adminUserSn},
+               TRD_DSP_PROC_DT = NOW(),
+               TRD_DSP_UPDT_ID = #{updaterId},
+               TRD_DSP_UPDT_DT = NOW()
+         WHERE TRD_SN = #{tradeId}
+           AND ABR_SN = #{sourceReportSn}
+           AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
     </update>
 
     <!-- 서비스 거래 당사자가 재진입할 목록이다. 요청서 주소·세부 항목 같은 민감 정보는 포함하지 않는다. -->

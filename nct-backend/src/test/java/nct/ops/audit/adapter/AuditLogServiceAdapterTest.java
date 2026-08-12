@@ -44,4 +44,24 @@ class AuditLogServiceAdapterTest {
         assertThrows(IllegalArgumentException.class, () -> adapter.record(new AuditLogCommand(
                 "UNKNOWN_ACTION", "USR:7", "NOTICE", 3L, "사유", "-", "-", "req-1")));
     }
+
+    @Test
+    void mapsAutomaticSystemActionToNullActor() {
+        AuditLogService auditLogService = mock(AuditLogService.class);
+        AuditLogServiceAdapter adapter = new AuditLogServiceAdapter(
+                auditLogService,
+                new SensitiveDataMasker());
+
+        adapter.record(new AuditLogCommand(
+                "STATUS_CHANGE", null, "MEMBER", 3L,
+                "자동 만료", "before", "after", "req-system-1"));
+
+        verify(auditLogService).record(
+                isNull(),
+                eq(AuditLogType.STATUS_CHANGE),
+                eq(RefType.MEMBER),
+                eq(3L),
+                eq("reason=자동 만료; before=before; after=after; requestId=req-system-1"),
+                isNull());
+    }
 }

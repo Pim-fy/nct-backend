@@ -41,6 +41,8 @@ import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.mapper.AbuseReportMapper;
+import nct.abuse.port.TradeIncidentReportCommand;
+import nct.auction.port.AuctionReferenceTitleReader;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
@@ -63,6 +65,7 @@ import nct.product.service.ProductService;
 class AbuseReportServiceTest {
 
     private AbuseReportMapper abuseReportMapper;
+    private AuctionReferenceTitleReader auctionReferenceTitleReader;
     private ReferenceDataService referenceDataService;
     private AbuseReportReferenceValidationService referenceValidationService;
     private AuditLogPort auditLogPort;
@@ -77,6 +80,7 @@ class AbuseReportServiceTest {
     @BeforeEach
     void setUp() {
         abuseReportMapper = mock(AbuseReportMapper.class);
+        auctionReferenceTitleReader = mock(AuctionReferenceTitleReader.class);
         referenceDataService = mock(ReferenceDataService.class);
         referenceValidationService = mock(AbuseReportReferenceValidationService.class);
         auditLogPort = mock(AuditLogPort.class);
@@ -98,6 +102,7 @@ class AbuseReportServiceTest {
         when(authMemberPort.findById(anyLong())).thenReturn(Optional.of(mock(AuthMember.class)));
         service = new AbuseReportService(
                 abuseReportMapper,
+                auctionReferenceTitleReader,
                 referenceDataService,
                 referenceValidationService,
                 auditLogPort,
@@ -136,6 +141,33 @@ class AbuseReportServiceTest {
 
         assertThat(result.reportSn()).isEqualTo(501L);
         verify(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
+    }
+
+    @Test
+    void createsTradeIncidentAsReportAndLinksValidatedEvidence() {
+        doAnswer(invocation -> {
+            AbuseReport report = invocation.getArgument(0);
+            report.setReportSn(601L);
+            return 1;
+        }).when(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
+        when(abuseReportMapper.insertReportFile(601L, 801L, 0, "11")).thenReturn(1);
+
+        Long reportSn = service.create(new TradeIncidentReportCommand(
+                81L,
+                11L,
+                22L,
+                "TRDC0014",
+                "보관금 반환이 필요합니다.",
+                List.of(801L)));
+
+        assertThat(reportSn).isEqualTo(601L);
+        ArgumentCaptor<AbuseReport> captor = ArgumentCaptor.forClass(AbuseReport.class);
+        verify(abuseReportMapper).insertCustomerReport(captor.capture());
+        assertThat(captor.getValue().getReportTypeCode()).isEqualTo("ABRC0019");
+        assertThat(captor.getValue().getReferenceTypeCode()).isEqualTo("REFC0005");
+        assertThat(captor.getValue().getReferenceSn()).isEqualTo(81L);
+        assertThat(captor.getValue().getReportedUserSn()).isEqualTo(22L);
+        verify(abuseReportMapper).insertReportFile(601L, 801L, 0, "11");
     }
 
     @Test
@@ -636,7 +668,8 @@ class AbuseReportServiceTest {
                 AbuseReportService.PROCESSING_STATUS,
                 AbuseReportService.PROCESSED_STATUS,
                 "위반 확인",
-                "7")).thenReturn(1);
+                "7",
+                "request-1")).thenReturn(1);
 
         service.decide(new AdminReportDecisionCommand(
                 101L,
@@ -669,7 +702,8 @@ class AbuseReportServiceTest {
                 AbuseReportService.RECEIVED_STATUS,
                 AbuseReportService.PROCESSING_STATUS,
                 "사실관계 확인 시작",
-                "7")).thenReturn(1);
+                "7",
+                "request-processing")).thenReturn(1);
 
         service.decide(new AdminReportDecisionCommand(
                 101L,
@@ -696,7 +730,8 @@ class AbuseReportServiceTest {
                 AbuseReportService.PROCESSING_STATUS,
                 AbuseReportService.REJECTED_STATUS,
                 "위반 아님",
-                "7")).thenReturn(1);
+                "7",
+                "request-2")).thenReturn(1);
 
         service.decide(new AdminReportDecisionCommand(
                 101L,
@@ -710,7 +745,8 @@ class AbuseReportServiceTest {
                 AbuseReportService.PROCESSING_STATUS,
                 AbuseReportService.REJECTED_STATUS,
                 "위반 아님",
-                "7");
+                "7",
+                "request-2");
         ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogPort).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().actionCode()).isEqualTo("ADMIN_REJECT");
@@ -730,7 +766,8 @@ class AbuseReportServiceTest {
                 AbuseReportService.PROCESSING_STATUS,
                 AbuseReportService.PROCESSED_STATUS,
                 "자동 탐지 확인",
-                "7")).thenReturn(1);
+                "7",
+                "request-system-1")).thenReturn(1);
 
         service.decide(new AdminReportDecisionCommand(
                 101L,
@@ -781,7 +818,8 @@ class AbuseReportServiceTest {
                 eq(AbuseReportService.PROCESSING_STATUS),
                 any(),
                 any(),
-                eq("7"))).thenAnswer(invocation -> updated.compareAndSet(false, true) ? 1 : 0);
+                eq("7"),
+                any())).thenAnswer(invocation -> updated.compareAndSet(false, true) ? 1 : 0);
 
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);

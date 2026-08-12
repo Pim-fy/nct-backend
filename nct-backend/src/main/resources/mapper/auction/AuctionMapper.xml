@@ -218,6 +218,19 @@
         </foreach>
     </select>
 
+    <!-- 담당자 7 · F-COM-018: 과거 신고의 경매 번호 표시를 상품 제목으로 일괄 보정합니다. -->
+    <select id="findAuctionReferenceTitles" resultType="nct.auction.dto.AuctionReferenceTitle">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.PRD_NM AS title
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        WHERE a.AUC_SN IN
+        <foreach collection="auctionIds" item="auctionId" open="(" separator="," close=")">
+            #{auctionId}
+        </foreach>
+    </select>
+
     <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
         SELECT
             a.AUC_SN AS auctionId,
@@ -464,6 +477,48 @@
         FOR UPDATE
     </select>
 
+    <!-- 담당자 7 · 신고 제재: 판매자 또는 현재 최고입찰자로 연관된 경매를 번호순으로 잠급니다. -->
+    <select id="findSanctionTargetsByMemberForUpdate"
+            resultType="nct.auction.dto.AuctionSanctionTarget">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.USR_SN AS sellerUserSn,
+            currentBid.BID_SN AS highestBidId,
+            currentBid.USR_SN AS highestBidderUserSn,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            a.AUC_START_DT AS startAt,
+            a.AUC_END_DT AS endAt,
+            NOW() AS databaseNow,
+            trade.TRD_SN AS tradeSn,
+            trade.TRD_STATUS_CD AS tradeStatusCode
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        LEFT JOIN BID currentBid
+          ON currentBid.BID_SN = (
+              SELECT b.BID_SN
+                FROM BID b
+               WHERE b.AUC_SN = a.AUC_SN
+                 AND b.BID_STATUS_CD = 'BIDC0001'
+               ORDER BY b.BID_AMT DESC, b.BID_SN DESC
+               LIMIT 1
+          )
+        LEFT JOIN TRADE trade
+          ON trade.TRD_SN = (
+              SELECT t.TRD_SN
+                FROM TRADE t
+               WHERE t.PRD_SN = p.PRD_SN
+                 AND t.TRD_TYPE_CD = 'TRDC0001'
+               ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+               LIMIT 1
+          )
+        WHERE (p.USR_SN = #{userSn} OR currentBid.USR_SN = #{userSn})
+          AND a.AUC_STATUS_CD IN (
+              'AUCC0001', 'AUCC0002', 'AUCC0003', 'AUCC0006', 'AUCC0013'
+          )
+        ORDER BY a.AUC_SN
+        FOR UPDATE
+    </select>
+
     <select id="findExpiredActiveAuctionIds" resultType="long">
         SELECT AUC_SN
         FROM AUCTION
@@ -663,6 +718,35 @@
             AUC_UPDT_DT = NOW()
         WHERE AUC_SN = #{auctionId}
           AND AUC_STATUS_CD = #{expectedStatusCode}
+    </update>
+
+    <update id="pauseAuctionForSanction">
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = 'AUCC0013',
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = NOW()
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = #{expectedStatusCode}
+           AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006')
+    </update>
+
+    <update id="restoreAuctionAfterSanction">
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = #{statusCode},
+               AUC_START_DT = CASE
+                   WHEN #{statusCode} = 'AUCC0001'
+                       THEN DATE_ADD(NOW(), INTERVAL COALESCE(#{remainingStartSeconds}, 0) SECOND)
+                   ELSE AUC_START_DT
+               END,
+               AUC_END_DT = CASE
+                   WHEN #{statusCode} IN ('AUCC0001', 'AUCC0002')
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   ELSE AUC_END_DT
+               END,
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = NOW()
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = 'AUCC0013'
     </update>
 
 </mapper>

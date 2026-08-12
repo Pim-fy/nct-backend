@@ -22,6 +22,7 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
 import nct.ops.operation.dto.AdminReportPageResponse;
+import nct.ops.operation.dto.AdminReportSanctionReleaseRequest;
 import nct.ops.operation.service.AdminReportOperationService;
 
 /** 담당자 7 · F-OPS-007: 관리자 신고 조회·처리·반려 API입니다. */
@@ -62,8 +63,19 @@ public class AdminReportOperationController {
         adminReportOperationService.decide(
                 reportSn,
                 request.getDecision(),
+                request.getEnforcementAction(),
                 request.getReason(),
                 userId(userDetails));
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    @PostMapping("/{reportSn}/sanction/release")
+    public ResponseEntity<ApiResponse<Void>> releaseSanction(
+            @PathVariable(name = "reportSn") Long reportSn,
+            @Valid @RequestBody AdminReportSanctionReleaseRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        adminReportOperationService.releaseSanction(
+                reportSn, request.reason(), userId(userDetails));
         return ResponseEntity.ok(ApiResponse.success());
     }
 

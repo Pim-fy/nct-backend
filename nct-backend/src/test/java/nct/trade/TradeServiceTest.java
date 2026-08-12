@@ -26,6 +26,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import nct.auction.service.AuctionService;
+import nct.abuse.port.ActiveAbuseReportReferenceReader;
+import nct.abuse.port.TradeIncidentReportCommand;
+import nct.abuse.port.TradeIncidentReportPort;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
@@ -72,6 +75,7 @@ import nct.trade.dto.TradeOfflineScheduleProposal;
 import nct.trade.dto.TradeOfflineTradeTarget;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.mapper.TradeMapper;
+import nct.trade.port.AdminServiceTradeCancellationCommand;
 import nct.trade.mapper.TradeOfflineProposalMapper;
 import nct.trade.service.TradeOfflineScheduleProposalService;
 import nct.trade.service.TradeService;
@@ -91,6 +95,8 @@ class TradeServiceTest {
     private ChatService chatService;
     private PointService pointService;
     private ReferenceDataService referenceDataService;
+    private ActiveAbuseReportReferenceReader activeAbuseReportReferenceReader;
+    private TradeIncidentReportPort tradeIncidentReportPort;
     private FieldCryptoService fieldCryptoService;
     // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
     private AuctionService auctionService;
@@ -110,6 +116,10 @@ class TradeServiceTest {
         chatService = mock(ChatService.class);
         pointService = mock(PointService.class);
         referenceDataService = mock(ReferenceDataService.class);
+        activeAbuseReportReferenceReader = mock(ActiveAbuseReportReferenceReader.class);
+        tradeIncidentReportPort = mock(TradeIncidentReportPort.class);
+        when(tradeIncidentReportPort.create(any(TradeIncidentReportCommand.class)))
+                .thenReturn(9001L);
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -135,6 +145,14 @@ class TradeServiceTest {
                         tradeMapper,
                         tradeOfflineProposalMapper,
                         fieldCryptoService));
+        ReflectionTestUtils.setField(
+                tradeService,
+                "activeReportReferenceReader",
+                activeAbuseReportReferenceReader);
+        ReflectionTestUtils.setField(
+                tradeService,
+                "tradeIncidentReportPort",
+                tradeIncidentReportPort);
     }
 
     @Test
@@ -351,11 +369,19 @@ class TradeServiceTest {
                 ArgumentCaptor.forClass(TradeDisputeRegistration.class);
         verify(tradeMapper).insertTradeDispute(captor.capture());
         assertThat(captor.getValue().getTradeId()).isEqualTo(81L);
+        assertThat(captor.getValue().getReportSn()).isEqualTo(9001L);
         assertThat(captor.getValue().getDisputerUserId()).isEqualTo(11L);
         assertThat(captor.getValue().getDisputeTypeCode()).isEqualTo("TRDC0011");
         assertThat(captor.getValue().getContent()).isEqualTo("작업 완료 내용에 이견이 있습니다.");
         assertThat(captor.getValue().getPreviousTradeStatusCode()).isEqualTo("TRDC0005");
         assertThat(captor.getValue().getUpdaterId()).isEqualTo("11");
+        ArgumentCaptor<TradeIncidentReportCommand> reportCaptor =
+                ArgumentCaptor.forClass(TradeIncidentReportCommand.class);
+        verify(tradeIncidentReportPort).create(reportCaptor.capture());
+        assertThat(reportCaptor.getValue().tradeSn()).isEqualTo(81L);
+        assertThat(reportCaptor.getValue().reporterUserSn()).isEqualTo(11L);
+        assertThat(reportCaptor.getValue().reportedUserSn()).isEqualTo(22L);
+        assertThat(reportCaptor.getValue().disputeTypeCode()).isEqualTo("TRDC0011");
         verify(referenceDataService).requireActiveCode("TRDG04", "TRDC0011");
         verify(settlementService).holdUpByTradeIfPending(81L, "거래 문제 접수");
         verify(tradeMapper).holdTradeForDispute(81L, "11");
@@ -525,6 +551,72 @@ class TradeServiceTest {
     }
 
     @Test
+    void rejectsTradeIncidentWhenAnotherActiveReportAlreadyReferencesTrade() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setDisputeTypeCode("TRDC0011");
+        request.setContent("이미 신고된 거래입니다.");
+        when(tradeMapper.findTradeDisputeTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.hasOpenTradeDispute(81L)).thenReturn(false);
+        when(activeAbuseReportReferenceReader.hasOtherActiveReportLinkedToTrade(81L, null))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> tradeService.registerServiceTradeDispute(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED);
+
+        verifyNoInteractions(tradeIncidentReportPort);
+        verify(tradeMapper, never()).insertTradeDispute(any(TradeDisputeRegistration.class));
+    }
+
+    @Test
+    void permanentSuspensionCancellationExcludesCurrentReportAndRefundsServiceEscrow() {
+        ServiceTradeCompletionTarget target = new ServiceTradeCompletionTarget();
+        target.setTradeId(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeStatus("TRDC0003");
+        when(tradeMapper.findServiceTradeCompletionTargetForUpdate(81L)).thenReturn(target);
+        when(activeAbuseReportReferenceReader.hasOtherActiveReportLinkedToTrade(81L, 501L))
+                .thenReturn(false);
+        when(tradeMapper.hasOtherOpenTradeDispute(81L, 501L)).thenReturn(false);
+        when(tradeMapper.cancelServiceTradeForAdmin(81L, "TRDC0003", "99")).thenReturn(1);
+
+        boolean canceled = tradeService.cancel(new AdminServiceTradeCancellationCommand(
+                81L,
+                99L,
+                "반복적인 거래 미이행",
+                501L));
+
+        assertThat(canceled).isTrue();
+        verify(activeAbuseReportReferenceReader).hasOtherActiveReportLinkedToTrade(81L, 501L);
+        verify(tradeMapper).hasOtherOpenTradeDispute(81L, 501L);
+        verify(settlementService).closeRefundedByTradeIfOpen(81L, 99L);
+        verify(pointService).refundEscrow(
+                eq(11L),
+                eq(81L),
+                eq(nct.common.domain.RefType.TRADE),
+                eq(81L),
+                org.mockito.ArgumentMatchers.contains("영구 이용정지"));
+        verify(tradeMapper).completeCurrentTradeIncidentAfterPermanentCancellation(
+                eq(81L),
+                eq(501L),
+                org.mockito.ArgumentMatchers.contains("영구 이용정지"),
+                eq(99L),
+                eq("99"));
+        verify(tradeMapper).insertStatusHistory(
+                eq(81L),
+                eq("TRDC0008"),
+                org.mockito.ArgumentMatchers.contains("반복적인 거래 미이행"));
+    }
+
+    @Test
     void rejectsInactiveOrWrongGroupServiceTradeDisputeTypeBeforeInsert() {
         TradeDisputeTarget target = new TradeDisputeTarget();
         target.setTradeSn(81L);
@@ -685,7 +777,10 @@ class TradeServiceTest {
         tradeService.requestServiceCompletion(81L, 22L, "  에어컨 분해 청소와 시운전을 완료했습니다.  ");
 
         verify(tradeMapper).startServiceCompletionRequest(eq(81L), any(), eq("22"));
-        verify(tradeMapper).insertStatusHistory(81L, "TRDC0005", "에어컨 분해 청소와 시운전을 완료했습니다.");
+        verify(tradeMapper).insertStatusHistory(
+                81L,
+                "TRDC0005",
+                "SERVICE_COMPLETION_REQUEST|에어컨 분해 청소와 시운전을 완료했습니다.");
         verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5);
     }
 
@@ -1481,6 +1576,43 @@ class TradeServiceTest {
                 "관리자 판매자 취소 승인: 판매자 취소 요청을 승인합니다.");
         verify(notificationService).notifyTradeCancelled(20L, 91L, true);
         verify(notificationService).notifyTradeCancelled(10L, 91L, false);
+    }
+
+    @Test
+    void permanentSuspensionCancelsMaterialTradeHeldByCurrentReport() {
+        TradeCancellationTarget target = new TradeCancellationTarget();
+        target.setTradeId(91L);
+        target.setSellerUserId(10L);
+        target.setBuyerUserId(20L);
+        target.setBidSn(501L);
+        target.setTradeStatus("TRDC0007");
+        when(tradeMapper.findMaterialTradeForCancellationForUpdate(91L)).thenReturn(target);
+        when(activeAbuseReportReferenceReader.hasOtherActiveReportLinkedToTrade(91L, 701L))
+                .thenReturn(false);
+        when(tradeMapper.hasOtherOpenTradeDispute(91L, 701L)).thenReturn(false);
+        when(tradeMapper.cancelMaterialTrade(91L, "99")).thenReturn(1);
+
+        tradeService.decide(new SellerCancellationDecisionCommand(
+                91L,
+                SellerCancellationDecision.APPROVED,
+                "영구 이용정지에 따른 취소",
+                "99",
+                "report-material-cancel-701",
+                701L));
+
+        verify(tradeMapper).cancelMaterialTrade(91L, "99");
+        verify(tradeMapper).completeCurrentTradeIncidentAfterPermanentCancellation(
+                91L,
+                701L,
+                "영구 이용정지에 따른 취소",
+                99L,
+                "99");
+        verify(pointService).refundEscrow(
+                20L,
+                91L,
+                nct.common.domain.RefType.BID,
+                501L,
+                "관리자 판매자 취소 승인: 영구 이용정지에 따른 취소");
     }
 
     @Test

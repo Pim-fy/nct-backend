@@ -94,6 +94,7 @@ public class AuctionService {
                 .build();
     }
 
+
     @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
         return findAuctionDetailWithProductValidation(auctionId, null, true);

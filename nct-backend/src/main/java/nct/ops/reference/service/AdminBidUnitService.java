@@ -2,6 +2,7 @@ package nct.ops.reference.service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +43,7 @@ public class AdminBidUnitService {
         requireGroup(false);
         return mapper.findAllByGroup(BID_UNIT_GROUP).stream()
                 .map(code -> AdminBidUnitResponse.from(code, amount(code.getName())))
+                .sorted(Comparator.comparing(AdminBidUnitResponse::amount))
                 .toList();
     }
 
@@ -183,6 +185,7 @@ public class AdminBidUnitService {
         }
         return reordered.stream()
                 .map(code -> AdminBidUnitResponse.from(code, amount(code.getName())))
+                .sorted(Comparator.comparing(AdminBidUnitResponse::amount))
                 .toList();
     }
 

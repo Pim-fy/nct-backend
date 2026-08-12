@@ -18,6 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import nct.auction.service.AuctionService;
+import nct.abuse.port.ActiveAbuseReportReferenceReader;
+import nct.abuse.port.TradeIncidentReportCommand;
+import nct.abuse.port.TradeIncidentReportPort;
 import nct.common.domain.RefType;
 import nct.chat.service.ChatService;
 import nct.file.domain.FileMeta;
@@ -66,6 +69,8 @@ import nct.trade.dto.TradeOfflineScheduleRequest;
 import nct.trade.dto.SellerTradeStatusItem;
 import nct.trade.mapper.TradeMapper;
 import nct.trade.port.ServiceTradeCreator;
+import nct.trade.port.AdminServiceTradeCancellationCommand;
+import nct.trade.port.AdminServiceTradeCancellationPort;
 import nct.setting.domain.SystemSettingDetail;
 import nct.setting.mapper.SystemSettingAdminMapper;
 
@@ -75,7 +80,10 @@ import nct.setting.mapper.SystemSettingAdminMapper;
  */
 @Service
 @RequiredArgsConstructor
-public class TradeService implements SellerCancellationDecisionPort, ServiceTradeCreator {
+public class TradeService implements
+        SellerCancellationDecisionPort,
+        ServiceTradeCreator,
+        AdminServiceTradeCancellationPort {
 
     private static final String MATERIAL_TRADE = "TRDC0001";
     private static final String SERVICE_TRADE = "TRDC0002";
@@ -127,6 +135,10 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
     private TradeOfflineScheduleProposalService offlineScheduleProposalService;
     private final PointService pointService;
     private final ReferenceDataService referenceDataService;
+    @Autowired
+    private ActiveAbuseReportReferenceReader activeReportReferenceReader;
+    @Autowired
+    private TradeIncidentReportPort tradeIncidentReportPort;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
     // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 TradeService를
@@ -204,7 +216,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
             throw new CustomException(ErrorCode.CONFLICT,
                     "진행 중인 거래에서만 거래 문제를 접수할 수 있습니다.");
         }
-        if (tradeMapper.hasOpenTradeDispute(tradeId)) {
+        if (tradeMapper.hasOpenTradeDispute(tradeId)
+                || activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(tradeId, null)) {
             throw new CustomException(ErrorCode.ALREADY_PROCESSED,
                     "이미 처리 중인 거래 문제가 있습니다.");
         }
@@ -217,7 +230,15 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         referenceDataService.requireActiveCode(TRADE_DISPUTE_TYPE_GROUP, disputeTypeCode);
         List<Long> evidenceFileSns = validateTradeDisputeEvidenceFiles(request.getFileSns(), userId);
         String updaterId = String.valueOf(userId);
+        Long reportSn = tradeIncidentReportPort.create(new TradeIncidentReportCommand(
+                tradeId,
+                userId,
+                tradeCounterpartUserId(target, userId),
+                disputeTypeCode,
+                request.getContent().trim(),
+                evidenceFileSns));
         TradeDisputeRegistration registration = TradeDisputeRegistration.builder()
+                .reportSn(reportSn)
                 .tradeId(tradeId)
                 .disputerUserId(userId)
                 .disputeTypeCode(disputeTypeCode)
@@ -437,6 +458,84 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + userId + "|" + decision);
         notificationService.notifyServiceTradeCancelled(target.getRequesterUserId(), tradeId, true);
         notificationService.notifyServiceTradeCancelled(target.getProviderUserId(), tradeId, false);
+    }
+
+    private Long tradeCounterpartUserId(TradeDisputeTarget target, long userId) {
+        if (SERVICE_TRADE.equals(target.getTradeTypeCode())) {
+            return Objects.equals(userId, target.getRequesterUserId())
+                    ? target.getProviderUserId()
+                    : target.getRequesterUserId();
+        }
+        return Objects.equals(userId, target.getSellerUserId())
+                ? target.getBuyerUserId()
+                : target.getSellerUserId();
+    }
+
+    /**
+     * 담당자 7 - F-OPS-007: 영구정지 회원의 분쟁 없는 서비스 거래를 취소하고 보관금을 의뢰자에게 돌려줍니다.
+     * 분쟁이 진행 중이거나 이미 완료·취소된 거래는 자동 판정하지 않고 false를 반환합니다.
+     */
+    @Override
+    @Transactional
+    public boolean cancel(AdminServiceTradeCancellationCommand command) {
+        if (command == null
+                || command.tradeSn() == null || command.tradeSn() <= 0
+                || command.adminUserSn() == null || command.adminUserSn() <= 0
+                || command.reason() == null || command.reason().isBlank()
+                || command.reason().trim().length() > 1000) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        ServiceTradeCompletionTarget target =
+                tradeMapper.findServiceTradeCompletionTargetForUpdate(command.tradeSn());
+        if (target == null
+                || (!IN_PROGRESS.equals(target.getTradeStatus())
+                        && !WAITING_CONFIRMATION.equals(target.getTradeStatus())
+                        && !ON_HOLD.equals(target.getTradeStatus()))) {
+            return false;
+        }
+
+        boolean otherActiveReport = activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(
+                command.tradeSn(), command.sourceReportSn());
+        boolean otherLegacyDispute = tradeMapper.hasOtherOpenTradeDispute(
+                command.tradeSn(), command.sourceReportSn());
+        if (otherActiveReport || otherLegacyDispute) {
+            return false;
+        }
+
+        int changed = tradeMapper.cancelServiceTradeForAdmin(
+                command.tradeSn(),
+                target.getTradeStatus(),
+                String.valueOf(command.adminUserSn()));
+        if (changed != 1) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "서비스 거래 상태가 변경되어 영구정지 취소를 적용할 수 없습니다.");
+        }
+
+        String reason = "영구 이용정지에 따른 관리자 취소: " + command.reason().trim();
+        settlementService.closeRefundedByTradeIfOpen(command.tradeSn(), command.adminUserSn());
+        pointService.refundEscrow(
+                target.getRequesterUserId(),
+                command.tradeSn(),
+                RefType.TRADE,
+                command.tradeSn(),
+                reason);
+        if (command.sourceReportSn() != null) {
+            tradeMapper.completeCurrentTradeIncidentAfterPermanentCancellation(
+                    command.tradeSn(),
+                    command.sourceReportSn(),
+                    reason,
+                    command.adminUserSn(),
+                    String.valueOf(command.adminUserSn()));
+        }
+        chatService.closeServiceTradeChatRoom(command.tradeSn());
+        tradeMapper.insertStatusHistory(command.tradeSn(), CANCELED, reason);
+        notificationService.notifyServiceTradeCancelled(
+                target.getRequesterUserId(), command.tradeSn(), true);
+        notificationService.notifyServiceTradeCancelled(
+                target.getProviderUserId(), command.tradeSn(), false);
+        return true;
     }
 
     private ServiceTradeCompletionTarget validateServiceScheduleRequester(long tradeId, long userId) {
@@ -1147,7 +1246,9 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                     "존재하지 않는 물건 거래입니다.");
         }
 
-        if (!isCancellableTradeStatus(target.getTradeStatus())) {
+        boolean reportHeldTrade = command.sourceReportSn() != null
+                && ON_HOLD.equals(target.getTradeStatus());
+        if (!isCancellableTradeStatus(target.getTradeStatus()) && !reportHeldTrade) {
             throw new CustomException(ErrorCode.ALREADY_PROCESSED,
                     "현재 거래 상태에서는 취소 승인 처리할 수 없습니다.");
         }
@@ -1155,6 +1256,16 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         if (target.getBidSn() == null || target.getBidSn() <= 0) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "낙찰 입찰 정보를 확인할 수 없어 취소 승인 처리할 수 없습니다.");
+        }
+
+        if (command.sourceReportSn() != null
+                && (activeReportReferenceReader.hasOtherActiveReportLinkedToTrade(
+                        target.getTradeId(), command.sourceReportSn())
+                    || tradeMapper.hasOtherOpenTradeDispute(
+                            target.getTradeId(), command.sourceReportSn()))) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "같은 거래의 다른 미해결 신고가 있어 자동 취소할 수 없습니다.");
         }
 
         if (tradeMapper.cancelMaterialTrade(
@@ -1175,6 +1286,14 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 RefType.BID,
                 target.getBidSn(),
                 "관리자 판매자 취소 승인: " + command.reason().trim());
+        if (command.sourceReportSn() != null) {
+            tradeMapper.completeCurrentTradeIncidentAfterPermanentCancellation(
+                    target.getTradeId(),
+                    command.sourceReportSn(),
+                    command.reason().trim(),
+                    Long.valueOf(command.adminId()),
+                    command.adminId());
+        }
         notificationService.notifyTradeCancelled(
                 target.getBuyerUserId(), target.getTradeId(), true);
         notificationService.notifyTradeCancelled(
@@ -1225,7 +1344,8 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
                 || command.adminId() == null
                 || command.adminId().isBlank()
                 || command.requestId() == null
-                || command.requestId().isBlank()) {
+                || command.requestId().isBlank()
+                || (command.sourceReportSn() != null && command.sourceReportSn() <= 0)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "판매자 취소 판단 정보가 올바르지 않습니다.");
         }

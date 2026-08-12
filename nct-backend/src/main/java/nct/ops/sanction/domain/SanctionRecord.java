@@ -13,6 +13,7 @@ import lombok.Setter;
 public class SanctionRecord {
 
     private Long sanctionSn;
+    private Long sourceReportSn;
     private Long userSn;
     private Long processorUserSn;
     private String sanctionTypeCode;

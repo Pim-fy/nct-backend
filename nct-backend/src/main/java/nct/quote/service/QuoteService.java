@@ -39,6 +39,7 @@ import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
 import nct.quote.port.AdminQuoteListReader;
+import nct.quote.port.AdminQuoteModerationPort;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
@@ -50,7 +51,8 @@ import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarg
 @Service
 @RequiredArgsConstructor
 public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader,
-        AdminQuoteSummaryReader, AdminQuoteListReader, ServiceRequestQuoteProviderReader {
+        AdminQuoteSummaryReader, AdminQuoteListReader, AdminQuoteModerationPort,
+        ServiceRequestQuoteProviderReader {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -131,6 +133,81 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         return new CustomException(
                 ErrorCode.INTERNAL_SERVER_ERROR,
                 "관리자 견적 목록 데이터가 일관되지 않습니다.");
+    }
+
+    /** 담당자 7 소비 계약: 선택 전 활성 견적만 관리자 사유로 무효화합니다. */
+    @Override
+    @Transactional
+    public AdminQuoteModerationResult invalidateActiveQuote(
+            Long serviceRequestId,
+            Long quoteId,
+            Long actorUserId) {
+        validateAdminModerationInput(serviceRequestId, actorUserId);
+        if (quoteId == null || quoteId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        Quote quote = quoteMapper.findQuoteByIdForUpdate(quoteId);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!serviceRequestId.equals(quote.getSvcReqSn())) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_IN_SERVICE_REQUEST);
+        }
+        if (STATUS_WITHDRAWN.equals(quote.getQutStatusCd())) {
+            return new AdminQuoteModerationResult(
+                    serviceRequestId,
+                    quoteId,
+                    quote.getUsrSn(),
+                    STATUS_WITHDRAWN,
+                    STATUS_WITHDRAWN,
+                    false);
+        }
+        if (!STATUS_SUBMITTED.equals(quote.getQutStatusCd())
+                && !STATUS_REVISED.equals(quote.getQutStatusCd())) {
+            throw new CustomException(
+                    ErrorCode.QUOTE_INVALID_STATUS,
+                    "선택되거나 종료된 견적은 관리자 무효화 대상이 아닙니다.");
+        }
+        if (quoteMapper.adminInvalidateActiveQuote(quoteId, String.valueOf(actorUserId)) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT, "견적 상태가 이미 변경되었습니다.");
+        }
+        return new AdminQuoteModerationResult(
+                serviceRequestId,
+                quoteId,
+                quote.getUsrSn(),
+                quote.getQutStatusCd(),
+                STATUS_WITHDRAWN,
+                true);
+    }
+
+    /** 담당자 7 소비 계약: 요청 취소 시 아직 활성인 견적만 같은 트랜잭션에서 일괄 무효화합니다. */
+    @Override
+    @Transactional
+    public AdminQuoteBulkModerationResult invalidateActiveQuotes(
+            Long serviceRequestId,
+            Long actorUserId) {
+        validateAdminModerationInput(serviceRequestId, actorUserId);
+        List<Quote> activeQuotes = quoteMapper.findActiveQuotesByServiceRequestIdForUpdate(serviceRequestId);
+        if (activeQuotes.isEmpty()) {
+            return new AdminQuoteBulkModerationResult(serviceRequestId, List.of(), 0);
+        }
+        int changed = quoteMapper.adminInvalidateActiveQuotes(
+                serviceRequestId, String.valueOf(actorUserId));
+        if (changed != activeQuotes.size()) {
+            throw new CustomException(ErrorCode.CONFLICT, "견적 상태가 동시에 변경되었습니다.");
+        }
+        List<Long> providerUserIds = activeQuotes.stream()
+                .map(Quote::getUsrSn)
+                .distinct()
+                .toList();
+        return new AdminQuoteBulkModerationResult(serviceRequestId, providerUserIds, changed);
+    }
+
+    private void validateAdminModerationInput(Long serviceRequestId, Long actorUserId) {
+        if (serviceRequestId == null || serviceRequestId <= 0
+                || actorUserId == null || actorUserId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
     }
 
     private void validateAdminSummary(AdminQuoteSummary summary) {

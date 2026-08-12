@@ -66,6 +66,11 @@ public interface TradeMapper {
     /** 같은 거래의 접수·처리중 분쟁이 있는지 조회한다. TRADE 행 잠금 뒤에 호출한다. */
     boolean hasOpenTradeDispute(@Param("tradeId") long tradeId);
 
+    /** 현재 처리 중인 신고의 하위 분쟁을 제외하고 다른 활성 분쟁이 있는지 확인합니다. */
+    boolean hasOtherOpenTradeDispute(
+            @Param("tradeId") long tradeId,
+            @Param("excludedReportSn") Long excludedReportSn);
+
     int insertTradeDispute(TradeDisputeRegistration registration);
 
     /** 생성된 분쟁에 검증 완료된 증빙 파일을 표시 순서대로 연결합니다. */
@@ -87,6 +92,24 @@ public interface TradeMapper {
     int holdTradeForMemberRestriction(
             @Param("tradeId") long tradeId,
             @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("updaterId") String updaterId);
+
+    int restoreTradeAfterMemberRestriction(
+            @Param("tradeId") Long tradeId,
+            @Param("targetStatusCode") String targetStatusCode,
+            @Param("remainingSeconds") Long remainingSeconds,
+            @Param("updaterId") String updaterId);
+
+    int cancelServiceTradeForAdmin(
+            @Param("tradeId") long tradeId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("updaterId") String updaterId);
+
+    int completeCurrentTradeIncidentAfterPermanentCancellation(
+            @Param("tradeId") long tradeId,
+            @Param("sourceReportSn") long sourceReportSn,
+            @Param("reason") String reason,
+            @Param("adminUserSn") long adminUserSn,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */

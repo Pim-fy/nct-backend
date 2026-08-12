@@ -42,7 +42,7 @@ public class EmailSenderConfig {
         return new SmtpEmailSender(
                 mailSender,
                 from,
-                environment.getProperty("nct.mail.from-name", "NCT"));
+                environment.getProperty("nct.mail.from-name", "에누리컷"));
     }
 
     private Properties javaMailProperties(Environment environment) {

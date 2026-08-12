@@ -62,7 +62,10 @@ public class AuditLogServiceAdapter implements AuditLogPort {
 
     private Long parseActor(String actorId) {
         String normalized = actorId == null ? null : actorId.trim().replaceFirst("(?i)^USR:", "");
-        if (normalized == null || normalized.isBlank()) {
+        if (normalized == null || "SYSTEM".equalsIgnoreCase(normalized)) {
+            return null;
+        }
+        if (normalized.isBlank()) {
             throw new IllegalArgumentException("감사 로그 행위자 정보가 필요합니다.");
         }
         try {

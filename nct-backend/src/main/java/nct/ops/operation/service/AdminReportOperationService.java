@@ -21,22 +21,30 @@ import nct.global.response.PageResponse;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminReportPageResponse;
+import nct.ops.operation.domain.ReportEnforcementAction;
 import nct.ops.operation.port.AdminReportDecision;
-import nct.ops.operation.port.AdminReportDecisionCommand;
-import nct.ops.operation.port.AdminReportDecisionPort;
+import nct.ops.sanction.domain.SanctionRecord;
+import nct.ops.sanction.dto.SanctionImpactResponse;
+import nct.ops.sanction.mapper.SanctionImpactMapper;
+import nct.ops.sanction.service.ReportEnforcementService;
+import nct.ops.sanction.service.ReportSanctionService;
 
 /** 담당자 7 · F-OPS-007: 관리자 신고 관리 API와 담당자 3 신고 서비스 계약을 연결합니다. */
 @Service
 @RequiredArgsConstructor
 public class AdminReportOperationService {
 
-    private final AdminReportDecisionPort adminReportDecisionPort;
     private final AbuseReportService abuseReportService;
     private final AdminMemberIdentityReader memberIdentityReader;
+    private final ReportEnforcementService reportEnforcementService;
+    private final ReportSanctionService reportSanctionService;
+    private final SanctionImpactMapper sanctionImpactMapper;
 
     @Transactional(readOnly = true)
     public List<AdminAbuseReportResponse> getPendingReports() {
-        return abuseReportService.getPendingReports();
+        List<AdminAbuseReportResponse> reports = abuseReportService.getPendingReports();
+        enrichSanctions(reports);
+        return reports;
     }
 
     @Transactional(readOnly = true)
@@ -46,8 +54,10 @@ public class AdminReportOperationService {
                 keyword,
                 page,
                 size);
+        List<AdminAbuseReportResponse> reports = enrichMembers(result.getContent());
+        enrichSanctions(reports);
         return AdminReportPageResponse.builder()
-                .items(enrichMembers(result.getContent()))
+                .items(reports)
                 .page(result.getPage())
                 .size(result.getSize())
                 .totalItems(result.getTotalCount())
@@ -59,7 +69,9 @@ public class AdminReportOperationService {
 
     @Transactional(readOnly = true)
     public AdminAbuseReportResponse getReportDetail(Long reportSn) {
-        return enrichMember(abuseReportService.getReportDetail(reportSn));
+        AdminAbuseReportResponse report = enrichMember(abuseReportService.getReportDetail(reportSn));
+        enrichSanction(report);
+        return report;
     }
 
     private List<AdminAbuseReportResponse> enrichMembers(List<AdminAbuseReportResponse> reports) {
@@ -121,27 +133,47 @@ public class AdminReportOperationService {
     public void decide(
             Long reportSn,
             AdminReportDecision decision,
+            ReportEnforcementAction enforcementAction,
             String reason,
             Long adminUserId) {
-        validate(reportSn, decision, reason, adminUserId);
+        validate(reportSn, decision, enforcementAction, reason, adminUserId);
 
         String normalizedReason = reason.trim();
-        adminReportDecisionPort.decide(new AdminReportDecisionCommand(
+        String requestId = requestId(
+                adminUserId, reportSn, decision, enforcementAction, normalizedReason);
+        reportEnforcementService.decide(
                 reportSn,
                 decision,
+                enforcementAction,
                 normalizedReason,
-                String.valueOf(adminUserId),
-                requestId(adminUserId, reportSn, decision, normalizedReason)));
+                adminUserId,
+                requestId);
+    }
+
+    @Transactional
+    public void releaseSanction(Long reportSn, String reason, Long adminUserId) {
+        if (reportSn == null || reportSn <= 0
+                || reason == null || reason.isBlank() || reason.trim().length() > 1000
+                || adminUserId == null || adminUserId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        String normalizedReason = reason.trim();
+        String requestId = "admin-report-release:" + sha256(
+                adminUserId + "|" + reportSn + "|" + normalizedReason);
+        reportEnforcementService.releaseByReport(
+                reportSn, adminUserId, normalizedReason, requestId);
     }
 
     private void validate(
             Long reportSn,
             AdminReportDecision decision,
+            ReportEnforcementAction enforcementAction,
             String reason,
             Long adminUserId) {
         if (reportSn == null
                 || reportSn <= 0
                 || decision == null
+                || enforcementAction == null
                 || reason == null
                 || reason.isBlank()
                 || reason.trim().length() > 4000
@@ -155,8 +187,45 @@ public class AdminReportOperationService {
             Long adminUserId,
             Long reportSn,
             AdminReportDecision decision,
+            ReportEnforcementAction enforcementAction,
             String reason) {
-        return "admin-report:" + sha256(adminUserId + "|" + reportSn + "|" + decision + "|" + reason);
+        return "admin-report:" + sha256(
+                adminUserId + "|" + reportSn + "|" + decision + "|" + enforcementAction + "|" + reason);
+    }
+
+    private void enrichSanctions(List<AdminAbuseReportResponse> reports) {
+        if (reports == null) {
+            return;
+        }
+        reports.forEach(this::enrichSanction);
+    }
+
+    private void enrichSanction(AdminAbuseReportResponse report) {
+        if (report == null) {
+            return;
+        }
+        SanctionRecord sanction = reportSanctionService.findByReport(report.getReportSn());
+        if (sanction == null) {
+            report.setEnforcementAction(ReportEnforcementAction.NONE.name());
+            report.setSanctionImpacts(List.of());
+            return;
+        }
+        report.setEnforcementAction(sanction.getEndedAt() == null
+                ? ReportEnforcementAction.PERMANENT_SUSPENSION.name()
+                : ReportEnforcementAction.TEMPORARY_SUSPENSION_7_DAYS.name());
+        report.setSanctionSn(sanction.getSanctionSn());
+        report.setSanctionStartedAt(sanction.getStartedAt());
+        report.setSanctionEndedAt(sanction.getEndedAt());
+        report.setSanctionReleased(sanction.getReleaseRequestId() != null);
+        report.setSanctionImpacts(sanctionImpactMapper.findByReport(report.getReportSn()).stream()
+                .map(impact -> new SanctionImpactResponse(
+                        impact.getReferenceTypeCode(),
+                        impact.getReferenceSn(),
+                        impact.getRoleCode(),
+                        impact.getActionCode(),
+                        impact.getStatusCode(),
+                        impact.getResult()))
+                .toList());
     }
 
     private String sha256(String value) {

@@ -18,7 +18,8 @@ class AdminTradeDisputeReadMapperContractTest {
         String normalized = xml.toUpperCase();
 
         assertThat(normalized).contains("FROM TRADE_DISPUTE", "JOIN TRADE", "LIMIT #{QUERY.SIZE}");
+        assertThat(normalized).contains("FROM TRADE_DISPUTE_FILE", "JOIN FILES");
         assertThat(normalized).doesNotContain("<INSERT", "<UPDATE", "<DELETE");
-        assertThat(normalized).doesNotContain("USERS ", "SETTLEMENT ", "FILES ");
+        assertThat(normalized).doesNotContain("USERS ", "SETTLEMENT ");
     }
 }

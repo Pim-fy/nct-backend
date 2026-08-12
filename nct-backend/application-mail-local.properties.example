@@ -2,7 +2,7 @@
 # 앱 비밀번호는 본인 로컬 파일에만 입력한다. 실제 파일은 .gitignore로 제외된다.
 nct.mail.enabled=true
 nct.mail.from=your-nct-sender@gmail.com
-nct.mail.from-name=NCT
+nct.mail.from-name=에누리컷
 
 spring.mail.host=smtp.gmail.com
 spring.mail.port=587

@@ -2,6 +2,7 @@ package nct.abuse.service;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -29,6 +30,10 @@ import nct.file.service.FileStorageService;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.response.PageResponse;
 import nct.abuse.mapper.AbuseReportMapper;
+import nct.abuse.port.ActiveAbuseReportReferenceReader;
+import nct.abuse.port.TradeIncidentReportCommand;
+import nct.abuse.port.TradeIncidentReportPort;
+import nct.auction.port.AuctionReferenceTitleReader;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
@@ -47,7 +52,11 @@ import nct.product.service.ProductService;
 
 @Service
 @RequiredArgsConstructor
-public class AbuseReportService implements SensitiveDetectionReportPort, AdminReportDecisionPort {
+public class AbuseReportService implements
+        SensitiveDetectionReportPort,
+        AdminReportDecisionPort,
+        ActiveAbuseReportReferenceReader,
+        TradeIncidentReportPort {
 
     static final String LEGACY_CONTENT_REPORT_TYPE = "ABRC0001";
     static final String FALSE_INFORMATION_FRAUD_REPORT_TYPE = "ABRC0009";
@@ -57,11 +66,17 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     static final String PRIVACY_REPORT_TYPE = "ABRC0013";
     static final String SPAM_ADVERTISEMENT_REPORT_TYPE = "ABRC0014";
     static final String OTHER_REPORT_TYPE = "ABRC0015";
+    static final String TRADE_NO_SHOW_REPORT_TYPE = "ABRC0016";
+    static final String TRADE_DELIVERY_REPORT_TYPE = "ABRC0017";
+    static final String TRADE_SERVICE_REPORT_TYPE = "ABRC0018";
+    static final String TRADE_PAYMENT_REPORT_TYPE = "ABRC0019";
     static final String RECEIVED_STATUS = "ABRC0005";
     static final String PROCESSING_STATUS = "ABRC0006";
     static final String PROCESSED_STATUS = "ABRC0007";
     static final String REJECTED_STATUS = "ABRC0008";
     static final String PRODUCT_COMMENT_REFERENCE_TYPE = "REFC0012";
+    static final String AUCTION_REFERENCE_TYPE = "REFC0003";
+    static final String TRADE_REFERENCE_TYPE = "REFC0005";
 
     private static final String REPORT_TYPE_GROUP = "ABRG01";
     private static final String REPORT_STATUS_GROUP = "ABRG02";
@@ -70,11 +85,17 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private static final String BUYER_INQUIRY_TYPE = "PRDC0006";
     private static final String DEFAULT_MANUAL_REPORT_CONTENT = "상품 댓글·문의 신고";
     private static final int MAX_PROCESS_REASON_LENGTH = 4000;
-    private static final int MAX_REQUEST_ID_LENGTH = 200;
+    private static final int MAX_REQUEST_ID_LENGTH = 100;
     private static final int MAX_PUBLIC_REFERENCE_LOOKUP_SIZE = 100;
     private static final int MAX_ADMIN_REPORT_PAGE_SIZE = 50;
     private static final int MAX_ADMIN_REPORT_KEYWORD_LENGTH = 100;
     private static final int MAX_REPORT_FILES = 5;
+    private static final Map<String, String> TRADE_INCIDENT_REPORT_TYPES = Map.of(
+            "TRDC0011", TRADE_NO_SHOW_REPORT_TYPE,
+            "TRDC0012", TRADE_DELIVERY_REPORT_TYPE,
+            "TRDC0013", TRADE_SERVICE_REPORT_TYPE,
+            "TRDC0014", TRADE_PAYMENT_REPORT_TYPE,
+            "TRDC0015", OTHER_REPORT_TYPE);
     private static final Set<String> CUSTOMER_REPORT_TYPES = Set.of(
             FALSE_INFORMATION_FRAUD_REPORT_TYPE,
             EXTERNAL_CONTACT_PAYMENT_REPORT_TYPE,
@@ -85,6 +106,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
             OTHER_REPORT_TYPE);
 
     private final AbuseReportMapper abuseReportMapper;
+    private final AuctionReferenceTitleReader auctionReferenceTitleReader;
     private final ReferenceDataService referenceDataService;
     private final AbuseReportReferenceValidationService referenceValidationService;
     private final AuditLogPort auditLogPort;
@@ -94,6 +116,62 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     private final FileStorageService fileStorageService;
     private final RiskEventService riskEventService;
     private final ConcurrentMap<CustomerReportKey, LockEntry> customerReportLocks = new ConcurrentHashMap<>();
+
+    /** 거래 도메인이 당사자·거래·첨부를 검증한 뒤 생성하는 신고 상위 사건입니다. */
+    @Override
+    @Transactional
+    public Long create(TradeIncidentReportCommand command) {
+        if (command == null
+                || command.tradeSn() == null || command.tradeSn() <= 0
+                || command.reporterUserSn() == null || command.reporterUserSn() <= 0
+                || command.reportedUserSn() == null || command.reportedUserSn() <= 0
+                || command.reporterUserSn().equals(command.reportedUserSn())
+                || command.disputeTypeCode() == null || command.disputeTypeCode().isBlank()
+                || command.content() == null || command.content().isBlank()
+                || command.content().trim().length() > 4000) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        List<Long> fileSns = command.fileSns() == null ? List.of() : List.copyOf(command.fileSns());
+        if (fileSns.size() > MAX_REPORT_FILES
+                || new LinkedHashSet<>(fileSns).size() != fileSns.size()
+                || fileSns.stream().anyMatch(fileSn -> fileSn == null || fileSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        String disputeTypeCode = command.disputeTypeCode().trim();
+        String reportTypeCode = TRADE_INCIDENT_REPORT_TYPES.get(disputeTypeCode);
+        if (reportTypeCode == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, reportTypeCode);
+        referenceDataService.requireActiveCode(REPORT_STATUS_GROUP, RECEIVED_STATUS);
+        referenceDataService.requireActiveCode(REFERENCE_TYPE_GROUP, TRADE_REFERENCE_TYPE);
+
+        String actorId = String.valueOf(command.reporterUserSn());
+        AbuseReport report = AbuseReport.builder()
+                .reporterUserSn(command.reporterUserSn())
+                .reportedUserSn(command.reportedUserSn())
+                .reportTypeCode(reportTypeCode)
+                .statusCode(RECEIVED_STATUS)
+                .referenceTypeCode(TRADE_REFERENCE_TYPE)
+                .referenceSn(command.tradeSn())
+                .title("거래 문제 신고 #" + command.tradeSn())
+                .targetName("거래 #" + command.tradeSn())
+                .content(command.content().trim())
+                .registeredBy(actorId)
+                .updatedBy(actorId)
+                .build();
+        if (abuseReportMapper.insertCustomerReport(report) != 1 || report.getReportSn() == null) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+        for (int index = 0; index < fileSns.size(); index++) {
+            if (abuseReportMapper.insertReportFile(
+                    report.getReportSn(), fileSns.get(index), index, actorId) != 1) {
+                throw new CustomException(ErrorCode.DATABASE_ERROR);
+            }
+        }
+        return report.getReportSn();
+    }
 
     /** F-COM-018: 로그인 사용자가 고객센터형 신고를 접수한다. */
     @Transactional
@@ -207,6 +285,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
         int offset = (page - 1) * size;
         List<MyAbuseReportResponse> content = abuseReportMapper.findMyReports(
                 reporterUserSn, normalizedStatus, offset, size);
+        enrichMyAuctionTargetNames(content);
         int total = abuseReportMapper.countMyReports(reporterUserSn, normalizedStatus);
         return PageResponse.<MyAbuseReportResponse>builder()
                 .content(content)
@@ -228,6 +307,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
         if (report == null) {
             throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
         }
+        enrichMyAuctionTargetNames(List.of(report));
         attachReportFiles(report);
         return report;
     }
@@ -417,6 +497,10 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
             throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
         }
         if (!values.expectedStatusCode().equals(report.getStatusCode())) {
+            if (values.requestId().equals(report.getProcessRequestId())
+                    && values.newStatusCode().equals(report.getStatusCode())) {
+                return;
+            }
             throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_PROCESSED);
         }
 
@@ -426,7 +510,8 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                 report.getStatusCode(),
                 values.newStatusCode(),
                 values.reason(),
-                values.adminId());
+                values.adminId(),
+                values.requestId());
         if (updated != 1) {
             throw new CustomException(ErrorCode.CONFLICT, "신고 상태가 이미 변경되었습니다.");
         }
@@ -460,7 +545,10 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
     /** 접수·처리중 상태의 신고를 자동·일반 신고 구분 없이 오래된 순서로 조회한다. */
     @Transactional(readOnly = true)
     public List<AdminAbuseReportResponse> getPendingReports() {
-        return abuseReportMapper.findPendingReports(RECEIVED_STATUS, PROCESSING_STATUS);
+        List<AdminAbuseReportResponse> reports =
+                abuseReportMapper.findPendingReports(RECEIVED_STATUS, PROCESSING_STATUS);
+        enrichAdminAuctionTargetNames(reports);
+        return reports;
     }
 
     /** 담당자 7 · F-OPS-007: 처리 전후 신고를 상태·검색 조건으로 페이지 조회한다. */
@@ -492,6 +580,7 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
                         normalizedKeyword,
                         offset,
                         size);
+        enrichAdminAuctionTargetNames(content);
         return PageResponse.<AdminAbuseReportResponse>builder()
                 .content(content)
                 .totalCount(total)
@@ -512,9 +601,128 @@ public class AbuseReportService implements SensitiveDetectionReportPort, AdminRe
         if (report == null) {
             throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
         }
+        enrichAdminAuctionTargetNames(List.of(report));
         report.setFiles(abuseReportMapper.findReportFiles(reportSn));
         return report;
     }
+
+    private void enrichMyAuctionTargetNames(List<MyAbuseReportResponse> reports) {
+        if (reports == null || reports.isEmpty()) {
+            return;
+        }
+        List<Long> auctionIds = reports.stream()
+                .filter(report -> shouldResolveAuctionTarget(
+                        report.getReferenceTypeCode(), report.getReferenceSn(), report.getTargetName()))
+                .map(MyAbuseReportResponse::getReferenceSn)
+                .distinct()
+                .toList();
+        if (auctionIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> titles = auctionReferenceTitleReader.findTitles(auctionIds);
+        reports.forEach(report -> applyAuctionTitle(
+                report.getReferenceTypeCode(),
+                report.getReferenceSn(),
+                report.getTargetName(),
+                report::setTargetName,
+                titles));
+    }
+
+    private void enrichAdminAuctionTargetNames(List<AdminAbuseReportResponse> reports) {
+        if (reports == null || reports.isEmpty()) {
+            return;
+        }
+        List<Long> auctionIds = reports.stream()
+                .filter(report -> shouldResolveAuctionTarget(
+                        report.getReferenceTypeCode(), report.getReferenceSn(), report.getTargetName()))
+                .map(AdminAbuseReportResponse::getReferenceSn)
+                .distinct()
+                .toList();
+        if (auctionIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> titles = auctionReferenceTitleReader.findTitles(auctionIds);
+        reports.forEach(report -> applyAuctionTitle(
+                report.getReferenceTypeCode(),
+                report.getReferenceSn(),
+                report.getTargetName(),
+                report::setTargetName,
+                titles));
+    }
+
+    private boolean shouldResolveAuctionTarget(
+            String referenceTypeCode,
+            Long referenceSn,
+            String targetName) {
+        if (!AUCTION_REFERENCE_TYPE.equals(referenceTypeCode) || referenceSn == null) {
+            return false;
+        }
+        String normalizedTarget = trimToNull(targetName);
+        return normalizedTarget == null || normalizedTarget.equals("경매 #" + referenceSn);
+    }
+
+    private void applyAuctionTitle(
+            String referenceTypeCode,
+            Long referenceSn,
+            String currentTargetName,
+            java.util.function.Consumer<String> targetNameSetter,
+            Map<Long, String> titles) {
+        if (!shouldResolveAuctionTarget(referenceTypeCode, referenceSn, currentTargetName)) {
+            return;
+        }
+        String title = titles.get(referenceSn);
+        if (title != null && !title.isBlank()) {
+            targetNameSetter.accept(title);
+        } else if (trimToNull(currentTargetName) == null) {
+            targetNameSetter.accept("경매 #" + referenceSn);
+        }
+    }
+
+    /** 담당자 7 - F-OPS-007: 제재 적용과 신고 확정을 한 트랜잭션에서 처리하도록 신고 행을 잠급니다. */
+    @Transactional
+    public AbuseReport lockForAdminDecision(Long reportSn) {
+        if (reportSn == null || reportSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        AbuseReport report = abuseReportMapper.findReportByIdForUpdate(reportSn);
+        if (report == null) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
+        }
+        return report;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasOtherActiveReportLinkedToTrade(
+            Long tradeSn,
+            Long excludedReportSn) {
+        if (tradeSn == null || tradeSn <= 0
+                || (excludedReportSn != null && excludedReportSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return abuseReportMapper.existsOtherActiveReportLinkedToTrade(
+                tradeSn,
+                excludedReportSn,
+                RECEIVED_STATUS,
+                PROCESSING_STATUS);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasOtherActiveReportLinkedToAuction(
+            Long auctionSn,
+            Long excludedReportSn) {
+        if (auctionSn == null || auctionSn <= 0
+                || (excludedReportSn != null && excludedReportSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return abuseReportMapper.existsOtherActiveReportLinkedToAuction(
+                auctionSn,
+                excludedReportSn,
+                RECEIVED_STATUS,
+                PROCESSING_STATUS);
+    }
+
 
     /** 담당자 7 · F-COM-018: 참조 유형·번호·피신고자는 함께 오도록 모양을 먼저 검증합니다. */
     private void validateCustomerReferenceShape(

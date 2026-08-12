@@ -23,7 +23,9 @@ import org.springframework.security.core.Authentication;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.service.ProviderAccessGuard;
+import nct.global.security.port.AuthMember;
 import nct.notification.service.NotificationService;
 import nct.quote.domain.Quote;
 import nct.quote.dto.AdminQuoteListItem;
@@ -57,6 +59,10 @@ class QuoteServiceTest {
     private NotificationService notificationService;
     @Mock
     private Authentication authentication;
+    @Mock
+    private CustomUserDetails userDetails;
+    @Mock
+    private AuthMember authMember;
 
     private QuoteService service;
 
@@ -77,6 +83,9 @@ class QuoteServiceTest {
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+        when(userDetails.getMember()).thenReturn(authMember);
+        when(authMember.getNickname()).thenReturn("제공자");
         when(quoteMapper.insertQuote(any(Quote.class))).thenAnswer(invocation -> {
             Quote quote = invocation.getArgument(0);
             quote.setQutSn(99L);

@@ -16,6 +16,7 @@ import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
 import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.port.AdminReportDecision;
+import nct.ops.operation.domain.ReportEnforcementAction;
 import nct.ops.operation.service.AdminReportOperationService;
 
 /** 담당자 7 · F-OPS-007: 관리자 신고 처리 컨트롤러 전달값을 검증합니다. */
@@ -39,7 +40,12 @@ class AdminReportOperationControllerTest {
 
         controller.decide(91L, request, adminUserDetails(7L));
 
-        verify(service).decide(91L, AdminReportDecision.REJECTED, " insufficient evidence ", 7L);
+        verify(service).decide(
+                91L,
+                AdminReportDecision.REJECTED,
+                ReportEnforcementAction.NONE,
+                " insufficient evidence ",
+                7L);
     }
 
     @Test

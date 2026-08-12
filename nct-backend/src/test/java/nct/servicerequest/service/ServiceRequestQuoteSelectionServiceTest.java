@@ -3,6 +3,7 @@ package nct.servicerequest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -168,6 +169,6 @@ class ServiceRequestQuoteSelectionServiceTest {
                 .extracting(ex -> ((CustomException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.CONFLICT);
 
-        verify(tradeCreationCoordinator, never()).create(any(), any(), any());
+        verify(tradeCreationCoordinator, never()).create(anyLong(), anyLong(), anyLong());
     }
 }

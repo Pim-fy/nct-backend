@@ -13,6 +13,7 @@ import lombok.Setter;
 public class TradeDisputeRegistration {
 
     private Long disputeSn;
+    private Long reportSn;
     private long tradeId;
     private long disputerUserId;
     private String disputeTypeCode;

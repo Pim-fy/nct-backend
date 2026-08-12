@@ -56,6 +56,32 @@ class TradeDisputeMapperContractTest {
                         "TRD_STATUS_CD = 'TRDC0007'");
     }
 
+    @Test
+    void linksDisputeToReportAndExcludesOnlyCurrentIncidentDuringPermanentAction()
+            throws IOException {
+        String mapper = loadNormalizedMapper();
+        String insertStatement = mapper.substring(
+                mapper.indexOf("<insert id=\"insertTradeDispute\""),
+                mapper.indexOf("</insert>", mapper.indexOf("<insert id=\"insertTradeDispute\"")));
+        String otherDisputeStatement = mapper.substring(
+                mapper.indexOf("<select id=\"hasOtherOpenTradeDispute\""),
+                mapper.indexOf(
+                        "</select>",
+                        mapper.indexOf("<select id=\"hasOtherOpenTradeDispute\"")));
+
+        assertThat(insertStatement)
+                .contains("ABR_SN")
+                .contains("#{reportSn}");
+        assertThat(otherDisputeStatement)
+                .contains("ABR_SN IS NULL")
+                .contains("ABR_SN != #{excludedReportSn}");
+        assertThat(mapper)
+                .contains("<update id=\"completeCurrentTradeIncidentAfterPermanentCancellation\">")
+                .contains("ABR_SN = #{sourceReportSn}")
+                .contains("TRD_DSP_RSLT_CD = 'TRDC0022'")
+                .contains("TRD_DSP_STATUS_CD = 'TRDC0018'");
+    }
+
     private String loadNormalizedMapper() throws IOException {
         ClassPathResource resource = new ClassPathResource("mapper/trade/TradeMapper.xml");
         return resource.getContentAsString(StandardCharsets.UTF_8)

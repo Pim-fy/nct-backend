@@ -48,6 +48,7 @@
         <result property="budgetAmount" column="SVC_REQ_BDGT_AMT" />
         <result property="statusCode" column="SVC_REQ_STATUS_CD" />
         <result property="statusName" column="SVC_REQ_STATUS_NM" />
+        <result property="useYn" column="SVC_REQ_USE_YN" />
         <result property="registeredAt" column="SVC_REQ_REG_DT" />
         <result property="updatedAt" column="SVC_REQ_UPDT_DT" />
     </resultMap>
@@ -65,6 +66,7 @@
         <result property="budgetAmount" column="SVC_REQ_BDGT_AMT" />
         <result property="statusCode" column="SVC_REQ_STATUS_CD" />
         <result property="statusName" column="SVC_REQ_STATUS_NM" />
+        <result property="useYn" column="SVC_REQ_USE_YN" />
         <result property="registeredAt" column="SVC_REQ_REG_DT" />
         <result property="updatedAt" column="SVC_REQ_UPDT_DT" />
     </resultMap>
@@ -75,7 +77,7 @@
           JOIN CATEGORY category ON category.CAT_SN = s.CAT_SN
           JOIN USERS requester ON requester.USR_SN = s.USR_SN
           JOIN CMM_CODE status_code ON status_code.CMM_CD = s.SVC_REQ_STATUS_CD
-         WHERE s.SVC_REQ_USE_YN = 'Y'
+         WHERE 1 = 1
         <if test="condition.keyword != null">
            AND (s.SVC_REQ_TTL LIKE CONCAT('%', #{condition.keyword}, '%')
             OR requester.USR_NM LIKE CONCAT('%', #{condition.keyword}, '%')
@@ -106,7 +108,7 @@
         /* ServiceRequestMapper.findAdminServiceRequestPage */
         SELECT s.SVC_REQ_SN, s.SVC_REQ_TTL, s.CAT_SN, category.CAT_NM,
                s.USR_SN, requester.USR_NM, s.SVC_REQ_BDGT_AMT,
-               s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM,
+               s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM, s.SVC_REQ_USE_YN,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
         <include refid="AdminServiceRequestFromWhere" />
          ORDER BY
@@ -126,14 +128,13 @@
         /* ServiceRequestMapper.findAdminServiceRequestDetail */
         SELECT s.SVC_REQ_SN, s.SVC_REQ_TTL, s.SVC_REQ_CN, s.CAT_SN, category.CAT_NM,
                s.SVC_REQ_FORM_TMPL_SN, s.USR_SN, requester.USR_NM, s.SVC_REQ_BDGT_AMT,
-               s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM,
+               s.SVC_REQ_STATUS_CD, status_code.CMM_NM AS SVC_REQ_STATUS_NM, s.SVC_REQ_USE_YN,
                s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
           FROM SERVICE_REQUEST s
           JOIN CATEGORY category ON category.CAT_SN = s.CAT_SN
           JOIN USERS requester ON requester.USR_SN = s.USR_SN
           JOIN CMM_CODE status_code ON status_code.CMM_CD = s.SVC_REQ_STATUS_CD
          WHERE s.SVC_REQ_SN = #{serviceRequestId}
-           AND s.SVC_REQ_USE_YN = 'Y'
     </select>
 
     <!-- ── 요청서 등록 ───────────────────────────────────── -->
@@ -305,6 +306,155 @@
            AND SVC_REQ_STATUS_CD = 'SVCC0002'
     </update>
 
+    <!-- 담당자 7 · F-OPS-021: 노출 여부와 무관하게 매칭 전 공개 요청을 취소하며 신청 이력은 보존한다. -->
+    <update id="adminCancelOpenServiceRequest">
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+               SVC_REQ_UPDT_ID = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0002'
+    </update>
+
+    <!-- 담당자 7 · F-OPS-021: 운영 숨김은 사용 여부만 바꾸고 요청·견적 이력을 삭제하지 않습니다. -->
+    <update id="updateAdminServiceRequestVisibility">
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_USE_YN = #{targetUseYn},
+               SVC_REQ_UPDT_ID = #{updtId},
+               SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND SVC_REQ_USE_YN = #{expectedUseYn}
+    </update>
+
+    <!-- 담당자 7 · 신고 제재: 소유자의 활성 요청서를 번호순으로 잠가 중지·복구 경합을 막습니다. -->
+    <select id="findSanctionTargetsByOwnerForUpdate"
+            resultType="nct.servicerequest.dto.ServiceRequestSanctionTarget">
+        SELECT s.SVC_REQ_SN AS serviceRequestId,
+               s.USR_SN AS ownerUserSn,
+               s.SVC_REQ_STATUS_CD AS statusCode,
+               (
+                   SELECT t.TRD_SN
+                     FROM TRADE t
+                    WHERE t.SVC_REQ_SN = s.SVC_REQ_SN
+                    ORDER BY t.TRD_SN DESC
+                    LIMIT 1
+               ) AS linkedTradeSn,
+               (
+                   SELECT t.TRD_STATUS_CD
+                     FROM TRADE t
+                    WHERE t.SVC_REQ_SN = s.SVC_REQ_SN
+                    ORDER BY t.TRD_SN DESC
+                    LIMIT 1
+               ) AS linkedTradeStatusCode,
+               CASE
+                   WHEN s.SVC_REQ_STATUS_CD = 'SVCC0002' THEN COALESCE(
+                       s.SVC_REQ_DEADLINE_DT,
+                       LEAST(
+                           DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                           COALESCE(
+                               (
+                                   SELECT MIN(DATE_ADD(
+                                       STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d'),
+                                       INTERVAL 1 DAY))
+                                     FROM SVC_REQ_ITEM i
+                                     JOIN SVC_REQ_FIELD_DEF f
+                                       ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+                                    WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                                      AND f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+                               ),
+                               DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY)
+                           )
+                       )
+                   )
+                   ELSE NULL
+               END AS effectiveDeadlineAt,
+               NOW() AS databaseNow
+          FROM SERVICE_REQUEST s
+         WHERE s.USR_SN = #{userSn}
+           AND s.SVC_REQ_USE_YN = 'Y'
+           AND s.SVC_REQ_STATUS_CD IN (
+               'SVCC0001', 'SVCC0002', 'SVCC0003', 'SVCC0005'
+           )
+         ORDER BY s.SVC_REQ_SN
+         FOR UPDATE
+    </select>
+
+    <update id="pauseServiceRequestForSanction">
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0005',
+               SVC_REQ_UPDT_ID = #{actorId},
+               SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SVC_REQ_SN = #{serviceRequestId}
+           AND SVC_REQ_STATUS_CD = #{expectedStatusCode}
+           AND SVC_REQ_STATUS_CD IN ('SVCC0001', 'SVCC0002', 'SVCC0003')
+           AND SVC_REQ_USE_YN = 'Y'
+    </update>
+
+    <update id="restoreServiceRequestAfterSanction">
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = #{statusCode},
+               SVC_REQ_DEADLINE_DT = CASE
+                   WHEN #{statusCode} = 'SVCC0002'
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   ELSE SVC_REQ_DEADLINE_DT
+               END,
+               SVC_REQ_UPDT_ID = #{actorId},
+               SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SVC_REQ_SN = #{serviceRequestId}
+           AND SVC_REQ_STATUS_CD = 'SVCC0005'
+           AND SVC_REQ_USE_YN = 'Y'
+    </update>
+
+    <update id="closeDraftServiceRequestForSanction">
+        UPDATE SERVICE_REQUEST
+           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+               SVC_REQ_UPDT_ID = #{actorId},
+               SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SVC_REQ_SN = #{serviceRequestId}
+           AND SVC_REQ_STATUS_CD = 'SVCC0001'
+           AND SVC_REQ_USE_YN = 'Y'
+    </update>
+
+    <update id="closeMatchedOrHeldServiceRequestForSanction">
+        UPDATE SERVICE_REQUEST s
+           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+               SVC_REQ_UPDT_ID = #{actorId},
+               SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE s.SVC_REQ_SN = #{serviceRequestId}
+           AND s.SVC_REQ_STATUS_CD = #{expectedStatusCode}
+           AND s.SVC_REQ_STATUS_CD IN ('SVCC0003', 'SVCC0005')
+           AND s.SVC_REQ_USE_YN = 'Y'
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE t
+                WHERE t.SVC_REQ_SN = s.SVC_REQ_SN
+                  AND t.TRD_STATUS_CD != 'TRDC0008'
+           )
+    </update>
+
+    <update id="refreshOpenDeadline">
+        UPDATE SERVICE_REQUEST s
+           SET SVC_REQ_DEADLINE_DT = LEAST(
+                   DATE_ADD(NOW(), INTERVAL 5 DAY),
+                   COALESCE(
+                       (
+                           SELECT MIN(DATE_ADD(
+                               STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d'),
+                               INTERVAL 1 DAY))
+                             FROM SVC_REQ_ITEM i
+                             JOIN SVC_REQ_FIELD_DEF f
+                               ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+                            WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                              AND f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+                       ),
+                       DATE_ADD(NOW(), INTERVAL 5 DAY)
+                   )
+               )
+         WHERE s.SVC_REQ_SN = #{serviceRequestId}
+           AND s.SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND s.SVC_REQ_USE_YN = 'Y'
+    </update>
+
     <!-- ── 견적 요청 기간 만료 자동 마감 (F-SVC-003) ────────────────
          마감 시점 = MIN(공개일 SVC_REQ_UPDT_DT + 5일, 희망일)
          희망일은 카테고리별 필드 키가 달라 FIELD_TYPE_CD='CALENDAR'로 공통 식별한다. -->
@@ -321,9 +471,12 @@
           ) pref ON pref.SVC_REQ_SN = s.SVC_REQ_SN
          WHERE s.SVC_REQ_STATUS_CD = 'SVCC0002'
            AND s.SVC_REQ_USE_YN = 'Y'
-           AND LEAST(
-                   DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
-                   COALESCE(pref.PREF_DT, DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY))
+           AND COALESCE(
+                   s.SVC_REQ_DEADLINE_DT,
+                   LEAST(
+                       DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                       COALESCE(pref.PREF_DT, DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY))
+                   )
                ) &lt;= NOW()
          ORDER BY s.SVC_REQ_SN
          LIMIT #{limit}

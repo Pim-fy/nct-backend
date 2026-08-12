@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import nct.member.dto.AdminMemberIdentityResponse;
+import nct.ops.sanction.dto.SanctionImpactResponse;
 
 @Getter
 @Setter
@@ -28,6 +29,17 @@ public class AdminAbuseReportResponse {
     private String referenceTypeCode;
     private Long referenceSn;
     private String processReason;
+    private Long linkedDisputeSn;
+    private String linkedDisputeTypeCode;
+    private String linkedDisputeStatusCode;
+    private String linkedDisputeResultCode;
+    private String linkedPreviousTradeStatusCode;
+    private String enforcementAction;
+    private Long sanctionSn;
+    private LocalDateTime sanctionStartedAt;
+    private LocalDateTime sanctionEndedAt;
+    private boolean sanctionReleased;
+    private List<SanctionImpactResponse> sanctionImpacts;
     private String processedBy;
     private AdminMemberIdentityResponse processorMember;
     private LocalDateTime registeredAt;

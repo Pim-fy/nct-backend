@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import java.util.List;
 import java.util.Map;
@@ -14,48 +15,62 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import nct.ops.operation.port.AdminReportDecision;
-import nct.ops.operation.port.AdminReportDecisionCommand;
-import nct.ops.operation.port.AdminReportDecisionPort;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.service.AbuseReportService;
 import nct.global.response.PageResponse;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminReportPageResponse;
+import nct.ops.operation.domain.ReportEnforcementAction;
+import nct.ops.sanction.mapper.SanctionImpactMapper;
+import nct.ops.sanction.service.ReportEnforcementService;
+import nct.ops.sanction.service.ReportSanctionService;
 
 /** 담당자 7 · F-OPS-007: 신고 처리 계약에 관리자·사유·결정값을 전달하는지 검증합니다. */
 class AdminReportOperationServiceTest {
 
-    private AdminReportDecisionPort adminReportDecisionPort;
     private AbuseReportService abuseReportService;
     private AdminMemberIdentityReader memberIdentityReader;
+    private ReportEnforcementService reportEnforcementService;
+    private ReportSanctionService reportSanctionService;
+    private SanctionImpactMapper sanctionImpactMapper;
     private AdminReportOperationService service;
 
     @BeforeEach
     void setUp() {
-        adminReportDecisionPort = mock(AdminReportDecisionPort.class);
         abuseReportService = mock(AbuseReportService.class);
         memberIdentityReader = mock(AdminMemberIdentityReader.class);
+        reportEnforcementService = mock(ReportEnforcementService.class);
+        reportSanctionService = mock(ReportSanctionService.class);
+        sanctionImpactMapper = mock(SanctionImpactMapper.class);
         when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
         service = new AdminReportOperationService(
-                adminReportDecisionPort, abuseReportService, memberIdentityReader);
+                abuseReportService,
+                memberIdentityReader,
+                reportEnforcementService,
+                reportSanctionService,
+                sanctionImpactMapper);
     }
 
     @Test
     void forwardsProcessedDecisionWithNormalizedReason() {
-        service.decide(91L, AdminReportDecision.PROCESSED, " confirmed by admin ", 7L);
+        service.decide(
+                91L,
+                AdminReportDecision.PROCESSED,
+                ReportEnforcementAction.TEMPORARY_SUSPENSION_7_DAYS,
+                " confirmed by admin ",
+                7L);
 
-        ArgumentCaptor<AdminReportDecisionCommand> commandCaptor =
-                ArgumentCaptor.forClass(AdminReportDecisionCommand.class);
-        verify(adminReportDecisionPort).decide(commandCaptor.capture());
-
-        AdminReportDecisionCommand command = commandCaptor.getValue();
-        assertThat(command.reportSn()).isEqualTo(91L);
-        assertThat(command.decision()).isEqualTo(AdminReportDecision.PROCESSED);
-        assertThat(command.reason()).isEqualTo("confirmed by admin");
-        assertThat(command.adminId()).isEqualTo("7");
-        assertThat(command.requestId()).startsWith("admin-report:");
+        ArgumentCaptor<String> requestIdCaptor = ArgumentCaptor.forClass(String.class);
+        verify(reportEnforcementService).decide(
+                org.mockito.ArgumentMatchers.eq(91L),
+                org.mockito.ArgumentMatchers.eq(AdminReportDecision.PROCESSED),
+                org.mockito.ArgumentMatchers.eq(ReportEnforcementAction.TEMPORARY_SUSPENSION_7_DAYS),
+                org.mockito.ArgumentMatchers.eq("confirmed by admin"),
+                org.mockito.ArgumentMatchers.eq(7L),
+                requestIdCaptor.capture());
+        assertThat(requestIdCaptor.getValue()).startsWith("admin-report:");
     }
 
     @Test

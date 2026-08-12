@@ -434,7 +434,7 @@ class SettlementServiceTest {
         verify(notificationService).notifySettlement(
                 10L,
                 "정산 환불종결",
-                "거래 분쟁의 전액 환불 판정으로 정산이 종료되었습니다.",
+                "거래 환불 처리로 정산이 종료되었습니다.",
                 91L);
     }
 

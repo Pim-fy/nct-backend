@@ -16,8 +16,10 @@ import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionImageItem;
+import nct.auction.dto.AuctionReferenceTitle;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
+import nct.auction.dto.AuctionSanctionTarget;
 
 @Mapper
 public interface AuctionMapper {
@@ -37,6 +39,9 @@ public interface AuctionMapper {
     // 리뷰 목록처럼 여러 행을 한 번에 조회할 때 상품 수만큼 개별 호출(N+1)하지 않기 위함.
     List<AuctionIdByProduct> findAuctionIdsByProductIds(@Param("productIds") List<Long> productIds);
 
+    List<AuctionReferenceTitle> findAuctionReferenceTitles(
+            @Param("auctionIds") List<Long> auctionIds);
+
     AuctionDetailResponse findAuctionDetail(
             @Param("auctionId") Long auctionId,
             @Param("userId") Long userId);
@@ -52,6 +57,8 @@ public interface AuctionMapper {
     AuctionBidTarget findAuctionBidTargetForUpdate(@Param("auctionId") Long auctionId);
 
     AuctionCancellationTarget findAuctionCancellationTargetForUpdate(@Param("auctionId") Long auctionId);
+
+    List<AuctionSanctionTarget> findSanctionTargetsByMemberForUpdate(@Param("userSn") Long userSn);
 
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
@@ -116,5 +123,17 @@ public interface AuctionMapper {
             @Param("auctionId") Long auctionId,
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
+            @Param("actor") String actor);
+
+    int pauseAuctionForSanction(
+            @Param("auctionId") Long auctionId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("actor") String actor);
+
+    int restoreAuctionAfterSanction(
+            @Param("auctionId") Long auctionId,
+            @Param("statusCode") String statusCode,
+            @Param("remainingStartSeconds") Long remainingStartSeconds,
+            @Param("remainingSeconds") Long remainingSeconds,
             @Param("actor") String actor);
 }

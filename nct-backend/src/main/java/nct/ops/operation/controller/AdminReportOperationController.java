@@ -43,10 +43,11 @@ public class AdminReportOperationController {
     public ResponseEntity<ApiResponse<AdminReportPageResponse>> getReports(
             @RequestParam(name = "statusCode", required = false) String statusCode,
             @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "caseType", defaultValue = "ALL") String caseType,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                adminReportOperationService.getReports(statusCode, keyword, page, size)));
+                adminReportOperationService.getReports(statusCode, keyword, caseType, page, size)));
     }
 
     @GetMapping("/{reportSn}")

@@ -71,11 +71,11 @@ class AdminReportOperationControllerTest {
                 .totalItems(21)
                 .totalPages(2)
                 .build();
-        when(service.getReports("ABRC0007", "신고", 2, 20)).thenReturn(page);
+        when(service.getReports("ABRC0007", "신고", "TRADE_ISSUE", 2, 20)).thenReturn(page);
 
-        controller.getReports("ABRC0007", "신고", 2, 20);
+        controller.getReports("ABRC0007", "신고", "TRADE_ISSUE", 2, 20);
 
-        verify(service).getReports("ABRC0007", "신고", 2, 20);
+        verify(service).getReports("ABRC0007", "신고", "TRADE_ISSUE", 2, 20);
     }
 
     @Test

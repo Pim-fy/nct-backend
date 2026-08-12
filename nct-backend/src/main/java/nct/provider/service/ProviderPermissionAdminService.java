@@ -87,12 +87,14 @@ public class ProviderPermissionAdminService {
         auditLogPort.record(new AuditLogCommand(
                 "STATUS_CHANGE",
                 String.valueOf(actorUserSn),
-                RefType.MEMBER.getCode(),
-                updated.getUserSn(),
+                RefType.PROVIDER_APPLICATION.getCode(),
+                updated.getApplicationSn(),
                 normalizedReason,
                 before,
                 summary(updated),
-                requestId.trim()));
+                requestId.trim(),
+                RefType.MEMBER.getCode(),
+                updated.getUserSn()));
         notificationService.notify(
                 updated.getUserSn(),
                 NotificationType.OPS,

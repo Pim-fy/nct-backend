@@ -34,6 +34,7 @@ import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.abuse.port.TradeIncidentReportCommand;
 import nct.abuse.port.TradeIncidentReportPort;
 import nct.auction.port.AuctionReferenceTitleReader;
+import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
@@ -523,12 +524,14 @@ public class AbuseReportService implements
         auditLogPort.record(new AuditLogCommand(
                 values.auditAction(),
                 values.adminId(),
-                report.getReferenceTypeCode(),
-                report.getReferenceSn(),
+                RefType.ABUSE_REPORT.getCode(),
+                report.getReportSn(),
                 values.reason(),
                 statusSummary(report.getReportSn(), report.getStatusCode()),
                 statusSummary(report.getReportSn(), values.newStatusCode()),
-                values.requestId()));
+                values.requestId(),
+                report.getReferenceTypeCode(),
+                report.getReferenceSn()));
 
         // 담당자 7 · F-OPS-007: 일반 신고에만 처리 결과를 알리고,
         // 신고자가 없는 SYSTEM 자동 탐지 신고에는 사용자 알림을 만들지 않는다.
@@ -556,6 +559,7 @@ public class AbuseReportService implements
     public PageResponse<AdminAbuseReportResponse> getAdminReports(
             String statusCode,
             String keyword,
+            String caseType,
             int page,
             int size) {
         if (page < 1 || size < 1 || size > MAX_ADMIN_REPORT_PAGE_SIZE) {
@@ -564,6 +568,11 @@ public class AbuseReportService implements
 
         String normalizedStatus = trimToNull(statusCode);
         String normalizedKeyword = trimToNull(keyword);
+        String normalizedCaseType = trimToNull(caseType);
+        normalizedCaseType = normalizedCaseType == null ? "ALL" : normalizedCaseType.toUpperCase();
+        if (!Set.of("ALL", "GENERAL", "TRADE_ISSUE").contains(normalizedCaseType)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
         if (normalizedKeyword != null && normalizedKeyword.length() > MAX_ADMIN_REPORT_KEYWORD_LENGTH) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
@@ -572,12 +581,16 @@ public class AbuseReportService implements
         }
 
         long offset = (long) (page - 1) * size;
-        long total = abuseReportMapper.countAdminReports(normalizedStatus, normalizedKeyword);
+        long total = abuseReportMapper.countAdminReports(
+                normalizedStatus,
+                normalizedKeyword,
+                normalizedCaseType);
         List<AdminAbuseReportResponse> content = total == 0 || offset >= total
                 ? List.of()
                 : abuseReportMapper.findAdminReports(
                         normalizedStatus,
                         normalizedKeyword,
+                        normalizedCaseType,
                         offset,
                         size);
         enrichAdminAuctionTargetNames(content);

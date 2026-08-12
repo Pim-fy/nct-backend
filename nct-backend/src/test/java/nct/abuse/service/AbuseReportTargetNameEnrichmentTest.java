@@ -96,13 +96,13 @@ class AbuseReportTargetNameEnrichmentTest {
         report.setReferenceTypeCode(AbuseReportService.AUCTION_REFERENCE_TYPE);
         report.setReferenceSn(8806L);
         report.setTargetName("경매 #8806");
-        when(mapper.countAdminReports(null, null)).thenReturn(1L);
-        when(mapper.findAdminReports(null, null, 0L, 20)).thenReturn(List.of(report));
+        when(mapper.countAdminReports(null, null, "ALL")).thenReturn(1L);
+        when(mapper.findAdminReports(null, null, "ALL", 0L, 20)).thenReturn(List.of(report));
         when(auctionTitleReader.findTitles(List.of(8806L)))
                 .thenReturn(Map.of(8806L, "검증된 경매 글 제목"));
 
         PageResponse<AdminAbuseReportResponse> result =
-                service.getAdminReports(null, null, 1, 20);
+                service.getAdminReports(null, null, "ALL", 1, 20);
 
         assertThat(result.getContent().get(0).getTargetName()).isEqualTo("검증된 경매 글 제목");
     }

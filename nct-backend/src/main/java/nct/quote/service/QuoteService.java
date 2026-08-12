@@ -363,7 +363,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             auditLogPort.record(new AuditLogCommand(
                     AuditLogType.STATUS_CHANGE.name(),
                     String.valueOf(usrSn),
-                    RefType.QUOTE.getCode(),
+                    RefType.MEMBER.getCode(),
                     usrSn,
                     "회원 탈퇴에 따른 진행 중 견적 자동 철회",
                     "QUTC0001/QUTC0002",

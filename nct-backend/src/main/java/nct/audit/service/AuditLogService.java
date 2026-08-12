@@ -55,12 +55,55 @@ public class AuditLogService {
     @Transactional
     public long record(Long actorUsrSn, AuditLogType type, RefType refType, Long refSn,
                        String reason, String ipAddr) {
+        return record(
+                actorUsrSn,
+                type,
+                refType,
+                refType == null ? null : refSn,
+                reason,
+                null,
+                null,
+                null,
+                null,
+                null,
+                ipAddr);
+    }
+
+    /**
+     * 담당자 7 · F-OPS-015: 관리자 변경 이력을 구조화해 기록합니다.
+     * 주 대상과 연관 대상은 각각 유형·번호가 함께 있거나 함께 없어야 합니다.
+     */
+    @Transactional
+    public long record(
+            Long actorUsrSn,
+            AuditLogType type,
+            RefType refType,
+            Long refSn,
+            String reason,
+            String before,
+            String after,
+            String requestId,
+            RefType relatedRefType,
+            Long relatedRefSn,
+            String ipAddr) {
+        if (type == null
+                || (refType == null) != (refSn == null)
+                || (relatedRefType == null) != (relatedRefSn == null)
+                || (refSn != null && refSn <= 0)
+                || (relatedRefSn != null && relatedRefSn <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
         AuditLog log = new AuditLog();
         log.setUsrSn(actorUsrSn);
         log.setAudLogTypeCd(type.getCode());
         log.setAudLogRefTypeCd(refType == null ? null : refType.getCode());
-        log.setAudLogRefSn(refType == null ? null : refSn);
+        log.setAudLogRefSn(refSn);
         log.setAudLogRsonCn(reason);
+        log.setAudLogBeforeCn(before);
+        log.setAudLogAfterCn(after);
+        log.setAudLogReqId(requestId);
+        log.setAudLogRelRefTypeCd(relatedRefType == null ? null : relatedRefType.getCode());
+        log.setAudLogRelRefSn(relatedRefSn);
         log.setAudLogIpAddr(ipAddr);
         auditLogMapper.insert(log);
         return log.getAudLogSn();
@@ -77,6 +120,15 @@ public class AuditLogService {
     public AuditLog findLatest(RefType refType, Long refSn) {
         if (refType == null || refSn == null || refSn <= 0) return null;
         return auditLogMapper.selectLatestByReference(refType.getCode(), refSn);
+    }
+
+    /** 담당자 7 · F-OPS-016: 주 대상 또는 연관 대상으로 연결된 관리자 이력을 최신순 조회합니다. */
+    @Transactional(readOnly = true)
+    public List<AuditLog> findHistory(RefType refType, Long refSn, int limit) {
+        if (refType == null || refSn == null || refSn <= 0 || limit < 1 || limit > 200) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return auditLogMapper.selectHistory(refType.getCode(), refSn, limit);
     }
 
     /**

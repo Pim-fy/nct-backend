@@ -22,7 +22,8 @@ import nct.ops.security.service.SensitiveDataMasker;
 @RequiredArgsConstructor
 public class AuditLogServiceAdapter implements AuditLogPort {
 
-    private static final int MAX_REASON_LENGTH = 500;
+    private static final int MAX_CONTENT_LENGTH = 4000;
+    private static final int MAX_REQUEST_ID_LENGTH = 100;
 
     private final AuditLogService auditLogService;
     private final SensitiveDataMasker sensitiveDataMasker;
@@ -37,7 +38,12 @@ public class AuditLogServiceAdapter implements AuditLogPort {
                 auditType(command.actionCode()),
                 refType(command.referenceTypeCode()),
                 command.referenceSn(),
-                reason(command.reason(), command.beforeSummary(), command.afterSummary(), command.requestId()),
+                safe(command.reason(), MAX_CONTENT_LENGTH),
+                safe(command.beforeSummary(), MAX_CONTENT_LENGTH),
+                safe(command.afterSummary(), MAX_CONTENT_LENGTH),
+                safe(command.requestId(), MAX_REQUEST_ID_LENGTH),
+                refType(command.relatedReferenceTypeCode()),
+                command.relatedReferenceSn(),
                 null);
     }
 
@@ -57,7 +63,7 @@ public class AuditLogServiceAdapter implements AuditLogPort {
         return Arrays.stream(RefType.values())
                 .filter(type -> type.getCode().equals(normalized) || type.name().equals(normalized))
                 .findFirst()
-                .orElse(null);
+                .orElseThrow(() -> new IllegalArgumentException("알 수 없는 감사 참조 유형 코드입니다."));
     }
 
     private Long parseActor(String actorId) {
@@ -75,17 +81,14 @@ public class AuditLogServiceAdapter implements AuditLogPort {
         }
     }
 
-    private String reason(String reason, String beforeSummary, String afterSummary, String requestId) {
-        String value = "reason=" + safe(reason)
-                + "; before=" + safe(beforeSummary)
-                + "; after=" + safe(afterSummary)
-                + "; requestId=" + safe(requestId);
-        return value.length() <= MAX_REASON_LENGTH ? value : value.substring(0, MAX_REASON_LENGTH);
-    }
-
-    private String safe(String value) {
-        return sensitiveDataMasker.maskText(value == null ? "-" : value)
-                .replaceAll("[\\r\\n\\t]+", " ");
+    private String safe(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        String masked = sensitiveDataMasker.maskText(value)
+                .replaceAll("[\\r\\n\\t]+", " ")
+                .trim();
+        return masked.length() <= maxLength ? masked : masked.substring(0, maxLength);
     }
 
     private String normalize(String value) {

@@ -34,6 +34,11 @@ public interface AuditLogMapper {
     AuditLog selectLatestByReference(@Param("refTypeCd") String refTypeCd,
                                      @Param("refSn") Long refSn);
 
+    /** 담당자 7 · F-OPS-016: 주 대상 또는 연관 대상의 전체 처리 이력을 조회합니다. */
+    List<AuditLog> selectHistory(@Param("refTypeCd") String refTypeCd,
+                                 @Param("refSn") Long refSn,
+                                 @Param("limit") int limit);
+
     /**
      * 민감정보 제한 조회 대상 채팅 메시지 원문 (F-OPS-014)
      * - CHAT_MESSAGE는 담당자4 소유 테이블 — 여기서는 읽기 전용 SELECT만 하며 절대 변경하지 않는다

@@ -305,6 +305,19 @@ class CustomerInquiryServiceTest {
         verify(auditLogPort, never()).record(any());
     }
 
+    @Test
+    void withdrawalBulkCloseReferencesMemberInsteadOfInquiryNumber() {
+        when(mapper.closeUnansweredByUser(
+                101L, "INQC0007", "INQC0008", "INQC0009", "101")).thenReturn(2);
+
+        service.closeUnansweredByUser(101L);
+
+        ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().referenceTypeCode()).isEqualTo("REFC0001");
+        assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(101L);
+    }
+
     private CustomerInquiryCreateRequest createRequest() {
         return new CustomerInquiryCreateRequest(
                 "INQC0001", "계정 문의", "로그인이 되지 않습니다.", DETECTION_KEY);

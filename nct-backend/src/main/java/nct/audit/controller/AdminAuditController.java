@@ -3,6 +3,7 @@ package nct.audit.controller;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,6 +31,9 @@ import nct.audit.dto.SensitiveViewResponse;
 import nct.audit.mapper.ChatMessageView;
 import nct.audit.service.AuditLogService;
 import nct.audit.service.DisputeChatViewResult;
+import nct.common.domain.RefType;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.member.dto.AdminMemberIdentityResponse;
@@ -53,6 +57,7 @@ public class AdminAuditController {
     /** 화면 한 번에 내리는 최대 행 수 — 3년치 로그를 통째로 내리는 사고 방지 */
     private static final int MAX_LIMIT = 500;
     private static final int DEFAULT_LIMIT = 100;
+    private static final int MAX_HISTORY_LIMIT = 200;
 
     private final AuditLogService auditLogService;
     private final AdminMemberIdentityReader memberIdentityReader;
@@ -81,6 +86,33 @@ public class AdminAuditController {
                 .map(log -> AuditLogResponse.from(log, identities.get(log.getUsrSn())))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    /** 담당자 7 · F-OPS-016: 관리자 상세 화면에서 대상별 처리 이력을 공통 조회합니다. */
+    @GetMapping("/history")
+    public ResponseEntity<ApiResponse<List<AuditLogResponse>>> getHistory(
+            @RequestParam(name = "refType") String refType,
+            @RequestParam(name = "refSn") Long refSn,
+            @RequestParam(name = "limit", required = false) Integer limit) {
+        RefType parsedRefType = parseRefType(refType);
+        int rows = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(limit, 1), MAX_HISTORY_LIMIT);
+        var logs = auditLogService.findHistory(parsedRefType, refSn, rows);
+        Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
+                logs.stream().map(log -> log.getUsrSn()).toList());
+        List<AuditLogResponse> body = logs.stream()
+                .map(log -> AuditLogResponse.from(log, identities.get(log.getUsrSn())))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    private RefType parseRefType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        for (RefType type : RefType.values()) {
+            if (type.name().equals(normalized) || type.getCode().equals(normalized)) {
+                return type;
+            }
+        }
+        throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
     }
 
     /** 민감정보 원문 제한 조회 (F-OPS-014) — 사유·분쟁 건 필수, 조회 즉시 감사로그가 남는다 */

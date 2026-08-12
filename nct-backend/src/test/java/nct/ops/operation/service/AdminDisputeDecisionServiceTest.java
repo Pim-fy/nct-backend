@@ -11,12 +11,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.ops.audit.port.AuditLogPort;
+import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.operation.domain.AdminDisputeDecision;
 import nct.ops.operation.domain.AdminDisputeDecisionCommittedEvent;
 import nct.point.service.PointService;
@@ -66,7 +68,14 @@ class AdminDisputeDecisionServiceTest {
         verify(pointService).refundEscrow(
                 32L, 25L, RefType.TRADE, 25L,
                 "관리자 거래 분쟁 전액 환불: 전액 환불 확정");
-        verify(auditLogPort).record(any());
+        ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().referenceTypeCode())
+                .isEqualTo(RefType.TRADE_DISPUTE.getCode());
+        assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(11L);
+        assertThat(auditCaptor.getValue().relatedReferenceTypeCode())
+                .isEqualTo(RefType.TRADE.getCode());
+        assertThat(auditCaptor.getValue().relatedReferenceSn()).isEqualTo(25L);
         verify(eventPublisher).publishEvent(any(AdminDisputeDecisionCommittedEvent.class));
     }
 

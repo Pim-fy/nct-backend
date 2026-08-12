@@ -1,13 +1,10 @@
 package nct.ops.notice.adapter;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 
 import nct.audit.domain.AuditLogType;
@@ -38,7 +35,12 @@ class AuditNoticeChangeHistoryAdapterTest {
                 eq(AuditLogType.STATUS_CHANGE),
                 eq(RefType.NOTICE),
                 eq(11L),
-                contains("점검 공지 숨김"),
+                eq("점검 공지 숨김"),
+                eq("status=published"),
+                eq("status=hidden"),
+                isNull(),
+                isNull(),
+                isNull(),
                 isNull());
     }
 
@@ -57,16 +59,17 @@ class AuditNoticeChangeHistoryAdapterTest {
                 .afterSummary("status=published")
                 .build());
 
-        ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
         verify(auditLogService).record(
                 eq(7L),
                 eq(AuditLogType.STATUS_CHANGE),
                 eq(RefType.NOTICE),
                 eq(12L),
-                reasonCaptor.capture(),
+                eq("노출 사유".repeat(100)),
+                eq("status=hidden"),
+                eq("status=published"),
+                isNull(),
+                isNull(),
+                isNull(),
                 isNull());
-        assertThat(reasonCaptor.getValue())
-                .hasSizeLessThanOrEqualTo(500)
-                .contains("before=status=hidden", "after=status=published");
     }
 }

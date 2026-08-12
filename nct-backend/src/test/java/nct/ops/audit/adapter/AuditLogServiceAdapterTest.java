@@ -30,7 +30,12 @@ class AuditLogServiceAdapterTest {
                 eq(AuditLogType.ADMIN_APPROVE),
                 eq(RefType.NOTICE),
                 eq(3L),
-                eq("reason=연락처 [연락처 마스킹] 포함; before=before; after=after; requestId=req-1"),
+                eq("연락처 [연락처 마스킹] 포함"),
+                eq("before"),
+                eq("after"),
+                eq("req-1"),
+                isNull(),
+                isNull(),
                 isNull());
     }
 
@@ -43,6 +48,9 @@ class AuditLogServiceAdapterTest {
                 "ADMIN_APPROVE", "USR:abc", "NOTICE", 3L, "사유", "-", "-", "req-1")));
         assertThrows(IllegalArgumentException.class, () -> adapter.record(new AuditLogCommand(
                 "UNKNOWN_ACTION", "USR:7", "NOTICE", 3L, "사유", "-", "-", "req-1")));
+        assertThrows(IllegalArgumentException.class, () -> adapter.record(new AuditLogCommand(
+                "ADMIN_APPROVE", "USR:7", "UNKNOWN_REFERENCE", 3L,
+                "사유", "-", "-", "req-1")));
     }
 
     @Test
@@ -61,7 +69,38 @@ class AuditLogServiceAdapterTest {
                 eq(AuditLogType.STATUS_CHANGE),
                 eq(RefType.MEMBER),
                 eq(3L),
-                eq("reason=자동 만료; before=before; after=after; requestId=req-system-1"),
+                eq("자동 만료"),
+                eq("before"),
+                eq("after"),
+                eq("req-system-1"),
+                isNull(),
+                isNull(),
+                isNull());
+    }
+
+    @Test
+    void mapsRelatedReferenceForCrossTargetHistory() {
+        AuditLogService auditLogService = mock(AuditLogService.class);
+        AuditLogServiceAdapter adapter = new AuditLogServiceAdapter(
+                auditLogService,
+                new SensitiveDataMasker());
+
+        adapter.record(new AuditLogCommand(
+                "STATUS_CHANGE", "7", "MEMBER", 30L,
+                "신고 제재", "active", "suspended", "req-2",
+                "ABUSE_REPORT", 91L));
+
+        verify(auditLogService).record(
+                eq(7L),
+                eq(AuditLogType.STATUS_CHANGE),
+                eq(RefType.MEMBER),
+                eq(30L),
+                eq("신고 제재"),
+                eq("active"),
+                eq("suspended"),
+                eq("req-2"),
+                eq(RefType.ABUSE_REPORT),
+                eq(91L),
                 isNull());
     }
 }

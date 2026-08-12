@@ -22,6 +22,8 @@ public class AdminAbuseReportResponse {
     private AdminMemberIdentityResponse reportedMember;
     private String reportTypeCode;
     private String reportTypeName;
+    /** 일반 신고 또는 거래 문제 분류값(GENERAL/TRADE_ISSUE) */
+    private String caseType;
     private String statusCode;
     private String title;
     private String targetName;

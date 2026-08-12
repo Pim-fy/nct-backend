@@ -161,14 +161,16 @@ public class AdminDisputeDecisionService {
         auditLogPort.record(new AuditLogCommand(
                 "STATUS_CHANGE",
                 String.valueOf(adminUserSn),
-                "TRADE_DISPUTE",
+                RefType.TRADE_DISPUTE.getCode(),
                 target.getDisputeSn(),
                 reason,
                 "disputeStatus=" + target.getDisputeStatusCode()
                         + ",tradeStatus=" + target.getTradeStatusCode(),
                 "decision=" + decision.name()
                         + ",disputeStatus=" + decision.getStatusCode(),
-                requestId(adminUserSn, target.getDisputeSn(), decision, reason)));
+                requestId(adminUserSn, target.getDisputeSn(), decision, reason),
+                RefType.TRADE.getCode(),
+                target.getTradeSn()));
     }
 
     private void publishFinalDecisionNotification(

@@ -189,9 +189,14 @@ class PointExchangeServiceAdminHistoryTest {
         auditBeforeDecrypt.verify(auditLogService).record(
                 7L,
                 AuditLogType.SENSITIVE_VIEW,
+                RefType.POINT_EXCHANGE_ORDER,
+                44L,
+                "환전 신청 44번 지급 계좌 조회",
+                null,
+                null,
+                null,
                 RefType.MEMBER,
                 10L,
-                "환전 신청 44번 지급 계좌 조회",
                 "127.0.0.1");
         auditBeforeDecrypt.verify(fieldCryptoService).decrypt("enc-bank");
         auditBeforeDecrypt.verify(fieldCryptoService).decrypt("enc-account");
@@ -215,9 +220,14 @@ class PointExchangeServiceAdminHistoryTest {
         verify(auditLogService, never()).record(
                 7L,
                 AuditLogType.SENSITIVE_VIEW,
+                RefType.POINT_EXCHANGE_ORDER,
+                45L,
+                "환전 신청 45번 지급 계좌 조회",
+                null,
+                null,
+                null,
                 RefType.MEMBER,
                 10L,
-                "환전 신청 45번 지급 계좌 조회",
                 "127.0.0.1");
         verifyNoInteractions(fieldCryptoService);
     }

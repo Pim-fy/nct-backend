@@ -20,8 +20,7 @@ import nct.ops.security.service.SensitiveDataMasker;
 @RequiredArgsConstructor
 public class AuditNoticeChangeHistoryAdapter implements NoticeChangeHistoryPort {
 
-    private static final int MAX_REASON_LENGTH = 500;
-    private static final int MAX_SUMMARY_LENGTH = 160;
+    private static final int MAX_CONTENT_LENGTH = 4000;
 
     private final AuditLogService auditLogService;
     private final SensitiveDataMasker sensitiveDataMasker;
@@ -36,7 +35,12 @@ public class AuditNoticeChangeHistoryAdapter implements NoticeChangeHistoryPort 
                 type(command.getAction()),
                 RefType.NOTICE,
                 command.getNoticeId(),
-                reason(command.getReason(), command.getBeforeSummary(), command.getAfterSummary()),
+                safe(command.getReason()),
+                safe(command.getBeforeSummary()),
+                safe(command.getAfterSummary()),
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -49,20 +53,11 @@ public class AuditNoticeChangeHistoryAdapter implements NoticeChangeHistoryPort 
         };
     }
 
-    private String reason(String reason, String beforeSummary, String afterSummary) {
-        String prefix = "공지 변경 사유=";
-        String summaries = "; before=" + limit(safe(beforeSummary), MAX_SUMMARY_LENGTH)
-                + "; after=" + limit(safe(afterSummary), MAX_SUMMARY_LENGTH);
-        int reasonLength = Math.max(0, MAX_REASON_LENGTH - prefix.length() - summaries.length());
-        return prefix + limit(safe(reason), reasonLength) + summaries;
-    }
-
     private String safe(String value) {
-        return sensitiveDataMasker.maskText(value == null ? "-" : value)
+        String masked = sensitiveDataMasker.maskText(value == null ? "-" : value)
                 .replaceAll("[\\r\\n\\t]+", " ");
-    }
-
-    private String limit(String value, int maxLength) {
-        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+        return masked.length() <= MAX_CONTENT_LENGTH
+                ? masked
+                : masked.substring(0, MAX_CONTENT_LENGTH);
     }
 }

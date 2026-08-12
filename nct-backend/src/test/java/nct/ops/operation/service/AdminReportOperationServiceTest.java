@@ -84,7 +84,7 @@ class AdminReportOperationServiceTest {
     @Test
     void mapsFilteredReportPageFromAbuseReportService() {
         AdminAbuseReportResponse report = new AdminAbuseReportResponse();
-        when(abuseReportService.getAdminReports("ABRC0007", "신고", 2, 20))
+        when(abuseReportService.getAdminReports("ABRC0007", "신고", "GENERAL", 2, 20))
                 .thenReturn(PageResponse.<AdminAbuseReportResponse>builder()
                         .content(List.of(report))
                         .totalCount(21)
@@ -93,12 +93,13 @@ class AdminReportOperationServiceTest {
                         .hasNext(false)
                         .build());
 
-        AdminReportPageResponse result = service.getReports("ABRC0007", "신고", 2, 20);
+        AdminReportPageResponse result = service.getReports(
+                "ABRC0007", "신고", "GENERAL", 2, 20);
 
         assertThat(result.items()).containsExactly(report);
         assertThat(result.totalItems()).isEqualTo(21);
         assertThat(result.totalPages()).isEqualTo(2);
-        verify(abuseReportService).getAdminReports("ABRC0007", "신고", 2, 20);
+        verify(abuseReportService).getAdminReports("ABRC0007", "신고", "GENERAL", 2, 20);
     }
 
     @Test

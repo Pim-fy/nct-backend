@@ -17,6 +17,9 @@ import nct.global.exception.ErrorCode;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.notification.service.NotificationService;
+import nct.common.domain.RefType;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.provider.domain.ProviderApplicationCommand;
 import nct.provider.dto.ProviderApplicationFileRequest;
@@ -47,6 +50,7 @@ public class ProviderApplicationService {
     private final FileStorageService fileStorageService;
     private final AdminMemberIdentityReader memberIdentityReader;
     private final NotificationService notificationService;
+    private final AuditLogPort auditLogPort;
 
     @Transactional
     public List<ProviderApplicationResponse> apply(Long userSn, ProviderApplicationRequest request) {
@@ -134,9 +138,12 @@ public class ProviderApplicationService {
                         actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+        ProviderApplicationResponse updated = mapper.findForUpdate(applicationSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+        recordDecisionAudit(
+                "ADMIN_APPROVE", actorUserSn, normalizedReason, application, updated);
         notificationService.notifyProviderApprovalResult(application.getUserSn(), true, null);
-        return enrichFiles(
-                mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)));
+        return enrichFiles(updated);
     }
 
     @Transactional
@@ -149,9 +156,12 @@ public class ProviderApplicationService {
                     applicationSn, HIST_REJECTED, normalizedReason, actorId(actorUserSn)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT);
         }
+        ProviderApplicationResponse updated = mapper.findForUpdate(applicationSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+        recordDecisionAudit(
+                "ADMIN_REJECT", actorUserSn, normalizedReason, application, updated);
         notificationService.notifyProviderApprovalResult(application.getUserSn(), false, normalizedReason);
-        return enrichFiles(
-                mapper.findForUpdate(applicationSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)));
+        return enrichFiles(updated);
     }
 
     /** 다른 제공자 전용 API가 호출해 카테고리별 승인 권한을 서버에서 검증하는 재사용 계약입니다. */
@@ -209,6 +219,34 @@ public class ProviderApplicationService {
     private String actorId(Long userSn) {
         requireUser(userSn);
         return String.valueOf(userSn);
+    }
+
+    /** 담당자 7 · F-OPS-015: 최초 심사 결정도 다른 관리자 처리와 같은 공통 이력에 남깁니다. */
+    private void recordDecisionAudit(
+            String action,
+            Long actorUserSn,
+            String reason,
+            ProviderApplicationResponse before,
+            ProviderApplicationResponse after) {
+        auditLogPort.record(new AuditLogCommand(
+                action,
+                actorId(actorUserSn),
+                RefType.PROVIDER_APPLICATION.getCode(),
+                after.getApplicationSn(),
+                reason,
+                auditSummary(before),
+                auditSummary(after),
+                null,
+                RefType.MEMBER.getCode(),
+                after.getUserSn()));
+    }
+
+    private String auditSummary(ProviderApplicationResponse application) {
+        return "application=" + application.getApplicationSn()
+                + ",category=" + application.getCategorySn()
+                + ",status=" + application.getStatusCode()
+                + ",permissionStatus=" + application.getPermissionStatusCode()
+                + ",permissionUse=" + application.getPermissionUseYn();
     }
 
     private Map<Long, List<ProviderApplicationFileRequest>> validateFiles(

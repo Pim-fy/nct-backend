@@ -116,7 +116,9 @@ public class AdminServiceRequestOperationService {
                 normalizedReason,
                 "quoteStatus=" + result.previousStatusCode(),
                 "quoteStatus=" + result.statusCode(),
-                requestId.trim()));
+                requestId.trim(),
+                RefType.SERVICE_REQUEST.getCode(),
+                serviceRequestId));
         notificationService.notify(
                 result.providerUserId(),
                 NotificationType.OPS,

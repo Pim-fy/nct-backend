@@ -9,9 +9,13 @@
             useGeneratedKeys="true" keyProperty="audLogSn">
         /* 감사: 로그 기록 */
         INSERT INTO AUDIT_LOG (USR_SN, AUD_LOG_TYPE_CD, AUD_LOG_REF_TYPE_CD, AUD_LOG_REF_SN,
-                               AUD_LOG_RSON_CN, AUD_LOG_IP_ADDR)
+                               AUD_LOG_RSON_CN, AUD_LOG_BEFORE_CN, AUD_LOG_AFTER_CN,
+                               AUD_LOG_REQ_ID, AUD_LOG_REL_REF_TYPE_CD, AUD_LOG_REL_REF_SN,
+                               AUD_LOG_IP_ADDR)
         VALUES (#{usrSn}, #{audLogTypeCd}, #{audLogRefTypeCd}, #{audLogRefSn},
-                #{audLogRsonCn}, #{audLogIpAddr})
+                #{audLogRsonCn}, #{audLogBeforeCn}, #{audLogAfterCn},
+                #{audLogReqId}, #{audLogRelRefTypeCd}, #{audLogRelRefSn},
+                #{audLogIpAddr})
     </insert>
 
     <!-- 조건별 목록: 코드값을 화면에 그대로 보여줄 수 없으니 CMM_CODE·USERS를 조인해 한글명을 함께 가져온다.
@@ -30,11 +34,18 @@
             R.CMM_NM              AS refTypeNm,
             A.AUD_LOG_REF_SN      AS audLogRefSn,
             A.AUD_LOG_RSON_CN     AS audLogRsonCn,
+            A.AUD_LOG_BEFORE_CN   AS audLogBeforeCn,
+            A.AUD_LOG_AFTER_CN    AS audLogAfterCn,
+            A.AUD_LOG_REQ_ID      AS audLogReqId,
+            A.AUD_LOG_REL_REF_TYPE_CD AS audLogRelRefTypeCd,
+            RR.CMM_NM             AS relRefTypeNm,
+            A.AUD_LOG_REL_REF_SN  AS audLogRelRefSn,
             A.AUD_LOG_IP_ADDR     AS audLogIpAddr,
             A.AUD_LOG_REG_DT      AS audLogRegDt
         FROM AUDIT_LOG A
         JOIN CMM_CODE T ON T.CMM_CD = A.AUD_LOG_TYPE_CD
         LEFT JOIN CMM_CODE R ON R.CMM_CD = A.AUD_LOG_REF_TYPE_CD
+        LEFT JOIN CMM_CODE RR ON RR.CMM_CD = A.AUD_LOG_REL_REF_TYPE_CD
         LEFT JOIN USERS U ON U.USR_SN = A.USR_SN
         <where>
             <if test="usrSn != null">AND A.USR_SN = #{usrSn}</if>
@@ -53,12 +64,47 @@
                A.AUD_LOG_REF_TYPE_CD AS audLogRefTypeCd,
                A.AUD_LOG_REF_SN      AS audLogRefSn,
                A.AUD_LOG_RSON_CN     AS audLogRsonCn,
+               A.AUD_LOG_BEFORE_CN   AS audLogBeforeCn,
+               A.AUD_LOG_AFTER_CN    AS audLogAfterCn,
+               A.AUD_LOG_REQ_ID      AS audLogReqId,
+               A.AUD_LOG_REL_REF_TYPE_CD AS audLogRelRefTypeCd,
+               A.AUD_LOG_REL_REF_SN  AS audLogRelRefSn,
                A.AUD_LOG_REG_DT      AS audLogRegDt
           FROM AUDIT_LOG A
          WHERE A.AUD_LOG_REF_TYPE_CD = #{refTypeCd}
            AND A.AUD_LOG_REF_SN = #{refSn}
          ORDER BY A.AUD_LOG_SN DESC
          LIMIT 1
+    </select>
+
+    <select id="selectHistory" resultType="nct.audit.domain.AuditLog">
+        /* 담당자 7 · F-OPS-016: 상세 화면의 주 대상·연관 대상 통합 이력 */
+        SELECT A.AUD_LOG_SN              AS audLogSn,
+               A.USR_SN                  AS usrSn,
+               U.USR_NM                  AS usrNm,
+               A.AUD_LOG_TYPE_CD         AS audLogTypeCd,
+               T.CMM_NM                  AS audLogTypeNm,
+               A.AUD_LOG_REF_TYPE_CD     AS audLogRefTypeCd,
+               R.CMM_NM                  AS refTypeNm,
+               A.AUD_LOG_REF_SN          AS audLogRefSn,
+               A.AUD_LOG_RSON_CN         AS audLogRsonCn,
+               A.AUD_LOG_BEFORE_CN       AS audLogBeforeCn,
+               A.AUD_LOG_AFTER_CN        AS audLogAfterCn,
+               A.AUD_LOG_REQ_ID          AS audLogReqId,
+               A.AUD_LOG_REL_REF_TYPE_CD AS audLogRelRefTypeCd,
+               RR.CMM_NM                 AS relRefTypeNm,
+               A.AUD_LOG_REL_REF_SN      AS audLogRelRefSn,
+               A.AUD_LOG_IP_ADDR         AS audLogIpAddr,
+               A.AUD_LOG_REG_DT          AS audLogRegDt
+        FROM AUDIT_LOG A
+        JOIN CMM_CODE T ON T.CMM_CD = A.AUD_LOG_TYPE_CD
+        LEFT JOIN CMM_CODE R ON R.CMM_CD = A.AUD_LOG_REF_TYPE_CD
+        LEFT JOIN CMM_CODE RR ON RR.CMM_CD = A.AUD_LOG_REL_REF_TYPE_CD
+        LEFT JOIN USERS U ON U.USR_SN = A.USR_SN
+        WHERE (A.AUD_LOG_REF_TYPE_CD = #{refTypeCd} AND A.AUD_LOG_REF_SN = #{refSn})
+           OR (A.AUD_LOG_REL_REF_TYPE_CD = #{refTypeCd} AND A.AUD_LOG_REL_REF_SN = #{refSn})
+        ORDER BY A.AUD_LOG_SN DESC
+        LIMIT #{limit}
     </select>
 
     <!-- 민감정보 제한 조회 (F-OPS-014).

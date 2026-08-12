@@ -142,7 +142,8 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
                 reason,
                 requestId,
                 "report=" + reportSn + ",action=NONE",
-                "report=" + reportSn + ",action=" + action + ",sanction=" + sanction.getSanctionSn());
+                "report=" + reportSn + ",action=" + action + ",sanction=" + sanction.getSanctionSn(),
+                reportSn);
         notifyRestrictedMember(report.getReportedUserSn(), action, releaseAt);
     }
 
@@ -353,7 +354,8 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
                 reason,
                 requestId,
                 "sanction=" + released.getSanctionSn() + ",released=false",
-                "sanction=" + released.getSanctionSn() + ",released=true");
+                "sanction=" + released.getSanctionSn() + ",released=true",
+                released.getSourceReportSn());
         notifyReleasedMember(released.getUserSn(), automatic);
     }
 
@@ -603,7 +605,8 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
             String reason,
             String requestId,
             String before,
-            String after) {
+            String after,
+            Long relatedReportSn) {
         auditLogPort.record(new AuditLogCommand(
                 action,
                 adminUserSn == null ? null : String.valueOf(adminUserSn),
@@ -612,7 +615,9 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
                 reason.trim(),
                 before,
                 after,
-                requestId));
+                requestId,
+                relatedReportSn == null ? null : "ABUSE_REPORT",
+                relatedReportSn));
     }
 
     private void notifyRestrictedMember(

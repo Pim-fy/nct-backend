@@ -48,10 +48,16 @@ public class AdminReportOperationService {
     }
 
     @Transactional(readOnly = true)
-    public AdminReportPageResponse getReports(String statusCode, String keyword, int page, int size) {
+    public AdminReportPageResponse getReports(
+            String statusCode,
+            String keyword,
+            String caseType,
+            int page,
+            int size) {
         PageResponse<AdminAbuseReportResponse> result = abuseReportService.getAdminReports(
                 statusCode,
                 keyword,
+                caseType,
                 page,
                 size);
         List<AdminAbuseReportResponse> reports = enrichMembers(result.getContent());

@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.file.domain.FileMeta;
 import nct.file.mapper.FileMapper;
 import nct.global.exception.CustomException;
@@ -232,8 +233,9 @@ public class FileStorageService {
         FileMeta fileMeta = fileMapper.findById(flSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
 
-        auditLogService.record(adminUsrSn, AuditLogType.SENSITIVE_VIEW, null, null,
-                String.format("제공자 서류 심사 열람 — 신청 %d번, 파일 %d번(%s)", prvAplySn, flSn, fileMeta.getFlOrgNm()),
+        auditLogService.record(adminUsrSn, AuditLogType.SENSITIVE_VIEW,
+                RefType.PROVIDER_APPLICATION, prvAplySn,
+                String.format("제공자 서류 심사 열람 - 신청 #%d, 파일 #%d", prvAplySn, flSn),
                 ipAddr);
         return fileMeta;
     }

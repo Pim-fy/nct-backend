@@ -17,17 +17,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
-import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.service.ProviderAccessGuard;
-import nct.global.security.port.AuthMember;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
+import nct.ops.audit.port.AuditLogCommand;
 import nct.quote.domain.Quote;
 import nct.quote.dto.AdminQuoteListItem;
 import nct.quote.dto.AdminQuoteSummary;
@@ -63,10 +63,6 @@ class QuoteServiceTest {
     private AuditLogPort auditLogPort;
     @Mock
     private Authentication authentication;
-    @Mock
-    private CustomUserDetails userDetails;
-    @Mock
-    private AuthMember authMember;
 
     private QuoteService service;
 
@@ -88,9 +84,6 @@ class QuoteServiceTest {
         when(serviceRequestQuoteReader.requireOpenForQuote(10L))
                 .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
-        when(authentication.getPrincipal()).thenReturn(userDetails);
-        when(userDetails.getMember()).thenReturn(authMember);
-        when(authMember.getNickname()).thenReturn("제공자");
         when(quoteMapper.insertQuote(any(Quote.class))).thenAnswer(invocation -> {
             Quote quote = invocation.getArgument(0);
             quote.setQutSn(99L);
@@ -631,5 +624,17 @@ class QuoteServiceTest {
                 .isInstanceOf(CustomException.class);
 
         verify(serviceRequestQuoteReader).requireOwner(10L, 7L);
+    }
+
+    @Test
+    void withdrawalBulkQuoteAuditReferencesMemberInsteadOfQuoteNumber() {
+        when(quoteMapper.withdrawAllByUser(101L, "101")).thenReturn(2);
+
+        service.withdrawAllQuotesByUser(101L);
+
+        ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().referenceTypeCode()).isEqualTo("REFC0001");
+        assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(101L);
     }
 }

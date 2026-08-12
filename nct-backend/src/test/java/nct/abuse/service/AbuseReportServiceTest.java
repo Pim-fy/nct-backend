@@ -499,11 +499,13 @@ class AbuseReportServiceTest {
                 AbuseReportService.PROCESSED_STATUS);
         when(abuseReportMapper.countAdminReports(
                 AbuseReportService.PROCESSED_STATUS,
-                "회원 20"))
+                "회원 20",
+                "TRADE_ISSUE"))
                 .thenReturn(21L);
         when(abuseReportMapper.findAdminReports(
                 AbuseReportService.PROCESSED_STATUS,
                 "회원 20",
+                "TRADE_ISSUE",
                 20L,
                 20))
                 .thenReturn(List.of(processedReport));
@@ -511,6 +513,7 @@ class AbuseReportServiceTest {
         PageResponse<AdminAbuseReportResponse> result = service.getAdminReports(
                 " " + AbuseReportService.PROCESSED_STATUS + " ",
                 " 회원 20 ",
+                " trade_issue ",
                 2,
                 20);
 
@@ -525,21 +528,25 @@ class AbuseReportServiceTest {
         verify(abuseReportMapper).findAdminReports(
                 AbuseReportService.PROCESSED_STATUS,
                 "회원 20",
+                "TRADE_ISSUE",
                 20L,
                 20);
     }
 
     @Test
     void rejectsInvalidAdminReportPageRequest() {
-        assertThatThrownBy(() -> service.getAdminReports(null, null, 0, 20))
+        assertThatThrownBy(() -> service.getAdminReports(null, null, "ALL", 0, 20))
                 .isInstanceOfSatisfying(CustomException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
-        assertThatThrownBy(() -> service.getAdminReports(null, "x".repeat(101), 1, 20))
+        assertThatThrownBy(() -> service.getAdminReports(null, "x".repeat(101), "ALL", 1, 20))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+        assertThatThrownBy(() -> service.getAdminReports(null, null, "UNKNOWN", 1, 20))
                 .isInstanceOfSatisfying(CustomException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
 
-        verify(abuseReportMapper, never()).countAdminReports(any(), any());
-        verify(abuseReportMapper, never()).findAdminReports(any(), any(), anyLong(), anyInt());
+        verify(abuseReportMapper, never()).countAdminReports(any(), any(), any());
+        verify(abuseReportMapper, never()).findAdminReports(any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test
@@ -683,8 +690,10 @@ class AbuseReportServiceTest {
         AuditLogCommand audit = auditCaptor.getValue();
         assertThat(audit.actionCode()).isEqualTo("ADMIN_APPROVE");
         assertThat(audit.actorId()).isEqualTo("7");
-        assertThat(audit.referenceTypeCode()).isEqualTo("REFC0005");
-        assertThat(audit.referenceSn()).isEqualTo(31L);
+        assertThat(audit.referenceTypeCode()).isEqualTo("REFC0018");
+        assertThat(audit.referenceSn()).isEqualTo(101L);
+        assertThat(audit.relatedReferenceTypeCode()).isEqualTo("REFC0005");
+        assertThat(audit.relatedReferenceSn()).isEqualTo(31L);
         assertThat(audit.reason()).isEqualTo("위반 확인");
         assertThat(audit.beforeSummary()).isEqualTo("reportSn=101,status=ABRC0006");
         assertThat(audit.afterSummary()).isEqualTo("reportSn=101,status=ABRC0007");

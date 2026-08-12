@@ -148,12 +148,14 @@ public class AdminSettlementService {
         auditLogPort.record(new AuditLogCommand(
                 "STATUS_CHANGE",
                 String.valueOf(command.adminUserId()),
-                "TRADE",
-                locked.getTrdSn(),
+                "SETTLEMENT",
+                command.settlementId(),
                 command.reason(),
                 "settlement=" + command.settlementId() + ",status=" + expected.getCode(),
                 "settlement=" + command.settlementId() + ",status=" + next.getCode(),
-                command.requestId()));
+                command.requestId(),
+                "TRADE",
+                locked.getTrdSn()));
 
         notificationService.notifySettlement(
                 locked.getUsrSn(),

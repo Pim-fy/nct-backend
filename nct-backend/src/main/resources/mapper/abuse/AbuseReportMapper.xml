@@ -30,6 +30,15 @@
            FROM CMM_CODE
           WHERE CMM_CD = ABR_TYPE_CD
           LIMIT 1) AS reportTypeName,
+        CASE
+            WHEN ABR_TYPE_CD IN ('ABRC0016', 'ABRC0017', 'ABRC0018', 'ABRC0019')
+                 OR EXISTS (
+                     SELECT 1 FROM TRADE_DISPUTE classifiedDispute
+                     WHERE classifiedDispute.ABR_SN = ABUSE_REPORT.ABR_SN
+                 )
+            THEN 'TRADE_ISSUE'
+            ELSE 'GENERAL'
+        END AS caseType,
         ABR_STATUS_CD AS statusCode,
         ABR_TITLE_NM AS title,
         ABR_TRG_NM AS targetName,
@@ -73,6 +82,22 @@
         <where>
             <if test="statusCode != null">
                 AND ABR_STATUS_CD = #{statusCode}
+            </if>
+            <if test="caseType == 'GENERAL'">
+                AND ABR_TYPE_CD NOT IN ('ABRC0016', 'ABRC0017', 'ABRC0018', 'ABRC0019')
+                AND NOT EXISTS (
+                    SELECT 1 FROM TRADE_DISPUTE caseDispute
+                    WHERE caseDispute.ABR_SN = ABUSE_REPORT.ABR_SN
+                )
+            </if>
+            <if test="caseType == 'TRADE_ISSUE'">
+                AND (
+                    ABR_TYPE_CD IN ('ABRC0016', 'ABRC0017', 'ABRC0018', 'ABRC0019')
+                    OR EXISTS (
+                        SELECT 1 FROM TRADE_DISPUTE caseDispute
+                        WHERE caseDispute.ABR_SN = ABUSE_REPORT.ABR_SN
+                    )
+                )
             </if>
             <if test="keyword != null">
                 AND (

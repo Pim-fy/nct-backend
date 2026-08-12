@@ -389,6 +389,14 @@ public class NotificationService {
                 RefType.TRADE, tradeId);
     }
 
+    /** 서비스 거래 일정 취소 요청이 상대방 거절로 무산된 결과를 요청자에게 알린다. */
+    public void notifyServiceScheduleCancellationRejected(long usrSn, long tradeId) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "일정 취소 요청이 거절되었습니다",
+                "요청하신 서비스 일정 취소에 상대방이 동의하지 않아 거래가 계속 진행됩니다.",
+                RefType.TRADE, tradeId);
+    }
+
     /** 새 견적 도착 — 서비스 요청자에게, 서비스 매칭 담당(5, 2단계)이 호출 */
     public void notifyNewQuote(long usrSn, long requestId) {
         notifyForEvent(usrSn, NotificationEvent.NEW_QUOTE, NotificationAudience.GENERAL,

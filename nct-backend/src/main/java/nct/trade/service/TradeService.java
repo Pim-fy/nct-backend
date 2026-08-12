@@ -421,6 +421,7 @@ public class TradeService implements SellerCancellationDecisionPort, ServiceTrad
         if (!approved) {
             tradeMapper.insertStatusHistory(tradeId, IN_PROGRESS,
                     "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + userId + "|" + decision);
+            notificationService.notifyServiceScheduleCancellationRejected(pending.requesterUserId(), tradeId);
             return;
         }
 

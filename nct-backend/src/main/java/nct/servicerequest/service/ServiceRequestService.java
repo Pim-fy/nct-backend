@@ -1,6 +1,7 @@
 package nct.servicerequest.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -417,6 +418,65 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     @Transactional
     public void autoCloseExpiredServiceRequest(Long svcReqSn) {
         serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
+    }
+
+    /** 마감 후 1일 경과 요청서 조회 (자동 삭제 배치 전용) */
+    @Transactional(readOnly = true)
+    public List<Long> findExpiredClosedServiceRequestIds(LocalDateTime cutoff, int limit) {
+        return serviceRequestMapper.findExpiredClosedServiceRequestIds(cutoff, limit);
+    }
+
+    /** 마감 후 1일 경과 요청서 자동 삭제 — ServiceRequestClosedAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
+    @Transactional
+    public void deleteExpiredClosedServiceRequest(Long svcReqSn) {
+        serviceRequestMapper.deleteExpiredClosedServiceRequest(svcReqSn);
+    }
+
+    // 마감(SVCC0004)된 요청서 재등록 — 원본은 이력으로 그대로 남기고, 내용을 복사한 새 요청서(임시저장)를
+    // 별도 svcReqSn으로 만든다. 같은 번호를 재사용하면 옛 견적·변경사항 기록이 새 라운드와 뒤섞이게 된다.
+    @Transactional
+    public ServiceRequestResponse reregisterServiceRequest(Long svcReqSn, Long usrSn) {
+        ServiceRequest original = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+
+        if (!original.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (!"SVCC0004".equals(original.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "마감된 요청서만 재등록할 수 있습니다.");
+        }
+
+        ServiceRequest copy = ServiceRequest.builder()
+                .usrSn(usrSn)
+                .catSn(original.getCatSn())
+                .formTemplateSn(original.getFormTemplateSn())
+                .svcReqTtl(original.getSvcReqTtl())
+                .svcReqCn(original.getSvcReqCn())
+                .svcReqBdgtAmt(original.getSvcReqBdgtAmt())
+                .svcReqStatusCd("SVCC0001")
+                .svcReqRegId(String.valueOf(usrSn))
+                .svcReqUpdtId(String.valueOf(usrSn))
+                .build();
+        serviceRequestMapper.saveServiceRequest(copy);
+
+        List<SvcReqItem> items = svcReqItemMapper.findItemEntitiesBySvcReqSn(svcReqSn);
+        if (!items.isEmpty()) {
+            List<SvcReqItem> copiedItems = items.stream()
+                    .map(item -> item.toBuilder().svcReqItmSn(null).svcReqSn(copy.getSvcReqSn()).build())
+                    .toList();
+            svcReqItemMapper.insertAll(copiedItems);
+        }
+
+        List<SvcReqImage> images = svcReqImageMapper.findImageEntitiesBySvcReqSn(svcReqSn);
+        if (!images.isEmpty()) {
+            List<SvcReqImage> copiedImages = images.stream()
+                    .map(image -> image.toBuilder().svcReqImgSn(null).svcReqSn(copy.getSvcReqSn()).build())
+                    .toList();
+            svcReqImageMapper.insertAll(copiedImages);
+        }
+
+        return serviceRequestMapper.findServiceRequestById(copy.getSvcReqSn())
+                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
     }
 
     // 삭제는 임시저장 상태만 허용 — 공개 이후에는 제공자가 이미 견적을 냈을 수 있어 셀프 삭제로

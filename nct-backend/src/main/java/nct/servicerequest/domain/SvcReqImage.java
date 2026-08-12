@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
  * - 등록 폼에서 넘어온 flSn 목록의 순서를 그대로 정렬순서(svcReqImgSortNo)로 쓴다.
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class SvcReqImage {

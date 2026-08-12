@@ -363,6 +363,10 @@ public class ProductService {
             throw new CustomException(ErrorCode.CONFLICT, "변경 내역은 최대 3개까지 등록할 수 있습니다.");
         }
 
+        List<String> bannedKeywords = bannedKeywordMapper.findActiveBannedKeywords();
+        checkBannedKeyword(req.getTtl(), "변경사항 제목", bannedKeywords);
+        checkBannedKeyword(req.getCn(), "변경사항 내용", bannedKeywords);
+
         ProductComment comment = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -465,6 +469,8 @@ public class ProductService {
             }
         });
 
+        validateInquiryContent(req.getCn());
+
         ProductComment inquiry = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -494,6 +500,8 @@ public class ProductService {
         if (!inquiry.getUsrSn().equals(usrSn)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
+
+        validateInquiryContent(req.getCn());
 
         int updated = productCommentMapper.updateInquiry(ProductComment.builder()
                 .prdCmtSn(inquirySn)
@@ -526,6 +534,13 @@ public class ProductService {
         return productCommentMapper.findInquiries(prdSn);
     }
 
+    private void validateInquiryContent(String content) {
+        checkBannedKeyword(
+                content,
+                "문의 내용",
+                bannedKeywordMapper.findActiveBannedKeywords());
+    }
+
     /** 판매자 답변 등록 (F-AUC-012) */
     @Transactional
     public ProductInquiryResponse addReply(Long prdSn, Long inquirySn, Long usrSn, ProductInquiryRequest req) {
@@ -546,6 +561,8 @@ public class ProductService {
         if (productCommentMapper.findReplyByParentSn(inquirySn).isPresent()) {
             throw new CustomException(ErrorCode.CONFLICT, "이미 답변이 등록된 문의입니다.");
         }
+
+        checkBannedKeyword(req.getCn(), "답변 내용", bannedKeywordMapper.findActiveBannedKeywords());
 
         ProductComment reply = ProductComment.builder()
                 .prdSn(prdSn)
@@ -585,6 +602,8 @@ public class ProductService {
         if (Duration.between(reply.getPrdCmtRegDt(), LocalDateTime.now()).toMinutes() >= REPLY_EDIT_WINDOW_MINUTES) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "답변 등록 후 10분이 지나 수정할 수 없습니다.");
         }
+
+        checkBannedKeyword(req.getCn(), "답변 내용", bannedKeywordMapper.findActiveBannedKeywords());
 
         ProductComment updated = ProductComment.builder()
                 .prdCmtSn(reply.getPrdCmtSn())

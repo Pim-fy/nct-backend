@@ -43,7 +43,14 @@ class AdminServiceTradeQueryServiceTest {
                         null,
                         "연락처 010-9876-5432",
                         "REQUESTER")),
-                List.of("SUBMIT_DISPUTE")));
+                List.of("SUBMIT_DISPUTE"),
+                20L,
+                "제공자",
+                "/profiles/provider.png",
+                LocalDateTime.of(2026, 1, 1, 0, 0),
+                3,
+                "상세 요청은 010-5555-6666으로 연락 부탁드립니다.",
+                41L));
         AdminServiceTradeQueryService service = new AdminServiceTradeQueryService(
                 reader,
                 new SensitiveDataMasker());
@@ -53,6 +60,7 @@ class AdminServiceTradeQueryServiceTest {
         assertThat(response.viewerRole()).isEqualTo("ADMIN");
         assertThat(response.serviceRequestTitle()).doesNotContain("010-1234-5678");
         assertThat(response.quoteSummary()).doesNotContain("test@example.com");
+        assertThat(response.serviceRequestContent()).doesNotContain("010-5555-6666");
         assertThat(response.scheduleHistory().getFirst().reason()).doesNotContain("010-9876-5432");
         assertThat(response.scheduleHistory().getFirst().actorRole()).isEqualTo("REQUESTER");
         assertThat(response.serviceAddressLabel()).isNull();

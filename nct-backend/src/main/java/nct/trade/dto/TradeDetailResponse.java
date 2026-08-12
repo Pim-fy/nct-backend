@@ -66,4 +66,11 @@ public class TradeDetailResponse {
     private String pendingMeetingAddress;
     private boolean canRespondToScheduleProposal;
     private boolean canWithdrawScheduleProposal;
+    /** 판매자·구매자 각각의 일정·변경 제안 누적 횟수(최초 제안 포함, 취소 제안 제외)다. */
+    private int myScheduleProposalCount;
+    private int remainingScheduleProposalCount;
+    /** 직거래 완료 확인 요청은 당사자별 2회까지만 허용하고, 동의·거절은 횟수에 포함하지 않는다. */
+    private int myOfflineCompletionRequestCount;
+    private int remainingOfflineCompletionRequestCount;
+    private boolean canRespondToOfflineCompletionRequest;
 }

@@ -53,7 +53,7 @@ class AdminNotificationServiceTest {
         assertThat(linkPath(response.getUserProvider(), "회원 가입·탈퇴"))
                 .isEqualTo("/admin/members");
         assertThat(linkPath(response.getUserProvider(), "제공자 심사 대기"))
-                .isEqualTo("/admin/provider-applications");
+                .isEqualTo("/admin/providers/applications");
         assertThat(linkPath(response.getReport(), "신고 접수 대기"))
                 .isEqualTo("/admin/reports");
         assertThat(linkPath(response.getAuctionService(), "마감임박 경매"))
@@ -63,7 +63,7 @@ class AdminNotificationServiceTest {
         assertThat(linkPath(response.getExchangeSystem(), "환전 대기"))
                 .isEqualTo("/admin/exchanges");
         assertThat(linkPath(response.getExchangeSystem(), "최근 감사로그"))
-                .isEqualTo("/admin/operations-records?tab=audit");
+                .isEqualTo("/admin/operations/records?tab=audit");
     }
 
     private String linkPath(List<AdminNotificationItem> items, String title) {

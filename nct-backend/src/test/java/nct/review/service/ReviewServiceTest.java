@@ -48,6 +48,7 @@ import nct.review.dto.ReviewRatingTarget;
 import nct.review.dto.ReviewUpdateResult;
 import nct.review.dto.ServiceReviewRatingSummary;
 import nct.review.dto.TradeReviewStateSource;
+import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
 import nct.review.exception.ReviewNotFoundException;
@@ -431,6 +432,24 @@ class ReviewServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getPhotos()).containsExactly("/api/attachment/review/20260618/a.jpg");
         assertThat(result.get(0).getTitle()).isEqualTo("상품");
+    }
+
+    @Test
+    void 받은_리뷰는_작성자_닉네임을_마스킹하지_않고_반환한다() {
+        setUp();
+        UserReviewItem item = UserReviewItem.builder()
+                .reviewId(1L)
+                .reviewerName("구매자닉네임")
+                .build();
+        when(reviewMapper.selectReviewsByReceiver(USR_SN, null, null, 0, 10))
+                .thenReturn(List.of(item));
+        when(reviewMapper.countReviewsByReceiver(USR_SN, null, null)).thenReturn(1L);
+
+        var result = reviewService.getReviewsAboutUser(USR_SN, null, null, 0, 10);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getReviewerName())
+                .isEqualTo("구매자닉네임");
     }
 
     @Test

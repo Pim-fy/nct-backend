@@ -24,12 +24,15 @@
 
     <update id="updateTradeStatus">
         UPDATE TRADE
-        SET TRD_STATUS_CD = #{targetStatusCode},
+        SET TRD_UPDT_ID = CASE
+                WHEN #{targetStatusCode} = 'TRDC0005' THEN TRD_UPDT_ID
+                ELSE #{updaterId}
+            END,
+            TRD_STATUS_CD = #{targetStatusCode},
             TRD_AUTO_CMPL_DT = CASE
                 WHEN #{targetStatusCode} = 'TRDC0005' THEN TRD_AUTO_CMPL_DT
                 ELSE NULL
             END,
-            TRD_UPDT_ID = #{updaterId},
             TRD_UPDT_DT = NOW()
         WHERE TRD_SN = #{tradeSn}
           AND TRD_STATUS_CD = #{expectedStatusCode}

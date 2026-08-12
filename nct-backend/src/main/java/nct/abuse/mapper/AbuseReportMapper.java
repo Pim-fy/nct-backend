@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.abuse.domain.AbuseReport;
+import nct.abuse.dto.AbuseReportFileResponse;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.dto.MyAbuseReportResponse;
@@ -72,6 +73,29 @@ public interface AbuseReportMapper {
     MyAbuseReportResponse findMyReportById(
             @Param("reportSn") Long reportSn,
             @Param("reporterUserSn") Long reporterUserSn);
+
+    /** 담당자 7 · F-COM-018: 같은 신고자·대상·유형의 미처리 중복 신고를 찾습니다. */
+    Long findActiveCustomerReportId(
+            @Param("reporterUserSn") Long reporterUserSn,
+            @Param("reportedUserSn") Long reportedUserSn,
+            @Param("reportTypeCode") String reportTypeCode,
+            @Param("referenceTypeCode") String referenceTypeCode,
+            @Param("referenceSn") Long referenceSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
+
+    /** 담당자 7 · F-COM-018: 업로드된 FILES 행을 신고에 순서대로 연결합니다. */
+    int insertReportFile(
+            @Param("reportSn") Long reportSn,
+            @Param("fileSn") Long fileSn,
+            @Param("sortNo") int sortNo,
+            @Param("actorId") String actorId);
+
+    List<AbuseReportFileResponse> findReportFiles(@Param("reportSn") Long reportSn);
+
+    int countReportFileLink(
+            @Param("reportSn") Long reportSn,
+            @Param("fileSn") Long fileSn);
 
     int updateDecision(
             @Param("reportSn") Long reportSn,

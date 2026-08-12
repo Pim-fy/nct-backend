@@ -112,6 +112,21 @@ public class RiskEventService {
         }
     }
 
+    /** 담당자 7 · F-OPS-013: 자동 신고가 완료·반려되면 같은 트랜잭션에서 위험 이벤트도 닫습니다. */
+    @Transactional
+    public void markProcessed(Long riskEventSn, String actorId) {
+        if (riskEventSn == null
+                || riskEventSn <= 0
+                || actorId == null
+                || actorId.isBlank()
+                || actorId.trim().length() > 50) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (riskEventMapper.markProcessed(riskEventSn, actorId.trim()) != 1) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+    }
+
     private void validate(RiskEventCommand command) {
         // DB 컬럼 길이, 참조값 쌍, 양수 고유번호 조건을 저장 전에 검사한다.
         if (command == null || isBlank(command.typeCode()) || isBlank(command.content())

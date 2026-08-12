@@ -27,6 +27,11 @@ public interface RiskEventMapper {
     /** 위험 이벤트 한 건을 등록하고, 성공하면 영향받은 행 수 1을 반환한다. */
     int insertRiskEvent(RiskEvent riskEvent);
 
+    /** 담당자 7 · F-OPS-013: 연결된 자동 신고의 최종 처리와 함께 위험 이벤트를 완료 처리합니다. */
+    int markProcessed(
+            @Param("riskEventSn") Long riskEventSn,
+            @Param("actorId") String actorId);
+
     /** 담당자 7 · F-OPS-011: 관리자용 위험 이벤트 목록을 최신 등록순으로 조회한다. */
     List<AdminRiskEventListItemResponse> findAdminRiskEvents(
             @Param("typeCode") String typeCode, @Param("processedYn") String processedYn,

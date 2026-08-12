@@ -93,4 +93,11 @@ public class ApiResponse<T> {
     public static <T> ApiResponse<T> errorWithData(int httpCode, String message, String path, T data) {
         return new ApiResponse<>("error", httpCode, message, path, null, data);
     }
+
+    // @ai_generated: F-AUTH-017 - 안정적 code와 상세 데이터(예: 문의 접수 토큰)가 함께 필요한
+    // 실패 응답. 기존 error()/errorWithData()는 둘 중 하나만 지원해 이 조합을 표현할 수 없었다.
+    /** code(에러 식별자) + 상세 데이터를 함께 포함하는 실패 응답 */
+    public static <T> ApiResponse<T> errorWithData(int httpCode, String message, String path, String code, T data) {
+        return new ApiResponse<>("error", httpCode, message, path, code, data);
+    }
 }

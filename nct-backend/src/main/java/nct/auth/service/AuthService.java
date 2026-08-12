@@ -56,6 +56,8 @@ public class AuthService {
     private final TokenHashUtil tokenHashUtil;
     private final ProviderApplicationService providerApplicationService;
     private final SanctionStatusReader sanctionStatusReader;
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 비로그인 문의 토큰 발급
+    private final SuspendedInquiryTokenService suspendedInquiryTokenService;
 
     /**
      * 회원가입
@@ -165,14 +167,18 @@ public class AuthService {
      * - 실패 사유(사용자 없음/비밀번호 불일치)를 구분하지 않고
      *   동일한 INVALID_CREDENTIALS 로 응답 (계정 존재 여부 노출 방지)
      */
-    @Transactional
+    // @ai_generated: F-AUTH-017 - SuspendedAccountException은 issueToken()이 이미 저장한
+    // 문의 토큰 행을 커밋해야 하므로 롤백 대상에서 제외한다. issueToken() 자체는 별도
+    // @Transactional 경계가 없어(이 메서드 트랜잭션에 그대로 참여) 세션 22:19의 P1(noRollbackFor +
+    // 중첩 @Transactional 충돌)과 같은 함정이 재현되지 않는다.
+    @Transactional(noRollbackFor = SuspendedAccountException.class)
     // 담당자 7 · F-OPS-001: 일반 로그인에서는 관리자 계정의 세션 발급을 차단한다.
     public AuthSessionResult login(LoginRequest request) {
         return authenticate(request, false);
     }
 
     /** 담당자 7 · F-OPS-001: 관리자 전용 로그인에서는 관리자 계정만 세션을 발급한다. */
-    @Transactional
+    @Transactional(noRollbackFor = SuspendedAccountException.class)
     public AuthSessionResult adminLogin(LoginRequest request) {
         return authenticate(request, true);
     }
@@ -192,6 +198,13 @@ public class AuthService {
             throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
         }
 
+        // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 판정 직전(=비밀번호 검증 통과 직후)에만
+        // 문의 접수 토큰을 발급한다. requireActiveStatus 자체는 다른 호출자(재발급 등)도 공유하는
+        // 공용 메서드라 그대로 두고, 로그인 경로에서만 이 특수 예외로 갈아 끼운다.
+        if (STATUS_SUSPENDED.equals(member.getStatus())) {
+            String inquiryToken = suspendedInquiryTokenService.issueToken(member.getEmail());
+            throw new SuspendedAccountException(inquiryToken);
+        }
         // @ai_generated: F-AUTH-009 - 정지/탈퇴 계정은 비밀번호가 맞아도 로그인을 차단한다.
         requireActiveStatus(member.getStatus());
 

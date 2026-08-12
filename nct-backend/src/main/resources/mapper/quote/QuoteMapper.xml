@@ -292,6 +292,16 @@
            AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
     </update>
 
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 회원 탈퇴 시 본인(제공자) 진행 중 견적 일괄 철회 -->
+    <update id="withdrawAllByUser">
+        /* QuoteMapper.withdrawAllByUser */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE USR_SN = #{usrSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
     <!-- ── 견적 작업사진 INSERT ──────────────────────── -->
     <insert id="insertQuotePhoto" useGeneratedKeys="true" keyProperty="qutPhtSn">
         /* QuoteMapper.insertQuotePhoto */

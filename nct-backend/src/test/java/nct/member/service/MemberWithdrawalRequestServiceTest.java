@@ -3,6 +3,7 @@ package nct.member.service;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -191,7 +192,7 @@ class MemberWithdrawalRequestServiceTest {
 
         verify(emailVerificationMapper, never()).markVerified(any(), any());
         verify(emailVerificationMapper, never()).markUsed(any(), any());
-        verify(memberService, never()).withdraw(anyLong());
+        verify(memberService, never()).withdraw(anyLong(), anyBoolean());
     }
 
     @Test
@@ -208,7 +209,7 @@ class MemberWithdrawalRequestServiceTest {
 
         verify(emailVerificationMapper).markVerified(eq(1L), any(LocalDateTime.class));
         verify(emailVerificationMapper).markUsed(eq(1L), any(LocalDateTime.class));
-        verify(memberService).withdraw(101L);
+        verify(memberService).withdraw(101L, true);
     }
 
     private EmailVerification pendingVerification(LocalDateTime expiresAt) {

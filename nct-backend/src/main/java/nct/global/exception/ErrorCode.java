@@ -153,6 +153,15 @@ public enum ErrorCode {
     // 배송 인증사진(F-AUC-009) — 거래 당사자만 열람 (2026-07-20)
     FILE_TRADE_PARTY_ONLY(HttpStatus.FORBIDDEN, "거래 당사자만 열람할 수 있습니다."),
 
+    // 422 Unprocessable Entity
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 전 하드 차단 조건(포인트 잔액·진행 중 거래·경매·신고)에
+    // 걸렸을 때 사용한다. 사유는 CustomException(WITHDRAWAL_BLOCKED, message)의 동적 메시지로 전달한다.
+    // (레드팀 발견, 2026-08-12) 409는 쓰지 않는다 - WithdrawalRequestPage.jsx(정지 계정 이메일 링크
+    // 확정 화면, 이번 변경 대상 아님)가 404/409를 "링크 무효"로 이미 소비하고 있어, 같은 409를 쓰면
+    // 차단 사유 메시지가 그 화면에서 절대 보이지 않고 "링크 오류"로만 뜬다. 422로 분리해 그 파일을
+    // 건드리지 않고 충돌을 없앤다.
+    WITHDRAWAL_BLOCKED(HttpStatus.UNPROCESSABLE_ENTITY, "탈퇴할 수 없습니다."),
+
     /*==================== 5XX SERVER ERROR ====================*/
 
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다. 관리자에게 문의하세요."),

@@ -95,4 +95,29 @@ public class SmtpEmailSender implements EmailSender {
             throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
         }
     }
+
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 문의 답변 통보(일방향, 회신 불가 안내 포함)
+    @Override
+    public void sendSuspendedInquiryAnswer(String email, String question, String answer) {
+        try {
+            MimeMessage message = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+
+            helper.setFrom(new InternetAddress(from, fromName));
+            helper.setTo(email);
+            helper.setSubject("[NCT] 문의하신 내용에 답변이 등록되었습니다");
+            helper.setText("""
+                    <p>안녕하세요. 문의하신 내용에 관리자 답변이 등록되었습니다.</p>
+                    <p><b>문의 내용</b></p>
+                    <p>%s</p>
+                    <p><b>답변 내용</b></p>
+                    <p>%s</p>
+                    <p>이 메일은 발신 전용이라 회신하셔도 확인할 수 없습니다. 추가 문의가 있으시면
+                    다시 로그인하시거나(정지 해제된 경우) 고객센터로 전화 문의해 주세요.</p>
+                    """.formatted(question, answer), true);
+            javaMailSender.send(message);
+        } catch (MessagingException | UnsupportedEncodingException | MailException ex) {
+            throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
+        }
+    }
 }

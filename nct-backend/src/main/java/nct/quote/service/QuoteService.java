@@ -17,7 +17,6 @@ import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
-import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.service.ProviderAccessGuard;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
@@ -193,15 +192,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
 
         savePhotos(quote.getQutSn(), usrSn, request.photoFlSns());
 
-        String providerNickname = ((CustomUserDetails) authentication.getPrincipal()).getMember().getNickname();
-        notificationService.notify(
-                target.requesterUsrSn(),
-                NotificationType.SERVICE,
-                NotificationDomain.SERVICE,
-                "새 견적이 도착했습니다",
-                providerNickname + "님이 견적을 제출했습니다.",
-                RefType.SERVICE_REQUEST,
-                quote.getSvcReqSn());
+        notificationService.notifyNewQuote(target.requesterUsrSn(), quote.getSvcReqSn());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 
@@ -548,6 +539,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
         quoteMapper.withdrawCompetingQuotes(svcReqSn, quoteId, actorId);
+        notificationService.notifyQuoteSelected(quote.getUsrSn(), quoteId);
 
         return new SelectedQuoteResult(quote.getQutSn(), quote.getUsrSn(), quote.getQutAmt());
     }

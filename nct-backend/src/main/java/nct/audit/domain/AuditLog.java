@@ -25,6 +25,13 @@ public class AuditLog {
     private Long audLogRefSn;
     /** 사유내용 — 민감정보 제한 조회는 필수 */
     private String audLogRsonCn;
+    /** 담당자 7 · F-OPS-015: 관리자 변경 전후와 요청 식별자를 구조화해 보존한다. */
+    private String audLogBeforeCn;
+    private String audLogAfterCn;
+    private String audLogReqId;
+    /** 한 작업에서 함께 영향을 받은 연관 대상이다. */
+    private String audLogRelRefTypeCd;
+    private Long audLogRelRefSn;
     private String audLogIpAddr;
     private LocalDateTime audLogRegDt;
 
@@ -36,4 +43,6 @@ public class AuditLog {
     private String audLogTypeNm;
     /** 참조유형 한글명 (CMM_CODE 조인) */
     private String refTypeNm;
+    /** 연관 참조유형 한글명 (CMM_CODE 조인) */
+    private String relRefTypeNm;
 }

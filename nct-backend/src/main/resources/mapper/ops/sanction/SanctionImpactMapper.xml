@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.sanction.mapper.SanctionImpactMapper">
+
+    <sql id="impactColumns">
+        I.SNC_IMP_SN AS impactSn,
+        I.SNC_SN AS sanctionSn,
+        I.SNC_IMP_REF_TYPE_CD AS referenceTypeCode,
+        I.SNC_IMP_REF_SN AS referenceSn,
+        I.SNC_IMP_ROLE_CD AS roleCode,
+        I.SNC_IMP_ACTION_CD AS actionCode,
+        I.SNC_IMP_STATUS_CD AS statusCode,
+        I.SNC_IMP_PREV_STATUS_CD AS previousStatusCode,
+        I.SNC_IMP_PREV_START_DT AS previousStartAt,
+        I.SNC_IMP_PREV_DDLN_DT AS previousDeadlineAt,
+        I.SNC_IMP_REMAIN_START_SEC AS remainingStartSeconds,
+        I.SNC_IMP_REMAIN_SEC AS remainingSeconds,
+        CASE WHEN I.SNC_IMP_STLM_HOLD_YN = 'Y' THEN TRUE ELSE FALSE END AS settlementHeld,
+        I.SNC_IMP_RSLT_CN AS result,
+        I.SNC_IMP_REG_DT AS registeredAt,
+        I.SNC_IMP_UPDT_DT AS updatedAt
+    </sql>
+
+    <insert id="insert"
+            parameterType="nct.ops.sanction.domain.SanctionImpactRecord"
+            useGeneratedKeys="true"
+            keyProperty="impactSn"
+            keyColumn="SNC_IMP_SN">
+        INSERT INTO SANCTION_IMPACT (
+            SNC_SN,
+            SNC_IMP_REF_TYPE_CD,
+            SNC_IMP_REF_SN,
+            SNC_IMP_ROLE_CD,
+            SNC_IMP_ACTION_CD,
+            SNC_IMP_STATUS_CD,
+            SNC_IMP_PREV_STATUS_CD,
+            SNC_IMP_PREV_START_DT,
+            SNC_IMP_PREV_DDLN_DT,
+            SNC_IMP_REMAIN_START_SEC,
+            SNC_IMP_REMAIN_SEC,
+            SNC_IMP_STLM_HOLD_YN,
+            SNC_IMP_RSLT_CN,
+            SNC_IMP_REG_ID,
+            SNC_IMP_UPDT_ID
+        ) VALUES (
+            #{sanctionSn},
+            #{referenceTypeCode},
+            #{referenceSn},
+            #{roleCode},
+            #{actionCode},
+            #{statusCode},
+            #{previousStatusCode},
+            #{previousStartAt},
+            #{previousDeadlineAt},
+            #{remainingStartSeconds},
+            #{remainingSeconds},
+            CASE WHEN #{settlementHeld} THEN 'Y' ELSE 'N' END,
+            #{result},
+            #{actorId},
+            #{actorId}
+        )
+    </insert>
+
+    <select id="findBySanctionForUpdate" resultType="nct.ops.sanction.domain.SanctionImpactRecord">
+        SELECT <include refid="impactColumns" />
+          FROM SANCTION_IMPACT I
+         WHERE I.SNC_SN = #{sanctionSn}
+         ORDER BY I.SNC_IMP_REF_TYPE_CD, I.SNC_IMP_REF_SN, I.SNC_IMP_SN
+         FOR UPDATE
+    </select>
+
+    <select id="findByReport" resultType="nct.ops.sanction.domain.SanctionImpactRecord">
+        SELECT <include refid="impactColumns" />
+          FROM SANCTION_IMPACT I
+          JOIN SANCTION S ON S.SNC_SN = I.SNC_SN
+         WHERE S.SNC_SRC_ABR_SN = #{reportSn}
+         ORDER BY I.SNC_IMP_SN
+    </select>
+
+    <select id="countOtherActiveBlockingImpacts" resultType="int">
+        SELECT COUNT(*)
+          FROM SANCTION_IMPACT I
+          JOIN SANCTION S ON S.SNC_SN = I.SNC_SN
+         WHERE I.SNC_SN != #{sanctionSn}
+           AND I.SNC_IMP_REF_TYPE_CD = #{referenceTypeCode}
+           AND I.SNC_IMP_REF_SN = #{referenceSn}
+           AND I.SNC_IMP_STATUS_CD IN ('ACTIVE', 'RELEASE_PENDING')
+           AND S.SNC_START_DT &lt;= CURRENT_TIMESTAMP
+           AND (S.SNC_END_DT IS NULL OR S.SNC_END_DT &gt; CURRENT_TIMESTAMP)
+    </select>
+
+    <select id="findUnresolvedByReferenceForUpdate"
+            resultType="nct.ops.sanction.domain.SanctionImpactRecord">
+        SELECT <include refid="impactColumns" />
+          FROM SANCTION_IMPACT I
+         WHERE I.SNC_IMP_REF_TYPE_CD = #{referenceTypeCode}
+           AND I.SNC_IMP_REF_SN = #{referenceSn}
+           AND I.SNC_IMP_STATUS_CD IN ('ACTIVE', 'RELEASE_PENDING')
+         ORDER BY I.SNC_IMP_SN
+         FOR UPDATE
+    </select>
+
+    <select id="findUnresolvedTemporaryByUserForUpdate"
+            resultType="nct.ops.sanction.domain.SanctionImpactRecord">
+        SELECT <include refid="impactColumns" />
+          FROM SANCTION_IMPACT I
+          JOIN SANCTION S ON S.SNC_SN = I.SNC_SN
+         WHERE S.USR_SN = #{userSn}
+           AND S.SNC_SRC_ABR_SN IS NOT NULL
+           AND S.SNC_END_DT IS NOT NULL
+           AND I.SNC_IMP_ACTION_CD = 'PAUSED'
+           AND I.SNC_IMP_STATUS_CD IN ('ACTIVE', 'RELEASE_PENDING')
+         ORDER BY I.SNC_IMP_REF_TYPE_CD, I.SNC_IMP_REF_SN, I.SNC_IMP_SN
+         FOR UPDATE
+    </select>
+
+    <update id="updateStatus">
+        UPDATE SANCTION_IMPACT
+           SET SNC_IMP_STATUS_CD = #{statusCode},
+               SNC_IMP_RSLT_CN = #{result},
+               SNC_IMP_UPDT_ID = #{actorId},
+               SNC_IMP_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SNC_IMP_SN = #{impactSn}
+           AND SNC_IMP_STATUS_CD = #{expectedStatusCode}
+    </update>
+
+</mapper>

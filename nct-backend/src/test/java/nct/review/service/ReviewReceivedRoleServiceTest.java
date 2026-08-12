@@ -74,7 +74,7 @@ class ReviewReceivedRoleServiceTest {
                 10);
 
         assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().getFirst().getReviewerName()).isEqualTo("김*수");
+        assertThat(result.getContent().getFirst().getReviewerName()).isEqualTo("김철수");
         assertThat(result.getTotalCount()).isEqualTo(1L);
         verify(reviewMapper).selectReviewsByReceiver(22L, "goods", "SELLER", 0, 10);
         verify(reviewMapper).countReviewsByReceiver(22L, "goods", "SELLER");

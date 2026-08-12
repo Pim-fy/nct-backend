@@ -35,9 +35,9 @@ public class SmtpEmailSender implements EmailSender {
 
             helper.setFrom(new InternetAddress(from, fromName));
             helper.setTo(email);
-            helper.setSubject("[NCT] 회원가입 이메일 인증번호");
+            helper.setSubject("[에누리컷] 회원가입 이메일 인증번호");
             helper.setText("""
-                    안녕하세요. NCT 회원가입 이메일 인증번호입니다.
+                    안녕하세요. 에누리컷 회원가입 이메일 인증번호입니다.
 
                     인증번호: %s
                     유효시간: 발송 후 3분
@@ -59,9 +59,9 @@ public class SmtpEmailSender implements EmailSender {
 
             helper.setFrom(new InternetAddress(from, fromName));
             helper.setTo(email);
-            helper.setSubject("[NCT] 비밀번호 재설정 안내");
+            helper.setSubject("[에누리컷] 비밀번호 재설정 안내");
             helper.setText("""
-                    <p>안녕하세요. NCT 비밀번호 재설정 링크입니다.</p>
+                    <p>안녕하세요. 에누리컷 비밀번호 재설정 링크입니다.</p>
                     <p>아래 링크를 클릭해 새 비밀번호를 설정해 주세요.</p>
                     <p><a href="%1$s">%1$s</a></p>
                     <p>유효시간: 발송 후 1시간 (1회 사용)</p>
@@ -82,9 +82,9 @@ public class SmtpEmailSender implements EmailSender {
 
             helper.setFrom(new InternetAddress(from, fromName));
             helper.setTo(email);
-            helper.setSubject("[NCT] 회원 탈퇴 확인 안내");
+            helper.setSubject("[에누리컷] 회원 탈퇴 확인 안내");
             helper.setText("""
-                    <p>안녕하세요. NCT 회원 탈퇴 확인 링크입니다.</p>
+                    <p>안녕하세요. 에누리컷 회원 탈퇴 확인 링크입니다.</p>
                     <p>본인이 요청하셨다면 아래 링크를 클릭해 탈퇴를 완료해 주세요.</p>
                     <p><a href="%1$s">%1$s</a></p>
                     <p>유효시간: 발송 후 1시간 (1회 사용)</p>

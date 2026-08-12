@@ -12,5 +12,9 @@ public interface AccountSanctionPort {
 
     void release(AccountSanctionCommand command);
 
+    boolean hasActiveReportSanction(Long userSn);
+
+    boolean hasActiveSuspension(Long userSn);
+
     List<AccountSanctionHistory> findHistory(Long userSn, int limit);
 }

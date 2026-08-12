@@ -41,7 +41,7 @@ public class ProductResponse {
     // 대표이미지 URL (없으면 null — 화면에서 기본 placeholder 처리). 담당자6, F-AUC-002 이미지 연계
     private String prdImgUrl;
 
-    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)일 때만 값 있음, 상세 조회 시에만 세팅
+    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0015)일 때만 값 있음, 상세 조회 시에만 세팅
     @Setter private List<ProductTradeRegionItem> tradeRegions;
 
     // 상품 이미지 목록 — 상세 조회 시에만 세팅. 목록 조회(me)에서는 null

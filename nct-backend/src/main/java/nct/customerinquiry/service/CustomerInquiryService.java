@@ -293,7 +293,7 @@ public class CustomerInquiryService implements CustomerInquiryWithdrawalPort {
             auditLogPort.record(new AuditLogCommand(
                     AuditLogType.STATUS_CHANGE.name(),
                     String.valueOf(usrSn),
-                    RefType.CUSTOMER_INQUIRY.getCode(),
+                    RefType.MEMBER.getCode(),
                     usrSn,
                     "회원 탈퇴에 따른 미답변 문의 자동 종결",
                     RECEIVED_STATUS + "/" + PROCESSING_STATUS,

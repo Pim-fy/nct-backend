@@ -50,6 +50,15 @@ class PublicGuideServiceTest {
     }
 
     @Test
+    void serviceRequestGuideUsesCanonicalBrowserRoute() {
+        var detail = service.getGuide("service-request");
+
+        assertThat(detail.relatedRoutes())
+                .contains("/services/requests/new")
+                .doesNotContain("/service-requests/new");
+    }
+
+    @Test
     void rejectsUnknownOrBlankGuideId() {
         List<String> invalidIds = List.of("unknown", " ", "x".repeat(41));
 

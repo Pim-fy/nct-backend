@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
@@ -60,8 +61,8 @@ public class AbuseReportFileService {
         auditLogService.record(
                 adminUserSn,
                 AuditLogType.SENSITIVE_VIEW,
-                null,
-                null,
+                RefType.ABUSE_REPORT,
+                reportSn,
                 "신고 #" + reportSn + " 첨부 파일 #" + fileSn
                         + " 열람 - 사유: " + normalizedReason,
                 ipAddress);

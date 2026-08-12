@@ -7,5 +7,14 @@ public record AdminAuctionCancellationCommand(
         Long auctionId,
         Long adminUserId,
         String reason,
-        String requestId) {
+        String requestId,
+        Long sourceReportSn) {
+
+    public AdminAuctionCancellationCommand(
+            Long auctionId,
+            Long adminUserId,
+            String reason,
+            String requestId) {
+        this(auctionId, adminUserId, reason, requestId, null);
+    }
 }

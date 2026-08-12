@@ -26,6 +26,7 @@ public class AdminServiceRequestDetail {
     private Long budgetAmount;
     private String statusCode;
     private String statusName;
+    private String useYn;
     private LocalDateTime registeredAt;
     private LocalDateTime updatedAt;
 }

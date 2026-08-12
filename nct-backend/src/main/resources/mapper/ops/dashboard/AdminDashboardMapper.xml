@@ -13,7 +13,7 @@
         /* 관리자 대시보드: 신고 접수 대기 건수 */
         SELECT COUNT(*)
         FROM ABUSE_REPORT
-        WHERE ABR_STATUS_CD = 'ABRC0005'
+        WHERE ABR_STATUS_CD = 'ABSC0001'
     </select>
 
 </mapper>

@@ -179,9 +179,14 @@ public class PointExchangeService {
         auditLogService.record(
                 adminUsrSn,
                 AuditLogType.SENSITIVE_VIEW,
+                RefType.POINT_EXCHANGE_ORDER,
+                order.getPtExcOrdSn(),
+                String.format("환전 신청 %d번 지급 계좌 조회", ptExcOrdSn),
+                null,
+                null,
+                null,
                 RefType.MEMBER,
                 order.getUsrSn(),
-                String.format("환전 신청 %d번 지급 계좌 조회", ptExcOrdSn),
                 ipAddr);
         decryptOrderAccount(order);
         requireOrderAccountSnapshot(order);
@@ -204,8 +209,18 @@ public class PointExchangeService {
         exchangeMapper.complete(ptExcOrdSn, PointExchangeOrderStatus.COMPLETED.getCode(), adminUsrSn);
         notificationService.notifyExchangeComplete(order.getUsrSn(), order.getPtExcOrdAmt());
         // 관리자 조치 감사로그 (F-OPS-015) — 신청자를 참조로 남겨 "누가 누구 건을 처리했나"를 추적
-        auditLogService.record(adminUsrSn, AuditLogType.ADMIN_APPROVE, RefType.MEMBER, order.getUsrSn(),
-                String.format("환전 신청 %d번 지급 완료 (%,dP)", ptExcOrdSn, order.getPtExcOrdAmt()), null);
+        auditLogService.record(
+                adminUsrSn,
+                AuditLogType.ADMIN_APPROVE,
+                RefType.POINT_EXCHANGE_ORDER,
+                order.getPtExcOrdSn(),
+                String.format("환전 신청 %d번 지급 완료 (%,dP)", ptExcOrdSn, order.getPtExcOrdAmt()),
+                "status=" + PointExchangeOrderStatus.REQUESTED.getCode(),
+                "status=" + PointExchangeOrderStatus.COMPLETED.getCode(),
+                null,
+                RefType.MEMBER,
+                order.getUsrSn(),
+                null);
     }
 
     /**
@@ -225,11 +240,21 @@ public class PointExchangeService {
                 adminUsrSn, restoreLdgSn, normalizedReason);
         notificationService.notifyExchangeReject(order.getUsrSn(), order.getPtExcOrdAmt(), normalizedReason);
         // 관리자 조치 감사로그 (F-OPS-015)
-        auditLogService.record(adminUsrSn, AuditLogType.ADMIN_REJECT, RefType.MEMBER, order.getUsrSn(),
+        auditLogService.record(
+                adminUsrSn,
+                AuditLogType.ADMIN_REJECT,
+                RefType.POINT_EXCHANGE_ORDER,
+                order.getPtExcOrdSn(),
                 String.format("환전 신청 %d번 반려 (%,dP) — 사유: %s",
                         ptExcOrdSn,
                         order.getPtExcOrdAmt(),
                         normalizedReason),
+                "status=" + PointExchangeOrderStatus.REQUESTED.getCode(),
+                "status=" + PointExchangeOrderStatus.REJECTED.getCode()
+                        + ",restoreLedger=" + restoreLdgSn,
+                null,
+                RefType.MEMBER,
+                order.getUsrSn(),
                 null);
     }
 

@@ -18,7 +18,6 @@ import nct.trade.dto.TradeDeliverySubmitTarget;
 import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDisputeTarget;
-import nct.trade.dto.TradeDisputeRegistration;
 import nct.trade.dto.TradeListItem;
 import nct.trade.dto.MemberActiveTradeTarget;
 import nct.trade.dto.SellerTradeStatusItem;
@@ -59,24 +58,12 @@ public interface TradeMapper {
 
     /**
      * 거래 문제 접수·정산 보류 흐름이 같은 트랜잭션에서 사용할 TRADE 잠금 조회다.
-     * 소비자는 이 결과를 받은 뒤에만 자신의 TRADE_DISPUTE·SETTLEMENT 계약을 실행한다.
+     * 소비자는 이 결과를 받은 뒤에만 신고ㆍ정산 계약을 실행한다.
      */
-    TradeDisputeTarget findTradeDisputeTargetForUpdate(@Param("tradeId") long tradeId);
-
-    /** 같은 거래의 접수·처리중 분쟁이 있는지 조회한다. TRADE 행 잠금 뒤에 호출한다. */
-    boolean hasOpenTradeDispute(@Param("tradeId") long tradeId);
-
-    int insertTradeDispute(TradeDisputeRegistration registration);
-
-    /** 생성된 분쟁에 검증 완료된 증빙 파일을 표시 순서대로 연결합니다. */
-    int insertTradeDisputeFile(
-            @Param("disputeSn") long disputeSn,
-            @Param("fileSn") long fileSn,
-            @Param("sortOrder") int sortOrder,
-            @Param("registrantId") String registrantId);
+    TradeDisputeTarget findTradeReportTargetForUpdate(@Param("tradeId") long tradeId);
 
     /** 거래 문제 접수 성공 후에만 활성 거래를 보류 상태로 전환한다. */
-    int holdTradeForDispute(
+    int holdTradeForReport(
             @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
 
@@ -92,6 +79,24 @@ public interface TradeMapper {
     int holdTradeForMemberRestriction(
             @Param("tradeId") long tradeId,
             @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("updaterId") String updaterId);
+
+    int restoreTradeAfterMemberRestriction(
+            @Param("tradeId") Long tradeId,
+            @Param("targetStatusCode") String targetStatusCode,
+            @Param("remainingSeconds") Long remainingSeconds,
+            @Param("updaterId") String updaterId);
+
+    int cancelServiceTradeForAdmin(
+            @Param("tradeId") long tradeId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("updaterId") String updaterId);
+
+    int completeCurrentTradeIncidentAfterPermanentCancellation(
+            @Param("tradeId") long tradeId,
+            @Param("sourceReportSn") long sourceReportSn,
+            @Param("reason") String reason,
+            @Param("adminUserSn") long adminUserSn,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */

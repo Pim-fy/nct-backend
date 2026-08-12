@@ -34,9 +34,16 @@ public class AuditLogResponse {
 
     /** 참조 대상 (한글명 + 일련번호, 없으면 null) */
     private final String refType;
+    private final String refTypeCd;
     private final Long refSn;
 
     private final String reason;
+    private final String before;
+    private final String after;
+    private final String requestId;
+    private final String relatedRefType;
+    private final String relatedRefTypeCd;
+    private final Long relatedRefSn;
     private final String ipAddr;
 
     /** 도메인 모델 → 응답 DTO 변환 */
@@ -56,8 +63,15 @@ public class AuditLogResponse {
                 .type(log.getAudLogTypeNm())
                 .typeCd(log.getAudLogTypeCd())
                 .refType(log.getRefTypeNm())
+                .refTypeCd(log.getAudLogRefTypeCd())
                 .refSn(log.getAudLogRefSn())
                 .reason(log.getAudLogRsonCn())
+                .before(log.getAudLogBeforeCn())
+                .after(log.getAudLogAfterCn())
+                .requestId(log.getAudLogReqId())
+                .relatedRefType(log.getRelRefTypeNm())
+                .relatedRefTypeCd(log.getAudLogRelRefTypeCd())
+                .relatedRefSn(log.getAudLogRelRefSn())
                 .ipAddr(log.getAudLogIpAddr())
                 .build();
     }

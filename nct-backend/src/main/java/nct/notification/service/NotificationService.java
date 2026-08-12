@@ -464,20 +464,20 @@ public class NotificationService {
                 RefType.TRADE, trdSn);
     }
 
-    /** 거래 문제(분쟁) 접수 알림 — 접수 시 상대 당사자에게, 분쟁 담당자(5)가 호출 */
-    public void notifyDisputeReceived(long usrSn, long trdDspSn) {
+    /** 담당자 7 · F-OPS-005/007: 거래 신고 접수 시 상대 당사자에게 알립니다. */
+    public void notifyTradeReportReceived(long usrSn, long reportSn) {
         notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
                 "거래 문제 접수",
                 "회원님이 당사자인 거래에 거래 문제가 접수되었습니다. 처리 완료 전까지 관련 정산·포인트 전환이 보류될 수 있습니다.",
-                RefType.TRADE_DISPUTE, trdDspSn);
+                RefType.ABUSE_REPORT, reportSn);
     }
 
-    /** 거래 문제(분쟁) 판정 결과 알림 — 처리 완료/반려 시 양 당사자에게, 분쟁 담당자(5)가 호출 */
-    public void notifyDisputeResolved(long usrSn, long trdDspSn, String resultText) {
+    /** 담당자 7 · F-OPS-005/007: 거래 신고 판정 결과를 양 당사자에게 알립니다. */
+    public void notifyTradeReportResolved(long usrSn, long reportSn, String resultText) {
         notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
                 "거래 문제 처리 결과",
                 "접수된 거래 문제가 처리되었습니다. 결과: " + resultText,
-                RefType.TRADE_DISPUTE, trdDspSn);
+                RefType.ABUSE_REPORT, reportSn);
     }
 
     /** 포인트 홀딩 반환 알림 (업무분장: 입찰·낙찰·반환 알림) — PointService.releaseHold가 호출 */
@@ -550,7 +550,7 @@ public class NotificationService {
                 refType, refSn);
     }
 
-    /** 분쟁 판정 보관금 환불 알림 — PointService.refundEscrow가 호출. 판정 내용 이메일은 notifyDisputeResolved(분쟁 담당자 호출) 몫이라 여기서는 인앱만 */
+    /** 거래 신고 판정 보관금 환불 알림 — 판정 결과 알림은 관리자 거래 신고 서비스가 별도로 발행합니다. */
     public void notifyPointRefund(long usrSn, long amt, RefType refType, long refSn, String reason) {
         notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
                 "포인트 환불",
@@ -596,8 +596,8 @@ public class NotificationService {
     // ---------- 알림 수신 설정 (F-COM-012) ----------
     // 도메인 단위 UserNotificationSetting(경매/거래/서비스 3종 고정컬럼)은 2026-07-24부터 설정
     // 화면·저장 API에서는 더 이상 쓰지 않는다(위 이벤트 단위로 교체). 다만 테이블·컬럼과
-    // emailEligible()은 그대로 남겨둔다 — 아직 이벤트 목록에 없는 "분쟁 접수/판정"
-    // (notifyDisputeReceived/Resolved, TRADE 도메인) 이메일 게이팅이 계속 이 값을 쓰기 때문.
+    // emailEligible()은 그대로 남겨둔다 — 아직 이벤트 목록에 없는 "거래 신고 접수/판정"
+    // 이메일 게이팅이 계속 이 값을 쓰기 때문이다.
     // 즉 회원이 UI로 이 값을 더 바꿀 방법은 없어졌고, 마지막 저장값(또는 기본 Y)으로 고정된다 —
     // 분쟁 이메일도 세분화하려면 이벤트 목록에 추가하고 이 경로를 걷어내면 된다.
 }

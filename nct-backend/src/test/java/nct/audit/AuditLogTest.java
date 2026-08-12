@@ -84,7 +84,7 @@ class AuditLogTest {
         ChatFixture fixture = insertChatMessage("원문 테스트 메시지");
 
         assertThatThrownBy(() -> auditLogService.viewChatMessage(
-                adminSn, fixture.messageSn(), fixture.disputeSn(), " ", "127.0.0.1"))
+                adminSn, fixture.messageSn(), fixture.reportSn(), " ", "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining("사유");
 
@@ -94,22 +94,22 @@ class AuditLogTest {
     }
 
     @Test
-    @DisplayName("민감정보 제한 조회: 사유·분쟁 건과 함께 요청하면 원문이 반환되고 원문조회 감사로그가 남는다 (F-OPS-014)")
+    @DisplayName("민감정보 제한 조회: 사유·거래 신고와 함께 요청하면 원문이 반환되고 감사로그가 남는다 (F-OPS-014)")
     void sensitiveViewRecordsAuditLog() {
         ChatFixture fixture = insertChatMessage("분쟁 증거 원문입니다");
 
         var view = auditLogService.viewChatMessage(
                 adminSn,
                 fixture.messageSn(),
-                fixture.disputeSn(),
-                "거래 분쟁 증거 확인",
+                fixture.reportSn(),
+                "거래 신고 증거 확인",
                 "127.0.0.1");
 
         assertThat(view.getChMsgCn()).isEqualTo("분쟁 증거 원문입니다");
         assertThat(auditLogService.search(adminSn, AuditLogType.SENSITIVE_VIEW.getCode(), null, null, 10))
                 .singleElement().satisfies(log -> {
-                    assertThat(log.getAudLogRefSn()).isEqualTo(fixture.disputeSn()); // 분쟁 건 연결
-                    assertThat(log.getAudLogRsonCn()).contains("거래 분쟁 증거 확인"); // 사유 보존
+                    assertThat(log.getAudLogRefSn()).isEqualTo(fixture.reportSn()); // 신고 건 연결
+                    assertThat(log.getAudLogRsonCn()).contains("거래 신고 증거 확인"); // 사유 보존
                     assertThat(log.getAudLogRsonCn()).contains(String.valueOf(fixture.messageSn())); // 어떤 메시지였는지
                 });
     }
@@ -144,12 +144,20 @@ class AuditLogTest {
         long trdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
         jdbc.update("""
-                INSERT INTO TRADE_DISPUTE (
-                    TRD_SN, DSPT_USR_SN, TRD_DSP_TYPE_CD, TRD_DSP_STATUS_CD, TRD_DSP_CN
+                INSERT INTO ABUSE_REPORT (
+                    RPRT_USR_SN, RPTD_USR_SN, ABR_TYPE_CD, ABR_STATUS_CD,
+                    ABR_REF_TYPE_CD, ABR_REF_SN, ABR_CN, ABR_REG_ID, ABR_UPDT_ID
                 )
-                VALUES (?, ?, 'TRDC0014', 'TRDC0016', '감사 테스트 거래 분쟁')
-                """, trdSn, targetSn);
-        long disputeSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+                VALUES (?, ?, 'ABRC0011', 'ABSC0001', 'REFC0005', ?,
+                        '감사 테스트 거래 신고', ?, ?)
+                """, targetSn, adminSn, trdSn, String.valueOf(targetSn), String.valueOf(targetSn));
+        long reportSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        jdbc.update("""
+                INSERT INTO ABUSE_REPORT_TRADE (
+                    ABR_SN, TRD_SN, ABR_TRD_PREV_STATUS_CD, ABR_TRD_REG_ID, ABR_TRD_UPDT_ID
+                )
+                VALUES (?, ?, 'TRDC0006', ?, ?)
+                """, reportSn, trdSn, String.valueOf(targetSn), String.valueOf(targetSn));
 
         jdbc.update("""
                 INSERT INTO CHAT_ROOM (TRD_SN, CH_RM_STATUS_CD)
@@ -164,9 +172,9 @@ class AuditLogTest {
                 VALUES (?, ?, ?)
                 """, roomSn, targetSn, content);
         long messageSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        return new ChatFixture(disputeSn, messageSn);
+        return new ChatFixture(reportSn, messageSn);
     }
 
-    private record ChatFixture(long disputeSn, long messageSn) {
+    private record ChatFixture(long reportSn, long messageSn) {
     }
 }

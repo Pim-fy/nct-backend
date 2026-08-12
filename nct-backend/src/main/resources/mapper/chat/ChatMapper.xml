@@ -75,6 +75,17 @@
           AND r.CH_RM_STATUS_CD = 'CHRC0001'
     </update>
 
+    <!-- 담당자 7 · F-OPS-005/006: 복구된 활성 거래의 읽기 전용 채팅만 다시 활성화합니다. -->
+    <update id="reopenTradeChatRoom">
+        UPDATE CHAT_ROOM r
+        JOIN TRADE t
+          ON t.TRD_SN = r.TRD_SN
+        SET r.CH_RM_STATUS_CD = 'CHRC0001'
+        WHERE r.TRD_SN = #{tradeId}
+          AND t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+          AND r.CH_RM_STATUS_CD = 'CHRC0002'
+    </update>
+
     <!-- 물건·서비스 거래의 당사자만 본인 채팅방 목록에 포함한다. -->
     <select id="findMyChatRooms" resultType="nct.chat.dto.ChatRoomResponse">
         SELECT

@@ -9,6 +9,8 @@
         ar.ABR_TYPE_CD     AS reportTypeCode,
         rt.CMM_NM          AS reportTypeName,
         ar.ABR_TRG_NM      AS targetName,
+        ar.ABR_REF_TYPE_CD AS referenceTypeCode,
+        ar.ABR_REF_SN      AS referenceSn,
         ar.ABR_TITLE_NM    AS title,
         ar.ABR_CN          AS content,
         ar.ABR_STATUS_CD   AS statusCode,
@@ -19,50 +21,81 @@
     </sql>
 
     <sql id="adminReportColumns">
-        ABR_SN AS reportSn,
-        RSK_EVT_SN AS riskEventSn,
-        RPRT_USR_SN AS reporterUserSn,
-        RPTD_USR_SN AS reportedUserSn,
-        ABR_TYPE_CD AS reportTypeCode,
-        (SELECT CMM_NM
-           FROM CMM_CODE
-          WHERE CMM_CD = ABR_TYPE_CD
-          LIMIT 1) AS reportTypeName,
-        ABR_STATUS_CD AS statusCode,
-        ABR_TITLE_NM AS title,
-        ABR_TRG_NM AS targetName,
-        ABR_CN AS content,
-        ABR_REF_TYPE_CD AS referenceTypeCode,
-        ABR_REF_SN AS referenceSn,
-        ABR_PROC_RSN_CN AS processReason,
+        ar.ABR_SN AS reportSn,
+        ar.RSK_EVT_SN AS riskEventSn,
+        ar.RPRT_USR_SN AS reporterUserSn,
+        ar.RPTD_USR_SN AS reportedUserSn,
+        ar.ABR_TYPE_CD AS reportTypeCode,
+        reportType.CMM_NM AS reportTypeName,
         CASE
-            WHEN ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008') THEN ABR_UPDT_ID
-            ELSE NULL
-        END AS processedBy,
-        ABR_REG_DT AS registeredAt,
-        CASE
-            WHEN ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008') THEN ABR_UPDT_DT
-            ELSE NULL
-        END AS processedAt
+            WHEN rt.ABR_SN IS NOT NULL THEN 'TRADE_ISSUE'
+            ELSE 'GENERAL'
+        END AS caseType,
+        ar.ABR_STATUS_CD AS statusCode,
+        ar.ABR_TITLE_NM AS title,
+        ar.ABR_TRG_NM AS targetName,
+        ar.ABR_CN AS content,
+        ar.ABR_REF_TYPE_CD AS referenceTypeCode,
+        ar.ABR_REF_SN AS referenceSn,
+        ar.ABR_PROC_RSN_CN AS processReason,
+        ar.ABR_PROC_REQ_ID AS processRequestId,
+        rt.TRD_SN AS tradeSn,
+        t.PRD_SN AS productSn,
+        t.SVC_REQ_SN AS serviceRequestSn,
+        t.QUT_SN AS quoteSn,
+        t.TRD_AMT AS tradeAmount,
+        t.TRD_TYPE_CD AS tradeTypeCode,
+        tradeType.CMM_NM AS tradeTypeName,
+        t.TRD_METHOD_CD AS tradeMethodCode,
+        tradeMethod.CMM_NM AS tradeMethodName,
+        t.TRD_STATUS_CD AS tradeStatusCode,
+        tradeStatus.CMM_NM AS tradeStatusName,
+        rt.ABR_TRD_RSLT_CD AS tradeResultCode,
+        tradeResult.CMM_NM AS tradeResultName,
+        rt.ABR_TRD_PREV_STATUS_CD AS previousTradeStatusCode,
+        rt.ABR_TRD_REMAIN_SEC AS remainingAutoCompleteSeconds,
+        (rt.ABR_TRD_STLM_HOLD_YN = 'Y') AS settlementHoldApplied,
+        (rt.ABR_TRD_CHAT_CLOSE_YN = 'Y') AS chatClosed,
+        t.TRD_AUTO_CMPL_DT AS tradeAutoCompleteAt,
+        CAST(ar.ABR_PROC_USR_SN AS CHAR) AS processedBy,
+        ar.ABR_REG_DT AS registeredAt,
+        ar.ABR_PROC_DT AS processedAt
+    </sql>
+
+    <sql id="adminReportJoins">
+        LEFT JOIN ABUSE_REPORT_TRADE rt ON rt.ABR_SN = ar.ABR_SN
+        LEFT JOIN TRADE t ON t.TRD_SN = rt.TRD_SN
+        LEFT JOIN CMM_CODE reportType ON reportType.CMM_CD = ar.ABR_TYPE_CD
+        LEFT JOIN CMM_CODE tradeType ON tradeType.CMM_CD = t.TRD_TYPE_CD
+        LEFT JOIN CMM_CODE tradeMethod ON tradeMethod.CMM_CD = t.TRD_METHOD_CD
+        LEFT JOIN CMM_CODE tradeStatus ON tradeStatus.CMM_CD = t.TRD_STATUS_CD
+        LEFT JOIN CMM_CODE tradeResult ON tradeResult.CMM_CD = rt.ABR_TRD_RSLT_CD
     </sql>
 
     <sql id="adminReportSearchWhere">
         <where>
             <if test="statusCode != null">
-                AND ABR_STATUS_CD = #{statusCode}
+                AND ar.ABR_STATUS_CD = #{statusCode}
+            </if>
+            <if test="caseType == 'GENERAL'">
+                AND rt.ABR_SN IS NULL
+            </if>
+            <if test="caseType == 'TRADE_ISSUE'">
+                AND rt.ABR_SN IS NOT NULL
             </if>
             <if test="keyword != null">
                 AND (
-                    CAST(ABR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
-                    OR CAST(RPRT_USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
-                    OR CAST(RPTD_USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
-                    OR ABR_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
-                    OR ABR_REF_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
-                    OR CAST(ABR_REF_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
-                    OR ABR_TITLE_NM LIKE CONCAT('%', #{keyword}, '%')
-                    OR ABR_TRG_NM LIKE CONCAT('%', #{keyword}, '%')
-                    OR ABR_CN LIKE CONCAT('%', #{keyword}, '%')
-                    OR ABR_PROC_RSN_CN LIKE CONCAT('%', #{keyword}, '%')
+                    CAST(ar.ABR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(ar.RPRT_USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(ar.RPTD_USR_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR ar.ABR_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
+                    OR ar.ABR_REF_TYPE_CD LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(ar.ABR_REF_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(rt.TRD_SN AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                    OR ar.ABR_TITLE_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR ar.ABR_TRG_NM LIKE CONCAT('%', #{keyword}, '%')
+                    OR ar.ABR_CN LIKE CONCAT('%', #{keyword}, '%')
+                    OR ar.ABR_PROC_RSN_CN LIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
         </where>
@@ -208,7 +241,7 @@
            AND ar.RSK_EVT_SN IS NULL
         <choose>
             <when test="statusCode == 'FINISHED'">
-               AND ar.ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008')
+               AND ar.ABR_STATUS_CD IN ('ABSC0003', 'ABSC0004')
             </when>
             <when test="statusCode != null">
                AND ar.ABR_STATUS_CD = #{statusCode}
@@ -225,7 +258,7 @@
            AND RSK_EVT_SN IS NULL
         <choose>
             <when test="statusCode == 'FINISHED'">
-               AND ABR_STATUS_CD IN ('ABRC0007', 'ABRC0008')
+               AND ABR_STATUS_CD IN ('ABSC0003', 'ABSC0004')
             </when>
             <when test="statusCode != null">
                AND ABR_STATUS_CD = #{statusCode}
@@ -274,6 +307,29 @@
         )
     </insert>
 
+    <!-- 담당자 7 · F-OPS-005/007: 거래 신고 1건의 보류ㆍ복구 기준을 상위 신고에 1:1로 저장합니다. -->
+    <insert id="insertTradeContext">
+        INSERT INTO ABUSE_REPORT_TRADE (
+            ABR_SN,
+            TRD_SN,
+            ABR_TRD_PREV_STATUS_CD,
+            ABR_TRD_REMAIN_SEC,
+            ABR_TRD_STLM_HOLD_YN,
+            ABR_TRD_CHAT_CLOSE_YN,
+            ABR_TRD_REG_ID,
+            ABR_TRD_UPDT_ID
+        ) VALUES (
+            #{reportSn},
+            #{tradeSn},
+            #{previousStatusCode},
+            #{remainingSeconds},
+            CASE WHEN #{settlementHoldApplied} THEN 'Y' ELSE 'N' END,
+            CASE WHEN #{chatClosed} THEN 'Y' ELSE 'N' END,
+            #{actorId},
+            #{actorId}
+        )
+    </insert>
+
     <select id="findReportFiles" resultType="nct.abuse.dto.AbuseReportFileResponse">
         SELECT f.FL_SN AS fileSn,
                f.FL_ORG_NM AS originalName,
@@ -315,6 +371,7 @@
                ABR_REF_SN AS referenceSn,
                ABR_CN AS content,
                ABR_PROC_RSN_CN AS processReason,
+               ABR_PROC_REQ_ID AS processRequestId,
                ABR_REG_ID AS registeredBy,
                ABR_UPDT_ID AS updatedBy
           FROM ABUSE_REPORT
@@ -322,52 +379,87 @@
          FOR UPDATE
     </select>
 
+    <select id="existsOtherActiveReportLinkedToTrade" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM ABUSE_REPORT r
+              JOIN ABUSE_REPORT_TRADE rt ON rt.ABR_SN = r.ABR_SN
+             WHERE r.ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+               AND (#{excludedReportSn} IS NULL OR r.ABR_SN != #{excludedReportSn})
+               AND rt.TRD_SN = #{tradeSn}
+        )
+    </select>
+
+    <select id="existsTradeContext" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM ABUSE_REPORT_TRADE
+             WHERE ABR_SN = #{reportSn}
+        )
+    </select>
+
+    <select id="existsOtherActiveReportLinkedToAuction" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM ABUSE_REPORT r
+             WHERE r.ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+               AND (#{excludedReportSn} IS NULL OR r.ABR_SN != #{excludedReportSn})
+               AND r.ABR_REF_TYPE_CD = 'REFC0003'
+               AND r.ABR_REF_SN = #{auctionSn}
+        )
+    </select>
+
     <select id="findPendingReports" resultType="nct.abuse.dto.AdminAbuseReportResponse">
         SELECT
             <include refid="adminReportColumns"/>
-        FROM ABUSE_REPORT
-        WHERE ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
-        ORDER BY ABR_REG_DT ASC, ABR_SN ASC
+        FROM ABUSE_REPORT ar
+        <include refid="adminReportJoins"/>
+        WHERE ar.ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+        ORDER BY ar.ABR_REG_DT ASC, ar.ABR_SN ASC
     </select>
 
     <select id="findAdminReports" resultType="nct.abuse.dto.AdminAbuseReportResponse">
         SELECT
             <include refid="adminReportColumns"/>
-        FROM ABUSE_REPORT
+        FROM ABUSE_REPORT ar
+        <include refid="adminReportJoins"/>
         <include refid="adminReportSearchWhere"/>
         ORDER BY
-            CASE ABR_STATUS_CD
-                WHEN 'ABRC0005' THEN 0
-                WHEN 'ABRC0006' THEN 1
-                WHEN 'ABRC0007' THEN 2
-                WHEN 'ABRC0008' THEN 3
+            CASE ar.ABR_STATUS_CD
+                WHEN 'ABSC0001' THEN 0
+                WHEN 'ABSC0002' THEN 1
+                WHEN 'ABSC0003' THEN 2
+                WHEN 'ABSC0004' THEN 3
                 ELSE 4
             END ASC,
-            ABR_REG_DT DESC,
-            ABR_SN DESC
+            ar.ABR_REG_DT DESC,
+            ar.ABR_SN DESC
         LIMIT #{size} OFFSET #{offset}
     </select>
 
     <select id="countAdminReports" resultType="long">
         SELECT COUNT(*)
-        FROM ABUSE_REPORT
+        FROM ABUSE_REPORT ar
+        <include refid="adminReportJoins"/>
         <include refid="adminReportSearchWhere"/>
     </select>
 
     <select id="findReportDetailById" resultType="nct.abuse.dto.AdminAbuseReportResponse">
         SELECT
             <include refid="adminReportColumns"/>
-        FROM ABUSE_REPORT
-        WHERE ABR_SN = #{reportSn}
+        FROM ABUSE_REPORT ar
+        <include refid="adminReportJoins"/>
+        WHERE ar.ABR_SN = #{reportSn}
     </select>
 
     <!-- 담당자 7 · F-OPS-002: 회원 상세의 최근 신고 이력. 무제한 조회를 피한다. -->
     <select id="findReportsByReportedUser" resultType="nct.abuse.dto.AdminAbuseReportResponse">
         SELECT
             <include refid="adminReportColumns"/>
-        FROM ABUSE_REPORT
-        WHERE RPTD_USR_SN = #{reportedUserSn}
-        ORDER BY ABR_REG_DT DESC, ABR_SN DESC
+        FROM ABUSE_REPORT ar
+        <include refid="adminReportJoins"/>
+        WHERE ar.RPTD_USR_SN = #{reportedUserSn}
+        ORDER BY ar.ABR_REG_DT DESC, ar.ABR_SN DESC
         LIMIT #{limit}
     </select>
 
@@ -375,6 +467,9 @@
         UPDATE ABUSE_REPORT
            SET ABR_STATUS_CD = #{newStatusCode},
                ABR_PROC_RSN_CN = #{processReason},
+               ABR_PROC_REQ_ID = #{requestId},
+               ABR_PROC_USR_SN = #{processorUserSn},
+               ABR_PROC_DT = NOW(),
                ABR_UPDT_ID = #{actorId},
                ABR_UPDT_DT = NOW()
          WHERE ABR_SN = #{reportSn}
@@ -386,7 +481,7 @@
         SELECT COUNT(*)
         FROM ABUSE_REPORT
         WHERE (RPRT_USR_SN = #{userSn} OR RPTD_USR_SN = #{userSn})
-          AND ABR_STATUS_CD IN ('ABRC0005', 'ABRC0006')
+          AND ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
     </select>
 
 </mapper>

@@ -1,5 +1,7 @@
 package nct.trade.dto;
 
+import java.time.LocalDateTime;
+
 import lombok.Getter;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
@@ -13,5 +15,20 @@ public class MemberActiveTradeTarget {
     private Long tradeId;
     private Long sellerUserId;
     private Long buyerUserId;
+    private String tradeTypeCode;
     private String tradeStatusCode;
+    private LocalDateTime autoCompleteAt;
+    private LocalDateTime databaseNow;
+    private boolean activeDispute;
+
+    public MemberActiveTradeTarget(
+            Long tradeId,
+            Long sellerUserId,
+            Long buyerUserId,
+            String tradeStatusCode) {
+        this.tradeId = tradeId;
+        this.sellerUserId = sellerUserId;
+        this.buyerUserId = buyerUserId;
+        this.tradeStatusCode = tradeStatusCode;
+    }
 }

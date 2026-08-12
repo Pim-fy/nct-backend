@@ -19,7 +19,7 @@ import nct.global.exception.ErrorCode;
  *
  * [동의 - 서비스 계약] (담당자6 백종남, F-OPS-017)
  *
- * 입찰·즉시구매·포인트 홀딩·거래 문제 접수·거래 완료 확인 등 "행위 시점의 동의"를
+ * 입찰ㆍ즉시구매ㆍ포인트 홀딩ㆍ거래 문제 신고ㆍ거래 완료 확인 등 "행위 시점의 동의"를
  * 저장하는 공용 계약이다. 각 행위의 담당자(입찰=담당자5, 거래=담당자4 등)는
  * AGREE_HISTORY 테이블을 직접 INSERT하지 않고 record()를 호출한다.
  *
@@ -54,7 +54,6 @@ public class AgreeHistoryService {
         history.setBidSn(ref.getBidSn());
         history.setAucSn(ref.getAucSn());
         history.setPtLdgSn(ref.getPtLdgSn());
-        history.setTrdDspSn(ref.getTrdDspSn());
         history.setTrdSn(ref.getTrdSn());
         history.setAgrTypeCd(type.getCode());
         history.setAgrActTypeCd(actType.getCode());
@@ -63,7 +62,7 @@ public class AgreeHistoryService {
         return history.getAgrHstSn();
     }
 
-    /** 회원별 동의 이력 조회 (최신순 100건) — 분쟁 대응·증적 확인용 */
+    /** 회원별 동의 이력 조회 (최신순 100건) — 신고 대응ㆍ증적 확인용 */
     public List<AgreeHistory> getListByUser(long usrSn) {
         return agreeHistoryMapper.selectListByUser(usrSn);
     }

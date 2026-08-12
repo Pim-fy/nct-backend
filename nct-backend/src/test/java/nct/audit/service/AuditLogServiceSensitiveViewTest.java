@@ -84,7 +84,7 @@ class AuditLogServiceSensitiveViewTest {
         AuditLog log = logCaptor.getValue();
         assertThat(log.getUsrSn()).isEqualTo(7L);
         assertThat(log.getAudLogTypeCd()).isEqualTo(AuditLogType.SENSITIVE_VIEW.getCode());
-        assertThat(log.getAudLogRefTypeCd()).isEqualTo(RefType.TRADE_DISPUTE.getCode());
+        assertThat(log.getAudLogRefTypeCd()).isEqualTo(RefType.ABUSE_REPORT.getCode());
         assertThat(log.getAudLogRefSn()).isEqualTo(22L);
         assertThat(log.getAudLogRsonCn()).contains("판정 근거 확인");
     }
@@ -136,9 +136,9 @@ class AuditLogServiceSensitiveViewTest {
         verify(mapper, never()).insert(any(AuditLog.class));
     }
 
-    private DisputeChatTarget target(long disputeSn, long tradeSn, Long roomSn, long messageCount) {
+    private DisputeChatTarget target(long reportSn, long tradeSn, Long roomSn, long messageCount) {
         DisputeChatTarget target = new DisputeChatTarget();
-        target.setDisputeSn(disputeSn);
+        target.setReportSn(reportSn);
         target.setTradeSn(tradeSn);
         target.setRoomSn(roomSn);
         target.setMessageCount(messageCount);

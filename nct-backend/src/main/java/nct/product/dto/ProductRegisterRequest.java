@@ -60,7 +60,7 @@ public class ProductRegisterRequest {
     // true면 재개 시 상품입력 탭 필수값이 다 채워져 있다는 전제하에 등록확인 탭으로 바로 이동시킨다.
     private Boolean policyAgreed;
 
-    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)일 때만 의미 있음, 최대 5곳
+    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0015)일 때만 의미 있음, 최대 5곳
     @Valid
     @Size(max = 5, message = "희망 거래지역은 최대 5곳까지 선택할 수 있습니다.")
     private List<ProductTradeRegionItem> tradeRegions;

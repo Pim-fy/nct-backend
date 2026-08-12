@@ -20,6 +20,7 @@ import nct.abuse.dto.MyAbuseReportResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.file.domain.FileMeta;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
@@ -85,8 +86,8 @@ class AbuseReportFileServiceTest {
         verify(auditLogService).record(
                 eq(7L),
                 eq(AuditLogType.SENSITIVE_VIEW),
-                eq(null),
-                eq(null),
+                eq(RefType.ABUSE_REPORT),
+                eq(31L),
                 eq("신고 #31 첨부 파일 #91 열람 - 사유: 위반 근거 확인"),
                 eq("127.0.0.1"));
     }

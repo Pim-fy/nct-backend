@@ -36,7 +36,7 @@ public interface PointMapper {
     /**
      * 진행 중인 거래 문제 건수 (F-PAY-010 전환 차단 조건 — "분쟁 없음 확인 후 전환")
      * - 회원이 당사자(판매자/구매자)인 거래에 걸린 '접수'·'처리중' 상태의 거래 문제를 센다
-     * - TRADE·TRADE_DISPUTE는 타 담당자 소유 — 읽기 전용 조회만, 변경 금지
+     * - TRADEㆍABUSE_REPORT_TRADE는 타 도메인 소유이며 읽기 전용으로 조회한다.
      */
     int countActiveDisputes(@Param("usrSn") long usrSn);
 
@@ -67,7 +67,7 @@ public interface PointMapper {
     /**
      * 특정 거래의 진행 중 거래 문제 건수 (F-SVC-015 정산 전환 차단 조건 — 거래 단위 버전)
      * - countActiveDisputes(회원 단위)와 달리 해당 거래 건에 걸린 분쟁만 본다
-     * - TRADE_DISPUTE는 타 담당자 소유 — 읽기 전용 조회만, 변경 금지
+     * - ABUSE_REPORT_TRADE는 타 도메인 소유이며 읽기 전용으로 조회한다.
      */
     int countActiveDisputesByTrade(@Param("trdSn") long trdSn);
 

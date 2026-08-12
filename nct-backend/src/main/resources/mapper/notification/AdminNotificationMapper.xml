@@ -23,7 +23,7 @@
 
     <select id="countPendingReports" resultType="int">
         /* 관리자 알림: 신고 접수 대기 수 (읽기 전용) */
-        SELECT COUNT(*) FROM ABUSE_REPORT WHERE ABR_STATUS_CD = 'ABRC0005'
+        SELECT COUNT(*) FROM ABUSE_REPORT WHERE ABR_STATUS_CD = 'ABSC0001'
     </select>
 
     <select id="countAuctionsEndingSoon" resultType="int">

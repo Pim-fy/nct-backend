@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.auction.dto.AuctionIdByProduct;
 import nct.auction.dto.AuctionReferenceTitle;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.port.AuctionReferenceTitleReader;
@@ -51,5 +52,34 @@ public class AuctionReferenceTitleQueryService implements AuctionReferenceTitleR
             }
         }
         return Collections.unmodifiableMap(titles);
+    }
+
+    /** 담당자 7 · F-OPS-007: 신고에 연결된 물품 거래를 해당 경매 상세로 이동시키는 배치 계약입니다. */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Long> findAuctionIdsByProductIds(Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> normalizedIds = productIds.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+        if (normalizedIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Long> auctionIds = new LinkedHashMap<>();
+        for (int start = 0; start < normalizedIds.size(); start += QUERY_BATCH_SIZE) {
+            int end = Math.min(start + QUERY_BATCH_SIZE, normalizedIds.size());
+            for (AuctionIdByProduct row : auctionMapper.findAuctionIdsByProductIds(
+                    normalizedIds.subList(start, end))) {
+                if (row != null && row.getProductId() != null && row.getAuctionId() != null) {
+                    auctionIds.putIfAbsent(row.getProductId(), row.getAuctionId());
+                }
+            }
+        }
+        return Collections.unmodifiableMap(auctionIds);
     }
 }

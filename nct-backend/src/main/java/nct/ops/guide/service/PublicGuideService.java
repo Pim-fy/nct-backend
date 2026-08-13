@@ -22,64 +22,104 @@ public class PublicGuideService {
     private static final List<PublicGuideDetailResponse> GUIDES = List.of(
             new PublicGuideDetailResponse(
                     "product-register",
-                    "상품 등록",
-                    "판매자가 경매 상품을 등록하고 공개 전 필수 정보를 확인하는 흐름입니다.",
+                    "상품 등록·경매 탐색",
+                    "판매자는 상품과 경매 조건을 등록하고, 구매자는 목록에서 원하는 경매를 찾습니다.",
                     "/customersupport/guide?flow=product-register",
                     List.of(
-                            "판매할 상품의 제목, 설명, 카테고리, 거래 방식을 입력합니다.",
-                            "상품 상태를 확인할 수 있는 이미지를 등록하고 대표 이미지를 지정합니다.",
-                            "시작가, 즉시구매가, 경매 종료 시간을 입력해 경매 조건을 정합니다.",
-                            "임시저장 상태에서는 공개되지 않으며, 공개 등록 후 경매 목록에 노출됩니다."),
+                            "판매자는 상품 정보와 시작가, 거래 방식, 종료 시간을 확인해 등록합니다.",
+                            "구매자는 카테고리와 검색 조건으로 경매를 찾고 상세 정보를 확인합니다."),
                     List.of("/product/register", "/auction"),
                     10),
             new PublicGuideDetailResponse(
-                    "service-request",
-                    "서비스 요청",
-                    "요청자가 필요한 서비스를 작성하고 제공자 견적을 받는 흐름입니다.",
-                    "/customersupport/guide?flow=service-request",
-                    List.of(
-                            "필요한 서비스 카테고리와 요청 내용을 구체적으로 작성합니다.",
-                            "예산, 지역, 작업 조건처럼 견적 비교에 필요한 내용을 입력합니다.",
-                            "요청을 공개하면 승인된 제공자만 견적을 제출할 수 있습니다.",
-                            "제출된 견적을 비교한 뒤 하나를 선택하면 서비스 거래가 시작됩니다."),
-                    List.of("/services/requests/new", "/user/mypage/services/requests"),
-                    20),
-            new PublicGuideDetailResponse(
-                    "quote-selection",
-                    "견적 비교와 선택",
-                    "요청자가 받은 견적의 조건을 비교하고 하나를 선택해 서비스 거래를 시작하는 흐름입니다.",
-                    "/customersupport/guide?flow=quote-selection",
-                    List.of(
-                            "내 서비스 요청 목록에서 견적이 도착한 요청을 선택합니다.",
-                            "제공자 프로필, 제안 금액, 작업 기간과 포함 조건을 함께 비교합니다.",
-                            "선택 전 요청 내용과 견적 조건이 서로 맞는지 다시 확인합니다.",
-                            "견적 하나를 선택하면 해당 제공자와 서비스 거래가 시작됩니다."),
-                    List.of("/user/mypage/services/requests", "/user/mypage/services/trades"),
-                    30),
-            new PublicGuideDetailResponse(
                     "bid",
-                    "입찰과 즉시구매",
-                    "구매자가 경매에 입찰하거나 즉시구매로 거래를 시작하는 흐름입니다.",
+                    "입찰·즉시구매",
+                    "구매자는 현재가와 남은 시간을 확인한 뒤 입찰하거나 즉시구매합니다.",
                     "/customersupport/guide?flow=bid",
                     List.of(
-                            "경매 목록이나 상세에서 현재가, 즉시구매가, 남은 시간을 확인합니다.",
-                            "입찰 금액을 입력하면 사용 가능 포인트가 홀딩되고 이전 최고 입찰은 반환됩니다.",
-                            "마감 직전 입찰은 정책에 따라 경매 시간이 자동 연장될 수 있습니다.",
-                            "즉시구매가 성공하면 경매는 바로 종료되고 거래가 1건 생성됩니다."),
-                    List.of("/auction", "/user/mypage/auctions/bids"),
-                    40),
+                            "입찰할 때는 다음 입찰 가능 금액과 사용할 거래 방식을 확인합니다.",
+                            "입찰 포인트는 결과가 정해질 때까지 안전하게 보관됩니다."),
+                    List.of("/auction", "/user/mypage/auctions/purchases"),
+                    20),
+            new PublicGuideDetailResponse(
+                    "auction-result",
+                    "낙찰·거래 시작",
+                    "경매가 끝나면 낙찰 결과를 확인하고 거래 상세에서 다음 절차를 진행합니다.",
+                    "/customersupport/guide?flow=auction-result",
+                    List.of(
+                            "낙찰자는 구매 내역에서 거래를 확인하고 판매자는 판매 내역에서 준비를 시작합니다.",
+                            "유찰되거나 취소된 경매는 결과 상태와 기존 참여 이력만 확인할 수 있습니다."),
+                    List.of("/user/mypage/auctions/purchases", "/user/mypage/auctions/sales"),
+                    30),
             new PublicGuideDetailResponse(
                     "trade-completion",
-                    "거래 완료",
-                    "낙찰 또는 즉시구매 후 배송/직거래를 진행하고 완료 확인하는 흐름입니다.",
+                    "배송·거래 완료",
+                    "판매자는 배송 또는 직거래를 진행하고 구매자는 완료 여부를 확인합니다.",
                     "/customersupport/guide?flow=trade-completion",
                     List.of(
-                            "거래 상세에서 구매자와 판매자가 현재 진행 상태를 확인합니다.",
-                            "판매자는 배송 정보 또는 직거래 일정을 등록하고 구매자는 진행 내역을 확인합니다.",
-                            "구매자가 완료 확인을 하거나 이의 없이 기준 기간이 지나면 거래가 완료됩니다.",
-                            "거래 문제가 접수되면 자동 완료와 정산이 보류되고 관리자 처리를 기다립니다."),
-                    List.of("/user/mypage/auctions/purchases", "/user/mypage/services/trades"),
+                            "거래 상세에서 배송 정보나 직거래 일정을 확인합니다.",
+                            "구매자가 완료를 확인하면 거래와 포인트 처리가 마무리됩니다."),
+                    List.of("/user/mypage/auctions/purchases", "/user/mypage/auctions/sales"),
+                    40),
+            new PublicGuideDetailResponse(
+                    "auction-review",
+                    "리뷰·포인트 확인",
+                    "완료된 거래의 리뷰를 작성하고 포인트 처리 내역을 확인합니다.",
+                    "/customersupport/guide?flow=auction-review",
+                    List.of(
+                            "거래 상세 또는 마이페이지에서 상대방에 대한 리뷰를 작성합니다.",
+                            "포인트 지갑에서 사용·반환·정산 내역을 확인합니다."),
+                    List.of("/user/mypage/reviews", "/user/mypage/wallet"),
                     50),
+            new PublicGuideDetailResponse(
+                    "service-request",
+                    "요청서 작성",
+                    "요청자는 필요한 서비스와 예산, 지역, 작업 조건을 작성해 공개합니다.",
+                    "/customersupport/guide?flow=service-request",
+                    List.of(
+                            "카테고리를 선택하고 안내되는 항목에 맞춰 요청 내용을 작성합니다.",
+                            "공개한 요청은 승인된 제공자가 확인하고 견적을 제출할 수 있습니다."),
+                    List.of("/services/requests/new", "/user/mypage/services/requests"),
+                    60),
+            new PublicGuideDetailResponse(
+                    "quote-submit",
+                    "견적 제출",
+                    "제공자는 공개 요청을 확인하고 금액과 작업 내용을 담은 견적을 제출합니다.",
+                    "/customersupport/guide?flow=quote-submit",
+                    List.of(
+                            "승인받은 서비스 분야의 요청만 열람하고 견적을 제출할 수 있습니다.",
+                            "선택되기 전까지 내 견적 목록에서 제출 내용을 확인하거나 수정할 수 있습니다."),
+                    List.of("/user/mypage/services/quotes"),
+                    70),
+            new PublicGuideDetailResponse(
+                    "quote-selection",
+                    "견적 비교·선택",
+                    "요청자는 받은 견적의 금액과 작업 조건을 비교해 하나를 선택합니다.",
+                    "/customersupport/guide?flow=quote-selection",
+                    List.of(
+                            "제공자 정보와 제안 내용, 첨부 자료를 함께 확인합니다.",
+                            "견적을 선택하면 포인트가 보관되고 서비스 거래가 시작됩니다."),
+                    List.of("/user/mypage/services/requests", "/user/mypage/services/trades"),
+                    80),
+            new PublicGuideDetailResponse(
+                    "service-progress",
+                    "서비스 진행",
+                    "요청자와 제공자는 거래 상세와 채팅에서 일정과 작업 진행 상황을 확인합니다.",
+                    "/customersupport/guide?flow=service-progress",
+                    List.of(
+                            "필요한 일정 변경이나 작업 협의는 거래 상세에서 진행합니다.",
+                            "제공자가 완료를 요청하면 요청자가 결과를 확인합니다."),
+                    List.of("/user/mypage/services/trades"),
+                    90),
+            new PublicGuideDetailResponse(
+                    "service-review",
+                    "완료·리뷰",
+                    "서비스 완료를 확인한 뒤 거래 결과와 상대방에 대한 리뷰를 남깁니다.",
+                    "/customersupport/guide?flow=service-review",
+                    List.of(
+                            "요청자가 완료를 확인하거나 기준 기간 동안 이의가 없으면 거래가 완료됩니다.",
+                            "완료된 거래의 리뷰와 포인트·정산 내역을 마이페이지에서 확인합니다."),
+                    List.of("/user/mypage/services/trades", "/user/mypage/services/reviews/received"),
+                    100),
             new PublicGuideDetailResponse(
                     "point-exchange",
                     "환전",
@@ -91,7 +131,7 @@ public class PublicGuideService {
                             "관리자가 신청 내용을 검토한 뒤 지급 완료 또는 반려 처리합니다.",
                             "반려된 경우 사유를 확인하고 계좌나 신청 정보를 보완해 다시 신청합니다."),
                     List.of("/user/mypage/wallet"),
-                    60));
+                    110));
 
     public List<PublicGuideListItemResponse> getGuides() {
         return GUIDES.stream()

@@ -31,6 +31,10 @@ public class AdminAbuseReportResponse {
     private String content;
     private String referenceTypeCode;
     private Long referenceSn;
+    /** 담당자 7 · F-OPS-007: 관리자가 참조 번호만 보고 원본을 추측하지 않도록 조회 시 조립합니다. */
+    private String referenceTitle;
+    private String referenceDetailType;
+    private Long referenceDetailSn;
     private String processReason;
     private Long tradeSn;
     private Long productSn;

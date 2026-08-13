@@ -53,8 +53,8 @@ import nct.review.mapper.ReviewMapper;
 /**
  * [리뷰 - 서비스]
  * - "작성 가능한 리뷰" 조회, "내가 쓴 리뷰" 조회, 리뷰 등록(+사진 첨부)을 담당한다.
- * - TRADE 관련 검증은 ReviewMapper의 임시 조회에 의존한다 (자세한 사유는
- * nct.review.constant.TempTradeCode, ReviewMapper.xml 상단 주석 참고).
+ * - TRADE 관련 검증은 ReviewMapper의 읽기 전용 조회에 의존한다. 담당자4가 리뷰 가능 거래
+ * 조회 계약을 제공하면 해당 계약으로 전환한다 (ReviewMapper.xml 상단 주석 참고).
  */
 @Service
 @RequiredArgsConstructor

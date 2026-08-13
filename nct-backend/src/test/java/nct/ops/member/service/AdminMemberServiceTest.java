@@ -26,6 +26,7 @@ import nct.member.port.MemberStatusCommandPort;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
+import nct.ops.member.port.AccountRestrictionRecoveryPort;
 import nct.ops.member.port.AccountSanctionPort;
 import nct.trade.port.MemberTradeRestrictionPort;
 import nct.trade.port.MemberTradeRestrictionResult;
@@ -38,6 +39,7 @@ class AdminMemberServiceTest {
     @Mock private MemberStatusCommandPort memberStatusCommandPort;
     @Mock private AbuseReportMapper abuseReportMapper;
     @Mock private ObjectProvider<AccountSanctionPort> sanctionProvider;
+    @Mock private ObjectProvider<AccountRestrictionRecoveryPort> recoveryProvider;
     @Mock private AccountSanctionPort sanctionPort;
     @Mock private MemberTradeRestrictionPort tradeRestrictionPort;
     @Mock private AuditLogPort auditLogPort;
@@ -53,6 +55,7 @@ class AdminMemberServiceTest {
                 memberStatusCommandPort,
                 abuseReportMapper,
                 sanctionProvider,
+                recoveryProvider,
                 tradeRestrictionPort,
                 auditLogPort,
                 notificationService,

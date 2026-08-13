@@ -327,6 +327,18 @@
          GROUP BY t.SVC_REQ_SN, t.TRD_SN, t.QUT_SN, t.TRD_STATUS_CD, tradeStatus.CMM_NM
     </select>
 
+    <!-- 담당자 7 · F-OPS-007: 자동 신고도 거래 번호만으로 원본 상품·서비스 요청을 찾습니다. -->
+    <select id="findAdminReportTradeReferences" resultType="nct.trade.dto.AdminReportTradeReference">
+        SELECT TRD_SN AS tradeSn,
+               PRD_SN AS productSn,
+               SVC_REQ_SN AS serviceRequestSn
+          FROM TRADE
+         WHERE TRD_SN IN
+        <foreach collection="tradeSns" item="tradeSn" open="(" separator="," close=")">
+            #{tradeSn}
+        </foreach>
+    </select>
+
     <!-- MemberService가 검증한 주소값만 저장해 회원 테이블 직접 조회 의존을 없앤다. -->
     <insert id="insertDeliverySnapshot">
         INSERT INTO TRADE_DELIVERY (
@@ -857,6 +869,34 @@
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
                 ELSE NULL
             END AS escrowStatusLabel,
+            CASE
+                WHEN t.TRD_STATUS_CD NOT IN ('TRDC0007', 'TRDC0008')
+                 AND (
+                    (t.TRD_STATUS_CD = 'TRDC0006'
+                     AND completedHist.completedAt IS NOT NULL
+                     AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP)
+                    OR (
+                        t.TRD_STATUS_CD &lt;&gt; 'TRDC0006'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM CHAT_ROOM cr
+                            WHERE cr.TRD_SN = t.TRD_SN
+                              AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                        )
+                    )
+                 )
+                 AND EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
+                 ) THEN 'ACTIVE'
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
+                ) THEN 'CLOSED'
+                ELSE 'NOT_STARTED'
+            END AS chatRoomStatus,
             FALSE AS chatAvailable,
             FALSE AS cancellationDecisionAvailable,
             sr.SVC_REQ_CN AS serviceRequestContent,
@@ -873,6 +913,12 @@
             GROUP BY i.SVC_REQ_SN
         ) requestedSchedule ON requestedSchedule.SVC_REQ_SN = t.SVC_REQ_SN
         LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist ON completedHist.TRD_SN = t.TRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0002'
     </select>

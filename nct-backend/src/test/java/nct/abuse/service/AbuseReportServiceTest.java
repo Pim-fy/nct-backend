@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -61,11 +62,15 @@ import nct.ops.security.port.SensitiveDetectionReportResult;
 import nct.ops.security.service.SensitiveDataType;
 import nct.product.dto.InquiryReportTarget;
 import nct.product.service.ProductService;
+import nct.servicerequest.port.ServiceRequestQuoteReader;
+import nct.trade.port.AdminReportTradeReferenceReader;
 
 class AbuseReportServiceTest {
 
     private AbuseReportMapper abuseReportMapper;
     private AuctionReferenceTitleReader auctionReferenceTitleReader;
+    private ServiceRequestQuoteReader serviceRequestQuoteReader;
+    private AdminReportTradeReferenceReader tradeReferenceReader;
     private ReferenceDataService referenceDataService;
     private AbuseReportReferenceValidationService referenceValidationService;
     private AuditLogPort auditLogPort;
@@ -81,6 +86,8 @@ class AbuseReportServiceTest {
     void setUp() {
         abuseReportMapper = mock(AbuseReportMapper.class);
         auctionReferenceTitleReader = mock(AuctionReferenceTitleReader.class);
+        serviceRequestQuoteReader = mock(ServiceRequestQuoteReader.class);
+        tradeReferenceReader = mock(AdminReportTradeReferenceReader.class);
         referenceDataService = mock(ReferenceDataService.class);
         referenceValidationService = mock(AbuseReportReferenceValidationService.class);
         auditLogPort = mock(AuditLogPort.class);
@@ -104,9 +111,12 @@ class AbuseReportServiceTest {
         when(abuseReportMapper.findActiveCustomerReportId(
                 any(), any(), any(), any(), any(), any(), any())).thenReturn(null);
         when(authMemberPort.findById(anyLong())).thenReturn(Optional.of(mock(AuthMember.class)));
+        when(tradeReferenceReader.findByTradeSns(any())).thenReturn(Map.of());
         service = new AbuseReportService(
                 abuseReportMapper,
                 auctionReferenceTitleReader,
+                serviceRequestQuoteReader,
+                tradeReferenceReader,
                 referenceDataService,
                 referenceValidationService,
                 auditLogPort,

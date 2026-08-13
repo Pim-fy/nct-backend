@@ -20,19 +20,22 @@ import nct.trade.dto.ServiceTradeCompletionRequest;
 import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.ServiceScheduleChangeRequest;
 import nct.trade.dto.ServiceScheduleCancellationRequest;
+import nct.trade.service.TradeOfflineScheduleProposalService;
 import nct.trade.service.TradeService;
 
 /** F-SVC-014 완료 요청 메모의 HTTP 입력 검증과 서비스 전달 계약을 확인한다. */
 class TradeControllerTest {
 
     private TradeService tradeService;
+    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         tradeService = mock(TradeService.class);
+        offlineScheduleProposalService = mock(TradeOfflineScheduleProposalService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new TradeController(tradeService))
+                .standaloneSetup(new TradeController(tradeService, offlineScheduleProposalService))
                 .setControllerAdvice(new GlobalExceptionHandler(new SensitiveDataMasker()))
                 .build();
     }
@@ -42,7 +45,7 @@ class TradeControllerTest {
         ServiceTradeCompletionRequest request = new ServiceTradeCompletionRequest();
         request.setCompletionMemo("에어컨 분해 청소와 시운전을 완료했습니다.");
 
-        var response = new TradeController(tradeService)
+        var response = new TradeController(tradeService, offlineScheduleProposalService)
                 .requestServiceCompletion(81L, request, providerUserDetails(22L));
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
@@ -56,7 +59,7 @@ class TradeControllerTest {
         request.setReportTypeCode("ABRC0009");
         request.setContent("배송 중 상품이 파손되었습니다.");
 
-        var response = new TradeController(tradeService)
+        var response = new TradeController(tradeService, offlineScheduleProposalService)
                 .registerTradeReport(81L, request, providerUserDetails(22L));
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
@@ -111,7 +114,7 @@ class TradeControllerTest {
         request.setRequestedScheduleAt(java.time.LocalDateTime.of(2026, 8, 10, 14, 0));
         request.setReason("오후로 변경 부탁드립니다.");
 
-        var response = new TradeController(tradeService)
+        var response = new TradeController(tradeService, offlineScheduleProposalService)
                 .requestServiceScheduleChange(81L, request, providerUserDetails(22L));
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
@@ -128,7 +131,7 @@ class TradeControllerTest {
         ServiceScheduleCancellationRequest request = new ServiceScheduleCancellationRequest();
         request.setReason("일정 취소가 필요합니다.");
 
-        var response = new TradeController(tradeService)
+        var response = new TradeController(tradeService, offlineScheduleProposalService)
                 .requestServiceScheduleCancellation(81L, request, providerUserDetails(22L));
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);

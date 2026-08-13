@@ -155,10 +155,10 @@ tasks.register('fOps018E2e', Test) {
 			def matchingCases = suite.testcase.findAll {
 				it.@classname.text() == required.className && it.@name.text() == required.testName
 			}
-			return matchingCases.size() != 1
+			return (matchingCases.size() != 1
 					|| !matchingCases[0].failure.isEmpty()
 					|| !matchingCases[0].error.isEmpty()
-					|| !matchingCases[0].skipped.isEmpty()
+					|| !matchingCases[0].skipped.isEmpty())
 		}.collect { it.filter }
 		if (!missingTests.isEmpty()) {
 			throw new GradleException(

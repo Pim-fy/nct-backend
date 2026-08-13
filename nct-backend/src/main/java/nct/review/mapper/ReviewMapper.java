@@ -20,8 +20,8 @@ import nct.review.dto.WritableTradeItem;
  * [리뷰 - MyBatis 매퍼]
  * - SQL 본문은 resources/mapper/review/ReviewMapper.xml 에 있다.
  * - insertReview 만 REVIEW 테이블에 쓰고, 나머지(selectWritableTrade*)는 TRADE/PRODUCT/
- *   SERVICE_REQUEST/USERS 를 전부 읽기 전용으로만 조회한다. 이 읽기 전용 조회는 TRADE 모듈이
- *   아직 없어서 임시로 직접 SQL을 짠 것이다 - 자세한 사유는 constant/TempTradeCode.java 참고.
+ *   SERVICE_REQUEST/USERS 를 전부 읽기 전용으로만 조회한다. 리뷰 가능 거래 전용 조회 계약이
+ *   아직 제공되지 않아 직접 조회하며, 계약 제공 시 교체한다. 자세한 사유는 XML 상단을 참고한다.
  */
 @Mapper
 public interface ReviewMapper {

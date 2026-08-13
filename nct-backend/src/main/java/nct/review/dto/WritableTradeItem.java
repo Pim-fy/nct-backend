@@ -32,7 +32,7 @@ public class WritableTradeItem {
     @JsonIgnore
     private Long productId;
     private Long tradeId;       // 리뷰 등록 대상 거래
-    private String thumbnail;   // TODO: PRODUCT_IMAGE 연동 전까지 항상 null (프론트는 null 정상 처리)
+    private String thumbnail;   // 물건은 PRODUCT_IMAGE, 서비스는 요청 이미지의 대표 경로
     private String title;
     private String dealType;    // "goods" | "service"
     private String partyLabel;  // "판매자" | "구매자" | "제공자" | "요청자"

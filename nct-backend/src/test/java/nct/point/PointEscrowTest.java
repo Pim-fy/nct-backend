@@ -32,6 +32,8 @@ import nct.point.service.PointService;
  * - ⚠️ POINT_LEDGER.PT_LDG_TYPE_CD에 CMM_CODE FK가 걸려 있어, 실DB에 PTLC0013(환불) 코드가
  *   등록되기 전에는 환불 관련 테스트가 FK 위반으로 실패한다 (팀전달_환불코드_정본요청_260720.md의
  *   INSERT를 먼저 적용할 것 — PTLC0012 전환 코드 때와 같은 절차)
+ * - ⚠️ PTLC0014(수수료) 코드도 마찬가지 — 등록 전에는 수수료 차감 테스트가 FK 위반으로 실패한다
+ *   (팀전달_수수료코드_정본요청_260813.md 참조, 2026-08-13 수수료 도입)
  */
 @SpringBootTest
 @Transactional
@@ -102,7 +104,7 @@ class PointEscrowTest {
     // ---------- F-SVC-015 정산가능 전환 ----------
 
     @Test
-    @DisplayName("정산 전환: 제공자 정산가능 +보관금액, 사유에 (수수료 0원), 제공자 알림 1건 (F-SVC-015)")
+    @DisplayName("정산 전환: 제공자 정산가능 +보관금액(전액), 알림은 여기서 안 보냄 (F-SVC-015)")
     void creditEscrowToSettleable() {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
 
@@ -111,13 +113,47 @@ class PointEscrowTest {
         assertThat(credited).isEqualTo(30000); // 금액은 호출자가 아니라 원장(보관금 잔존액)이 결정
         assertThat(pointService.getBalance(providerSn).getSettleableAmt()).isEqualTo(30000);
 
-        // 수수료 0원 명시(F-PAY-008/009)와 알림(제공자 구분)까지 같은 트랜잭션에서 기록됐는지
+        // 적립은 전액(+) 기록 — 수수료는 SettlementService가 deductCommission으로 별도 −행을 남긴다
+        // (팀 합의 2026-08-13 수수료 도입 전의 "(수수료 0원)" 접미사는 제거됨)
         String reason = jdbc.queryForObject("""
                 SELECT PT_LDG_RSN_CN FROM POINT_LEDGER
                 WHERE USR_SN = ? AND PT_LDG_TYPE_CD = 'PTLC0008'
                 """, String.class, providerSn);
-        assertThat(reason).contains("(수수료 0원)");
-        assertThat(notificationService.getUnreadCount(providerSn)).isEqualTo(1);
+        assertThat(reason).isEqualTo("서비스 완료 정산");
+        // 정산 적립 알림은 수수료 계산까지 끝난 뒤 SettlementService가 발행한다 — 이 메서드
+        // 단독 호출로는 알림이 나가지 않는다 (2026-08-13, 총액·수수료·실수령액 병기 문구로 개선)
+        assertThat(notificationService.getUnreadCount(providerSn)).isZero();
+    }
+
+    @Test
+    @DisplayName("수수료 차감: 정산가능 버킷에 FEE(-) 원장 1행, 잔액은 net으로 감소 (팀 합의 2026-08-13)")
+    void deductCommissionRecordsFeeLedger() {
+        // ⚠️ 실DB CMM_CODE에 PTLC0014가 등록돼야 통과한다 (파일 상단 주의사항 참조)
+        pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
+        pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산");
+
+        pointService.deductCommission(providerSn, 3000, RefType.TRADE, trdSn, "거래 수수료 차감 (서비스 10%)");
+
+        // 전액 적립(+30000) 후 수수료(−3000)가 짝으로 남아 잔액은 27,000P
+        assertThat(pointService.getBalance(providerSn).getSettleableAmt()).isEqualTo(27000);
+        Long feeAmt = jdbc.queryForObject("""
+                SELECT SUM(PT_LDG_AMT) FROM POINT_LEDGER
+                WHERE USR_SN = ? AND PT_LDG_TYPE_CD = 'PTLC0014'
+                  AND PT_LDG_REF_TYPE_CD = ? AND PT_LDG_REF_SN = ?
+                """, Long.class, providerSn, RefType.TRADE.getCode(), trdSn);
+        assertThat(feeAmt).isEqualTo(-3000);
+    }
+
+    @Test
+    @DisplayName("수수료 차감: 0원 이하 수수료는 원장 기록 없이 조용히 통과한다 — 소액 정산 반올림 케이스")
+    void deductCommissionSkipsZeroFee() {
+        pointService.deductCommission(providerSn, 0, RefType.TRADE, trdSn, "수수료 0원");
+
+        Integer feeRows = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM POINT_LEDGER
+                WHERE USR_SN = ? AND PT_LDG_TYPE_CD = 'PTLC0014'
+                """, Integer.class, providerSn);
+        assertThat(feeRows).isZero();
     }
 
     @Test

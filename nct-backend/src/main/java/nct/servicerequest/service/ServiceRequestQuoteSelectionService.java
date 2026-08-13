@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
 import nct.provider.service.ActiveProviderGuard;
@@ -30,6 +31,8 @@ public class ServiceRequestQuoteSelectionService {
     private final QuoteSelectionPort quoteSelectionPort;
     private final ActiveProviderGuard activeProviderGuard;
     private final ServiceTradeCreationCoordinator serviceTradeCreationCoordinator;
+    // 담당자6 BJN, 2026-08-13: 견적 선택 알림 발행용 — 아래 selectQuoteAndCreateTrade 참조
+    private final NotificationService notificationService;
 
     @Transactional
     public ServiceRequestQuoteSelectionResponse selectQuoteAndCreateTrade(
@@ -42,8 +45,9 @@ public class ServiceRequestQuoteSelectionService {
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
         boolean alreadyMatched = validateSelectableRequest(request, requesterUsrSn);
 
+        SelectedQuoteResult selectedQuote = null;
         if (!alreadyMatched) {
-            SelectedQuoteResult selectedQuote = quoteSelectionPort.selectQuote(
+            selectedQuote = quoteSelectionPort.selectQuote(
                     quoteId,
                     svcReqSn,
                     requesterUsrSn);
@@ -73,6 +77,17 @@ public class ServiceRequestQuoteSelectionService {
         if (!alreadyMatched && !result.isCreated()) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "공개 요청서에 이미 연결된 거래가 있어 상태 확인이 필요합니다.");
+        }
+
+        // 담당자6 BJN, 2026-08-13: 견적 선택 알림 — 거래 생성이 끝난 이 시점에 거래 참조로
+        // 발행해야 제공자가 알림에서 서비스 거래 상세로 이동할 수 있다(기존에는 견적 참조로
+        // 발행돼 이동 버튼이 안 떴음). 같은 트랜잭션이라 앞 단계가 실패하면 알림도 함께 롤백되고,
+        // 매칭 완료 재호출(alreadyMatched) 경로에서는 중복 알림을 만들지 않는다.
+        if (!alreadyMatched) {
+            notificationService.notifyQuoteSelected(
+                    selectedQuote.providerUsrSn(),
+                    result.getTradeId(),
+                    selectedQuote.amount());
         }
         return new ServiceRequestQuoteSelectionResponse(result.getTradeId());
     }

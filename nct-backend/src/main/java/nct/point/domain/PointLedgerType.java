@@ -29,7 +29,13 @@ public enum PointLedgerType {
      * 보관금전환(ESCROW −)으로 빠졌던 거래대금을 구매자/의뢰자의 사용가능 버킷에 +행으로 되돌린다 —
      * 같은 참조의 ESCROW와 합산하면 0이 되어 "보관금 소멸"이 원장만으로 판정된다
      */
-    REFUND("PTLC0013");
+    REFUND("PTLC0013"),
+    /**
+     * 거래 수수료 차감 (팀 합의 2026-08-13 — 공통코드 PTLC0014 신설, 정본 반영 요청 별도).
+     * 정산 적립(SETTLE +전액) 직후 정산가능 버킷에서 −수수료 행을 짝으로 기록한다 —
+     * 요율은 거래유형별 단일 고정(경매 5%, 서비스 10%)이며 SettlementService가 결정한다
+     */
+    FEE("PTLC0014");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

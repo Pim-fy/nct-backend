@@ -267,9 +267,11 @@ public class NotificationService {
 
     // ---------- 신규 이벤트 발행 계약 (2026-07-24) — 경매(담당자5)·거래(담당자4)·서비스(담당자5)·
     // 운영(담당자7) 쪽에 호출 추가를 요청함(팀전달_알림설정_*_260724.md 3건).
-    // 연결 현황 (2026-08-07 확인): 입찰가 갱신·마감임박(경매), 배송 시작·거래 완료(거래),
+    // 연결 현황 (2026-08-13 확인): 입찰가 갱신·마감임박(경매), 배송 시작·거래 완료(거래),
     // 새 채팅 메시지(채팅), 제공자 승인 결과(제공자)는 호출 연결 완료. 견적 도착/선택·서비스 완료·
-    // 공지 발행·분쟁 접수/판정 6종은 아직 담당 파트 호출 대기 상태 ----------
+    // 공지 발행·분쟁 접수/판정 6종은 아직 담당 파트 호출 대기 상태. 신규 3종(일정 변경/취소 요청,
+    // 서비스 요청 마감)도 계약만 추가된 상태 — 일정 변경/취소는 서비스 거래 담당(4), 서비스 요청
+    // 마감은 서비스 요청 담당(2)이 각자 호출 추가할 예정(황성경 제보, 260813) ----------
 
     /** 입찰가 갱신 — 경매/입찰 담당(5)이 새 최고 입찰 발생 시 호출 (대상: 밀려난 이전 최고 입찰자 등) */
     public void notifyBidUpdated(long usrSn, long auctionId, long newPrice) {
@@ -407,6 +409,22 @@ public class NotificationService {
                 RefType.TRADE, tradeId);
     }
 
+    /** 서비스 거래 일정 변경 요청 — 요청한 쪽의 상대방에게, 서비스 거래 담당(4)이 호출 */
+    public void notifyServiceScheduleChange(long usrSn, long tradeId) {
+        notifyForEvent(usrSn, NotificationEvent.SERVICE_SCHEDULE_CHANGE, NotificationAudience.GENERAL,
+                "일정 변경 요청이 도착했습니다",
+                "거래 상세에서 요청 내용을 확인하세요.",
+                RefType.TRADE, tradeId);
+    }
+
+    /** 서비스 거래 일정 취소 요청 — 요청한 쪽의 상대방에게, 서비스 거래 담당(4)이 호출 */
+    public void notifyServiceScheduleCancellation(long usrSn, long tradeId) {
+        notifyForEvent(usrSn, NotificationEvent.SERVICE_SCHEDULE_CANCELLATION, NotificationAudience.GENERAL,
+                "일정 취소 요청이 도착했습니다",
+                "거래 상세에서 동의 또는 거절해 주세요.",
+                RefType.TRADE, tradeId);
+    }
+
     /** 새 견적 도착 — 서비스 요청자에게, 서비스 매칭 담당(5, 2단계)이 호출 */
     public void notifyNewQuote(long usrSn, long requestId) {
         notifyForEvent(usrSn, NotificationEvent.NEW_QUOTE, NotificationAudience.GENERAL,
@@ -421,6 +439,14 @@ public class NotificationService {
                 "견적이 선택되었습니다",
                 "제출하신 견적이 선택되었습니다.",
                 RefType.QUOTE, quoteId);
+    }
+
+    /** 서비스 요청 마감 — 견적을 제출했으나 선택되지 않은 제공자에게, 서비스 요청 담당(2)이 호출 */
+    public void notifyServiceRequestClosed(long usrSn, long svcReqSn) {
+        notifyForEvent(usrSn, NotificationEvent.SERVICE_REQUEST_CLOSED, NotificationAudience.PROVIDER,
+                "서비스 요청이 마감되었습니다",
+                "제출하신 견적이 선택되지 않았습니다.",
+                RefType.SERVICE_REQUEST, svcReqSn);
     }
 
     /** 서비스 완료 — 서비스 매칭 담당(5, 2단계)이 호출 */

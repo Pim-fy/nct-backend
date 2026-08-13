@@ -39,9 +39,7 @@ import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
 import nct.servicerequest.port.AdminServiceRequestReader;
 import nct.servicerequest.port.AdminServiceRequestCommandPort;
-import nct.servicerequest.port.AdminServiceRequestCommandPort.AdminServiceRequestVisibilityResult;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
-import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 import nct.servicerequest.service.ServiceRequestFormService.ValidatedSubmission;
 
 @Service
@@ -363,11 +361,16 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 || !"SVCC0002".equals(existing.getSvcReqStatusCd())) {
             throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
         }
+        if (serviceRequestMapper.countOpenQuoteSubmissionWindow(svcReqSn) != 1) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "견적 접수가 마감된 서비스 요청입니다.");
+        }
         return new ServiceRequestQuoteTarget(existing.getUsrSn(), existing.getCatSn());
     }
 
     /**
-     * 담당자 7 통합, F-SVC-006·008: 견적 수정·철회·본인 조회에서 현재 카테고리 권한을
+     * 담당자 7 통합, F-SVC-006: 견적 수정·활성 견적 조회에서 현재 카테고리 권한을
      * 다시 확인할 수 있도록 요청자와 카테고리를 읽기 전용으로 제공한다.
      * 요청 상태는 견적 상태 검증과 별개이므로 여기서는 사용 여부만 확인한다.
      */
@@ -479,7 +482,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     /** 요청서 마감 — 공개(SVCC0002) 상태에서만 종료(SVCC0004)로 전환 가능 (F-SVC-003) */
     @Transactional
     public void closeServiceRequest(Long svcReqSn, Long usrSn) {
-        ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+        ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityByIdForUpdate(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
 
         if (!serviceRequest.getUsrSn().equals(usrSn)) {
@@ -501,10 +504,10 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         return serviceRequestMapper.findExpiredOpenServiceRequestIds(limit);
     }
 
-    /** 견적 요청 기간 만료 자동 마감 — 이미 처리됐거나 상태가 바뀐 건은 조용히 넘어간다 (F-SVC-003, 배치 전용) */
+    /** 견적 요청 기간 만료 자동 마감 — 실제 상태 전이 여부를 종료 오케스트레이터에 반환한다. */
     @Transactional
-    public void autoCloseExpiredServiceRequest(Long svcReqSn) {
-        serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
+    public boolean autoCloseExpiredServiceRequest(Long svcReqSn) {
+        return serviceRequestMapper.autoCloseServiceRequest(svcReqSn) == 1;
     }
 
     /** 마감 후 1일 경과 요청서 조회 (자동 삭제 배치 전용) */

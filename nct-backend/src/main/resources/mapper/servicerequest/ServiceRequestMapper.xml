@@ -482,13 +482,61 @@
          LIMIT #{limit}
     </select>
 
+    <!-- 담당자 7 통합 · F-SVC-003/005: 스케줄러 지연 중에도 마감시각 이후 견적 제출을 차단한다. -->
+    <select id="countOpenQuoteSubmissionWindow" resultType="int">
+        SELECT COUNT(*)
+          FROM SERVICE_REQUEST s
+         WHERE s.SVC_REQ_SN = #{svcReqSn}
+           AND s.SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND s.SVC_REQ_USE_YN = 'Y'
+           AND COALESCE(
+                   s.SVC_REQ_DEADLINE_DT,
+                   LEAST(
+                       DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                       COALESCE(
+                           (
+                               SELECT MIN(DATE_ADD(
+                                   STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d'),
+                                   INTERVAL 1 DAY))
+                                 FROM SVC_REQ_ITEM i
+                                 JOIN SVC_REQ_FIELD_DEF f
+                                   ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+                                WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                                  AND f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+                           ),
+                           DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY)
+                       )
+                   )
+               ) &gt; NOW()
+    </select>
+
     <update id="autoCloseServiceRequest">
         /* ServiceRequestMapper.autoCloseServiceRequest */
-        UPDATE SERVICE_REQUEST
+        UPDATE SERVICE_REQUEST s
            SET SVC_REQ_STATUS_CD = 'SVCC0004',
                SVC_REQ_UPDT_ID   = 'SYSTEM'
-         WHERE SVC_REQ_SN = #{svcReqSn}
-           AND SVC_REQ_STATUS_CD = 'SVCC0002'
+         WHERE s.SVC_REQ_SN = #{svcReqSn}
+           AND s.SVC_REQ_STATUS_CD = 'SVCC0002'
+           AND s.SVC_REQ_USE_YN = 'Y'
+           AND COALESCE(
+                   s.SVC_REQ_DEADLINE_DT,
+                   LEAST(
+                       DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                       COALESCE(
+                           (
+                               SELECT MIN(DATE_ADD(
+                                   STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d'),
+                                   INTERVAL 1 DAY))
+                                 FROM SVC_REQ_ITEM i
+                                 JOIN SVC_REQ_FIELD_DEF f
+                                   ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+                                WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                                  AND f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+                           ),
+                           DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY)
+                       )
+                   )
+               ) &lt;= NOW()
     </update>
 
     <!-- ── 마감 후 1일 경과 요청서 조회 (자동 삭제 스케줄러 전용) ──

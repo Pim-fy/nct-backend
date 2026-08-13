@@ -96,6 +96,9 @@ public interface ServiceRequestMapper {
     /** 견적 요청 기간(공개 후 5일, 희망일이 더 빠르면 희망일) 만료된 공개 요청서 목록 */
     List<Long> findExpiredOpenServiceRequestIds(@Param("limit") int limit);
 
+    /** 담당자 7 통합 · F-SVC-003/005: 현재 시각에도 견적 접수가 가능한 공개 요청인지 확인 */
+    int countOpenQuoteSubmissionWindow(@Param("svcReqSn") Long svcReqSn);
+
     /** 견적 요청 기간 만료 자동 마감 — 시스템 배치 전용, 소유자 검증 없이 상태만 확인 */
     int autoCloseServiceRequest(@Param("svcReqSn") Long svcReqSn);
 

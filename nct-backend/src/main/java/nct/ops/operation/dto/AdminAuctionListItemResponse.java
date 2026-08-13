@@ -18,6 +18,7 @@ public class AdminAuctionListItemResponse {
     private AdminMemberIdentityResponse sellerMember;
     private String productStatusCode;
     private String productStatusName;
+    private String productUseYn;
     private String auctionStatusCode;
     private String auctionStatusName;
     private Integer bidCount;

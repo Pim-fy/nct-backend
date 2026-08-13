@@ -66,6 +66,28 @@
              #{qutRegId}, #{qutUpdtId})
     </insert>
 
+    <!-- 담당자 7 통합 · F-SVC-005: 요청 행 잠금 안에서 동일 제공자의 활성 견적 중복을 확인한다. -->
+    <select id="countActiveQuotesByRequestAndProvider" resultType="int">
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN = #{usrSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
+    <select id="countActiveQuotesByServiceRequestId" resultType="int">
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
+    <select id="countTradeLinksByQuoteId" resultType="int">
+        SELECT COUNT(*)
+          FROM TRADE
+         WHERE QUT_SN = #{qutSn}
+    </select>
+
     <!-- ── 견적 단건 조회 (읽기 전용: 소유권 확인·이력 조회 용도) ── -->
     <select id="findQuoteById" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteById */
@@ -114,6 +136,11 @@
                QUT_UPDT_ID = #{updtId}
          WHERE QUT_SN = #{qutSn}
            AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE
+                WHERE QUT_SN = #{qutSn}
+           )
     </update>
 
     <select id="findActiveQuotesByServiceRequestIdForUpdate" resultMap="QuoteEntityMap">
@@ -132,6 +159,20 @@
                QUT_UPDT_ID = #{updtId}
          WHERE SVC_REQ_SN = #{svcReqSn}
            AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <!-- 담당자 7 통합 · F-SVC-003: 요청 마감 시 선택 전 견적을 만료 상태로 함께 전환한다. -->
+    <update id="expireActiveQuotesByServiceRequestId">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0003',
+               QUT_UPDT_ID = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE
+                WHERE TRADE.QUT_SN = QUOTE.QUT_SN
+           )
     </update>
 
     <select id="findSanctionTargetsByMemberForUpdate"

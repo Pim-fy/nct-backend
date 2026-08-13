@@ -86,16 +86,15 @@ public class MemberDeliveryAddressService implements BuyerDeliveryAddressReader 
     public void delete(Long userId, Long deliveryAddressId) {
         Member member = requireMemberForUpdate(userId);
         DeliveryAddress existing = requireOwnedActiveAddress(userId, deliveryAddressId);
+        if (YES.equals(existing.getDefaultYn())) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "기본 배송지는 삭제할 수 없습니다. 다른 배송지를 기본으로 변경한 뒤 삭제해 주세요.");
+        }
+
         String actor = member.getUsrSn().toString();
         if (deliveryAddressMapper.softDelete(userId, deliveryAddressId, actor) == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "배송지 정보가 변경되었습니다. 다시 확인해 주세요.");
-        }
-
-        if (YES.equals(existing.getDefaultYn())) {
-            Long nextDefaultId = deliveryAddressMapper.findFirstActiveId(userId);
-            if (nextDefaultId != null) {
-                deliveryAddressMapper.setDefault(userId, nextDefaultId, actor);
-            }
         }
     }
 

@@ -219,7 +219,7 @@ class AuctionServicePolicyTest {
         assertThat(response.getTradeId()).isEqualTo(900L);
         verify(buyerDeliveryAddressReader).getOwnedActiveAddressSnapshot(40L, 70L);
         verify(notificationService).notifyBidUpdated(35L, 10L, 30000L);
-        verify(notificationService).notifyAuctionResult(40L, 10L, true);
+        verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
         verifyRealtimeEvent("BUY_NOW");
     }
 
@@ -491,7 +491,7 @@ class AuctionServicePolicyTest {
         auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest());
 
         verify(notificationService, never()).notifyBidUpdated(anyLong(), anyLong(), anyLong());
-        verify(notificationService).notifyAuctionResult(40L, 10L, true);
+        verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
     }
 
     @Test
@@ -539,7 +539,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.AUCTION_WIN);
         assertThat(command.getSelectedTradeMethodCode()).isEqualTo("TRDC0009");
         assertThat(command.getSelectedDeliveryAddressId()).isEqualTo(70L);
-        verify(notificationService).notifyAuctionResult(40L, 10L, true);
+        verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
         verifyRealtimeEvent("AUCTION_FINALIZED");
     }
 

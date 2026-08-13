@@ -40,7 +40,8 @@ public class ProviderProfileService {
     public ProviderProfileResponse updateMine(Long userSn, ProviderProfileRequest request) {
         requireActiveProvider(userSn);
         if (request == null) throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        mapper.upsert(userSn, trimToNull(request.getIntroduction()), trimToNull(request.getAvailableArea()), String.valueOf(userSn));
+        mapper.upsert(userSn, trimToNull(request.getIntroduction()), trimToNull(request.getAvailableArea()),
+                request.getProfileFileSn(), String.valueOf(userSn));
         ServiceReviewRatingSummary rating = serviceReviewRatingReader.read(userSn);
         mapper.updateReviewRating(
                 userSn,

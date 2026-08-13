@@ -37,7 +37,8 @@ public interface ProviderProfileMapper {
             @Param("providerUserSns") List<Long> providerUserSns);
 
     int upsert(@Param("userSn") Long userSn, @Param("introduction") String introduction,
-               @Param("availableArea") String availableArea, @Param("actorId") String actorId);
+               @Param("availableArea") String availableArea, @Param("profileFileSn") Long profileFileSn,
+               @Param("actorId") String actorId);
 
     /** 담당자 7 · F-COM-009: 원천 리뷰 집계값으로 검색용 평점 캐시를 갱신한다. */
     int updateReviewRating(

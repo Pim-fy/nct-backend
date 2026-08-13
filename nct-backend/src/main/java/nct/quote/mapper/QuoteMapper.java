@@ -130,4 +130,7 @@ public interface QuoteMapper {
 
     /** 담당자2 소비: 해당 서비스 요청에 견적을 제출한 제공자 USR_SN distinct 목록 (철회 포함) */
     List<Long> findProviderUsrSnBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
+
+    /** 담당자2 소비: 서비스 요청 마감 시 미선택 활성 견적 제공자 USR_SN 목록 (QUTC0001/0002만) */
+    List<Long> findActiveQuoteProvidersBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
 }

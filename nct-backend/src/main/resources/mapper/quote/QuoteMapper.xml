@@ -464,6 +464,15 @@
          WHERE SVC_REQ_SN = #{svcReqSn}
     </select>
 
+    <!-- ── 담당자2 소비: 서비스 요청 마감 시 미선택 활성 견적 제공자 USR_SN (QUTC0001/0002만) ── -->
+    <select id="findActiveQuoteProvidersBySvcReqSn" resultType="java.lang.Long">
+        /* QuoteMapper.findActiveQuoteProvidersBySvcReqSn */
+        SELECT DISTINCT USR_SN
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
     <!-- ── 받은 견적 목록 (요청자용) ─────────────────── -->
     <select id="findQuotesBySvcReqSn" resultMap="ReceivedQuoteResponseMap">
         /* QuoteMapper.findQuotesBySvcReqSn */

@@ -264,7 +264,7 @@ public class AuctionService {
             throw new CustomException(ErrorCode.CONFLICT, "경매 마감 상태가 이미 변경되었습니다.");
         }
         if (AuctionStatusCode.ENDED.equals(finalStatus)) {
-            createAuctionTrade(
+            AuctionTradeCreateResult trade = createAuctionTrade(
                     target,
                     target.getCurrentHighestBidId(),
                     target.getCurrentHighestBidderId(),
@@ -275,7 +275,8 @@ public class AuctionService {
             notificationService.notifyAuctionResult(
                     target.getCurrentHighestBidderId(),
                     auctionId,
-                    true);
+                    true,
+                    trade.getTradeSn());
         } else {
             notificationService.notifyAuctionFailed(target.getSellerId(), auctionId);
         }
@@ -570,7 +571,7 @@ public class AuctionService {
                 selectedTradeMethodCode,
                 selectedDeliveryAddressId);
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, instantBuyPrice);
-        notificationService.notifyAuctionResult(userId, auctionId, true);
+        notificationService.notifyAuctionResult(userId, auctionId, true, trade.getTradeSn());
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
         detail.setTradeId(trade.getTradeSn());
@@ -816,7 +817,7 @@ public class AuctionService {
         }
 
         request.setKeyword(blankToNull(request.getKeyword()));
-        request.setSort(blankToDefault(request.getSort(), "deadline"));
+        request.setSort(blankToDefault(request.getSort(), "latest"));
         request.setTradeMethod(blankToDefault(request.getTradeMethod(), "all"));
         request.setTradeMethodCodes(resolveTradeMethodCodes(request.getTradeMethod()));
 

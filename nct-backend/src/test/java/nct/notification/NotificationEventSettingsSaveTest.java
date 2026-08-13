@@ -58,16 +58,16 @@ class NotificationEventSettingsSaveTest {
     }
 
     @Test
-    @DisplayName("알려진 이벤트 코드 16종 전체를 저장하면 그대로 upsert된다")
+    @DisplayName("알려진 이벤트 코드 19종 전체를 저장하면 그대로 upsert된다")
     void savesAllKnownEventCodes() {
         List<UserNotificationEventSetting> settings = Arrays.stream(NotificationEvent.values())
                 .map(e -> settingOf(e.getCode()))
                 .toList();
-        assertThat(settings).hasSize(16); // NTFC0017~0032
+        assertThat(settings).hasSize(19); // NTFC0017~0035
 
         notificationService.saveEventSettings(USR_SN, settings);
 
-        Mockito.verify(eventSettingMapper, Mockito.times(16))
+        Mockito.verify(eventSettingMapper, Mockito.times(19))
                 .upsert(org.mockito.ArgumentMatchers.any());
     }
 

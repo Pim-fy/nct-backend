@@ -19,6 +19,8 @@ public class ProviderProfileResponse {
     private Long userSn;
     private String displayName;
     private String profileImageUrl;
+    /** 제공자가 직접 올린 프로필 사진 파일번호 — null이면 개인 프로필 사진으로 대체 표시 중임을 뜻한다. */
+    private Long profileFileSn;
     private String introduction;
     private String availableArea;
     private java.math.BigDecimal reviewAverageScore;

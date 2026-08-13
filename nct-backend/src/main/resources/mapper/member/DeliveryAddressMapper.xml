@@ -66,15 +66,6 @@
         LIMIT 1
     </select>
 
-    <select id="findFirstActiveId" resultType="long">
-        SELECT USR_DLVR_ADDR_SN
-        FROM USER_DELIVERY_ADDRESS
-        WHERE USR_SN = #{userId}
-          AND USR_DLVR_USE_YN = 'Y'
-        ORDER BY USR_DLVR_ADDR_SN ASC
-        LIMIT 1
-    </select>
-
     <select id="countActiveByUserId" resultType="int">
         SELECT COUNT(*)
         FROM USER_DELIVERY_ADDRESS

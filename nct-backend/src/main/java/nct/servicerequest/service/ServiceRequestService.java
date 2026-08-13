@@ -20,6 +20,7 @@ import nct.file.service.FileStorageService;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.product.mapper.BannedKeywordMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
 import nct.servicerequest.domain.SvcReqComment;
@@ -54,6 +55,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
     private final ApplicationEventPublisher eventPublisher;
+    private final BannedKeywordMapper bannedKeywordMapper;
 
     // 변경사항 추가는 공개 상태에서만 — 매칭완료 이후로는 요청 내용이 확정된 것으로 보고 막는다
     private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002");
@@ -602,6 +604,12 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
             throw new CustomException(ErrorCode.CONFLICT, "변경사항은 최대 " + MAX_COMMENT_COUNT + "개까지 등록할 수 있습니다.");
         }
 
+        // 상품 변경사항(F-AUC-007)과 동일한 PRODUCT_BANNED_KEYWORD 목록으로 검사한다 —
+        // 공개 상세에 그대로 노출되는 자유 텍스트라 같은 우회 경로가 열려있다.
+        List<String> bannedKeywords = bannedKeywordMapper.findActiveBannedKeywords();
+        checkBannedKeyword(req.getTtl(), "변경사항 제목", bannedKeywords);
+        checkBannedKeyword(req.getCn(), "변경사항 내용", bannedKeywords);
+
         SvcReqComment comment = SvcReqComment.builder()
                 .svcReqSn(svcReqSn)
                 .usrSn(usrSn)
@@ -627,6 +635,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
         return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT);
+    }
+
+    private void checkBannedKeyword(String text, String fieldLabel, List<String> keywords) {
+        if (text == null) return;
+        String lower = text.toLowerCase();
+        keywords.stream()
+                .filter(kwd -> lower.contains(kwd.toLowerCase()))
+                .findFirst()
+                .ifPresent(kwd -> {
+                    throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                            "'" + kwd + "'은(는) 등록할 수 없는 " + fieldLabel + "입니다.");
+                });
     }
 
     // 요청 항목 목록을 순서대로 SVC_REQ_ITEM에 저장

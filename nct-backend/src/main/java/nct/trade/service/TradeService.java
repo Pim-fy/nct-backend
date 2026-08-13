@@ -365,13 +365,18 @@ public class TradeService implements
             long userId,
             ServiceScheduleChangeCommand command) {
         ServiceScheduleChangeCommand normalized = new ServiceScheduleRequestValidator().validateChange(command);
-        validateServiceScheduleRequester(tradeId, userId);
+        ServiceTradeCompletionTarget target = validateServiceScheduleRequester(tradeId, userId);
         tradeMapper.insertStatusHistory(
                 tradeId,
                 IN_PROGRESS,
                 "SCHEDULE_CHANGE|" + userId + "|"
                         + SERVICE_SCHEDULE_AT_FORMAT.format(normalized.requestedScheduleAt())
                         + "|" + normalized.reason());
+        long counterpartUserId = target.getRequesterUserId() == userId
+                ? target.getProviderUserId()
+                : target.getRequesterUserId();
+        // @ai_generated (담당자4 정민재, 2026-08-13): 요청 이력이 저장된 뒤에만 상대방에게 알림을 보내 실패한 요청의 오발송을 막는다.
+        notificationService.notifyServiceScheduleChange(counterpartUserId, tradeId);
     }
 
     /**
@@ -385,7 +390,7 @@ public class TradeService implements
             ServiceScheduleCancellationCommand command) {
         ServiceScheduleCancellationCommand normalized = new ServiceScheduleRequestValidator()
                 .validateCancellation(command);
-        validateServiceScheduleRequester(tradeId, userId);
+        ServiceTradeCompletionTarget target = validateServiceScheduleRequester(tradeId, userId);
         if (tradeMapper.findPendingServiceScheduleCancellation(tradeId) != null) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "상대방의 응답을 기다리는 일정 취소 요청이 이미 있습니다.");
@@ -394,6 +399,10 @@ public class TradeService implements
                 tradeId,
                 IN_PROGRESS,
                 "SCHEDULE_CANCEL_REQUEST|" + userId + "|" + normalized.reason());
+        long counterpartUserId = target.getRequesterUserId() == userId
+                ? target.getProviderUserId()
+                : target.getRequesterUserId();
+        notificationService.notifyServiceScheduleCancellation(counterpartUserId, tradeId);
     }
 
     /** 상대방의 일정 취소 동의·거절을 처리한다. 동의는 취소·환불·정산 종결을 원자적으로 수행한다. */
@@ -414,6 +423,7 @@ public class TradeService implements
         if (!approved) {
             tradeMapper.insertStatusHistory(tradeId, IN_PROGRESS,
                     "SCHEDULE_CANCEL_DECISION|" + pending.historyId() + "|" + userId + "|" + decision);
+            notificationService.notifyServiceScheduleCancellationRejected(pending.requesterUserId(), tradeId);
             return;
         }
 

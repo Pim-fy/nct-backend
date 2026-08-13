@@ -40,6 +40,7 @@ class ProviderProfileServiceTest {
         ProviderProfileRequest request = new ProviderProfileRequest();
         request.setIntroduction("소개");
         request.setAvailableArea("서울");
+        request.setProfileFileSn(55L);
         ProviderProfileResponse saved = profile(101L);
         ServiceReviewRatingSummary rating = new ServiceReviewRatingSummary(new BigDecimal("4.5"), 2L);
         when(serviceReviewRatingReader.read(101L)).thenReturn(rating);
@@ -49,10 +50,10 @@ class ProviderProfileServiceTest {
 
         assertThat(result.getUserSn()).isEqualTo(101L);
         verify(activeProviderGuard).requireActive(101L);
-        verify(mapper).upsert(101L, "소개", "서울", "101");
+        verify(mapper).upsert(101L, "소개", "서울", 55L, "101");
         verify(mapper).updateReviewRating(101L, new BigDecimal("4.5"), 2L, "101");
         InOrder cacheRefreshOrder = inOrder(mapper, serviceReviewRatingReader);
-        cacheRefreshOrder.verify(mapper).upsert(101L, "소개", "서울", "101");
+        cacheRefreshOrder.verify(mapper).upsert(101L, "소개", "서울", 55L, "101");
         cacheRefreshOrder.verify(serviceReviewRatingReader).read(101L);
         cacheRefreshOrder.verify(mapper).updateReviewRating(101L, new BigDecimal("4.5"), 2L, "101");
         cacheRefreshOrder.verify(mapper).findActiveByUserSn(101L);

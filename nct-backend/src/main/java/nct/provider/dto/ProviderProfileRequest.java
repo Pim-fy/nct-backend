@@ -13,4 +13,7 @@ public class ProviderProfileRequest {
 
     @Size(max = 200)
     private String availableArea;
+
+    /** 제공자 프로필 전용 사진 — null이면 개인 프로필 사진으로 대체 표시된다. */
+    private Long profileFileSn;
 }

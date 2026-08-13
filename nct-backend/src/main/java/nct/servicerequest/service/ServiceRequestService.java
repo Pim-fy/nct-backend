@@ -20,7 +20,9 @@ import nct.file.service.FileStorageService;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.product.mapper.BannedKeywordMapper;
+import nct.quote.mapper.QuoteMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
 import nct.servicerequest.domain.SvcReqComment;
@@ -58,6 +60,8 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final FileStorageService fileStorageService;
     private final ApplicationEventPublisher eventPublisher;
     private final BannedKeywordMapper bannedKeywordMapper;
+    private final QuoteMapper quoteMapper;
+    private final NotificationService notificationService;
 
     // 변경사항 추가는 공개 상태에서만 — 매칭완료 이후로는 요청 내용이 확정된 것으로 보고 막는다
     private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002");
@@ -495,6 +499,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         if (updated == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "요청서 상태가 이미 변경되었습니다.");
         }
+        notifyActiveQuoteProviders(svcReqSn);
     }
 
     /** 견적 요청 기간 만료 대상 조회 (F-SVC-003, 배치 전용) */
@@ -506,7 +511,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     /** 견적 요청 기간 만료 자동 마감 — 이미 처리됐거나 상태가 바뀐 건은 조용히 넘어간다 (F-SVC-003, 배치 전용) */
     @Transactional
     public void autoCloseExpiredServiceRequest(Long svcReqSn) {
-        serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
+        int updated = serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
+        if (updated > 0) {
+            notifyActiveQuoteProviders(svcReqSn);
+        }
+    }
+
+    // 마감 시점에 아직 선택되지 않은 활성 견적(제출됨·수정됨)의 제공자 전원에게 마감 알림을 보낸다.
+    // 수동/자동 마감 두 경로가 공유한다 (황성경 제보, 2026-08-13).
+    private void notifyActiveQuoteProviders(Long svcReqSn) {
+        for (Long providerUsrSn : quoteMapper.findActiveQuoteProvidersBySvcReqSn(svcReqSn)) {
+            notificationService.notifyServiceRequestClosed(providerUsrSn, svcReqSn);
+        }
     }
 
     /** 마감 후 1일 경과 요청서 조회 (자동 삭제 배치 전용) */

@@ -102,8 +102,6 @@
             DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d')                        AS completedDate,
             DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
-            CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
-                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001'
                  THEN thumb.THUMBNAIL_PATH
                  ELSE (
@@ -148,9 +146,7 @@
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
             DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d')                        AS completedDate,
             DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
-            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
-            CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
-                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider
+            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
@@ -281,14 +277,8 @@
 
     <!-- 수정·삭제 전 피평가자 식별도 작성자 소유·활성 조건을 통과한 리뷰만 허용한다. -->
     <select id="selectOwnedActiveReviewRatingTarget" resultType="nct.review.dto.ReviewRatingTarget">
-        SELECT R.REVWD_USR_SN AS receiverUserSn,
-               R.RVW_DOMAIN_CD AS domainCode,
-               CASE WHEN R.RVW_DOMAIN_CD = 'RVWC0002'
-                          AND T.TRD_TYPE_CD = 'TRDC0002'
-                          AND T.PRV_USR_SN = R.REVWD_USR_SN
-                    THEN TRUE ELSE FALSE END AS receivedAsServiceProvider
+        SELECT R.REVWD_USR_SN AS receiverUserSn
         FROM REVIEW R
-        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.RVW_SN = #{rvwSn}
           AND R.REVWR_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
@@ -391,36 +381,24 @@
           <include refid="receivedGoodsRoleFilter"/>
     </select>
 
-    <!-- 신뢰지표 집계 (F-COM-009~010) — 리뷰 없으면 totalCount=0, 점수는 null -->
+    <!-- 통합 평점 집계 (F-COM-009) — 리뷰 없으면 totalCount=0, 점수는 null -->
     <select id="selectTrustScore" resultType="nct.review.dto.TrustScoreResponse">
-        /* 리뷰: 신뢰지표 집계 (F-COM-009~010) */
+        /* 리뷰: 통합 평점 집계 (F-COM-009) */
         SELECT
-            COUNT(*)                                                                       AS totalCount,
-            ROUND(AVG(R.RVW_SCORE), 1)                                                    AS totalScore,
-            COUNT(CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN 1 END)                       AS goodsCount,
-            ROUND(AVG(CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN R.RVW_SCORE END), 1)     AS goodsScore,
-            COUNT(CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' THEN 1 END)                       AS serviceCount,
-            ROUND(AVG(CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' THEN R.RVW_SCORE END), 1)     AS serviceScore
+            COUNT(*)                    AS totalCount,
+            ROUND(AVG(R.RVW_SCORE), 1) AS totalScore
         FROM REVIEW R
-        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.REVWD_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
     </select>
 
-    <!-- 제공자 프로필에는 서비스 거래에서 제공자로서 받은 활성 리뷰만 반영한다.
-         기존 리뷰 임시 조회 경계를 따라 TRADE를 읽기 전용 JOIN한다. 담당자4의 거래 리뷰방향
-         bulk/read 포트가 제공되면 ReviewService 조합 계약으로 교체한다. -->
-    <select id="selectServiceReviewRatingSummary" resultType="nct.review.dto.ServiceReviewRatingSummary">
+    <!-- 제공자 검색용 캐시도 회원이 받은 활성 리뷰 전체의 통합 평점을 사용한다. -->
+    <select id="selectReviewRatingSummary" resultType="nct.review.dto.ReviewRatingSummary">
         SELECT COALESCE(ROUND(AVG(R.RVW_SCORE), 1), 0.0) AS averageScore,
                COUNT(*) AS reviewCount
         FROM REVIEW R
-        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.REVWD_USR_SN = #{usrSn}
-          AND R.RVW_DOMAIN_CD = 'RVWC0002'
           AND R.RVW_USE_YN = 'Y'
-          AND T.TRD_TYPE_CD = 'TRDC0002'
-          AND R.REVWR_USR_SN = T.REQ_USR_SN
-          AND T.PRV_USR_SN = R.REVWD_USR_SN
     </select>
 
 </mapper>

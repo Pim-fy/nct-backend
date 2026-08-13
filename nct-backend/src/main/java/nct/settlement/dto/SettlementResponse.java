@@ -21,6 +21,7 @@ public class SettlementResponse {
 
     private final Long id;
     private final Long tradeId;
+    private final String tradeTypeCode;
     private final long amount;
     private final String statusCd;
     private final String statusName;
@@ -31,6 +32,7 @@ public class SettlementResponse {
         return SettlementResponse.builder()
                 .id(s.getStlmSn())
                 .tradeId(s.getTrdSn())
+                .tradeTypeCode(s.getTradeTypeCode())
                 .amount(s.getStlmAmt())
                 .statusCd(s.getStlmStatusCd())
                 .statusName(statusName(s.getStlmStatusCd()))

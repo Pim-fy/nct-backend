@@ -75,6 +75,13 @@
            AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
     </select>
 
+    <select id="countQuotesByRequestAndProvider" resultType="int">
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN = #{usrSn}
+    </select>
+
     <select id="countActiveQuotesByServiceRequestId" resultType="int">
         SELECT COUNT(*)
           FROM QUOTE

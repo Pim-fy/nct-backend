@@ -223,6 +223,73 @@ class ServiceRequestServiceTest {
     }
 
     @Test
+    void returnsArchivedPublicProjectionOnlyToProviderWhoSubmittedQuote() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(1L)
+                .formTemplateSn(10L)
+                .svcReqStatusCd("SVCC0004")
+                .svcReqUseYn('N')
+                .build();
+        ServiceRequestResponse response = ServiceRequestResponse.builder().svcReqSn(1L).build();
+        when(serviceRequestMapper.findServiceRequestEntityById(1L)).thenReturn(Optional.of(existing));
+        when(serviceRequestMapper.findPublicServiceRequestById(1L)).thenReturn(Optional.empty());
+        when(quoteMapper.countQuotesByRequestAndProvider(1L, 8L)).thenReturn(1);
+        when(serviceRequestMapper.findServiceRequestHistoryById(1L)).thenReturn(Optional.of(response));
+        when(itemMapper.findPublicItemContentsBySvcReqSn(1L)).thenReturn(List.of("공개 답변"));
+        when(imageMapper.findImagesBySvcReqSn(1L)).thenReturn(List.of());
+
+        ServiceRequestResponse result = service.getServiceRequest(1L, 8L, true);
+
+        assertThat(result.getItems()).containsExactly("공개 답변");
+        verify(itemMapper, never()).findAllItemContentsBySvcReqSn(1L);
+        verify(formService, never()).getOwnerAddresses(1L);
+    }
+
+    @Test
+    void rejectsArchivedRequestFromProviderWithoutQuote() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(1L)
+                .svcReqStatusCd("SVCC0004")
+                .svcReqUseYn('N')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(1L)).thenReturn(Optional.of(existing));
+        when(serviceRequestMapper.findPublicServiceRequestById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getServiceRequest(1L, 8L, true))
+                .isInstanceOf(CustomException.class);
+
+        verify(serviceRequestMapper, never()).findServiceRequestHistoryById(1L);
+    }
+
+    @Test
+    void returnsArchivedOwnerProjectionToRequestOwner() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(1L)
+                .formTemplateSn(10L)
+                .svcReqStatusCd("SVCC0004")
+                .svcReqUseYn('N')
+                .build();
+        ServiceRequestResponse response = ServiceRequestResponse.builder().svcReqSn(1L).build();
+        when(serviceRequestMapper.findServiceRequestEntityById(1L)).thenReturn(Optional.of(existing));
+        when(serviceRequestMapper.findServiceRequestHistoryById(1L)).thenReturn(Optional.of(response));
+        when(itemMapper.findAllItemContentsBySvcReqSn(1L)).thenReturn(List.of("전체 답변"));
+        when(imageMapper.findImagesBySvcReqSn(1L)).thenReturn(List.of());
+        when(formService.getOwnerAnswers(1L)).thenReturn(List.of());
+        when(formService.getOwnerAddresses(1L)).thenReturn(List.of());
+
+        ServiceRequestResponse result = service.getServiceRequest(1L, 7L, false);
+
+        assertThat(result.getItems()).containsExactly("전체 답변");
+        verify(serviceRequestMapper, never()).findPublicServiceRequestById(1L);
+    }
+
+    @Test
     void returnsPublicProjectionWhenProviderViewsOwnRequest() {
         ServiceRequest existing = ServiceRequest.builder()
                 .svcReqSn(1L)
@@ -349,6 +416,25 @@ class ServiceRequestServiceTest {
     }
 
     @Test
+    void providerCanReadArchivedImageOnlyWhenQuoteIsLinked() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(3L)
+                .svcReqStatusCd("SVCC0004")
+                .svcReqUseYn('N')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(1L)).thenReturn(Optional.of(existing));
+        when(serviceRequestMapper.findPublicServiceRequestById(1L)).thenReturn(Optional.empty());
+        when(quoteMapper.countQuotesByRequestAndProvider(1L, 8L)).thenReturn(1);
+        when(imageMapper.countImageLink(1L, 9L)).thenReturn(1);
+
+        service.requireImageAccess(1L, 9L, 8L, true);
+
+        verify(imageMapper).countImageLink(1L, 9L);
+    }
+
+    @Test
     void validatesImageOwnerAndServiceBeforeLinkingFile() {
         ServiceRequest existing = ServiceRequest.builder()
                 .svcReqSn(1L)
@@ -468,7 +554,6 @@ class ServiceRequestServiceTest {
         when(bannedKeywordMapper.findActiveBannedKeywords()).thenReturn(List.of("금지어"));
         var req = mock(nct.servicerequest.dto.SvcReqCommentRequest.class);
         when(req.getTtl()).thenReturn("이 금지어 포함 제목");
-        when(req.getCn()).thenReturn("내용");
 
         assertThatThrownBy(() -> service.addComment(31L, 7L, req))
                 .isInstanceOf(CustomException.class)
@@ -501,7 +586,8 @@ class ServiceRequestServiceTest {
                 .usrSn(7L)
                 .svcReqStatusCd("SVCC0002")
                 .build();
-        when(serviceRequestMapper.findServiceRequestEntityById(31L)).thenReturn(Optional.of(open));
+        when(serviceRequestMapper.findServiceRequestEntityByIdForUpdate(31L))
+                .thenReturn(Optional.of(open));
         when(serviceRequestMapper.closeServiceRequest(31L, 7L, "7")).thenReturn(1);
         when(quoteMapper.findActiveQuoteProvidersBySvcReqSn(31L)).thenReturn(List.of(101L, 102L));
 

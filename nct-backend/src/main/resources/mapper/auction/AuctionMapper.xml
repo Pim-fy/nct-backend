@@ -489,6 +489,7 @@
             a.AUC_STATUS_CD AS auctionStatusCode,
             a.AUC_START_DT AS startAt,
             a.AUC_END_DT AS endAt,
+            a.AUC_UPDT_DT AS updatedAt,
             NOW() AS databaseNow,
             trade.TRD_SN AS tradeSn,
             trade.TRD_STATUS_CD AS tradeStatusCode
@@ -728,7 +729,7 @@
                AUC_UPDT_DT = NOW()
          WHERE AUC_SN = #{auctionId}
            AND AUC_STATUS_CD = #{expectedStatusCode}
-           AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006')
+           AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006', 'AUCC9001')
     </update>
 
     <update id="pauseAuctionForAdmin">
@@ -769,6 +770,8 @@
                END,
                AUC_END_DT = CASE
                    WHEN #{statusCode} IN ('AUCC0001', 'AUCC0002')
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   WHEN #{statusCode} = 'AUCC9001'
                        THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
                    ELSE AUC_END_DT
                END,

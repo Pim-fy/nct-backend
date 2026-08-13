@@ -13,6 +13,8 @@ public class Settlement {
 
     private Long stlmSn;
     private Long trdSn;
+    /** 담당자 7 · 거래 상세 경로 구분용 거래유형(물건 TRDC0001 / 서비스 TRDC0002). */
+    private String tradeTypeCode;
     /** 정산대상(판매자/제공자) 회원일련번호 */
     private Long usrSn;
     private long stlmAmt;

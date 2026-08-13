@@ -140,7 +140,8 @@
                </when>
                <when test="filterType == 'ACTIVE'">
                    AND p.PRD_STATUS_CD = 'PRDC0002'
-                   AND a.AUC_STATUS_CD = 'AUCC0002'
+                   <!-- 담당자 7 · 임시 제재/관리자 일시중지는 종료가 아니라 재개 가능한 진행 건이다. -->
+                   AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0013', 'AUCC9001')
                </when>
                <when test="filterType == 'TRADING'">
                    AND (t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
@@ -181,7 +182,8 @@
                             OR (p.PRD_STATUS_CD = 'PRDC0002'
                                AND a.AUC_STATUS_CD = 'AUCC0001') THEN 1 ELSE 0 END), 0) AS reserved,
             COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0002'
-                               AND a.AUC_STATUS_CD = 'AUCC0002' THEN 1 ELSE 0 END), 0) AS active,
+                               AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0013', 'AUCC9001')
+                              THEN 1 ELSE 0 END), 0) AS active,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                                OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL) THEN 1 ELSE 0 END), 0) AS trading,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0007' THEN 1 ELSE 0 END), 0) AS dispute,

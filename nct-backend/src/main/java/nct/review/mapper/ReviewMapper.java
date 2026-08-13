@@ -12,7 +12,7 @@ import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.ReviewRatingTarget;
-import nct.review.dto.ServiceReviewRatingSummary;
+import nct.review.dto.ReviewRatingSummary;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 
@@ -85,9 +85,9 @@ public interface ReviewMapper {
             @Param("dealType") String dealType,
             @Param("role") String role);
 
-    /** 신뢰지표 집계 (F-COM-009~010, 담당자4 정민재 소비) */
+    /** 통합 평점 집계 (F-COM-009, 담당자4 정민재 소비) */
     TrustScoreResponse selectTrustScore(@Param("usrSn") long usrSn);
 
-    /** 제공자로서 받은 활성 서비스 리뷰의 평균 별점과 리뷰 수를 계산한다. */
-    ServiceReviewRatingSummary selectServiceReviewRatingSummary(@Param("usrSn") long usrSn);
+    /** 회원이 받은 활성 리뷰 전체의 평균 별점과 리뷰 수를 계산한다. */
+    ReviewRatingSummary selectReviewRatingSummary(@Param("usrSn") long usrSn);
 }

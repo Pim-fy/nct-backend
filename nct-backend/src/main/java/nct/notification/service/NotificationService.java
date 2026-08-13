@@ -618,12 +618,23 @@ public class NotificationService {
                 null, null);
     }
 
-    /** 보관금 정산 적립 알림 (F-SVC-015) — PointService.creditEscrowToSettleable가 호출. 대금을 받는 쪽(제공자 업무)이라 PROVIDER */
-    public void notifyEscrowSettled(long usrSn, long amt, RefType refType, long refSn) {
+    /**
+     * 보관금 정산 적립 알림 (F-SVC-015) — SettlementService.completeInternal이 수수료 계산까지
+     * 끝낸 뒤 호출한다(대금을 받는 쪽 업무라 PROVIDER). 2026-08-13: 적립 전액만 보여주던 문구가
+     * 수수료 차감 사실을 가려 오해를 샀다는 사용자 피드백으로, 총액·수수료·실수령액을 한 문장에
+     * 담는 문구로 변경(원래는 PointService.creditEscrowToSettleable이 전액만 알고 발행했으나,
+     * 수수료는 이후 SettlementService가 계산하므로 발행 시점을 그쪽으로 옮겼다).
+     */
+    public void notifyEscrowSettled(long usrSn, long grossAmt, long feeAmt, RefType refType, long refSn) {
+        long netAmt = grossAmt - feeAmt;
+        String content = feeAmt > 0
+                ? String.format("정산대금 %,dP 중 수수료 %,dP를 제외한 %,dP가 정산 가능 포인트로 적립되었습니다.",
+                        grossAmt, feeAmt, netAmt)
+                : String.format("거래대금 %,dP가 정산 가능 포인트로 적립되었습니다.", grossAmt);
         notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
                 NotificationAudience.PROVIDER,
                 "정산 가능 포인트 적립",
-                String.format("거래대금 %,dP가 정산 가능 포인트로 적립되었습니다.", amt),
+                content,
                 refType, refSn);
     }
 

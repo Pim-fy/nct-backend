@@ -104,7 +104,7 @@ class PointEscrowTest {
     // ---------- F-SVC-015 정산가능 전환 ----------
 
     @Test
-    @DisplayName("정산 전환: 제공자 정산가능 +보관금액(전액), 제공자 알림 1건 (F-SVC-015)")
+    @DisplayName("정산 전환: 제공자 정산가능 +보관금액(전액), 알림은 여기서 안 보냄 (F-SVC-015)")
     void creditEscrowToSettleable() {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
 
@@ -120,7 +120,9 @@ class PointEscrowTest {
                 WHERE USR_SN = ? AND PT_LDG_TYPE_CD = 'PTLC0008'
                 """, String.class, providerSn);
         assertThat(reason).isEqualTo("서비스 완료 정산");
-        assertThat(notificationService.getUnreadCount(providerSn)).isEqualTo(1);
+        // 정산 적립 알림은 수수료 계산까지 끝난 뒤 SettlementService가 발행한다 — 이 메서드
+        // 단독 호출로는 알림이 나가지 않는다 (2026-08-13, 총액·수수료·실수령액 병기 문구로 개선)
+        assertThat(notificationService.getUnreadCount(providerSn)).isZero();
     }
 
     @Test

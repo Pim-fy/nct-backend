@@ -403,8 +403,9 @@ public class PointService {
         insertLedger(providerSn, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
                 bal.getSettleableAmt() + amt, refType, refSn, reason);
 
-        // 같은 트랜잭션 안에서 알림까지 기록 — 정산대금을 받는 쪽(제공자 업무)이라 PROVIDER 구분
-        notificationService.notifyEscrowSettled(providerSn, amt, refType, refSn);
+        // 알림은 여기서 발행하지 않는다 — 수수료(경매 5%/서비스 10%)를 아는 건 호출자
+        // (SettlementService)뿐이라, 총액·수수료·실수령액을 한 문장에 담으려면 수수료 차감까지
+        // 끝난 뒤 호출자가 발행해야 한다 (담당자6 BJN, 2026-08-13 — 알림 문구 개선)
         return amt;
     }
 

@@ -132,7 +132,11 @@ public class SettlementService {
                 escrowReference.refType(), escrowReference.refSn(),
                 "거래 수수료 차감 (" + (materialTrade ? "경매 5%" : "서비스 10%")
                         + ", 정산번호 " + stlmSn + ")");
-        // 정산 적립 알림은 creditEscrowToSettleable 내부에서 함께 발행한다.
+
+        // 정산 적립 알림 — 수수료 계산이 끝난 이 시점에 발행해야 총액·수수료·실수령액을 한 문장에
+        // 담을 수 있다 (2026-08-13, 알림 문구 개선. 예전엔 PointService가 전액만 알고 발행했음)
+        notificationService.notifyEscrowSettled(s.getUsrSn(), creditedAmount, fee,
+                escrowReference.refType(), escrowReference.refSn());
     }
 
     private EscrowReference resolveEscrowReference(long trdSn) {

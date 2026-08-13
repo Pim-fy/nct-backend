@@ -168,6 +168,8 @@ class SettlementServiceTest {
                 RefType.BID,
                 801L,
                 "거래 수수료 차감 (경매 5%, 정산번호 501)");
+        // 정산 적립 알림 — 총액·수수료가 확정된 이 시점에 발행 (2026-08-13 문구 개선)
+        verify(notificationService).notifyEscrowSettled(10L, 30_000L, 1_500L, RefType.BID, 801L);
         verify(notificationService, never())
                 .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }
@@ -211,6 +213,7 @@ class SettlementServiceTest {
                 RefType.TRADE,
                 91L,
                 "거래 수수료 차감 (서비스 10%, 정산번호 501)");
+        verify(notificationService).notifyEscrowSettled(10L, 30_000L, 3_000L, RefType.TRADE, 91L);
         verify(notificationService, never())
                 .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }
@@ -248,6 +251,7 @@ class SettlementServiceTest {
                 RefType.BID,
                 801L,
                 "거래 수수료 차감 (경매 5%, 정산번호 501)");
+        verify(notificationService).notifyEscrowSettled(10L, 30_001L, 1_500L, RefType.BID, 801L);
     }
 
     @Test
@@ -300,9 +304,11 @@ class SettlementServiceTest {
                 .isInstanceOf(SettlementException.class)
                 .hasMessageContaining("정산 금액과 보관금 잔액");
 
-        // 정합성 검증에 걸리면 수수료 차감까지 진행되지 않는다 (전액 롤백 경로)
+        // 정합성 검증에 걸리면 수수료 차감·정산 알림까지 진행되지 않는다 (전액 롤백 경로)
         verify(pointService, never()).deductCommission(
                 anyLong(), anyLong(), any(), anyLong(), anyString());
+        verify(notificationService, never())
+                .notifyEscrowSettled(anyLong(), anyLong(), anyLong(), any(), anyLong());
         verify(notificationService, never())
                 .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }

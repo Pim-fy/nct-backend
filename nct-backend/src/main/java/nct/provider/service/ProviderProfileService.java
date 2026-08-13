@@ -12,16 +12,16 @@ import nct.global.exception.ErrorCode;
 import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
 import nct.provider.mapper.ProviderProfileMapper;
-import nct.review.dto.ServiceReviewRatingSummary;
-import nct.review.port.ServiceReviewRatingReader;
+import nct.review.dto.ReviewRatingSummary;
+import nct.review.port.ReviewRatingReader;
 
-/** 담당자 7 · F-PROV-004/F-COM-009: 제공자 프로필과 서비스 리뷰 평균 캐시를 관리한다. */
+/** 담당자 7 · F-PROV-004/F-COM-009: 제공자 프로필과 통합 평점 캐시를 관리한다. */
 @Service
 @RequiredArgsConstructor
 public class ProviderProfileService {
     private final ProviderProfileMapper mapper;
     private final ActiveProviderGuard activeProviderGuard;
-    private final ServiceReviewRatingReader serviceReviewRatingReader;
+    private final ReviewRatingReader reviewRatingReader;
 
     @Transactional(readOnly = true)
     public ProviderProfileResponse getMine(Long userSn) {
@@ -42,7 +42,7 @@ public class ProviderProfileService {
         if (request == null) throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         mapper.upsert(userSn, trimToNull(request.getIntroduction()), trimToNull(request.getAvailableArea()),
                 request.getProfileFileSn(), String.valueOf(userSn));
-        ServiceReviewRatingSummary rating = serviceReviewRatingReader.read(userSn);
+        ReviewRatingSummary rating = reviewRatingReader.read(userSn);
         mapper.updateReviewRating(
                 userSn,
                 rating.getAverageScore(),

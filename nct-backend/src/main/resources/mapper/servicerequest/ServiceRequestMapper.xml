@@ -160,6 +160,16 @@
            AND s.SVC_REQ_USE_YN = 'Y'
     </select>
 
+    <!-- 담당자 7 · F-SVC-006: 본인 또는 해당 견적 작성자에게만 서비스 계층에서 제한해 제공하는 이력 projection. -->
+    <select id="findServiceRequestHistoryById" resultMap="ServiceRequestResponseMap">
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
+               s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+         WHERE s.SVC_REQ_SN = #{svcReqSn}
+    </select>
+
     <!-- 제공자 상세는 현재 견적 접수 중인 공개 상태만 조회한다. -->
     <select id="findPublicServiceRequestById" resultMap="ServiceRequestResponseMap">
         /* ServiceRequestMapper.findPublicServiceRequestById */

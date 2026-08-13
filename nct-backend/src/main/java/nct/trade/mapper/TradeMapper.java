@@ -28,6 +28,7 @@ import nct.trade.dto.ServiceTradeListItem;
 import nct.trade.dto.ServiceScheduleHistoryItem;
 import nct.trade.dto.ServiceScheduleCancellationPending;
 import nct.trade.dto.AdminServiceTradeSummary;
+import nct.trade.dto.AdminReportTradeReference;
 
 /** 거래 생성과 본인 거래 조회를 담당하는 MyBatis 매퍼다. */
 @Mapper
@@ -128,6 +129,10 @@ public interface TradeMapper {
     /** 담당자 7 · F-OPS-021: 서비스 요청별 거래·진행 중 분쟁 상태를 한 번에 조회합니다. */
     List<AdminServiceTradeSummary> findAdminServiceTradeSummaries(
             @Param("serviceRequestIds") Collection<Long> serviceRequestIds);
+
+    /** 담당자 7 · F-OPS-007: 자동 신고 거래 번호의 원본 연결 정보를 배치 조회합니다. */
+    List<AdminReportTradeReference> findAdminReportTradeReferences(
+            @Param("tradeSns") Collection<Long> tradeSns);
 
     /** MemberService가 조회한 낙찰자 배송정보를 거래 시점 스냅샷으로 저장한다. */
     int insertDeliverySnapshot(

@@ -49,6 +49,9 @@ import nct.ops.security.port.SensitiveDetectionReportPort;
 import nct.ops.security.port.SensitiveDetectionReportResult;
 import nct.product.dto.InquiryReportTarget;
 import nct.product.service.ProductService;
+import nct.servicerequest.port.ServiceRequestQuoteReader;
+import nct.trade.dto.AdminReportTradeReference;
+import nct.trade.port.AdminReportTradeReferenceReader;
 
 @Service
 @RequiredArgsConstructor
@@ -76,6 +79,16 @@ public class AbuseReportService implements
     static final String PRODUCT_COMMENT_REFERENCE_TYPE = "REFC0012";
     static final String AUCTION_REFERENCE_TYPE = "REFC0003";
     static final String TRADE_REFERENCE_TYPE = "REFC0005";
+    static final String SERVICE_REQUEST_REFERENCE_TYPE = "REFC0007";
+    static final String SYSTEM_SETTING_REFERENCE_TYPE = "REFC0010";
+    static final String NOTICE_REFERENCE_TYPE = "REFC0011";
+    static final String CUSTOMER_INQUIRY_REFERENCE_TYPE = "REFC0013";
+    private static final String AUCTION_DETAIL_TYPE = "AUCTION";
+    private static final String SERVICE_REQUEST_DETAIL_TYPE = "SERVICE_REQUEST";
+    private static final String SERVICE_TRADE_DETAIL_TYPE = "SERVICE_TRADE";
+    private static final String SYSTEM_SETTING_DETAIL_TYPE = "SYSTEM_SETTING";
+    private static final String NOTICE_DETAIL_TYPE = "NOTICE";
+    private static final String CUSTOMER_INQUIRY_DETAIL_TYPE = "CUSTOMER_INQUIRY";
 
     private static final String REPORT_TYPE_GROUP = "ABRG01";
     private static final String REPORT_STATUS_GROUP = "ABRG02";
@@ -105,6 +118,8 @@ public class AbuseReportService implements
 
     private final AbuseReportMapper abuseReportMapper;
     private final AuctionReferenceTitleReader auctionReferenceTitleReader;
+    private final ServiceRequestQuoteReader serviceRequestQuoteReader;
+    private final AdminReportTradeReferenceReader tradeReferenceReader;
     private final ReferenceDataService referenceDataService;
     private final AbuseReportReferenceValidationService referenceValidationService;
     private final AuditLogPort auditLogPort;
@@ -561,7 +576,7 @@ public class AbuseReportService implements
     public List<AdminAbuseReportResponse> getPendingReports() {
         List<AdminAbuseReportResponse> reports =
                 abuseReportMapper.findPendingReports(RECEIVED_STATUS, PROCESSING_STATUS);
-        enrichAdminAuctionTargetNames(reports);
+        enrichAdminReferenceSummaries(reports);
         return reports;
     }
 
@@ -604,7 +619,7 @@ public class AbuseReportService implements
                         normalizedCaseType,
                         offset,
                         size);
-        enrichAdminAuctionTargetNames(content);
+        enrichAdminReferenceSummaries(content);
         return PageResponse.<AdminAbuseReportResponse>builder()
                 .content(content)
                 .totalCount(total)
@@ -625,7 +640,7 @@ public class AbuseReportService implements
         if (report == null) {
             throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
         }
-        enrichAdminAuctionTargetNames(List.of(report));
+        enrichAdminReferenceSummaries(List.of(report));
         report.setFiles(abuseReportMapper.findReportFiles(reportSn));
         return report;
     }
@@ -672,6 +687,185 @@ public class AbuseReportService implements
                 report.getTargetName(),
                 report::setTargetName,
                 titles));
+    }
+
+    /** 담당자 7 · F-OPS-007: 신고 참조 번호를 실제 제목과 관리자 상세 이동 대상으로 조립합니다. */
+    private void enrichAdminReferenceSummaries(List<AdminAbuseReportResponse> reports) {
+        if (reports == null || reports.isEmpty()) {
+            return;
+        }
+
+        enrichAdminTradeReferences(reports);
+        enrichAdminAuctionTargetNames(reports);
+
+        List<Long> serviceRequestIds = reports.stream()
+                .map(this::serviceRequestIdForReference)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, String> serviceRequestTitles = serviceRequestIds.isEmpty()
+                ? Map.of()
+                : serviceRequestQuoteReader.findTitles(serviceRequestIds);
+
+        List<Long> productIds = reports.stream()
+                .filter(report -> TRADE_REFERENCE_TYPE.equals(report.getReferenceTypeCode()))
+                .filter(report -> report.getServiceRequestSn() == null)
+                .map(AdminAbuseReportResponse::getProductSn)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, Long> auctionIdsByProduct = productIds.isEmpty()
+                ? Map.of()
+                : auctionReferenceTitleReader.findAuctionIdsByProductIds(productIds);
+        Map<Long, String> auctionTitles = auctionIdsByProduct.isEmpty()
+                ? Map.of()
+                : auctionReferenceTitleReader.findTitles(
+                        auctionIdsByProduct.values().stream().distinct().toList());
+
+        reports.forEach(report -> applyAdminReferenceSummary(
+                report,
+                serviceRequestTitles,
+                auctionIdsByProduct,
+                auctionTitles));
+    }
+
+    private void enrichAdminTradeReferences(List<AdminAbuseReportResponse> reports) {
+        List<Long> unresolvedTradeSns = reports.stream()
+                .filter(report -> report != null
+                        && TRADE_REFERENCE_TYPE.equals(report.getReferenceTypeCode()))
+                .filter(report -> report.getTradeSn() == null
+                        || (report.getProductSn() == null && report.getServiceRequestSn() == null))
+                .map(AdminAbuseReportResponse::getReferenceSn)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (unresolvedTradeSns.isEmpty()) {
+            return;
+        }
+
+        Map<Long, AdminReportTradeReference> references =
+                tradeReferenceReader.findByTradeSns(unresolvedTradeSns);
+        reports.forEach(report -> applyTradeReference(report, references));
+    }
+
+    private void applyTradeReference(
+            AdminAbuseReportResponse report,
+            Map<Long, AdminReportTradeReference> references) {
+        if (report == null || !TRADE_REFERENCE_TYPE.equals(report.getReferenceTypeCode())) {
+            return;
+        }
+        Long referenceSn = report.getReferenceSn();
+        if (referenceSn == null) {
+            return;
+        }
+        AdminReportTradeReference reference = references.get(referenceSn);
+        if (reference == null) {
+            return;
+        }
+        if (report.getTradeSn() == null) {
+            report.setTradeSn(reference.getTradeSn());
+        }
+        if (report.getProductSn() == null) {
+            report.setProductSn(reference.getProductSn());
+        }
+        if (report.getServiceRequestSn() == null) {
+            report.setServiceRequestSn(reference.getServiceRequestSn());
+        }
+    }
+
+    private Long serviceRequestIdForReference(AdminAbuseReportResponse report) {
+        if (report == null) {
+            return null;
+        }
+        if (SERVICE_REQUEST_REFERENCE_TYPE.equals(report.getReferenceTypeCode())) {
+            return report.getReferenceSn();
+        }
+        if (TRADE_REFERENCE_TYPE.equals(report.getReferenceTypeCode())) {
+            return report.getServiceRequestSn();
+        }
+        return null;
+    }
+
+    private void applyAdminReferenceSummary(
+            AdminAbuseReportResponse report,
+            Map<Long, String> serviceRequestTitles,
+            Map<Long, Long> auctionIdsByProduct,
+            Map<Long, String> auctionTitles) {
+        report.setReferenceTitle(trimToNull(report.getTargetName()));
+
+        String referenceTypeCode = report.getReferenceTypeCode();
+        if (AUCTION_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            report.setReferenceDetailType(AUCTION_DETAIL_TYPE);
+            report.setReferenceDetailSn(report.getReferenceSn());
+            return;
+        }
+        if (SERVICE_REQUEST_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            report.setReferenceTitle(firstNonBlank(
+                    serviceRequestTitles.get(report.getReferenceSn()),
+                    report.getReferenceTitle()));
+            report.setReferenceDetailType(SERVICE_REQUEST_DETAIL_TYPE);
+            report.setReferenceDetailSn(report.getReferenceSn());
+            return;
+        }
+        if (TRADE_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            applyTradeReferenceSummary(
+                    report,
+                    serviceRequestTitles,
+                    auctionIdsByProduct,
+                    auctionTitles);
+            return;
+        }
+        if (SYSTEM_SETTING_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            report.setReferenceTitle("시스템 설정");
+            report.setReferenceDetailType(SYSTEM_SETTING_DETAIL_TYPE);
+            report.setReferenceDetailSn(report.getReferenceSn());
+            return;
+        }
+        if (NOTICE_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            report.setReferenceDetailType(NOTICE_DETAIL_TYPE);
+            report.setReferenceDetailSn(report.getReferenceSn());
+            return;
+        }
+        if (CUSTOMER_INQUIRY_REFERENCE_TYPE.equals(referenceTypeCode)) {
+            report.setReferenceDetailType(CUSTOMER_INQUIRY_DETAIL_TYPE);
+            report.setReferenceDetailSn(report.getReferenceSn());
+        }
+    }
+
+    private void applyTradeReferenceSummary(
+            AdminAbuseReportResponse report,
+            Map<Long, String> serviceRequestTitles,
+            Map<Long, Long> auctionIdsByProduct,
+            Map<Long, String> auctionTitles) {
+        if (report.getServiceRequestSn() != null) {
+            report.setReferenceTitle(firstNonBlank(
+                    serviceRequestTitles.get(report.getServiceRequestSn()),
+                    report.getReferenceTitle()));
+            report.setReferenceDetailType(SERVICE_TRADE_DETAIL_TYPE);
+            report.setReferenceDetailSn(firstNonNull(report.getTradeSn(), report.getReferenceSn()));
+            return;
+        }
+
+        Long productSn = report.getProductSn();
+        if (productSn == null) {
+            return;
+        }
+        Long auctionId = auctionIdsByProduct.get(productSn);
+        if (auctionId == null) {
+            return;
+        }
+        report.setReferenceTitle(firstNonBlank(auctionTitles.get(auctionId), report.getReferenceTitle()));
+        report.setReferenceDetailType(AUCTION_DETAIL_TYPE);
+        report.setReferenceDetailSn(auctionId);
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        String normalized = trimToNull(preferred);
+        return normalized == null ? trimToNull(fallback) : normalized;
+    }
+
+    private Long firstNonNull(Long preferred, Long fallback) {
+        return preferred == null ? fallback : preferred;
     }
 
     private boolean shouldResolveAuctionTarget(

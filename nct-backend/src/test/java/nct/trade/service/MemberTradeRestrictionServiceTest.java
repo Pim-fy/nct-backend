@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import nct.settlement.service.SettlementService;
 import nct.trade.dto.MemberActiveTradeTarget;
 import nct.trade.mapper.TradeMapper;
+import nct.trade.port.AdminServiceTradeCancellationPort;
 import nct.trade.port.MemberTradeRestrictionCommand;
 
 /** 담당자 7 · F-OPS-020: 실제 전이된 거래만 이력·정산 보류로 연결되는지 검증합니다. */
@@ -24,12 +25,16 @@ class MemberTradeRestrictionServiceTest {
 
     @Mock private TradeMapper tradeMapper;
     @Mock private SettlementService settlementService;
+    @Mock private AdminServiceTradeCancellationPort serviceTradeCancellationPort;
 
     private MemberTradeRestrictionService service;
 
     @BeforeEach
     void setUp() {
-        service = new MemberTradeRestrictionService(tradeMapper, settlementService);
+        service = new MemberTradeRestrictionService(
+                tradeMapper,
+                settlementService,
+                serviceTradeCancellationPort);
     }
 
     @Test

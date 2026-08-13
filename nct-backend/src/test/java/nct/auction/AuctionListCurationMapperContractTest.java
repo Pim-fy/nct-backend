@@ -40,10 +40,12 @@ class AuctionListCurationMapperContractTest {
     }
 
     @Test
-    @DisplayName("공개 경매 목록은 종료 경매를 포함하고 진행 경매 뒤에 배치한다")
-    void publicAuctionListIncludesEndedAuctionsAfterOpenAuctions() {
+    @DisplayName("기본 공개 목록은 종료 경매를 제외하고 검색 결과에는 뒤쪽에 포함한다")
+    void publicAuctionListIncludesEndedAuctionsOnlyForSearchByDefault() {
         assertThat(normalizedMapperXml)
+                .contains("condition.keyword != null")
                 .contains("a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0003')")
+                .contains("a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')")
                 .contains("condition.statusEnded")
                 .contains("CASE WHEN a.AUC_STATUS_CD = 'AUCC0003' THEN 1 ELSE 0 END ASC");
     }
@@ -53,7 +55,7 @@ class AuctionListCurationMapperContractTest {
     void latestSortUsesAuctionRegistrationDate() {
         assertThat(normalizedMapperXml)
                 .contains("condition.sort == 'latest'")
-                .contains("ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC");
+                .contains("a.AUC_REG_DT DESC, a.AUC_SN DESC");
     }
 
     @Test
@@ -61,6 +63,6 @@ class AuctionListCurationMapperContractTest {
     void favoriteSortUsesFavoriteCount() {
         assertThat(normalizedMapperXml)
                 .contains("condition.sort == 'favoritesDesc'")
-                .contains("ORDER BY COALESCE(favorite.FAVORITE_COUNT, 0) DESC, a.AUC_SN DESC");
+                .contains("COALESCE(favorite.FAVORITE_COUNT, 0) DESC, a.AUC_SN DESC");
     }
 }

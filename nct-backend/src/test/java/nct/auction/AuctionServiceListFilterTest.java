@@ -67,9 +67,22 @@ class AuctionServiceListFilterTest {
     }
 
     @Test
-    void includesEndedAuctionsWhenNoStatusFilterIsSelected() {
+    void excludesEndedAuctionsWhenNoStatusOrKeywordIsSelected() {
         when(auctionMapper.countAuctions(any())).thenReturn(0L);
         AuctionListRequest request = new AuctionListRequest();
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.isStatusReady()).isTrue();
+        assertThat(request.isStatusActive()).isTrue();
+        assertThat(request.isStatusEnded()).isFalse();
+    }
+
+    @Test
+    void includesEndedAuctionsWhenKeywordIsProvided() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setKeyword("무선 마우스");
 
         auctionService.findAuctions(request);
 

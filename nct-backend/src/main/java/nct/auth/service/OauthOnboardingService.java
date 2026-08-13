@@ -62,9 +62,14 @@ public class OauthOnboardingService {
         String telno = normalizeTelno(request.getTelno());
         String address = normalizeOptionalText(request.getAddress());
         String detailAddress = normalizeOptionalText(request.getDetailAddress());
+        String zip = normalizeOptionalText(request.getZip());
         String bankName = normalizeOptionalText(request.getBankName());
         String accountNo = normalizeOptionalText(request.getAccountNo());
+        requireCompletePair(address, zip);
         requireCompletePair(bankName, accountNo);
+        if (detailAddress != null && address == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
 
         AuthMember member;
         try {
@@ -77,6 +82,7 @@ public class OauthOnboardingService {
                                 .telno(telno)
                                 .address(address)
                                 .detailAddress(detailAddress)
+                                .zip(zip)
                                 .bankName(bankName)
                                 .accountNo(accountNo)
                                 .build());

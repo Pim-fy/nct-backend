@@ -52,11 +52,13 @@ class MemberAuthAdapterTest {
     }
 
     @Test
-    void OAuth_선택정보_다섯개를_암호화한_값으로_Mapper에_전달한다() {
-        OAuthProfile profile = profile("01012345678", "서울시 종로구", "101동", "에누리은행", "123-456-789");
+    void OAuth_가입정보_여섯개를_암호화한_값으로_Mapper에_전달한다() {
+        OAuthProfile profile = profile(
+                "01012345678", "서울시 종로구", "101동", "03123", "에누리은행", "123-456-789");
         when(fieldCryptoService.encrypt("01012345678")).thenReturn("enc-telno");
         when(fieldCryptoService.encrypt("서울시 종로구")).thenReturn("enc-address");
         when(fieldCryptoService.encrypt("101동")).thenReturn("enc-detail-address");
+        when(fieldCryptoService.encrypt("03123")).thenReturn("enc-zip");
         when(fieldCryptoService.encrypt("에누리은행")).thenReturn("enc-bank-name");
         when(fieldCryptoService.encrypt("123-456-789")).thenReturn("enc-account-no");
 
@@ -68,18 +70,21 @@ class MemberAuthAdapterTest {
         assertThat(savedMember.getUsrTelno()).isEqualTo("enc-telno");
         assertThat(savedMember.getUsrAddr()).isEqualTo("enc-address");
         assertThat(savedMember.getUsrDaddr()).isEqualTo("enc-detail-address");
+        assertThat(savedMember.getUsrZip()).isEqualTo("enc-zip");
         assertThat(savedMember.getUsrBankNm()).isEqualTo("enc-bank-name");
         assertThat(savedMember.getUsrAcntNo()).isEqualTo("enc-account-no");
         verify(fieldCryptoService).encrypt("01012345678");
         verify(fieldCryptoService).encrypt("서울시 종로구");
         verify(fieldCryptoService).encrypt("101동");
+        verify(fieldCryptoService).encrypt("03123");
         verify(fieldCryptoService).encrypt("에누리은행");
         verify(fieldCryptoService).encrypt("123-456-789");
     }
 
     @Test
     void OAuth_선택정보를_입력하지_않으면_null을_그대로_저장한다() {
-        OAuthProfile profile = profile(null, null, null, null, null);
+        OAuthProfile profile = profile("01012345678", null, null, null, null, null);
+        when(fieldCryptoService.encrypt("01012345678")).thenReturn("enc-telno");
         when(fieldCryptoService.encrypt(isNull())).thenReturn(null);
 
         memberAuthAdapter.registerOAuthMember(profile);
@@ -87,19 +92,22 @@ class MemberAuthAdapterTest {
         ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
         verify(memberMapper).saveCertifiedMember(memberCaptor.capture());
         Member savedMember = memberCaptor.getValue();
-        assertThat(savedMember.getUsrTelno()).isNull();
+        assertThat(savedMember.getUsrTelno()).isEqualTo("enc-telno");
         assertThat(savedMember.getUsrAddr()).isNull();
         assertThat(savedMember.getUsrDaddr()).isNull();
+        assertThat(savedMember.getUsrZip()).isNull();
         assertThat(savedMember.getUsrBankNm()).isNull();
         assertThat(savedMember.getUsrAcntNo()).isNull();
         verify(fieldCryptoService, times(5)).encrypt(isNull());
     }
 
-    private OAuthProfile profile(String telno, String address, String detailAddress, String bankName, String accountNo) {
+    private OAuthProfile profile(String telno, String address, String detailAddress, String zip,
+                                 String bankName, String accountNo) {
         return OAuthProfile.builder()
                 .provider("USRC0004").providerKey("provider-user-1")
                 .email("oauth@example.com").nickname("온보딩회원")
                 .telno(telno).address(address).detailAddress(detailAddress)
+                .zip(zip)
                 .bankName(bankName).accountNo(accountNo)
                 .build();
     }

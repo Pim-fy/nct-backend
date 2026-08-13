@@ -363,6 +363,7 @@
     <select id="findMyMaterialTrades" resultType="nct.trade.dto.TradeListItem">
         SELECT
             t.TRD_SN AS tradeId,
+            t.PRD_SN AS productId,
             CASE
                 WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
                 ELSE 'SELLER'

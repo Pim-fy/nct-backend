@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -757,11 +758,18 @@ public class TradeService implements
             String role,
             String status,
             String keyword) {
-        return tradeMapper.findMyMaterialTrades(
+        List<TradeListItem> trades = tradeMapper.findMyMaterialTrades(
                 userId,
                 normalizeRole(role),
                 normalizeTradeStatus(status),
                 normalizeKeyword(keyword));
+        // @ai_generated (담당자1 황희준, 2026-08-13): 목록에서 정식 auctionId 거래 경로로
+        // 바로 이동할 수 있게 도메인 서비스의 배치 계약을 사용한다. TRADE Mapper가 AUCTION을
+        // 직접 JOIN하거나 행마다 조회하는 방식은 피한다.
+        Map<Long, Long> auctionIdsByProductId = auctionServiceProvider.getObject()
+                .findAuctionIdsByProductIds(trades.stream().map(TradeListItem::getProductId).toList());
+        trades.forEach(trade -> trade.setAuctionId(auctionIdsByProductId.get(trade.getProductId())));
+        return trades;
     }
 
     /**

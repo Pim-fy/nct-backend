@@ -3,6 +3,8 @@ package nct.trade.dto;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Data;
 
 /** 거래내역 화면 한 행에 필요한 조회 전용 데이터다. */
@@ -10,6 +12,9 @@ import lombok.Data;
 public class TradeListItem {
 
     private Long tradeId;
+    private Long auctionId;
+    @JsonIgnore
+    private Long productId;
     private String userRole;
     private String productName;
     private String productImageUrl;

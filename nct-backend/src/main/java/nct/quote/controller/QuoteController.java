@@ -109,7 +109,6 @@ public class QuoteController {
                 quoteService.getMyQuoteSummary(usrSn)));
     }
 
-    /** 받은 견적 목록 (요청자용 — ROLE_USER) */
     /** 제공자 견적 제출 여부와 수정 대상 견적을 확인하는 화면 연결 API. */
     @PreAuthorize("hasAuthority('ROLE_SERVICE')")
     @GetMapping("/me/service-request/{svcReqSn}")

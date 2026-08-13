@@ -146,21 +146,23 @@
                    AND (t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                      OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL))
                </when>
+               <!-- AUCC0006(취소요청)은 관리자 반려 시 경매가 요청 전 상태로 복귀하는 미확정 상태라
+                    확정 취소(AUCC0005)와 분리해 보류/분쟁으로 분류한다. -->
                <when test="filterType == 'DISPUTE'">
-                   AND t.TRD_STATUS_CD = 'TRDC0007'
+                   AND (t.TRD_STATUS_CD = 'TRDC0007' OR a.AUC_STATUS_CD = 'AUCC0006')
                </when>
                <when test="filterType == 'DONE'">
                    AND t.TRD_STATUS_CD = 'TRDC0006'
                </when>
                <when test="filterType == 'CANCELED'">
-                   AND a.AUC_STATUS_CD IN ('AUCC0005', 'AUCC0006')
+                   AND a.AUC_STATUS_CD = 'AUCC0005'
                </when>
                <when test="filterType == 'ENDED'">
                    AND a.AUC_STATUS_CD = 'AUCC0004'
                </when>
                <when test="filterType == 'CLOSED'">
                    AND (t.TRD_STATUS_CD = 'TRDC0006'
-                     OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006'))
+                     OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005'))
                </when>
            </choose>
          ORDER BY p.PRD_REG_DT DESC
@@ -184,9 +186,10 @@
                                AND a.AUC_STATUS_CD = 'AUCC0002' THEN 1 ELSE 0 END), 0) AS active,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                                OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL) THEN 1 ELSE 0 END), 0) AS trading,
-            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0007' THEN 1 ELSE 0 END), 0) AS dispute,
+            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0007'
+                               OR a.AUC_STATUS_CD = 'AUCC0006' THEN 1 ELSE 0 END), 0) AS dispute,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0006'
-                               OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006') THEN 1 ELSE 0 END), 0) AS closed
+                               OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005') THEN 1 ELSE 0 END), 0) AS closed
           FROM PRODUCT p
           LEFT JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
           LEFT JOIN TRADE t ON t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'

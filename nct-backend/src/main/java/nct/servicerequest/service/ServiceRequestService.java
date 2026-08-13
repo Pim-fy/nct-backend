@@ -25,6 +25,7 @@ import nct.product.mapper.BannedKeywordMapper;
 import nct.quote.mapper.QuoteMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
+import nct.servicerequest.domain.SvcReqAddress;
 import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
@@ -37,6 +38,7 @@ import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.dto.SvcReqCommentRequest;
 import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqAddressMapper;
 import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
@@ -53,6 +55,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
     private final SvcReqImageMapper svcReqImageMapper;
+    private final SvcReqAddressMapper svcReqAddressMapper;
     private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
@@ -584,6 +587,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                     .map(image -> image.toBuilder().svcReqImgSn(null).svcReqSn(copy.getSvcReqSn()).build())
                     .toList();
             svcReqImageMapper.insertAll(copiedImages);
+        }
+
+        List<SvcReqAddress> addresses = svcReqAddressMapper.findBySvcReqSn(svcReqSn);
+        if (!addresses.isEmpty()) {
+            List<SvcReqAddress> copiedAddresses = addresses.stream()
+                    .map(address -> address.toBuilder()
+                            .svcReqSn(copy.getSvcReqSn())
+                            .regId(String.valueOf(usrSn))
+                            .updtId(String.valueOf(usrSn))
+                            .build())
+                    .toList();
+            svcReqAddressMapper.insertAll(copiedAddresses);
         }
 
         return serviceRequestMapper.findServiceRequestById(copy.getSvcReqSn())

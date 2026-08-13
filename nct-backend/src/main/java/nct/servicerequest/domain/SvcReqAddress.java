@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 
 /** 담당자 7: F-SVC-002 SVC_REQ_ADDRESS 암호화 주소 행 모델. */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class SvcReqAddress {

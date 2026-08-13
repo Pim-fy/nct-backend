@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
+import nct.product.mapper.BannedKeywordMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.dto.AdminServiceRequestListItem;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
@@ -50,6 +51,8 @@ class ServiceRequestServiceTest {
     private FileStorageService fileStorageService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private BannedKeywordMapper bannedKeywordMapper;
 
     private ServiceRequestService service;
 
@@ -62,7 +65,8 @@ class ServiceRequestServiceTest {
                 commentMapper,
                 formService,
                 fileStorageService,
-                eventPublisher);
+                eventPublisher,
+                bannedKeywordMapper);
     }
 
     @Test
@@ -398,6 +402,44 @@ class ServiceRequestServiceTest {
         assertThatThrownBy(() -> service.readDetail(1256L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining("존재하지 않는 서비스 요청");
+    }
+
+    @Test
+    void rejectsCommentTitleContainingBannedKeyword() {
+        ServiceRequest open = ServiceRequest.builder()
+                .svcReqSn(31L)
+                .usrSn(7L)
+                .svcReqStatusCd("SVCC0002")
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(31L)).thenReturn(Optional.of(open));
+        when(commentMapper.findLatestComments(31L, Integer.MAX_VALUE)).thenReturn(List.of());
+        when(bannedKeywordMapper.findActiveBannedKeywords()).thenReturn(List.of("금지어"));
+        var req = mock(nct.servicerequest.dto.SvcReqCommentRequest.class);
+        when(req.getTtl()).thenReturn("이 금지어 포함 제목");
+        when(req.getCn()).thenReturn("내용");
+
+        assertThatThrownBy(() -> service.addComment(31L, 7L, req))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("금지어");
+    }
+
+    @Test
+    void rejectsCommentContentContainingBannedKeyword() {
+        ServiceRequest open = ServiceRequest.builder()
+                .svcReqSn(31L)
+                .usrSn(7L)
+                .svcReqStatusCd("SVCC0002")
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(31L)).thenReturn(Optional.of(open));
+        when(commentMapper.findLatestComments(31L, Integer.MAX_VALUE)).thenReturn(List.of());
+        when(bannedKeywordMapper.findActiveBannedKeywords()).thenReturn(List.of("금지어"));
+        var req = mock(nct.servicerequest.dto.SvcReqCommentRequest.class);
+        when(req.getTtl()).thenReturn("제목");
+        when(req.getCn()).thenReturn("이 금지어 포함 내용");
+
+        assertThatThrownBy(() -> service.addComment(31L, 7L, req))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("금지어");
     }
 
     private ServiceRequest draft(Long svcReqSn, Long catSn, Long formTemplateSn) {

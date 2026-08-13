@@ -293,6 +293,45 @@ public class ProductService {
         return product;
     }
 
+    /**
+     * 담당자 7 · F-OPS-003: 관리자 경매 운영 화면은 공개 숨김 상품도 조회합니다.
+     * 실제 삭제 상태(PRDC0004)는 복구 대상이 아니므로 조회하지 않습니다.
+     */
+    @Transactional(readOnly = true)
+    public ProductResponse getProductForAdmin(Long prdSn) {
+        if (prdSn == null || prdSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ProductResponse product = productMapper.findProductForAdminById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
+        product.setTradeRegions(productTradeRegionMapper.findByPrdSn(prdSn));
+        return product;
+    }
+
+    /** 담당자 7 · F-OPS-003: 상품 삭제 없이 공개 노출만 숨김·복구합니다. */
+    @Transactional
+    public boolean changeVisibilityForAdmin(Long prdSn, boolean visible, Long adminUserSn) {
+        if (prdSn == null || prdSn <= 0 || adminUserSn == null || adminUserSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ProductResponse product = productMapper.findProductForAdminById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        String currentUseYn = product.getPrdUseYn();
+        String nextUseYn = visible ? "Y" : "N";
+        if (nextUseYn.equals(currentUseYn)) {
+            return false;
+        }
+        if (productMapper.updateProductVisibility(
+                prdSn,
+                currentUseYn,
+                nextUseYn,
+                String.valueOf(adminUserSn)) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT, "상품 노출 상태가 이미 변경되었습니다.");
+        }
+        return true;
+    }
+
     /** 내 판매 목록 필터 탭 개수 — 목록 조회(getMyProducts)와 달리 경매·거래 상태 enrichment 없이 개수만 집계 */
     @Transactional(readOnly = true)
     public ProductSummaryResponse getMyProductsSummary(Long usrSn) {

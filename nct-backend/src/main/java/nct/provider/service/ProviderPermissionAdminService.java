@@ -100,8 +100,8 @@ public class ProviderPermissionAdminService {
                 NotificationType.OPS,
                 NotificationDomain.SERVICE,
                 active ? NotificationAudience.PROVIDER : NotificationAudience.GENERAL,
-                active ? "제공자 분야 권한이 복구되었습니다" : "제공자 분야 권한이 정지되었습니다",
-                updated.getCategoryName() + " 분야 권한이 " + (active ? "복구" : "정지")
+                active ? "제공자 권한이 복구되었습니다" : "제공자 권한이 정지되었습니다",
+                updated.getCategoryName() + " 제공자 권한이 " + (active ? "복구" : "정지")
                         + "되었습니다. 사유: " + normalizedReason,
                 RefType.MEMBER,
                 updated.getUserSn());

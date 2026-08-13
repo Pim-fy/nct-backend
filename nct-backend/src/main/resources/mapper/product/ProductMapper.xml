@@ -15,6 +15,7 @@
         <result property="prdStartAmt"    column="PRD_START_AMT"    />
         <result property="prdIbyAmt"      column="PRD_IBY_AMT"      />
         <result property="prdTrdMethodCd" column="PRD_TRD_METHOD_CD"/>
+        <result property="prdUseYn"       column="PRD_USE_YN"       />
         <result property="prdRegDt"       column="PRD_REG_DT"       />
         <result property="prdUpdtDt"      column="PRD_UPDT_DT"      />
         <result property="prdImgUrl"      column="PRD_IMG_URL"      /><!-- 담당자6, F-AUC-002 -->
@@ -66,7 +67,7 @@
         /* ProductMapper.findProductById */
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
-               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
+               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD, p.PRD_USE_YN,
                p.PRD_REG_DT, p.PRD_UPDT_DT,
                p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT, p.PRD_DRAFT_START_NOW_YN, p.PRD_DRAFT_POLICY_AGREED_YN,
                f.FL_PATH AS PRD_IMG_URL
@@ -79,13 +80,33 @@
            AND p.PRD_STATUS_CD != 'PRDC0004'
     </select>
 
+    <!-- 담당자 7 · F-OPS-003: 관리자 운영 화면은 숨김 상품도 확인해야 하며 삭제 상품은 제외합니다. -->
+    <select id="findProductForAdminById" resultMap="ProductResponseMap">
+        /* ProductMapper.findProductForAdminById */
+        SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
+               p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
+               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD, p.PRD_USE_YN,
+               p.PRD_REG_DT, p.PRD_UPDT_DT,
+               p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT,
+               p.PRD_DRAFT_START_NOW_YN, p.PRD_DRAFT_POLICY_AGREED_YN,
+               f.FL_PATH AS PRD_IMG_URL
+          FROM PRODUCT p
+          JOIN CATEGORY c ON c.CAT_SN = p.CAT_SN
+          LEFT JOIN PRODUCT_IMAGE pi
+            ON pi.PRD_SN = p.PRD_SN
+           AND pi.PRD_IMG_RPRS_YN = 'Y'
+          LEFT JOIN FILES f ON f.FL_SN = pi.FL_SN
+         WHERE p.PRD_SN = #{prdSn}
+           AND p.PRD_STATUS_CD != 'PRDC0004'
+    </select>
+
     <!-- ── 내 판매 목록 (최신순) ─────────────────────────── -->
     <!-- filterType: DRAFT(임시저장) | RESERVED(예약) | ACTIVE(경매중) | TRADING(거래중) | DISPUTE(보류/분쟁) | DONE(완료) | CANCELED(취소) | ENDED(종료/유찰) | null(전체) -->
     <select id="findMyProducts" resultMap="ProductResponseMap">
         /* ProductMapper.findMyProducts */
         SELECT p.PRD_SN, p.USR_SN, p.CAT_SN, c.CAT_NM,
                p.PRD_NM, p.PRD_CN, p.PRD_STATUS_CD,
-               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD,
+               p.PRD_START_AMT, p.PRD_IBY_AMT, p.PRD_TRD_METHOD_CD, p.PRD_USE_YN,
                p.PRD_REG_DT, p.PRD_UPDT_DT,
                p.PRD_DRAFT_BID_UNIT, p.PRD_DRAFT_START_DT, p.PRD_DRAFT_END_DT,
                p.PRD_DRAFT_START_NOW_YN, p.PRD_DRAFT_POLICY_AGREED_YN,
@@ -97,7 +118,6 @@
           LEFT JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
           LEFT JOIN TRADE t ON t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'
          WHERE p.USR_SN = #{usrSn}
-           AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'
            <choose>
                <when test="filterType == 'DRAFT'">
@@ -171,7 +191,6 @@
           LEFT JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
           LEFT JOIN TRADE t ON t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'
          WHERE p.USR_SN = #{usrSn}
-           AND p.PRD_USE_YN = 'Y'
            AND p.PRD_STATUS_CD != 'PRDC0004'
     </select>
 
@@ -224,6 +243,17 @@
            SET PRD_VIEW_CNT = PRD_VIEW_CNT + 1
          WHERE PRD_SN = #{prdSn}
            AND PRD_USE_YN = 'Y'
+    </update>
+
+    <update id="updateProductVisibility">
+        /* 담당자 7 · F-OPS-003: 관리자 상품 숨김·복구 */
+        UPDATE PRODUCT
+           SET PRD_USE_YN = #{useYn},
+               PRD_UPDT_ID = #{actor},
+               PRD_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE PRD_SN = #{prdSn}
+           AND PRD_STATUS_CD != 'PRDC0004'
+           AND PRD_USE_YN = #{expectedUseYn}
     </update>
 
     <!-- ── 논리 삭제 (PRD_STATUS_CD=PRDC0004, PRD_USE_YN=N) ─ -->

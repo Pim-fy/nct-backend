@@ -76,6 +76,25 @@ class AuctionSanctionEnforcementServiceTest {
     }
 
     @Test
+    void permanentSuspensionCancelsHighestBidWhileAuctionIsAdminPaused() {
+        AuctionSanctionTarget target = target(
+                101L,
+                20L,
+                701L,
+                11L,
+                AuctionStatusCode.ADMIN_PAUSED);
+        when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
+        when(auctionMapper.exceptionCancelHighestBid(101L, 701L, "99")).thenReturn(1);
+
+        List<AuctionEnforcementImpact> impacts = service.cancelForPermanentSuspension(command(11L));
+
+        assertThat(impacts).singleElement().satisfies(impact ->
+                assertThat(impact.actionCode()).isEqualTo("BID_CANCELED"));
+        verify(cancellationPort, never()).cancel(any());
+        verify(pointService).releaseHold(eq(11L), eq(RefType.BID), eq(701L), any());
+    }
+
+    @Test
     void permanentSuspensionCancelsSellerOwnedActiveAuctionThroughExistingPort() {
         AuctionSanctionTarget target = target(101L, 11L, 701L, 20L, AuctionStatusCode.ACTIVE);
         when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
@@ -111,6 +130,32 @@ class AuctionSanctionEnforcementServiceTest {
                         99L,
                         "temporary restriction",
                         "report-sanction-auction-pause-test",
+                        java.time.LocalDateTime.now().plusDays(7),
+                        501L));
+
+        assertThat(impacts).singleElement().satisfies(impact ->
+                assertThat(impact.actionCode()).isEqualTo("BID_CANCELED"));
+        verify(auctionMapper, never()).pauseAuctionForSanction(anyLong(), any(), any());
+        verify(pointService).releaseHold(eq(11L), eq(RefType.BID), eq(701L), any());
+    }
+
+    @Test
+    void temporarySuspensionCancelsHighestBidWhileAuctionIsAdminPaused() {
+        AuctionSanctionTarget target = target(
+                101L,
+                20L,
+                701L,
+                11L,
+                AuctionStatusCode.ADMIN_PAUSED);
+        when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
+        when(auctionMapper.exceptionCancelHighestBid(101L, 701L, "99")).thenReturn(1);
+
+        List<AuctionEnforcementImpact> impacts = service.pause(
+                new MemberAuctionEnforcementCommand(
+                        11L,
+                        99L,
+                        "temporary restriction",
+                        "report-sanction-admin-paused-bid-test",
                         java.time.LocalDateTime.now().plusDays(7),
                         501L));
 

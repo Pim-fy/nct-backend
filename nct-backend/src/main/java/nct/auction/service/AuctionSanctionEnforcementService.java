@@ -69,7 +69,8 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
             if (bidderOnly
                     && target.getHighestBidId() != null
                     && (PAUSABLE.contains(previous)
-                            || AuctionStatusCode.OPERATION_HOLD.equals(previous))) {
+                            || AuctionStatusCode.OPERATION_HOLD.equals(previous)
+                            || AuctionStatusCode.ADMIN_PAUSED.equals(previous))) {
                 cancelHighestBid(target, valid.adminUserSn(), valid.reason());
                 impacts.add(impact(
                         target,
@@ -116,6 +117,8 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                     && Set.of(TRADE_IN_PROGRESS, "TRDC0007").contains(target.getTradeStatusCode());
             boolean safeHeldCancellation = AuctionStatusCode.OPERATION_HOLD.equals(status)
                     && role.startsWith("SELLER");
+            boolean safeAdminPausedCancellation = AuctionStatusCode.ADMIN_PAUSED.equals(status)
+                    && role.startsWith("SELLER");
             boolean sellerOwned = role.startsWith("SELLER");
             boolean bidderOnly = "HIGHEST_BIDDER".equals(role);
 
@@ -129,7 +132,9 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                 continue;
             }
 
-            if (bidderOnly && PAUSABLE.contains(status)) {
+            if (bidderOnly
+                    && (PAUSABLE.contains(status)
+                            || AuctionStatusCode.ADMIN_PAUSED.equals(status))) {
                 cancelHighestBid(target, valid.adminUserSn(), valid.reason());
                 impacts.add(impact(
                         target,
@@ -142,7 +147,8 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
 
             if ((!sellerOwned || !PAUSABLE.contains(status))
                     && !safeEndedCancellation
-                    && !safeHeldCancellation) {
+                    && !safeHeldCancellation
+                    && !safeAdminPausedCancellation) {
                 if (AuctionStatusCode.OPERATION_HOLD.equals(status)
                         || AuctionStatusCode.ENDED.equals(status)) {
                     impacts.add(impact(

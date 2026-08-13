@@ -23,6 +23,14 @@ public interface QuoteMapper {
 
     int insertQuote(Quote quote);
 
+    int countActiveQuotesByRequestAndProvider(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("usrSn") Long usrSn);
+
+    int countActiveQuotesByServiceRequestId(@Param("svcReqSn") Long svcReqSn);
+
+    int countTradeLinksByQuoteId(@Param("qutSn") Long qutSn);
+
     /** 잠금 없는 단건 조회 — 소유권 확인, 이력 조회 등 읽기 전용 용도 */
     Quote findQuoteById(@Param("qutSn") Long qutSn);
 
@@ -46,6 +54,10 @@ public interface QuoteMapper {
             @Param("svcReqSn") Long svcReqSn);
 
     int adminInvalidateActiveQuotes(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("updtId") String updtId);
+
+    int expireActiveQuotesByServiceRequestId(
             @Param("svcReqSn") Long svcReqSn,
             @Param("updtId") String updtId);
 

@@ -60,8 +60,8 @@ public class AdminAuctionQueryService {
         if (auctionSn == null || auctionSn <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        AuctionDetailResponse auction = auctionService.findAuctionDetail(auctionSn);
-        ProductResponse product = productService.getProduct(auction.getProductId());
+        AuctionDetailResponse auction = auctionService.findAuctionDetailForAdmin(auctionSn);
+        ProductResponse product = productService.getProductForAdmin(auction.getProductId());
         SellerTradeStatusItem trade = tradeService.getTradeStatusesByProducts(List.of(auction.getProductId()))
                 .stream().findFirst().orElse(null);
         return AdminAuctionOverviewResponse.builder()

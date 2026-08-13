@@ -2,7 +2,6 @@ package nct.trade.service;
 
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
@@ -42,7 +41,6 @@ import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.dto.AuctionTradeEscrowInfo;
-import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.ServiceTradeCreateCommand;
@@ -1488,22 +1486,6 @@ public class TradeService implements
 
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                 "혼합 거래 상품은 택배 또는 직거래 방식을 선택해야 합니다.");
-    }
-
-    // 컨트롤러 검증과 별개로, 다른 도메인 코드가 서비스를 직접 호출해도 과거 일정은 막는다.
-    private void validateOfflineSchedule(TradeOfflineScheduleRequest request) {
-        if (request == null
-                || request.getMeetingDate() == null
-                || request.getMeetingTime() == null
-                || request.getMeetingPlace() == null
-                || request.getMeetingPlace().isBlank()) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        if (!request.toMeetingDateTime().isAfter(LocalDateTime.now())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "거래 일시는 현재 시간 이후로 선택해 주세요.");
-        }
     }
 
     // 컨트롤러 검증을 통과하지 않는 직접 서비스 호출도 동일하게 제한한다.

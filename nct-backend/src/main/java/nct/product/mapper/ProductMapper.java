@@ -18,6 +18,9 @@ public interface ProductMapper {
 
     Optional<ProductResponse> findProductById(@Param("prdSn") Long prdSn);
 
+    /** 담당자 7 · F-OPS-003: 숨김 상품도 관리자 상세에서 조회합니다. */
+    Optional<ProductResponse> findProductForAdminById(@Param("prdSn") Long prdSn);
+
     List<ProductResponse> findMyProducts(@Param("usrSn") Long usrSn, @Param("filterType") String filterType);
 
     /** 내 판매 목록 필터 탭 개수 — findMyProducts와 동일한 WHERE 조건을 CASE WHEN 집계로 한 번에 계산 */
@@ -30,6 +33,13 @@ public interface ProductMapper {
     void deleteProduct(@Param("prdSn") Long prdSn, @Param("usrSn") Long usrSn);
 
     void incrementViewCount(@Param("prdSn") Long prdSn);
+
+    /** 삭제와 구분해 공개 노출 여부만 낙관적으로 전환합니다. */
+    int updateProductVisibility(
+            @Param("prdSn") Long prdSn,
+            @Param("expectedUseYn") String expectedUseYn,
+            @Param("useYn") String useYn,
+            @Param("actor") String actor);
 
     /** 활성 상품(사용중·삭제 아님)인 경우에만 현재 조회수 반환 — 조회수 증가 API의 존재/비활성 판정 겸용 */
     Optional<Long> findActiveViewCount(@Param("prdSn") Long prdSn);

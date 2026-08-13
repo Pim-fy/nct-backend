@@ -15,7 +15,6 @@ import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofFile;
 import nct.trade.dto.TradeDeliverySubmitTarget;
-import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;

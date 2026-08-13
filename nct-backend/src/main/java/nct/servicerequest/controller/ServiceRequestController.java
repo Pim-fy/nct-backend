@@ -30,6 +30,7 @@ import nct.servicerequest.dto.SvcReqCommentRequest;
 import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.service.ServiceRequestService;
 import nct.servicerequest.service.ServiceRequestFormService;
+import nct.servicerequest.service.ServiceRequestClosureService;
 import nct.servicerequest.service.ServiceRequestQuoteSelectionService;
 
 /**
@@ -53,6 +54,7 @@ public class ServiceRequestController {
     private final ServiceRequestService serviceRequestService;
     private final ServiceRequestFormService serviceRequestFormService;
     private final ServiceRequestQuoteSelectionService serviceRequestQuoteSelectionService;
+    private final ServiceRequestClosureService serviceRequestClosureService;
 
     /** F-SVC-002 현재 활성 카테고리별 동적 폼 정의 */
     @PreAuthorize("hasAuthority('ROLE_USER')")
@@ -103,7 +105,7 @@ public class ServiceRequestController {
             @PathVariable(name = "svcReqSn") Long svcReqSn) {
 
         Long usrSn = userDetails.getMember().getId();
-        serviceRequestService.closeServiceRequest(svcReqSn, usrSn);
+        serviceRequestClosureService.closeByRequester(svcReqSn, usrSn);
         return ResponseEntity.ok(ApiResponse.success());
     }
 

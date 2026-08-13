@@ -76,6 +76,7 @@ public enum ErrorCode {
 
     // ---- 견적 도메인 (F-SVC-005/006/008, QUOTE 테이블 고정 기술 소유) ----
     QUOTE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 견적입니다."),
+    QUOTE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 제출한 활성 견적이 있습니다."),
     QUOTE_REVISION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "견적 수정은 최대 3회까지 가능합니다."),
     QUOTE_ALREADY_SELECTED(HttpStatus.CONFLICT, "이미 선택된 견적은 철회할 수 없습니다."),
     QUOTE_SELF_TRADE(HttpStatus.FORBIDDEN, "본인이 등록한 서비스 요청에는 견적을 제출할 수 없습니다."),

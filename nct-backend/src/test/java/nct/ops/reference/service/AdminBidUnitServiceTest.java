@@ -46,7 +46,7 @@ class AdminBidUnitServiceTest {
     void createsNextAuctionCodeAndRecordsAudit() {
         when(mapper.findGroupByCodeForUpdate("AUCG02")).thenReturn(Optional.of(group()));
         when(mapper.countByName("AUCG02", "2500", null)).thenReturn(0);
-        when(mapper.findMaxCodeSequence("AUCC")).thenReturn(12);
+        when(mapper.findFirstAvailableCodeSequence("AUCC")).thenReturn(14);
         when(mapper.insert(any(CommonCode.class), eq("USR:7"))).thenAnswer(invocation -> {
             invocation.getArgument(0, CommonCode.class).setCmmSn(30L);
             return 1;
@@ -54,7 +54,7 @@ class AdminBidUnitServiceTest {
 
         var result = service.create(request(2500, "선택지 추가"), 7L);
 
-        assertThat(result.code()).isEqualTo("AUCC0013");
+        assertThat(result.code()).isEqualTo("AUCC0014");
         assertThat(result.amount()).isEqualByComparingTo("2500");
         ArgumentCaptor<BidUnitChangeHistoryCommand> audit =
                 ArgumentCaptor.forClass(BidUnitChangeHistoryCommand.class);

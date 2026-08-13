@@ -255,6 +255,7 @@ class ServiceRequestServiceTest {
                 .svcReqUseYn('Y')
                 .build();
         when(serviceRequestMapper.findServiceRequestEntityByIdForUpdate(1L)).thenReturn(Optional.of(existing));
+        when(serviceRequestMapper.countOpenQuoteSubmissionWindow(1L)).thenReturn(1);
 
         var target = service.requireOpenForQuote(1L);
 
@@ -276,6 +277,22 @@ class ServiceRequestServiceTest {
         assertThatThrownBy(() -> service.requireOpenForQuote(1L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining("존재하지 않는 서비스 요청");
+    }
+
+    @Test
+    void rejectsExpiredOpenRequestForQuoteBeforeProviderAccess() {
+        ServiceRequest existing = ServiceRequest.builder()
+                .svcReqSn(1L)
+                .usrSn(7L)
+                .catSn(3L)
+                .svcReqStatusCd("SVCC0002")
+                .svcReqUseYn('Y')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityByIdForUpdate(1L)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.requireOpenForQuote(1L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("견적 접수가 마감");
     }
 
     @Test
@@ -402,6 +419,32 @@ class ServiceRequestServiceTest {
         assertThat(result.previousStatusCode()).isEqualTo("SVCC0002");
         assertThat(result.statusCode()).isEqualTo("SVCC0004");
         verify(serviceRequestMapper).adminCancelOpenServiceRequest(1256L, "99");
+    }
+
+    @Test
+    void closesOpenRequestAfterLockingIt() {
+        ServiceRequest openRequest = ServiceRequest.builder()
+                .svcReqSn(1257L)
+                .usrSn(7L)
+                .svcReqStatusCd("SVCC0002")
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityByIdForUpdate(1257L))
+                .thenReturn(Optional.of(openRequest));
+        when(serviceRequestMapper.closeServiceRequest(1257L, 7L, "7")).thenReturn(1);
+
+        service.closeServiceRequest(1257L, 7L);
+
+        verify(serviceRequestMapper).findServiceRequestEntityByIdForUpdate(1257L);
+        verify(serviceRequestMapper).closeServiceRequest(1257L, 7L, "7");
+    }
+
+    @Test
+    void reportsWhetherAutomaticCloseChangedTheRequest() {
+        when(serviceRequestMapper.autoCloseServiceRequest(1258L)).thenReturn(1);
+        when(serviceRequestMapper.autoCloseServiceRequest(1259L)).thenReturn(0);
+
+        assertThat(service.autoCloseExpiredServiceRequest(1258L)).isTrue();
+        assertThat(service.autoCloseExpiredServiceRequest(1259L)).isFalse();
     }
 
     @Test

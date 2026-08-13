@@ -6,7 +6,6 @@ import static org.mockito.Mockito.verify;
 
 import org.junit.jupiter.api.Test;
 
-import nct.ops.operation.dto.AdminAuctionOverviewResponse;
 import nct.ops.operation.service.AdminAuctionOperationService;
 import nct.ops.operation.service.AdminAuctionQueryService;
 

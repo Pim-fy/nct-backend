@@ -1756,6 +1756,7 @@ class TradeServiceTest {
                 "SCHEDULE_CHANGE|11|" + requestedAt.format(
                         java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"))
                         + "|오후로 변경 부탁드립니다.");
+        verify(notificationService).notifyServiceScheduleChange(22L, 81L);
     }
 
     @Test
@@ -1772,6 +1773,7 @@ class TradeServiceTest {
                 81L,
                 "TRDC0003",
                 "SCHEDULE_CANCEL_REQUEST|22|작업 일정 조정이 필요합니다.");
+        verify(notificationService).notifyServiceScheduleCancellation(11L, 81L);
     }
 
     @Test

@@ -113,6 +113,18 @@ public class AuctionService {
         return findAuctionDetailWithProductValidation(auctionId, userId, includeSupplemental);
     }
 
+    /**
+     * 담당자 7 · F-OPS-003: ROLE_ADMIN으로 보호된 운영 조회에서 숨김 상품의 경매도 확인합니다.
+     * 일반 공개 상세와 달리 PRODUCT 공개 여부 검증만 건너뛰며, 경매 존재 여부는 그대로 검증합니다.
+     */
+    @Transactional(readOnly = true)
+    public AuctionDetailResponse findAuctionDetailForAdmin(Long auctionId) {
+        if (auctionId == null || auctionId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return loadAuctionDetail(auctionId, null, false);
+    }
+
     @Transactional(readOnly = true)
     public AuctionStatusResponse getAuctionStatusByProduct(Long prdSn) {
         AuctionStatusResponse status = auctionMapper.findAuctionStatusByProduct(prdSn);
@@ -603,6 +615,9 @@ public class AuctionService {
     private void validateBidAvailable(AuctionBidTarget target, Long userId) {
         if (!AuctionStatusCode.ACTIVE.equals(target.getAuctionStatusCode())) {
             throw new CustomException(ErrorCode.CONFLICT);
+        }
+        if (!"Y".equals(target.getProductUseYn())) {
+            throw new CustomException(ErrorCode.CONFLICT, "숨김 처리된 상품에는 입찰할 수 없습니다.");
         }
         if (target.getEndDateTime() != null && !target.getEndDateTime().isAfter(databaseNow(target))) {
             throw new CustomException(ErrorCode.CONFLICT);

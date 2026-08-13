@@ -21,7 +21,7 @@
              WHERE r.AUC_SN = a.AUC_SN
              ORDER BY r.AUC_CNL_REQ_REG_DT DESC, r.AUC_CNL_REQ_SN DESC LIMIT 1
         )
-        WHERE p.PRD_USE_YN = 'Y'
+        WHERE p.PRD_STATUS_CD != 'PRDC0004'
         <if test="condition.keyword != null">
             AND (p.PRD_NM LIKE CONCAT('%', #{condition.keyword}, '%')
               OR seller.USR_NM LIKE CONCAT('%', #{condition.keyword}, '%')
@@ -32,6 +32,16 @@
         </if>
         <if test="condition.tradeStatusCode != null">
             AND trade.TRD_STATUS_CD = #{condition.tradeStatusCode}
+        </if>
+        <if test="condition.productVisible != null">
+            <choose>
+                <when test="condition.productVisible">
+                    AND p.PRD_USE_YN = 'Y'
+                </when>
+                <otherwise>
+                    AND p.PRD_USE_YN = 'N'
+                </otherwise>
+            </choose>
         </if>
         <if test="condition.cancellationPending != null">
             <choose>
@@ -59,7 +69,8 @@
         SELECT a.AUC_SN AS auctionId, p.PRD_SN AS productId, p.PRD_NM AS productName,
                seller.USR_SN AS sellerUserSn, seller.USR_NM AS sellerName,
                p.PRD_STATUS_CD AS productStatusCode,
-               product_status.CMM_NM AS productStatusName, a.AUC_STATUS_CD AS auctionStatusCode,
+               product_status.CMM_NM AS productStatusName, p.PRD_USE_YN AS productUseYn,
+               a.AUC_STATUS_CD AS auctionStatusCode,
                auction_status.CMM_NM AS auctionStatusName, COALESCE(bid.BID_COUNT, 0) AS bidCount,
                trade.TRD_SN AS tradeId, trade.TRD_STATUS_CD AS tradeStatusCode,
                trade_status.CMM_NM AS tradeStatusName, a.AUC_REG_DT AS registeredAt,
@@ -76,11 +87,12 @@
             CASE a.AUC_STATUS_CD
                 WHEN 'AUCC0006' THEN 0
                 WHEN 'AUCC0002' THEN 1
-                WHEN 'AUCC0001' THEN 2
-                WHEN 'AUCC0003' THEN 3
-                WHEN 'AUCC0004' THEN 4
-                WHEN 'AUCC0005' THEN 5
-                ELSE 6
+                WHEN 'AUCC9001' THEN 2
+                WHEN 'AUCC0001' THEN 3
+                WHEN 'AUCC0003' THEN 4
+                WHEN 'AUCC0004' THEN 5
+                WHEN 'AUCC0005' THEN 6
+                ELSE 7
             END ASC,
             CASE trade.TRD_STATUS_CD
                 WHEN 'TRDC0003' THEN 0

@@ -2,12 +2,12 @@ package nct.trade.service;
 
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -42,7 +42,6 @@ import nct.trade.domain.Trade;
 import nct.trade.dto.AuctionTradeCreateCommand;
 import nct.trade.dto.AuctionTradeCreateResult;
 import nct.trade.dto.AuctionTradeEscrowInfo;
-import nct.trade.domain.AuctionTradeSource;
 import nct.trade.dto.MaterialTradeCreateCommand;
 import nct.trade.dto.MaterialTradeCreateResult;
 import nct.trade.dto.ServiceTradeCreateCommand;
@@ -369,13 +368,18 @@ public class TradeService implements
             long userId,
             ServiceScheduleChangeCommand command) {
         ServiceScheduleChangeCommand normalized = new ServiceScheduleRequestValidator().validateChange(command);
-        validateServiceScheduleRequester(tradeId, userId);
+        ServiceTradeCompletionTarget target = validateServiceScheduleRequester(tradeId, userId);
         tradeMapper.insertStatusHistory(
                 tradeId,
                 IN_PROGRESS,
                 "SCHEDULE_CHANGE|" + userId + "|"
                         + SERVICE_SCHEDULE_AT_FORMAT.format(normalized.requestedScheduleAt())
                         + "|" + normalized.reason());
+        long counterpartUserId = target.getRequesterUserId() == userId
+                ? target.getProviderUserId()
+                : target.getRequesterUserId();
+        // @ai_generated (담당자4 정민재, 2026-08-13): 요청 이력이 저장된 뒤에만 상대방에게 알림을 보내 실패한 요청의 오발송을 막는다.
+        notificationService.notifyServiceScheduleChange(counterpartUserId, tradeId);
     }
 
     /**
@@ -389,7 +393,7 @@ public class TradeService implements
             ServiceScheduleCancellationCommand command) {
         ServiceScheduleCancellationCommand normalized = new ServiceScheduleRequestValidator()
                 .validateCancellation(command);
-        validateServiceScheduleRequester(tradeId, userId);
+        ServiceTradeCompletionTarget target = validateServiceScheduleRequester(tradeId, userId);
         if (tradeMapper.findPendingServiceScheduleCancellation(tradeId) != null) {
             throw new CustomException(ErrorCode.CONFLICT,
                     "상대방의 응답을 기다리는 일정 취소 요청이 이미 있습니다.");
@@ -398,6 +402,10 @@ public class TradeService implements
                 tradeId,
                 IN_PROGRESS,
                 "SCHEDULE_CANCEL_REQUEST|" + userId + "|" + normalized.reason());
+        long counterpartUserId = target.getRequesterUserId() == userId
+                ? target.getProviderUserId()
+                : target.getRequesterUserId();
+        notificationService.notifyServiceScheduleCancellation(counterpartUserId, tradeId);
     }
 
     /** 상대방의 일정 취소 동의·거절을 처리한다. 동의는 취소·환불·정산 종결을 원자적으로 수행한다. */
@@ -761,11 +769,18 @@ public class TradeService implements
             String role,
             String status,
             String keyword) {
-        return tradeMapper.findMyMaterialTrades(
+        List<TradeListItem> trades = tradeMapper.findMyMaterialTrades(
                 userId,
                 normalizeRole(role),
                 normalizeTradeStatus(status),
                 normalizeKeyword(keyword));
+        // @ai_generated (담당자1 황희준, 2026-08-13): 목록에서 정식 auctionId 거래 경로로
+        // 바로 이동할 수 있게 도메인 서비스의 배치 계약을 사용한다. TRADE Mapper가 AUCTION을
+        // 직접 JOIN하거나 행마다 조회하는 방식은 피한다.
+        Map<Long, Long> auctionIdsByProductId = auctionServiceProvider.getObject()
+                .findAuctionIdsByProductIds(trades.stream().map(TradeListItem::getProductId).toList());
+        trades.forEach(trade -> trade.setAuctionId(auctionIdsByProductId.get(trade.getProductId())));
+        return trades;
     }
 
     /**
@@ -1482,22 +1497,6 @@ public class TradeService implements
 
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                 "혼합 거래 상품은 택배 또는 직거래 방식을 선택해야 합니다.");
-    }
-
-    // 컨트롤러 검증과 별개로, 다른 도메인 코드가 서비스를 직접 호출해도 과거 일정은 막는다.
-    private void validateOfflineSchedule(TradeOfflineScheduleRequest request) {
-        if (request == null
-                || request.getMeetingDate() == null
-                || request.getMeetingTime() == null
-                || request.getMeetingPlace() == null
-                || request.getMeetingPlace().isBlank()) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        if (!request.toMeetingDateTime().isAfter(LocalDateTime.now())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "거래 일시는 현재 시간 이후로 선택해 주세요.");
-        }
     }
 
     // 컨트롤러 검증을 통과하지 않는 직접 서비스 호출도 동일하게 제한한다.

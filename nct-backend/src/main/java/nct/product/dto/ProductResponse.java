@@ -26,6 +26,7 @@ public class ProductResponse {
     private BigDecimal prdStartAmt;
     private BigDecimal prdIbyAmt;
     private String prdTrdMethodCd;
+    private String prdUseYn;
     private LocalDateTime prdRegDt;
     private LocalDateTime prdUpdtDt;
 

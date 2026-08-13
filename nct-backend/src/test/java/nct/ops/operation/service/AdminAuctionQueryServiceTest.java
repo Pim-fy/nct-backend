@@ -53,8 +53,8 @@ class AdminAuctionQueryServiceTest {
         trade.setTradeSn(51L);
         trade.setTradeStatusCd("TRDC0003");
 
-        when(auctionService.findAuctionDetail(81L)).thenReturn(auction);
-        when(productService.getProduct(31L)).thenReturn(product);
+        when(auctionService.findAuctionDetailForAdmin(81L)).thenReturn(auction);
+        when(productService.getProductForAdmin(31L)).thenReturn(product);
         when(tradeService.getTradeStatusesByProducts(List.of(31L))).thenReturn(List.of(trade));
 
         var response = service.getAuctionOverview(81L);

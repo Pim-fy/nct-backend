@@ -94,8 +94,26 @@ class QuoteServiceTest {
 
         assertThat(result.qutSn()).isEqualTo(99L);
         verify(providerAccessGuard).requireServiceAccess(authentication, 20L);
+        verify(quoteMapper).countActiveQuotesByRequestAndProvider(10L, 22L);
         verify(fileStorageService).requireOwnedQuoteFile(88L, 22L);
         verify(quoteMapper).insertQuotePhoto(any());
+    }
+
+    @Test
+    void rejectsDuplicateActiveQuoteForSameRequestAndProvider() {
+        QuoteSubmitRequest request = new QuoteSubmitRequest(10L, null, 100_000L, null, null);
+        when(serviceRequestQuoteReader.requireOpenForQuote(10L))
+                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
+        when(providerAccessGuard.requireServiceAccess(authentication, 20L)).thenReturn(22L);
+        when(quoteMapper.countActiveQuotesByRequestAndProvider(10L, 22L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.submitQuote(authentication, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.QUOTE_ALREADY_EXISTS);
+
+        verify(quoteMapper, never()).insertQuote(any());
+        verifyNoInteractions(fileStorageService);
     }
 
     @Test
@@ -186,7 +204,7 @@ class QuoteServiceTest {
     }
 
     @Test
-    void withdrawQuoteRevalidatesCurrentCategoryAccess() {
+    void withdrawQuoteDoesNotRequireCurrentCategoryAccess() {
         Quote quote = Quote.builder()
                 .qutSn(99L)
                 .svcReqSn(10L)
@@ -194,18 +212,56 @@ class QuoteServiceTest {
                 .qutStatusCd("QUTC0002")
                 .build();
         when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
-        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
-                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
         when(quoteMapper.withdrawQuote(99L, "7")).thenReturn(1);
 
         service.withdrawQuote(7L, 99L);
 
-        verify(activeProviderGuard).requireActiveForCategory(7L, 20L);
+        verifyNoInteractions(serviceRequestQuoteReader, activeProviderGuard);
         verify(quoteMapper).withdrawQuote(99L, "7");
     }
 
     @Test
-    void withdrawQuoteStopsBeforeMutationWhenCurrentCategoryAccessIsBlocked() {
+    void withdrawQuoteRejectsAnotherProvidersQuoteBeforeMutation() {
+        Quote quote = Quote.builder()
+                .qutSn(99L)
+                .svcReqSn(10L)
+                .usrSn(8L)
+                .qutStatusCd("QUTC0001")
+                .build();
+        when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
+
+        assertThatThrownBy(() -> service.withdrawQuote(7L, 99L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+
+        verify(quoteMapper, never()).withdrawQuote(any(), any());
+        verifyNoInteractions(serviceRequestQuoteReader, activeProviderGuard);
+    }
+
+    @Test
+    void expiresActiveQuotesForClosedServiceRequest() {
+        when(quoteMapper.expireActiveQuotesByServiceRequestId(10L, "SYSTEM")).thenReturn(2);
+
+        int changed = service.expireActiveQuotes(10L, " SYSTEM ");
+
+        assertThat(changed).isEqualTo(2);
+        verify(quoteMapper).expireActiveQuotesByServiceRequestId(10L, "SYSTEM");
+        verify(quoteMapper).countActiveQuotesByServiceRequestId(10L);
+    }
+
+    @Test
+    void rejectsRequestExpirationWhenTradeLinkedActiveQuoteRemains() {
+        when(quoteMapper.expireActiveQuotesByServiceRequestId(10L, "SYSTEM")).thenReturn(1);
+        when(quoteMapper.countActiveQuotesByServiceRequestId(10L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.expireActiveQuotes(10L, "SYSTEM"))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("거래에 연결된 활성 견적");
+    }
+
+    @Test
+    void adminCannotInvalidateTradeLinkedQuote() {
         Quote quote = Quote.builder()
                 .qutSn(99L)
                 .svcReqSn(10L)
@@ -213,17 +269,13 @@ class QuoteServiceTest {
                 .qutStatusCd("QUTC0001")
                 .build();
         when(quoteMapper.findQuoteByIdForUpdate(99L)).thenReturn(quote);
-        when(serviceRequestQuoteReader.requireForProviderAccess(10L))
-                .thenReturn(new ServiceRequestQuoteTarget(11L, 20L));
-        doThrow(new CustomException(ErrorCode.FORBIDDEN))
-                .when(activeProviderGuard).requireActiveForCategory(7L, 20L);
+        when(quoteMapper.countTradeLinksByQuoteId(99L)).thenReturn(1);
 
-        assertThatThrownBy(() -> service.withdrawQuote(7L, 99L))
+        assertThatThrownBy(() -> service.invalidateActiveQuote(10L, 99L, 100L))
                 .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .hasMessageContaining("거래에 연결된 견적");
 
-        verify(quoteMapper, never()).withdrawQuote(any(), any());
+        verify(quoteMapper, never()).adminInvalidateActiveQuote(any(), any());
     }
 
     @Test

@@ -46,6 +46,7 @@ import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
 import nct.quote.port.ServiceRequestQuoteProviderReader;
+import nct.quote.port.ServiceRequestQuoteExpirationPort;
 import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
@@ -54,7 +55,7 @@ import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarg
 @RequiredArgsConstructor
 public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader,
         AdminQuoteSummaryReader, AdminQuoteListReader, AdminQuoteModerationPort,
-        ServiceRequestQuoteProviderReader {
+        ServiceRequestQuoteProviderReader, ServiceRequestQuoteExpirationPort {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -172,6 +173,11 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                     ErrorCode.QUOTE_INVALID_STATUS,
                     "선택되거나 종료된 견적은 관리자 무효화 대상이 아닙니다.");
         }
+        if (quoteMapper.countTradeLinksByQuoteId(quoteId) > 0) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "거래에 연결된 견적은 취소할 수 없습니다.");
+        }
         if (quoteMapper.adminInvalidateActiveQuote(quoteId, String.valueOf(actorUserId)) != 1) {
             throw new CustomException(ErrorCode.CONFLICT, "견적 상태가 이미 변경되었습니다.");
         }
@@ -249,6 +255,9 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (usrSn.equals(target.requesterUsrSn())) {
             throw new CustomException(ErrorCode.QUOTE_SELF_TRADE);
         }
+        if (quoteMapper.countActiveQuotesByRequestAndProvider(request.svcReqSn(), usrSn) > 0) {
+            throw new CustomException(ErrorCode.QUOTE_ALREADY_EXISTS);
+        }
 
         String actorId = String.valueOf(usrSn);
         Quote quote = Quote.builder()
@@ -324,7 +333,10 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 quote.getSvcReqSn());
     }
 
-    /** F-SVC-008: 견적 철회. 요청자 선택(QUTC0004) 이후 불가. */
+    /**
+     * 담당자 7 통합 · F-SVC-008: 본인 소유의 선택 전 견적을 철회합니다.
+     * 권한 상실 뒤에도 활동 중단은 가능해야 하므로 현재 카테고리 권한을 다시 요구하지 않습니다.
+     */
     @Transactional
     public void withdrawQuote(Long usrSn, Long qutSn) {
         if (usrSn == null || usrSn <= 0 || qutSn == null || qutSn <= 0) {
@@ -338,7 +350,6 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (!usrSn.equals(quote.getUsrSn())) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
-        requireCurrentProviderAccess(usrSn, quote.getSvcReqSn());
         if (STATUS_SELECTED.equals(quote.getQutStatusCd())) {
             throw new CustomException(ErrorCode.QUOTE_ALREADY_SELECTED);
         }
@@ -351,6 +362,25 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (updated != 1) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
+    }
+
+    /** 담당자 7 통합 · F-SVC-003: 요청 종료 트랜잭션에서 선택 전 견적을 만료시킵니다. */
+    @Override
+    @Transactional
+    public int expireActiveQuotes(Long serviceRequestId, String actorId) {
+        if (serviceRequestId == null || serviceRequestId <= 0
+                || actorId == null || actorId.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        int changed = quoteMapper.expireActiveQuotesByServiceRequestId(
+                serviceRequestId,
+                actorId.trim());
+        if (quoteMapper.countActiveQuotesByServiceRequestId(serviceRequestId) > 0) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "거래에 연결된 활성 견적이 있어 요청을 종료할 수 없습니다.");
+        }
+        return changed;
     }
 
     // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 회원 탈퇴 시

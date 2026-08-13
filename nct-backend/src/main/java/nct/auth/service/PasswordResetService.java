@@ -3,6 +3,7 @@ package nct.auth.service;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,6 +38,7 @@ public class PasswordResetService {
     private static final String USED = "EMVC0005";
     private static final String EXPIRED = "EMVC0006";
     private static final String STATUS_ACTIVE = "USRC0001";
+    private static final String SYSTEM_LOGIN_ID_PREFIX = "OAUTH_";
     private static final int MAX_RESEND_COUNT = 5;
     private static final int TOKEN_BYTES = 32;
 
@@ -109,6 +111,10 @@ public class PasswordResetService {
 
         AuthMember member = authMemberPort.findByEmail(fieldCryptoService.decrypt(verification.getEmlVrfEmail()))
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        if (isSystemGeneratedLoginId(member.getLoginId())) {
+            emailVerificationMapper.markExpired(verification.getEmlVrfSn());
+            throw new CustomException(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND);
+        }
 
         // @ai_generated: 링크 방식은 별도 "검증" 단계 없이 클릭+제출이 한 번에 오므로,
         // 기존 SIGNUP과 동일한 제네릭 매퍼(PENDING->VERIFIED->USED)를 한 트랜잭션에서 연속 호출한다.
@@ -129,7 +135,12 @@ public class PasswordResetService {
         AuthMember member = authMemberPort.findByLoginId(loginId).orElse(null);
         return member != null
                 && email.equalsIgnoreCase(member.getEmail())
-                && STATUS_ACTIVE.equals(member.getStatus());
+                && STATUS_ACTIVE.equals(member.getStatus())
+                && !isSystemGeneratedLoginId(member.getLoginId());
+    }
+
+    private boolean isSystemGeneratedLoginId(String loginId) {
+        return loginId != null && loginId.toUpperCase(Locale.ROOT).startsWith(SYSTEM_LOGIN_ID_PREFIX);
     }
 
     private void createAndSend(String email, LocalDateTime sentAt, LocalDateTime expiresAt) {

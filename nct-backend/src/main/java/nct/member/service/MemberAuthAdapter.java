@@ -131,6 +131,7 @@ public class MemberAuthAdapter implements AuthMemberPort {
             .usrTelno(fieldCryptoService.encrypt(profile.getTelno()))
             .usrAddr(fieldCryptoService.encrypt(profile.getAddress()))
             .usrDaddr(fieldCryptoService.encrypt(profile.getDetailAddress()))
+            .usrZip(fieldCryptoService.encrypt(profile.getZip()))
             .usrBankNm(fieldCryptoService.encrypt(profile.getBankName()))
             .usrAcntNo(fieldCryptoService.encrypt(profile.getAccountNo()))
             .usrStatusCd("USRC0001")    // 신규가입 기본 상태 (seed 기준: 활성/기본 정상 회원)

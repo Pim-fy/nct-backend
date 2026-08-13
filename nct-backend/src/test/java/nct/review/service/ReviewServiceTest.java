@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
@@ -15,11 +14,12 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -73,6 +73,7 @@ class ReviewServiceTest {
     // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
     @Mock private ObjectProvider<AuctionService> auctionServiceProvider;
     @Mock private AuctionService auctionService;
+    @Captor private ArgumentCaptor<List<ReviewImage>> reviewImageListCaptor;
 
     private ReviewService reviewService;
 
@@ -368,10 +369,8 @@ class ReviewServiceTest {
 
         assertThat(result.getPhotoCount()).isEqualTo(2);
 
-        org.mockito.ArgumentCaptor<List<ReviewImage>> captor =
-                org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(reviewImageMapper).insertAll(captor.capture());
-        List<ReviewImage> inserted = captor.getValue();
+        verify(reviewImageMapper).insertAll(reviewImageListCaptor.capture());
+        List<ReviewImage> inserted = reviewImageListCaptor.getValue();
         assertThat(inserted).hasSize(2);
         assertThat(inserted.get(0).getRvwSn()).isEqualTo(901L);
         assertThat(inserted.get(0).getFlSn()).isEqualTo(10L);
@@ -522,11 +521,9 @@ class ReviewServiceTest {
 
         assertThat(result.getAddedPhotoCount()).isEqualTo(1);
 
-        org.mockito.ArgumentCaptor<List<ReviewImage>> captor =
-                org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(reviewImageMapper).insertAll(captor.capture());
-        assertThat(captor.getValue().get(0).getRvwSn()).isEqualTo(900L);
-        assertThat(captor.getValue().get(0).getFlSn()).isEqualTo(20L);
+        verify(reviewImageMapper).insertAll(reviewImageListCaptor.capture());
+        assertThat(reviewImageListCaptor.getValue().get(0).getRvwSn()).isEqualTo(900L);
+        assertThat(reviewImageListCaptor.getValue().get(0).getFlSn()).isEqualTo(20L);
     }
 
     @Test

@@ -206,10 +206,6 @@ class AuctionListFilterTest extends ApprovedDatabaseWriteIntegrationTest {
         return aucSn;
     }
 
-    private long insertProduct(long sellerSn, String productName, BigDecimal instantBuyPrice) {
-        return insertProduct(sellerSn, productName, instantBuyPrice, "TRDC0009");
-    }
-
     private long insertProduct(
             long sellerSn,
             String productName,

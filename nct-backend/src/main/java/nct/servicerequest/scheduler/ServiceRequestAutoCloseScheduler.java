@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import nct.servicerequest.service.ServiceRequestClosureService;
 import nct.servicerequest.service.ServiceRequestService;
 
 /**
@@ -24,12 +25,13 @@ public class ServiceRequestAutoCloseScheduler {
     private static final int BATCH_SIZE = 100;
 
     private final ServiceRequestService serviceRequestService;
+    private final ServiceRequestClosureService serviceRequestClosureService;
 
     @Scheduled(fixedDelayString = "${service-request.auto-close.fixed-delay-ms:60000}")
     public void closeExpiredServiceRequests() {
         for (Long svcReqSn : serviceRequestService.findExpiredOpenServiceRequestIds(BATCH_SIZE)) {
             try {
-                serviceRequestService.autoCloseExpiredServiceRequest(svcReqSn);
+                serviceRequestClosureService.closeExpired(svcReqSn);
             } catch (RuntimeException exception) {
                 log.warn("서비스 요청 자동 마감 처리에 실패했습니다. svcReqSn={}", svcReqSn, exception);
             }

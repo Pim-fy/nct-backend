@@ -93,6 +93,7 @@ class AuctionServicePolicyTest {
         target.setBidUnitPrice(BigDecimal.valueOf(1000));
         target.setTradeMethodCode("TRDC0010");
         target.setAuctionStatusCode(AuctionStatusCode.ACTIVE);
+        target.setProductUseYn("Y");
         target.setEndDateTime(LocalDateTime.now().plusMinutes(2));
         target.setDatabaseNow(LocalDateTime.now());
         lenient().when(auctionMapper.findAuctionBidTargetForUpdate(10L)).thenReturn(target);
@@ -101,6 +102,17 @@ class AuctionServicePolicyTest {
         lenient().when(buyerDeliveryAddressReader.getOwnedActiveAddressSnapshot(anyLong(), any()))
                 .thenReturn(new BuyerDeliveryAddressSnapshot(
                         70L, "구매자", "01012345678", "01234", "서울시 마포구", "101호"));
+    }
+
+    @Test
+    void placeBidRejectsHiddenProduct() {
+        target.setProductUseYn("N");
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, bidRequest(12000)))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("숨김 처리된 상품");
+
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
     }
 
     @Test

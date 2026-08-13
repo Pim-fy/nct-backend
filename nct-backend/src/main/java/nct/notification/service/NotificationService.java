@@ -243,6 +243,19 @@ public class NotificationService {
     @Transactional
     public void notifyForEvent(long usrSn, NotificationEvent event, NotificationAudience audience,
                                String title, String content, RefType refType, Long refSn) {
+        notifyForEvent(usrSn, event, audience, title, content, refType, refSn, null);
+    }
+
+    /**
+     * 도메인 오버라이드 변형 (2026-08-13) — 같은 이벤트가 물건·서비스 거래 양쪽에서 발행될 때
+     * (거래 확정 요청·거래 완료), 저장되는 도메인 코드만 실제 거래 종류로 바꾸기 위한 경로.
+     * 알림함 이동 버튼이 도메인 코드(NTFG03)로 물건 거래 상세/서비스 거래 상세를 구분하기 때문에,
+     * 서비스 거래인데 거래(NTFC0011) 도메인으로 저장되면 물건 거래 화면으로 잘못 이동해 404가 난다.
+     * 이벤트 단위 설정 게이팅·멱등 체크·배지 분류(type)는 이벤트 값 그대로 유지된다.
+     */
+    private void notifyForEvent(long usrSn, NotificationEvent event, NotificationAudience audience,
+                                String title, String content, RefType refType, Long refSn,
+                                NotificationDomain domainOverride) {
         // 멱등 체크 — 같은 회원·같은 이벤트·같은 참조 건으로 이미 발행했으면 조용히 스킵.
         // 마감임박 알림처럼 매분 도는 스케줄러가 같은 경매를 반복 호출해도 알림이 한 번만 가게 하기 위함.
         // refSn이 없는 알림(참조 건 없음)은 중복 판단 기준이 없으므로 체크하지 않는다.
@@ -252,7 +265,8 @@ public class NotificationService {
         if (!eventInappEnabled(usrSn, event)) {
             return;
         }
-        Notification n = build(usrSn, event.getType(), event.getDomain(), audience, title, content, refType, refSn);
+        NotificationDomain domain = domainOverride != null ? domainOverride : event.getDomain();
+        Notification n = build(usrSn, event.getType(), domain, audience, title, content, refType, refSn);
         n.setNtfEvtCd(event.getCode()); // 멱등 체크 키 — notifyForEvent 경로만 채운다 (기존 notify()는 null 유지)
 
         boolean emailEligible = mailSender.isAvailable()
@@ -375,10 +389,19 @@ public class NotificationService {
 
     /** 거래 완료(수동/자동 공용) — 거래 담당(4)이 호출. 기존 자동완료 직접 notify() 호출을 이걸로 교체 요청 */
     public void notifyTradeComplete(long usrSn, long tradeId, boolean auto) {
+        notifyTradeComplete(usrSn, tradeId, auto, false);
+    }
+
+    /**
+     * 거래 완료 — 서비스 거래 구분 변형 (2026-08-13 알림 이동 404 수정).
+     * serviceTrade=true면 도메인을 서비스로 저장해 알림함 이동 버튼이 서비스 거래 상세로 향한다.
+     */
+    public void notifyTradeComplete(long usrSn, long tradeId, boolean auto, boolean serviceTrade) {
         notifyForEvent(usrSn, NotificationEvent.TRADE_COMPLETE, NotificationAudience.GENERAL,
                 auto ? "거래 자동 완료" : "거래 완료",
                 auto ? "상대방 확인 기한이 지나 거래가 자동으로 완료되었습니다." : "거래가 완료되었습니다.",
-                RefType.TRADE, tradeId);
+                RefType.TRADE, tradeId,
+                serviceTrade ? NotificationDomain.SERVICE : null);
     }
 
     /** 관리자 판매자 취소 승인 결과를 거래 양 당사자에게 알린다. */
@@ -501,10 +524,21 @@ public class NotificationService {
      * 알림 배지가 기존 [OPS]에서 [거래]로 바뀐다(F-COM-012 재분류, 의도된 변경).
      */
     public void notifyTradeConfirmRequest(long usrSn, long trdSn, int confirmDays) {
+        notifyTradeConfirmRequest(usrSn, trdSn, confirmDays, false);
+    }
+
+    /**
+     * 거래 완료 확인 요청 — 서비스 거래 구분 변형 (2026-08-13 알림 이동 404 수정).
+     * 서비스 거래의 완료 확인 요청이 거래(NTFC0011) 도메인으로 저장되면 알림함 이동 버튼이
+     * 물건 거래 상세(/trades/:sn)로 향해 404가 났다(사용자 제보). serviceTrade=true면 도메인을
+     * 서비스로 저장해 서비스 거래 상세로 이동한다. 게이팅 이벤트(NTFC0021)·배지([거래])는 동일.
+     */
+    public void notifyTradeConfirmRequest(long usrSn, long trdSn, int confirmDays, boolean serviceTrade) {
         notifyForEvent(usrSn, NotificationEvent.TRADE_CONFIRM_REQUEST, NotificationAudience.GENERAL,
                 "거래 완료 확인 요청",
                 String.format("상대방이 거래 완료 확인을 기다리고 있습니다. %d일 안에 확인하지 않으면 자동으로 완료 처리됩니다.", confirmDays),
-                RefType.TRADE, trdSn);
+                RefType.TRADE, trdSn,
+                serviceTrade ? NotificationDomain.SERVICE : null);
     }
 
     /** 담당자 7 · F-OPS-005/007: 거래 신고 접수 시 상대 당사자에게 알립니다. */

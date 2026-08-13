@@ -330,8 +330,10 @@ public class TradeService implements
         tradeMapper.insertStatusHistory(
                 tradeId, WAITING_CONFIRMATION,
                 "SERVICE_COMPLETION_REQUEST|" + normalizedCompletionMemo);
+        // 담당자6 BJN, 2026-08-13: 서비스 거래 구분(true) 전달 — 알림 이동 버튼이 물건 거래
+        // 상세로 향해 404가 나던 문제 수정 (도메인 코드만 서비스로 저장, 이벤트·배지는 동일)
         notificationService.notifyTradeConfirmRequest(
-                target.getRequesterUserId(), tradeId, confirmDays);
+                target.getRequesterUserId(), tradeId, confirmDays, true);
     }
 
     private String normalizeCompletionMemo(String completionMemo) {
@@ -593,10 +595,11 @@ public class TradeService implements
                 target.getTradeId(), target.getProviderUserId(), settlementAmount);
         settlementService.completeAutomatically(settlementId);
         tradeMapper.insertStatusHistory(target.getTradeId(), COMPLETED, historyReason);
+        // 담당자6 BJN, 2026-08-13: 서비스 거래 구분(true) 전달 — 완료 알림 이동 404 수정
         notificationService.notifyTradeComplete(
-                target.getRequesterUserId(), target.getTradeId(), automaticallyCompleted);
+                target.getRequesterUserId(), target.getTradeId(), automaticallyCompleted, true);
         notificationService.notifyTradeComplete(
-                target.getProviderUserId(), target.getTradeId(), automaticallyCompleted);
+                target.getProviderUserId(), target.getTradeId(), automaticallyCompleted, true);
     }
 
     /**

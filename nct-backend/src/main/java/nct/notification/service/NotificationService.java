@@ -287,13 +287,23 @@ public class NotificationService {
                 RefType.AUCTION, auctionId);
     }
 
-    /** 낙찰/유찰 결과 — 경매 담당(5)이 마감 처리 시 호출 */
-    public void notifyAuctionResult(long usrSn, long auctionId, boolean won) {
+    /**
+     * 낙찰/유찰 결과 — 경매 담당(5)이 마감 처리 시 호출.
+     * 낙찰(tradeId 있음)이면 알림을 눌렀을 때 더 이상 할 게 없는 경매 페이지 대신
+     * 거래 상세로 바로 가도록 참조를 거래로 남긴다(유찰은 거래가 없으니 경매 참조 유지).
+     */
+    public void notifyAuctionResult(long usrSn, long auctionId, boolean won, Long tradeId) {
         String title = auctionResultTitle(auctionId, won ? "낙찰되었습니다" : "유찰되었습니다");
+        RefType refType = RefType.AUCTION;
+        long refSn = auctionId;
+        if (won && tradeId != null) {
+            refType = RefType.TRADE;
+            refSn = tradeId;
+        }
         notifyForEvent(usrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
                 title,
                 won ? "축하합니다! 입찰하신 경매에 낙찰되었습니다." : "입찰하신 경매가 유찰되었습니다.",
-                RefType.AUCTION, auctionId);
+                refType, refSn);
     }
 
     /**

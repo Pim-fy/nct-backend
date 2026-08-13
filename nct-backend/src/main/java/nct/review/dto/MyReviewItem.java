@@ -37,5 +37,6 @@ public class MyReviewItem {
     private String partyLabel;
     private String partyName;
     private String completedDate; // 리뷰 작성일 (yyyy-MM-dd)
+    private String thumbnail;    // 물건거래: 상품 대표 이미지 경로 / 서비스거래: SVC_REQ_IMAGE 첫 번째 이미지 API 경로
     private List<String> photos;
 }

@@ -62,7 +62,7 @@ public class AuctionService {
     private static final String SYSTEM_ACTOR = "SYSTEM";
     private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
-    private static final String BOTH_TRADE_METHOD_CODE = "TRDC0020";
+    private static final String BOTH_TRADE_METHOD_CODE = "TRDC0015";
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -94,6 +94,7 @@ public class AuctionService {
                 .build();
     }
 
+
     @Transactional(readOnly = true)
     public AuctionDetailResponse findAuctionDetail(Long auctionId) {
         return findAuctionDetailWithProductValidation(auctionId, null, true);
@@ -110,6 +111,18 @@ public class AuctionService {
             Long userId,
             boolean includeSupplemental) {
         return findAuctionDetailWithProductValidation(auctionId, userId, includeSupplemental);
+    }
+
+    /**
+     * 담당자 7 · F-OPS-003: ROLE_ADMIN으로 보호된 운영 조회에서 숨김 상품의 경매도 확인합니다.
+     * 일반 공개 상세와 달리 PRODUCT 공개 여부 검증만 건너뛰며, 경매 존재 여부는 그대로 검증합니다.
+     */
+    @Transactional(readOnly = true)
+    public AuctionDetailResponse findAuctionDetailForAdmin(Long auctionId) {
+        if (auctionId == null || auctionId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return loadAuctionDetail(auctionId, null, false);
     }
 
     @Transactional(readOnly = true)
@@ -251,7 +264,7 @@ public class AuctionService {
             throw new CustomException(ErrorCode.CONFLICT, "경매 마감 상태가 이미 변경되었습니다.");
         }
         if (AuctionStatusCode.ENDED.equals(finalStatus)) {
-            createAuctionTrade(
+            AuctionTradeCreateResult trade = createAuctionTrade(
                     target,
                     target.getCurrentHighestBidId(),
                     target.getCurrentHighestBidderId(),
@@ -262,7 +275,8 @@ public class AuctionService {
             notificationService.notifyAuctionResult(
                     target.getCurrentHighestBidderId(),
                     auctionId,
-                    true);
+                    true,
+                    trade.getTradeSn());
         } else {
             notificationService.notifyAuctionFailed(target.getSellerId(), auctionId);
         }
@@ -399,8 +413,8 @@ public class AuctionService {
             return;
         }
 
-        detail.setSellerRating(trustScore.getTotalScore());
-        detail.setSellerReviewCount(trustScore.getTotalCount());
+        detail.setSellerRating(trustScore.getGoodsScore());
+        detail.setSellerReviewCount(trustScore.getGoodsCount());
     }
 
     private List<AuctionProductUpdateItem> loadProductUpdates(Long productId) {
@@ -557,7 +571,7 @@ public class AuctionService {
                 selectedTradeMethodCode,
                 selectedDeliveryAddressId);
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, instantBuyPrice);
-        notificationService.notifyAuctionResult(userId, auctionId, true);
+        notificationService.notifyAuctionResult(userId, auctionId, true, trade.getTradeSn());
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
         detail.setTradeId(trade.getTradeSn());
@@ -601,6 +615,9 @@ public class AuctionService {
     private void validateBidAvailable(AuctionBidTarget target, Long userId) {
         if (!AuctionStatusCode.ACTIVE.equals(target.getAuctionStatusCode())) {
             throw new CustomException(ErrorCode.CONFLICT);
+        }
+        if (!"Y".equals(target.getProductUseYn())) {
+            throw new CustomException(ErrorCode.CONFLICT, "숨김 처리된 상품에는 입찰할 수 없습니다.");
         }
         if (target.getEndDateTime() != null && !target.getEndDateTime().isAfter(databaseNow(target))) {
             throw new CustomException(ErrorCode.CONFLICT);
@@ -800,7 +817,7 @@ public class AuctionService {
         }
 
         request.setKeyword(blankToNull(request.getKeyword()));
-        request.setSort(blankToDefault(request.getSort(), "deadline"));
+        request.setSort(blankToDefault(request.getSort(), "latest"));
         request.setTradeMethod(blankToDefault(request.getTradeMethod(), "all"));
         request.setTradeMethodCodes(resolveTradeMethodCodes(request.getTradeMethod()));
 

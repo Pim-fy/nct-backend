@@ -5,6 +5,7 @@
     <result column="USR_SN" property="userSn"/>
     <result column="USR_NM" property="displayName"/>
     <result column="PROFILE_IMAGE_URL" property="profileImageUrl"/>
+    <result column="PRV_PRF_FL_SN" property="profileFileSn"/>
     <result column="PRV_PRF_INTRO_CN" property="introduction"/>
     <result column="PRV_PRF_AREA_NM" property="availableArea"/>
     <result column="PRV_PRF_RVW_AVG_SCR" property="reviewAverageScore"/>
@@ -29,13 +30,14 @@
     SELECT p.USR_SN,
            u.USR_NM,
            f.FL_PATH AS PROFILE_IMAGE_URL,
+           p.PRV_PRF_FL_SN,
            p.PRV_PRF_INTRO_CN,
            p.PRV_PRF_AREA_NM,
            p.PRV_PRF_RVW_AVG_SCR,
            p.PRV_PRF_RVW_CNT
       FROM PROVIDER_PROFILE p
       JOIN USERS u ON u.USR_SN = p.USR_SN
-      LEFT JOIN FILES f ON f.FL_SN = u.USR_PRFL_FL_SN AND f.FL_USE_YN = 'Y'
+      LEFT JOIN FILES f ON f.FL_SN = COALESCE(p.PRV_PRF_FL_SN, u.USR_PRFL_FL_SN) AND f.FL_USE_YN = 'Y'
      WHERE p.USR_SN = #{userSn}
        AND p.PRV_PRF_USE_YN = 'Y'
        AND u.USR_USE_YN = 'Y'
@@ -126,10 +128,25 @@
      ORDER BY permission.USR_SN, category.CAT_SORT_NO, category.CAT_SN
   </select>
   <insert id="upsert">
-    INSERT INTO PROVIDER_PROFILE (USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_REG_ID, PRV_PRF_UPDT_ID)
-    VALUES (#{userSn}, #{introduction}, #{availableArea}, #{actorId}, #{actorId})
+    INSERT INTO PROVIDER_PROFILE (USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_FL_SN, PRV_PRF_REG_ID, PRV_PRF_UPDT_ID)
+    VALUES (#{userSn}, #{introduction}, #{availableArea}, #{profileFileSn}, #{actorId}, #{actorId})
     ON DUPLICATE KEY UPDATE PRV_PRF_INTRO_CN = VALUES(PRV_PRF_INTRO_CN),
                             PRV_PRF_AREA_NM = VALUES(PRV_PRF_AREA_NM),
+                            PRV_PRF_FL_SN = VALUES(PRV_PRF_FL_SN),
                             PRV_PRF_USE_YN = 'Y', PRV_PRF_UPDT_ID = VALUES(PRV_PRF_UPDT_ID)
   </insert>
+  <update id="updateReviewRating">
+    UPDATE PROVIDER_PROFILE
+       SET PRV_PRF_RVW_AVG_SCR = #{averageScore},
+           PRV_PRF_RVW_CNT = #{reviewCount},
+           PRV_PRF_UPDT_ID = #{actorId},
+           PRV_PRF_UPDT_DT = CURRENT_TIMESTAMP
+     WHERE USR_SN = #{userSn}
+  </update>
+  <select id="lockReviewRatingByUserSn" resultType="long">
+    SELECT USR_SN
+      FROM PROVIDER_PROFILE
+     WHERE USR_SN = #{userSn}
+     FOR UPDATE
+  </select>
 </mapper>

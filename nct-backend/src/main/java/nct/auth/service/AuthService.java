@@ -1,6 +1,8 @@
 package nct.auth.service;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -14,12 +16,14 @@ import nct.auth.dto.AvailabilityResponse;
 import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.FindEmailResponse;
 import nct.auth.mapper.UserAgreementMapper;
+import nct.auth.mapper.UserOauthMapper;
 import nct.auth.util.AgreementValidator;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
+import nct.global.security.port.OAuthProviderParser;
 import nct.global.security.provider.JwtTokenProvider;
 import nct.global.utils.TokenHashUtil;
 import nct.ops.sanction.port.SanctionStatusReader;
@@ -44,6 +48,9 @@ public class AuthService {
     private static final String ROLE_USER = "ROLE_USER";
     private static final String ROLE_SERVICE = "ROLE_SERVICE";
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
+    private static final String SYSTEM_LOGIN_ID_PREFIX = "OAUTH_";
+    private static final String ACCOUNT_TYPE_LOCAL = "LOCAL";
+    private static final String ACCOUNT_TYPE_SOCIAL_ONLY = "SOCIAL_ONLY";
     // @ai_generated: F-AUTH-014 - 마스킹된 로그인ID 앞부분 노출 글자 수(목업 "hong****" 패턴 기준)
     private static final int MASK_VISIBLE_CHARS = 4;
 
@@ -52,10 +59,13 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final EmailVerificationService emailVerificationService;
     private final UserAgreementMapper userAgreementMapper;
+    private final UserOauthMapper userOauthMapper;
     private final Validator validator;
     private final TokenHashUtil tokenHashUtil;
     private final ProviderApplicationService providerApplicationService;
     private final SanctionStatusReader sanctionStatusReader;
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 비로그인 문의 토큰 발급
+    private final SuspendedInquiryTokenService suspendedInquiryTokenService;
 
     /**
      * 회원가입
@@ -131,26 +141,51 @@ public class AuthService {
 
     /**
      * F-AUTH-014: 아이디 찾기
-     * - 이메일+이름이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
-     * - 이메일 불일치·이름 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
+     * - 이메일+가입 닉네임이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
+     * - 이메일 불일치·닉네임 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
      *   (계정 존재 여부 노출 방지 - login()의 INVALID_CREDENTIALS 통일과 동일한 설계).
      */
     @Transactional(readOnly = true)
     public FindEmailResponse findEmail(FindEmailRequest request) {
         String email = normalizeEmail(request.getEmail());
-        String name = requireText(request.getName(), ErrorCode.INVALID_INPUT_VALUE);
+        String nickname = requireText(request.getNickname(), ErrorCode.INVALID_INPUT_VALUE);
 
         AuthMember member = authMemberPort.findByEmail(email).orElse(null);
         boolean matched = member != null
-                && name.equals(member.getName())
+                && nickname.equals(member.getNickname())
                 && STATUS_ACTIVE.equals(member.getStatus());
         if (!matched) {
             throw new CustomException(ErrorCode.USER_NOT_FOUND);
         }
 
+        if (isSystemGeneratedLoginId(member.getLoginId())) {
+            List<String> providers = userOauthMapper.findByUsrSn(member.getId()).stream()
+                    .map(link -> toSupportedProviderKey(link.providerCd()))
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            return FindEmailResponse.builder()
+                                    .accountType(ACCOUNT_TYPE_SOCIAL_ONLY)
+                                    .oauthProviders(providers)
+                                    .build();
+        }
+
         return FindEmailResponse.builder()
+                                .accountType(ACCOUNT_TYPE_LOCAL)
                                 .maskedLoginId(maskLoginId(member.getLoginId()))
+                                .oauthProviders(List.of())
                                 .build();
+    }
+
+    private String toSupportedProviderKey(String providerCd) {
+        if (providerCd == null) {
+            return null;
+        }
+        try {
+            return OAuthProviderParser.providerCdToFriendlyKey(providerCd);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     // @ai_generated: 실제 길이를 노출하지 않도록 앞 N자 뒤에 항상 고정 4개의 '*'를 붙인다(목업 "hong****" 패턴).
@@ -159,20 +194,28 @@ public class AuthService {
         return loginId.substring(0, visible) + "****";
     }
 
+    private boolean isSystemGeneratedLoginId(String loginId) {
+        return loginId != null && loginId.toUpperCase(Locale.ROOT).startsWith(SYSTEM_LOGIN_ID_PREFIX);
+    }
+
     /**
      * 로그인
      * - 비밀번호 검증 -> JWT 발급 -> Refresh DB 저장
      * - 실패 사유(사용자 없음/비밀번호 불일치)를 구분하지 않고
      *   동일한 INVALID_CREDENTIALS 로 응답 (계정 존재 여부 노출 방지)
      */
-    @Transactional
+    // @ai_generated: F-AUTH-017 - SuspendedAccountException은 issueToken()이 이미 저장한
+    // 문의 토큰 행을 커밋해야 하므로 롤백 대상에서 제외한다. issueToken() 자체는 별도
+    // @Transactional 경계가 없어(이 메서드 트랜잭션에 그대로 참여) 세션 22:19의 P1(noRollbackFor +
+    // 중첩 @Transactional 충돌)과 같은 함정이 재현되지 않는다.
+    @Transactional(noRollbackFor = SuspendedAccountException.class)
     // 담당자 7 · F-OPS-001: 일반 로그인에서는 관리자 계정의 세션 발급을 차단한다.
     public AuthSessionResult login(LoginRequest request) {
         return authenticate(request, false);
     }
 
     /** 담당자 7 · F-OPS-001: 관리자 전용 로그인에서는 관리자 계정만 세션을 발급한다. */
-    @Transactional
+    @Transactional(noRollbackFor = SuspendedAccountException.class)
     public AuthSessionResult adminLogin(LoginRequest request) {
         return authenticate(request, true);
     }
@@ -192,6 +235,13 @@ public class AuthService {
             throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
         }
 
+        // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 판정 직전(=비밀번호 검증 통과 직후)에만
+        // 문의 접수 토큰을 발급한다. requireActiveStatus 자체는 다른 호출자(재발급 등)도 공유하는
+        // 공용 메서드라 그대로 두고, 로그인 경로에서만 이 특수 예외로 갈아 끼운다.
+        if (STATUS_SUSPENDED.equals(member.getStatus())) {
+            String inquiryToken = suspendedInquiryTokenService.issueToken(member.getEmail());
+            throw new SuspendedAccountException(inquiryToken);
+        }
         // @ai_generated: F-AUTH-009 - 정지/탈퇴 계정은 비밀번호가 맞아도 로그인을 차단한다.
         requireActiveStatus(member.getStatus());
 

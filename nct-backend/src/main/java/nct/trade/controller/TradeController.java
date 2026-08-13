@@ -195,6 +195,18 @@ public class TradeController {
                 tradeService.getMyMaterialTradeDetail(tradeId, userId)));
     }
 
+    /** 직거래 완료 확인 요청을 받은 상대방이 동의 또는 거절한다. */
+    @PostMapping("/{tradeId}/offline-completion-requests/respond")
+    public ResponseEntity<ApiResponse<TradeDetailResponse>> respondOfflineCompletionRequest(
+            @PathVariable(name = "tradeId") long tradeId,
+            @RequestParam(name = "approve") boolean approve,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        long userId = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                tradeService.respondOfflineCompletionRequest(tradeId, userId, approve)));
+    }
+
     /** 직거래 일정 제안·응답 이력을 거래 당사자에게 반환한다. */
     @GetMapping("/{tradeId}/offline-schedule/proposals")
     public ResponseEntity<ApiResponse<List<TradeOfflineScheduleProposal>>> getOfflineScheduleProposalHistory(
@@ -229,14 +241,14 @@ public class TradeController {
                 tradeService.requestCompletionConfirmation(tradeId, userId)));
     }
 
-    /** 서비스 거래 당사자가 거래 문제를 접수하면 거래·정산을 같은 트랜잭션으로 보류한다. */
-    @PostMapping("/{tradeId}/service-disputes")
-    public ResponseEntity<ApiResponse<Void>> registerServiceTradeDispute(
+    /** 담당자 7 · REQ-AUC-027/F-SVC-012: 상품ㆍ서비스 거래 당사자의 통합 신고 접수 API입니다. */
+    @PostMapping("/{tradeId}/reports")
+    public ResponseEntity<ApiResponse<Void>> registerTradeReport(
             @PathVariable(name = "tradeId") long tradeId,
             @Valid @RequestBody ServiceTradeDisputeRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        tradeService.registerServiceTradeDispute(tradeId, userDetails.getMember().getId(), request);
+        tradeService.registerTradeReport(tradeId, userDetails.getMember().getId(), request);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

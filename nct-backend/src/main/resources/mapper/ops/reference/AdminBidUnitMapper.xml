@@ -94,10 +94,19 @@
            AND parent.CMM_USE_YN = 'Y'
     </select>
 
-    <select id="findMaxCodeSequence" resultType="java.lang.Integer">
-        SELECT COALESCE(MAX(CAST(SUBSTRING(CMM_CD, 5) AS UNSIGNED)), 0)
-          FROM CMM_CODE
-         WHERE CMM_CD REGEXP CONCAT('^', #{codePrefix}, '[0-9]{4}$')
+    <select id="findFirstAvailableCodeSequence" resultType="java.lang.Integer">
+        SELECT MIN(candidate.SEQ_NO)
+          FROM (
+                SELECT 1 AS SEQ_NO
+                UNION ALL
+                SELECT CAST(SUBSTRING(CMM_CD, CHAR_LENGTH(#{codePrefix}) + 1) AS UNSIGNED) + 1
+                  FROM CMM_CODE
+                 WHERE CMM_CD REGEXP CONCAT('^', #{codePrefix}, '[0-9]{4}$')
+               ) candidate
+          LEFT JOIN CMM_CODE existing
+            ON existing.CMM_CD = CONCAT(#{codePrefix}, LPAD(candidate.SEQ_NO, 4, '0'))
+         WHERE candidate.SEQ_NO BETWEEN 1 AND 9999
+           AND existing.CMM_SN IS NULL
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="code.cmmSn" keyColumn="CMM_SN">

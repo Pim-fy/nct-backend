@@ -20,11 +20,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import nct.auth.domain.UserAgreement;
+import nct.auth.domain.UserOauthLinkRow;
 import nct.auth.dto.AgreementRequest;
 import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.LoginRequest;
 import nct.auth.dto.SignUpRequest;
 import nct.auth.mapper.UserAgreementMapper;
+import nct.auth.mapper.UserOauthMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
@@ -53,11 +55,16 @@ class AuthServiceTest {
     @Mock
     private UserAgreementMapper userAgreementMapper;
     @Mock
+    private UserOauthMapper userOauthMapper;
+    @Mock
     private TokenHashUtil tokenHashUtil;
     @Mock
     private ProviderApplicationService providerApplicationService;
     @Mock
     private SanctionStatusReader sanctionStatusReader;
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 문의 토큰 발급 협력자
+    @Mock
+    private SuspendedInquiryTokenService suspendedInquiryTokenService;
 
     private AuthService authService;
 
@@ -69,10 +76,12 @@ class AuthServiceTest {
                 jwtTokenProvider,
                 emailVerificationService,
                 userAgreementMapper,
+                userOauthMapper,
                 Validation.buildDefaultValidatorFactory().getValidator(),
                 tokenHashUtil,
                 providerApplicationService,
-                sanctionStatusReader);
+                sanctionStatusReader,
+                suspendedInquiryTokenService);
     }
 
     // @ai_generated: 가입 DTO·중복확인 API가 4자 경계값을 같은 규칙으로 적용하는지 검증한다.
@@ -376,15 +385,16 @@ class AuthServiceTest {
     }
 
     @Test
-    void 정지된_계정은_비밀번호가_맞아도_로그인을_차단한다() {
+    void 정지된_계정은_비밀번호가_맞아도_로그인을_차단하고_문의_토큰을_발급한다() {
         AuthMember member = memberWithStatus("USRC0002");
         when(authMemberPort.findByLoginId("buyer01")).thenReturn(java.util.Optional.of(member));
         when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
+        when(suspendedInquiryTokenService.issueToken(any())).thenReturn("issued-token");
 
         assertThatThrownBy(() -> authService.login(loginRequest("buyer01", "Password1!")))
-                .isInstanceOf(CustomException.class)
-                .extracting(exception -> ((CustomException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.ACCOUNT_SUSPENDED);
+                .isInstanceOf(SuspendedAccountException.class)
+                .extracting(exception -> ((SuspendedAccountException) exception).getInquiryToken())
+                .isEqualTo("issued-token");
 
         verify(jwtTokenProvider, never()).createAccessToken(any());
         verify(authMemberPort, never()).updateRefreshToken(any(), any());
@@ -564,19 +574,87 @@ class AuthServiceTest {
     }
 
     @Test
-    void 이메일과_이름이_모두_일치하는_활성계정은_마스킹된_아이디를_반환한다() {
+    void 이메일과_닉네임이_모두_일치하는_활성계정은_마스킹된_아이디를_반환한다() {
         AuthMember member = AuthMember.builder()
                 .id(101L).loginId("honggildong").email("user@example.com")
                 .name("홍길동").nickname("구매자").role("ROLE_USER").status("USRC0001").build();
         when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
 
-        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+        var response = authService.findEmail(findEmailRequest("user@example.com", "구매자"));
 
+        assertThat(response.getAccountType()).isEqualTo("LOCAL");
         assertThat(response.getMaskedLoginId()).isEqualTo("hong****");
+        assertThat(response.getOauthProviders()).isEmpty();
     }
 
     @Test
-    void 이름이_일치하지_않으면_계정이_있어도_USER_NOT_FOUND로_통일한다() {
+    void 소셜전용계정은_시스템아이디를_숨기고_연결된_제공자를_모두_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+        when(userOauthMapper.findByUsrSn(101L)).thenReturn(List.of(
+                new UserOauthLinkRow("USRC0004", java.time.LocalDateTime.now()),
+                new UserOauthLinkRow("USRC0005", java.time.LocalDateTime.now())));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("SOCIAL_ONLY");
+        assertThat(response.getMaskedLoginId()).isNull();
+        assertThat(response.getOauthProviders()).containsExactly("kakao", "naver");
+    }
+
+    @Test
+    void 소셜전용계정의_미지원_제공자코드는_제외하고_지원_제공자만_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+        when(userOauthMapper.findByUsrSn(101L)).thenReturn(List.of(
+                new UserOauthLinkRow("USRC9999", java.time.LocalDateTime.now()),
+                new UserOauthLinkRow("USRC0006", java.time.LocalDateTime.now())));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("SOCIAL_ONLY");
+        assertThat(response.getMaskedLoginId()).isNull();
+        assertThat(response.getOauthProviders()).containsExactly("google");
+    }
+
+    @Test
+    void 소셜전용계정의_제공자코드가_null이거나_모두_미지원이면_빈목록을_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+        when(userOauthMapper.findByUsrSn(101L)).thenReturn(List.of(
+                new UserOauthLinkRow(null, java.time.LocalDateTime.now()),
+                new UserOauthLinkRow("USRC9999", java.time.LocalDateTime.now())));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("SOCIAL_ONLY");
+        assertThat(response.getMaskedLoginId()).isNull();
+        assertThat(response.getOauthProviders()).isEmpty();
+    }
+
+    @Test
+    void 로컬계정에_소셜이_연동돼도_로컬아이디만_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("honggildong").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("LOCAL");
+        assertThat(response.getMaskedLoginId()).isEqualTo("hong****");
+        assertThat(response.getOauthProviders()).isEmpty();
+        verify(userOauthMapper, never()).findByUsrSn(any());
+    }
+
+    @Test
+    void 닉네임이_일치하지_않으면_계정이_있어도_USER_NOT_FOUND로_통일한다() {
         AuthMember member = AuthMember.builder()
                 .id(101L).loginId("honggildong").email("user@example.com")
                 .name("홍길동").nickname("구매자").role("ROLE_USER").status("USRC0001").build();
@@ -589,13 +667,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void 정지된_계정은_이름이_일치해도_USER_NOT_FOUND로_통일한다() {
+    void 정지된_계정은_닉네임이_일치해도_USER_NOT_FOUND로_통일한다() {
         AuthMember member = AuthMember.builder()
                 .id(101L).loginId("honggildong").email("user@example.com")
                 .name("홍길동").nickname("구매자").role("ROLE_USER").status("USRC0002").build();
         when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
 
-        assertThatThrownBy(() -> authService.findEmail(findEmailRequest("user@example.com", "홍길동")))
+        assertThatThrownBy(() -> authService.findEmail(findEmailRequest("user@example.com", "구매자")))
                 .isInstanceOf(CustomException.class)
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.USER_NOT_FOUND);
@@ -611,10 +689,10 @@ class AuthServiceTest {
                 .isEqualTo(ErrorCode.USER_NOT_FOUND);
     }
 
-    private FindEmailRequest findEmailRequest(String email, String name) {
+    private FindEmailRequest findEmailRequest(String email, String nickname) {
         FindEmailRequest request = new FindEmailRequest();
         request.setEmail(email);
-        request.setName(name);
+        request.setNickname(nickname);
         return request;
     }
 

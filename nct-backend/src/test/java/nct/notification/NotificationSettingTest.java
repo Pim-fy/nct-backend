@@ -144,7 +144,7 @@ class NotificationSettingTest {
 
         long auctionId = System.nanoTime();
         notificationService.notifyAuctionFailed(sellerSn, auctionId);   // 판매자에게 유찰
-        notificationService.notifyAuctionResult(usrSn, auctionId, false); // 입찰자에게 유찰
+        notificationService.notifyAuctionResult(usrSn, auctionId, false, null); // 입찰자에게 유찰
 
         Integer rowCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM NOTIFICATION WHERE NTF_REF_SN = ? AND USR_SN IN (?, ?)",

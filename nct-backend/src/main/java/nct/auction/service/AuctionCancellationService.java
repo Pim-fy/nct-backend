@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionCancelRequestCreateCommand;
@@ -16,6 +17,9 @@ import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionPendingCancelRequestResponse;
 import nct.auction.mapper.AuctionCancelRequestMapper;
 import nct.auction.mapper.AuctionMapper;
+import nct.auction.port.AdminAuctionCancellationCommand;
+import nct.auction.port.AdminAuctionCancellationPort;
+import nct.auction.port.AdminAuctionCancellationResult;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -28,7 +32,7 @@ import nct.trade.service.TradeService;
 
 @Service
 @RequiredArgsConstructor
-public class AuctionCancellationService {
+public class AuctionCancellationService implements AdminAuctionCancellationPort {
 
     private static final String AUCTION_STATUS_GROUP_CODE = "AUCG01";
     private static final int MAX_REASON_LENGTH = 1000;
@@ -41,6 +45,121 @@ public class AuctionCancellationService {
     private final ReferenceDataService referenceDataService;
     private final TradeService tradeService;
     private final PointService pointService;
+    private final ActiveAbuseReportReferenceReader activeReportReferenceReader;
+
+    /**
+     * 관리자 직접 취소: 판매자 취소 요청 없이 경매 상태에 맞는 자금 정리까지 한 트랜잭션으로 처리한다.
+     */
+    @Override
+    @Transactional
+    public AdminAuctionCancellationResult cancel(AdminAuctionCancellationCommand command) {
+        AdminAuctionCancellationCommand valid = validateAdminCancellationCommand(command);
+        if (valid.sourceReportSn() != null
+                && activeReportReferenceReader.hasOtherActiveReportLinkedToAuction(
+                        valid.auctionId(), valid.sourceReportSn())) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "같은 경매의 다른 미해결 신고가 있어 자동 취소할 수 없습니다.");
+        }
+        AuctionPendingCancelRequestResponse pending =
+                cancelRequestMapper.findPendingByAuctionId(valid.auctionId());
+        if (pending != null) {
+            if (AuctionStatusCode.OPERATION_HOLD.equals(pending.getCurrentAuctionStatusCode())) {
+                referenceDataService.requireActiveCode(
+                        AUCTION_STATUS_GROUP_CODE,
+                        AuctionStatusCode.CANCELED);
+                AuctionBidTarget heldAuction =
+                        auctionMapper.findAuctionBidTargetForUpdate(valid.auctionId());
+                if (heldAuction == null) {
+                    throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
+                }
+                if (AuctionStatusCode.ENDED.equals(pending.getPreviousAuctionStatusCode())) {
+                    cancelEndedAuctionTrade(
+                            heldAuction,
+                            valid.requestId(),
+                            valid.adminUserId(),
+                            valid.reason(),
+                            valid.sourceReportSn());
+                } else {
+                    cancelActiveAuctionBid(
+                            heldAuction, valid.adminUserId(), valid.reason());
+                }
+                updateAuctionStatus(
+                        valid.auctionId(),
+                        AuctionStatusCode.OPERATION_HOLD,
+                        AuctionStatusCode.CANCELED,
+                        valid.adminUserId());
+                processRequest(
+                        pending.getCancelRequestSn(),
+                        "Y",
+                        valid.adminUserId(),
+                        valid.reason());
+                return new AdminAuctionCancellationResult(
+                        valid.auctionId(),
+                        pending.getPreviousAuctionStatusCode(),
+                        AuctionStatusCode.CANCELED,
+                        true);
+            }
+            approveCancellation(
+                    pending.getCancelRequestSn(),
+                    valid.adminUserId(),
+                    valid.reason(),
+                    valid.sourceReportSn());
+            return new AdminAuctionCancellationResult(
+                    valid.auctionId(),
+                    pending.getPreviousAuctionStatusCode(),
+                    AuctionStatusCode.CANCELED,
+                    true);
+        }
+
+        AuctionBidTarget auction = auctionMapper.findAuctionBidTargetForUpdate(valid.auctionId());
+        if (auction == null) {
+            throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
+        }
+
+        String previousStatusCode = auction.getAuctionStatusCode();
+        if (AuctionStatusCode.CANCELED.equals(previousStatusCode)) {
+            return new AdminAuctionCancellationResult(
+                    valid.auctionId(),
+                    AuctionStatusCode.CANCELED,
+                    AuctionStatusCode.CANCELED,
+                    false);
+        }
+
+        referenceDataService.requireActiveCode(
+                AUCTION_STATUS_GROUP_CODE,
+                AuctionStatusCode.CANCELED);
+
+        if (AuctionStatusCode.READY.equals(previousStatusCode)
+                || AuctionStatusCode.ACTIVE.equals(previousStatusCode)
+                || AuctionStatusCode.OPERATION_HOLD.equals(previousStatusCode)
+                || AuctionStatusCode.ADMIN_PAUSED.equals(previousStatusCode)) {
+            cancelActiveAuctionBid(auction, valid.adminUserId(), valid.reason());
+        } else if (AuctionStatusCode.ENDED.equals(previousStatusCode)) {
+            cancelEndedAuctionTrade(
+                    auction,
+                    valid.requestId(),
+                    valid.adminUserId(),
+                    valid.reason(),
+                    valid.sourceReportSn());
+        } else {
+            throw new CustomException(
+                    ErrorCode.PRODUCT_CANCEL_INVALID_STATUS,
+                    "현재 경매 상태에서는 관리자 직접 취소를 처리할 수 없습니다.");
+        }
+
+        updateAuctionStatus(
+                valid.auctionId(),
+                previousStatusCode,
+                AuctionStatusCode.CANCELED,
+                valid.adminUserId());
+
+        return new AdminAuctionCancellationResult(
+                valid.auctionId(),
+                previousStatusCode,
+                AuctionStatusCode.CANCELED,
+                true);
+    }
 
     @Transactional(readOnly = true)
     public AuctionPendingCancelRequestResponse getPendingCancellationRequest(Long aucSn) {
@@ -113,6 +232,14 @@ public class AuctionCancellationService {
             Long cancelRequestSn,
             Long adminUsrSn,
             String processReason) {
+        approveCancellation(cancelRequestSn, adminUsrSn, processReason, null);
+    }
+
+    private void approveCancellation(
+            Long cancelRequestSn,
+            Long adminUsrSn,
+            String processReason,
+            Long sourceReportSn) {
         String reason = validateProcessValues(cancelRequestSn, adminUsrSn, processReason);
         AuctionCancelRequestProcessTarget request = requirePendingRequest(cancelRequestSn);
         AuctionBidTarget auction = requireCancelRequestedAuction(request);
@@ -124,7 +251,12 @@ public class AuctionCancellationService {
         if (AuctionStatusCode.ACTIVE.equals(request.getPreviousAuctionStatusCode())) {
             cancelActiveAuctionBid(auction, adminUsrSn, reason);
         } else if (AuctionStatusCode.ENDED.equals(request.getPreviousAuctionStatusCode())) {
-            cancelEndedAuctionTrade(auction, cancelRequestSn, adminUsrSn, reason);
+            cancelEndedAuctionTrade(
+                    auction,
+                    "AUC-CANCEL-" + cancelRequestSn,
+                    adminUsrSn,
+                    reason,
+                    sourceReportSn);
         } else {
             throw new CustomException(ErrorCode.CONFLICT, "취소 요청의 이전 경매 상태가 올바르지 않습니다.");
         }
@@ -203,9 +335,10 @@ public class AuctionCancellationService {
 
     private void cancelEndedAuctionTrade(
             AuctionBidTarget auction,
-            Long cancelRequestSn,
+            String requestId,
             Long adminUsrSn,
-            String reason) {
+            String reason,
+            Long sourceReportSn) {
         AuctionTradeEscrowInfo escrow = tradeService
                 .findAuctionTradeEscrowInfoByProductId(auction.getProductId())
                 .orElseThrow(() -> new CustomException(
@@ -227,7 +360,8 @@ public class AuctionCancellationService {
                 SellerCancellationDecision.APPROVED,
                 reason,
                 adminUsrSn.toString(),
-                "AUC-CANCEL-" + cancelRequestSn));
+                requestId,
+                sourceReportSn));
         exceptionCancelHighestBid(auction, adminUsrSn);
     }
 
@@ -306,5 +440,29 @@ public class AuctionCancellationService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         return reason.trim();
+    }
+
+    private AdminAuctionCancellationCommand validateAdminCancellationCommand(
+            AdminAuctionCancellationCommand command) {
+        if (command == null
+                || command.auctionId() == null
+                || command.auctionId() <= 0
+                || command.adminUserId() == null
+                || command.adminUserId() <= 0
+                || command.reason() == null
+                || command.reason().isBlank()
+                || command.reason().trim().length() > MAX_REASON_LENGTH
+                || command.requestId() == null
+                || command.requestId().isBlank()
+                || command.requestId().trim().length() > 100
+                || (command.sourceReportSn() != null && command.sourceReportSn() <= 0)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return new AdminAuctionCancellationCommand(
+                command.auctionId(),
+                command.adminUserId(),
+                command.reason().trim(),
+                command.requestId().trim(),
+                command.sourceReportSn());
     }
 }

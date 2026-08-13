@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import nct.abuse.domain.AbuseReport;
+import nct.abuse.dto.AbuseReportFileResponse;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.dto.MyAbuseReportResponse;
@@ -36,6 +37,20 @@ public interface AbuseReportMapper {
 
     AbuseReport findReportByIdForUpdate(@Param("reportSn") Long reportSn);
 
+    boolean existsOtherActiveReportLinkedToTrade(
+            @Param("tradeSn") Long tradeSn,
+            @Param("excludedReportSn") Long excludedReportSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
+
+    boolean existsTradeContext(@Param("reportSn") Long reportSn);
+
+    boolean existsOtherActiveReportLinkedToAuction(
+            @Param("auctionSn") Long auctionSn,
+            @Param("excludedReportSn") Long excludedReportSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
+
     List<AdminAbuseReportResponse> findPendingReports(
             @Param("receivedStatusCode") String receivedStatusCode,
             @Param("processingStatusCode") String processingStatusCode);
@@ -43,12 +58,14 @@ public interface AbuseReportMapper {
     List<AdminAbuseReportResponse> findAdminReports(
             @Param("statusCode") String statusCode,
             @Param("keyword") String keyword,
+            @Param("caseType") String caseType,
             @Param("offset") long offset,
             @Param("size") int size);
 
     long countAdminReports(
             @Param("statusCode") String statusCode,
-            @Param("keyword") String keyword);
+            @Param("keyword") String keyword,
+            @Param("caseType") String caseType);
 
     AdminAbuseReportResponse findReportDetailById(@Param("reportSn") Long reportSn);
 
@@ -73,10 +90,49 @@ public interface AbuseReportMapper {
             @Param("reportSn") Long reportSn,
             @Param("reporterUserSn") Long reporterUserSn);
 
+    /** 담당자 7 · F-COM-018: 같은 신고자·대상·유형의 미처리 중복 신고를 찾습니다. */
+    Long findActiveCustomerReportId(
+            @Param("reporterUserSn") Long reporterUserSn,
+            @Param("reportedUserSn") Long reportedUserSn,
+            @Param("reportTypeCode") String reportTypeCode,
+            @Param("referenceTypeCode") String referenceTypeCode,
+            @Param("referenceSn") Long referenceSn,
+            @Param("receivedStatusCode") String receivedStatusCode,
+            @Param("processingStatusCode") String processingStatusCode);
+
+    /** 담당자 7 · F-COM-018: 업로드된 FILES 행을 신고에 순서대로 연결합니다. */
+    int insertReportFile(
+            @Param("reportSn") Long reportSn,
+            @Param("fileSn") Long fileSn,
+            @Param("sortNo") int sortNo,
+            @Param("actorId") String actorId);
+
+    /** 담당자 7 · F-OPS-005/007: 거래 신고의 보류ㆍ복구 문맥을 신고 번호에 1:1로 연결합니다. */
+    int insertTradeContext(
+            @Param("reportSn") Long reportSn,
+            @Param("tradeSn") Long tradeSn,
+            @Param("previousStatusCode") String previousStatusCode,
+            @Param("remainingSeconds") Long remainingSeconds,
+            @Param("settlementHoldApplied") boolean settlementHoldApplied,
+            @Param("chatClosed") boolean chatClosed,
+            @Param("actorId") String actorId);
+
+    List<AbuseReportFileResponse> findReportFiles(@Param("reportSn") Long reportSn);
+
+    int countReportFileLink(
+            @Param("reportSn") Long reportSn,
+            @Param("fileSn") Long fileSn);
+
     int updateDecision(
             @Param("reportSn") Long reportSn,
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
             @Param("processReason") String processReason,
-            @Param("actorId") String actorId);
+            @Param("processorUserSn") Long processorUserSn,
+            @Param("actorId") String actorId,
+            @Param("requestId") String requestId);
+
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 탈퇴 전
+    // 하드 차단용. 본인이 신고자 또는 피신고자인 접수·처리중(ABSC0001·0002) 신고 건수를 센다.
+    int countOpenReportsByUser(@Param("userSn") Long userSn);
 }

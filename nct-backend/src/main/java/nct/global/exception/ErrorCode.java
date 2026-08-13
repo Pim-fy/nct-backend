@@ -76,6 +76,7 @@ public enum ErrorCode {
 
     // ---- 견적 도메인 (F-SVC-005/006/008, QUOTE 테이블 고정 기술 소유) ----
     QUOTE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 견적입니다."),
+    QUOTE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 제출한 활성 견적이 있습니다."),
     QUOTE_REVISION_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "견적 수정은 최대 3회까지 가능합니다."),
     QUOTE_ALREADY_SELECTED(HttpStatus.CONFLICT, "이미 선택된 견적은 철회할 수 없습니다."),
     QUOTE_SELF_TRADE(HttpStatus.FORBIDDEN, "본인이 등록한 서비스 요청에는 견적을 제출할 수 없습니다."),
@@ -152,6 +153,15 @@ public enum ErrorCode {
     FILE_IN_USE(HttpStatus.CONFLICT, "사용 중인 파일은 삭제할 수 없습니다."),
     // 배송 인증사진(F-AUC-009) — 거래 당사자만 열람 (2026-07-20)
     FILE_TRADE_PARTY_ONLY(HttpStatus.FORBIDDEN, "거래 당사자만 열람할 수 있습니다."),
+
+    // 422 Unprocessable Entity
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 전 하드 차단 조건(포인트 잔액·진행 중 거래·경매·신고)에
+    // 걸렸을 때 사용한다. 사유는 CustomException(WITHDRAWAL_BLOCKED, message)의 동적 메시지로 전달한다.
+    // (레드팀 발견, 2026-08-12) 409는 쓰지 않는다 - WithdrawalRequestPage.jsx(정지 계정 이메일 링크
+    // 확정 화면, 이번 변경 대상 아님)가 404/409를 "링크 무효"로 이미 소비하고 있어, 같은 409를 쓰면
+    // 차단 사유 메시지가 그 화면에서 절대 보이지 않고 "링크 오류"로만 뜬다. 422로 분리해 그 파일을
+    // 건드리지 않고 충돌을 없앤다.
+    WITHDRAWAL_BLOCKED(HttpStatus.UNPROCESSABLE_ENTITY, "탈퇴할 수 없습니다."),
 
     /*==================== 5XX SERVER ERROR ====================*/
 

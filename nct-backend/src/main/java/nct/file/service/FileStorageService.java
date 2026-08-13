@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.file.domain.FileMeta;
 import nct.file.mapper.FileMapper;
 import nct.global.exception.CustomException;
@@ -55,6 +56,8 @@ import nct.global.exception.ErrorCode;
  *     (SVC_REQ_IMAGE 연결 테이블 — 소유 담당자2, 2026-08-04)
  *   - quote(견적 작업사진): 이미지만 — service-request와 동일하게 보호 API로 서빙
  *     (QUOTE_PHOTO 연결 테이블 — 소유 담당자3, 2026-08-06)
+ *   - abuse-report(신고 첨부): pdf + 이미지 — 공개 서빙 금지, 신고자 본인·관리자만 보호 API로 열람
+ *     (ABUSE_REPORT_FILE 연결 테이블 — 담당자 7, F-COM-018/F-OPS-007)
  *
  * app.upload.dir 이 설정 안 되어 있으면 Spring이 기동 자체를 실패시킨다 — 저장 위치를
  * 코드 안에서 임의로 정하지 않기 위해 기본값을 두지 않았다(@Value 필수 바인딩).
@@ -88,7 +91,8 @@ public class FileStorageService {
             "profile", Set.of("jpg", "jpeg", "png", "webp"),
             "portfolio", Set.of("jpg", "jpeg", "png", "webp"),
             "service-request", Set.of("jpg", "jpeg", "png", "gif", "webp"),
-            "quote", Set.of("pdf", "jpg", "jpeg", "png", "gif", "webp"));
+            "quote", Set.of("pdf", "jpg", "jpeg", "png", "gif", "webp"),
+            "abuse-report", Set.of("pdf", "jpg", "jpeg", "png", "webp"));
 
     /** FL_PATH(URL)의 고정 prefix — WebConfig의 정적 리소스 핸들러(공개 서빙)와 짝 */
     private static final String ATTACHMENT_URL_PREFIX = "/api/attachment";
@@ -132,22 +136,24 @@ public class FileStorageService {
     /**
      * 삭제: 존재(404) → 소유자(403) → 참조(409) 순서로 검증 후
      * FILES 소프트 삭제(FL_USE_YN='N') + 디스크 파일 물리 삭제.
-     * 존재·소유 검증은 requireOwnedActiveFile 재사용 — 검증 규칙(404를 403보다 먼저)이 한 곳에 모인다.
+     * 존재·소유 검증과 행 잠금은 공용 헬퍼로 수행해 신고 연결과의 동시 실행도 직렬화한다.
      */
     @Transactional
     public void deleteImage(Long flSn, Long usrSn) {
-        FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
+        FileMeta fileMeta = requireOwnedActiveFileForUpdate(flSn, usrSn);
 
         // 참조 중인 파일을 지우면 화면이 깨지므로 거부 — 참조처가 늘 때마다 여기 OR로 합산
         // (상품 이미지 + 배송 인증사진(F-AUC-009, 실DB 적용 2026-07-20) + 리뷰 사진(CHG-021, 실DB 적용 2026-07-21)
         //  + 제공자 포트폴리오(F-PROV-005, 2026-07-28) + 서비스요청 첨부사진(F-SVC-001, 2026-08-04)
-        //  + 견적 작업사진(QUOTE_PHOTO, 2026-08-06))
+        //  + 견적 작업사진(QUOTE_PHOTO, 2026-08-06) + 통합 신고 증빙(F-SVC-012/F-OPS-005))
         if (fileMapper.countProductImageRefs(flSn) > 0
                 || fileMapper.countTradeDeliveryFileRefs(flSn) > 0
                 || fileMapper.countReviewImageRefs(flSn) > 0
                 || fileMapper.countPortfolioFileRefs(flSn) > 0
                 || fileMapper.countServiceRequestImageRefs(flSn) > 0
-                || fileMapper.countQuotePhotoRefs(flSn) > 0) {
+                || fileMapper.countQuotePhotoRefs(flSn) > 0
+                || ("abuse-report".equals(extractService(fileMeta.getFlPath()))
+                        && fileMapper.countAbuseReportFileRefs(flSn) > 0)) {
             throw new CustomException(ErrorCode.FILE_IN_USE);
         }
 
@@ -159,14 +165,18 @@ public class FileStorageService {
 
     /**
      * 교체(수정): 존재·소유자 검증 → 새 파일 저장 → 같은 행(flSn 유지)의 메타 갱신 → 구 파일 삭제.
-     * flSn이 안 바뀌므로 PRODUCT_IMAGE 같은 참조는 그대로 살아 있고 파일만 바뀐다 —
-     * 그래서 삭제와 달리 참조 중(409) 검사를 하지 않는다(참조 중인 파일을 바꾸는 게 교체의 목적).
+     * 일반 화면용 참조 파일은 flSn을 유지한 채 바꿀 수 있지만, 신고 첨부는 접수 시점의 증거 원문을
+     * 보존해야 하므로 ABUSE_REPORT_FILE에 연결된 뒤에는 교체도 거부한다.
      */
     @Transactional
     public FileMeta replaceImage(Long flSn, MultipartFile file, Long usrSn) {
-        FileMeta oldMeta = requireOwnedActiveFile(flSn, usrSn); // 존재·소유 검증 공용화
-
+        FileMeta oldMeta = requireOwnedActiveFileForUpdate(flSn, usrSn);
         String svc = extractService(oldMeta.getFlPath()); // 서비스 구분은 원본 파일의 것을 그대로 따른다
+        // 담당자 7 · F-COM-018: 접수된 신고 증거는 삭제뿐 아니라 같은 번호로 교체하는 우회도 차단한다.
+        if ("abuse-report".equals(svc) && fileMapper.countAbuseReportFileRefs(flSn) > 0) {
+            throw new CustomException(ErrorCode.FILE_IN_USE);
+        }
+
         String ext = validateFile(file, svc); // 교체 파일도 해당 서비스의 확장자 정책을 따른다
         StoredFile stored = writeToDisk(file, svc, ext); // 디스크 저장은 업로드와 공용 헬퍼
 
@@ -219,8 +229,9 @@ public class FileStorageService {
         FileMeta fileMeta = fileMapper.findById(flSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
 
-        auditLogService.record(adminUsrSn, AuditLogType.SENSITIVE_VIEW, null, null,
-                String.format("제공자 서류 심사 열람 — 신청 %d번, 파일 %d번(%s)", prvAplySn, flSn, fileMeta.getFlOrgNm()),
+        auditLogService.record(adminUsrSn, AuditLogType.SENSITIVE_VIEW,
+                RefType.PROVIDER_APPLICATION, prvAplySn,
+                String.format("제공자 서류 심사 열람 - 신청 #%d, 파일 #%d", prvAplySn, flSn),
                 ipAddr);
         return fileMeta;
     }
@@ -313,6 +324,39 @@ public class FileStorageService {
         FileMeta fileMeta = requireOwnedActiveFile(flSn, usrSn);
         if (!"quote".equals(extractService(fileMeta.getFlPath()))) {
             throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        return fileMeta;
+    }
+
+    /** 담당자 7 · F-COM-018: 신고 접수 전 현재 사용자 소유의 미연결 신고 첨부인지 검증합니다. */
+    @Transactional
+    public FileMeta requireOwnedAbuseReportFile(Long flSn, Long usrSn) {
+        FileMeta fileMeta = requireOwnedActiveFileForUpdate(flSn, usrSn);
+        if (!"abuse-report".equals(extractService(fileMeta.getFlPath()))) {
+            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        if (fileMapper.countAbuseReportFileRefs(flSn) > 0) {
+            throw new CustomException(ErrorCode.FILE_IN_USE);
+        }
+        return fileMeta;
+    }
+
+    /** 신고 연결과 일반 교체·삭제가 같은 FILES 행을 동시에 바꾸지 못하도록 트랜잭션 행 잠금을 잡습니다. */
+    private FileMeta requireOwnedActiveFileForUpdate(Long flSn, Long usrSn) {
+        FileMeta fileMeta = fileMapper.findByIdForUpdate(flSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+        if (!String.valueOf(usrSn).equals(fileMeta.getFlRegId())) {
+            throw new CustomException(ErrorCode.FILE_ACCESS_DENIED);
+        }
+        return fileMeta;
+    }
+
+    /** 담당자 7 · F-OPS-007: 보호 열람 전 신고 첨부 서비스 구분을 다시 검증합니다. */
+    @Transactional(readOnly = true)
+    public FileMeta requireAbuseReportFile(Long flSn) {
+        FileMeta fileMeta = requireActiveFile(flSn);
+        if (!"abuse-report".equals(extractService(fileMeta.getFlPath()))) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
         }
         return fileMeta;
     }

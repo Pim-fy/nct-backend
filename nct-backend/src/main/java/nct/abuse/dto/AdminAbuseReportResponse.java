@@ -1,11 +1,14 @@
 package nct.abuse.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import nct.member.dto.AdminMemberIdentityResponse;
+import nct.ops.sanction.dto.SanctionImpactResponse;
 
 @Getter
 @Setter
@@ -19,6 +22,9 @@ public class AdminAbuseReportResponse {
     private AdminMemberIdentityResponse reporterMember;
     private AdminMemberIdentityResponse reportedMember;
     private String reportTypeCode;
+    private String reportTypeName;
+    /** 일반 신고 또는 거래 문제 분류값(GENERAL/TRADE_ISSUE) */
+    private String caseType;
     private String statusCode;
     private String title;
     private String targetName;
@@ -26,10 +32,35 @@ public class AdminAbuseReportResponse {
     private String referenceTypeCode;
     private Long referenceSn;
     private String processReason;
+    private Long tradeSn;
+    private Long productSn;
+    private Long serviceRequestSn;
+    private Long quoteSn;
+    private BigDecimal tradeAmount;
+    private String tradeTypeCode;
+    private String tradeTypeName;
+    private String tradeMethodCode;
+    private String tradeMethodName;
+    private String tradeStatusCode;
+    private String tradeStatusName;
+    private String tradeResultCode;
+    private String tradeResultName;
+    private String previousTradeStatusCode;
+    private Long remainingAutoCompleteSeconds;
+    private boolean settlementHoldApplied;
+    private boolean chatClosed;
+    private LocalDateTime tradeAutoCompleteAt;
+    private String enforcementAction;
+    private Long sanctionSn;
+    private LocalDateTime sanctionStartedAt;
+    private LocalDateTime sanctionEndedAt;
+    private boolean sanctionReleased;
+    private List<SanctionImpactResponse> sanctionImpacts;
     private String processedBy;
     private AdminMemberIdentityResponse processorMember;
     private LocalDateTime registeredAt;
     private LocalDateTime processedAt;
+    private List<AbuseReportFileResponse> files;
 
     public AdminAbuseReportResponse(
             Long reportSn,

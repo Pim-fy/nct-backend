@@ -79,7 +79,7 @@
         거래 문제 접수와 정산 보류가 같은 TRADE 행을 기준으로 직렬화되도록 잠근다.
         서비스 거래는 REQ_USR_SN·PRV_USR_SN을, 물건 거래는 SLLR_USR_SN·BYPR_USR_SN을 소비한다.
     -->
-    <select id="findTradeDisputeTargetForUpdate"
+    <select id="findTradeReportTargetForUpdate"
             resultType="nct.trade.dto.TradeDisputeTarget">
         SELECT
             t.TRD_SN AS tradeSn,
@@ -88,74 +88,100 @@
             t.REQ_USR_SN AS requesterUserId,
             t.PRV_USR_SN AS providerUserId,
             t.TRD_TYPE_CD AS tradeTypeCode,
-            t.TRD_STATUS_CD AS tradeStatusCode
+            t.TRD_METHOD_CD AS tradeMethodCode,
+            t.TRD_STATUS_CD AS tradeStatusCode,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            NOW() AS databaseNow
         FROM TRADE t
         WHERE t.TRD_SN = #{tradeId}
         FOR UPDATE
     </select>
 
-    <select id="hasOpenTradeDispute" resultType="boolean">
-        SELECT EXISTS (
-            SELECT 1
-            FROM TRADE_DISPUTE
-            WHERE TRD_SN = #{tradeId}
-              AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-        )
-    </select>
-
-    <insert id="insertTradeDispute">
-        INSERT INTO TRADE_DISPUTE (
-            TRD_SN,
-            DSPT_USR_SN,
-            TRD_DSP_TYPE_CD,
-            TRD_DSP_STATUS_CD,
-            TRD_DSP_CN,
-            TRD_DSP_PREV_TRD_STATUS_CD,
-            TRD_DSP_REG_ID,
-            TRD_DSP_UPDT_ID
-        ) VALUES (
-            #{tradeId},
-            #{disputerUserId},
-            #{disputeTypeCode},
-            'TRDC0016',
-            #{content},
-            #{previousTradeStatusCode},
-            #{updaterId},
-            #{updaterId}
-        )
-    </insert>
-
-    <update id="holdServiceTradeForDispute">
+    <update id="holdTradeForReport">
         UPDATE TRADE
-        SET TRD_STATUS_CD = 'TRDC0007',
-            TRD_UPDT_ID = #{updaterId}
+        SET TRD_UPDT_ID = CASE
+                WHEN TRD_STATUS_CD = 'TRDC0005' THEN TRD_UPDT_ID
+                ELSE #{updaterId}
+            END,
+            TRD_STATUS_CD = 'TRDC0007'
         WHERE TRD_SN = #{tradeId}
-          AND TRD_TYPE_CD = 'TRDC0002'
-          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005')
+          AND TRD_TYPE_CD IN ('TRDC0001', 'TRDC0002')
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
     </update>
 
     <!-- 담당자 7 · F-OPS-020: 완료·취소·기존 보류를 건드리지 않고 진행 거래만 일관된 순서로 잠근다. -->
     <select id="findActiveTradesByMemberForUpdate"
             resultType="nct.trade.dto.MemberActiveTradeTarget">
-        SELECT TRD_SN AS tradeId,
-               SLLR_USR_SN AS sellerUserId,
-               BYPR_USR_SN AS buyerUserId,
-               TRD_STATUS_CD AS tradeStatusCode
-        FROM TRADE
-        WHERE (SLLR_USR_SN = #{userSn} OR BYPR_USR_SN = #{userSn})
-          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
-        ORDER BY TRD_SN ASC
+        SELECT t.TRD_SN AS tradeId,
+               COALESCE(t.SLLR_USR_SN, t.REQ_USR_SN) AS sellerUserId,
+               COALESCE(t.BYPR_USR_SN, t.PRV_USR_SN) AS buyerUserId,
+               t.TRD_TYPE_CD AS tradeTypeCode,
+               t.TRD_STATUS_CD AS tradeStatusCode,
+               t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+               NOW() AS databaseNow,
+               EXISTS (
+                   SELECT 1
+                     FROM ABUSE_REPORT_TRADE rt
+                     JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+                    WHERE rt.TRD_SN = t.TRD_SN
+                      AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+               ) AS activeDispute
+        FROM TRADE t
+        WHERE (
+              t.SLLR_USR_SN = #{userSn}
+              OR t.BYPR_USR_SN = #{userSn}
+              OR t.REQ_USR_SN = #{userSn}
+              OR t.PRV_USR_SN = #{userSn}
+          )
+          AND t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005', 'TRDC0007')
+        ORDER BY t.TRD_SN ASC
         FOR UPDATE
+    </select>
+
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 탈퇴 전 하드 차단 - 물건·서비스 거래 모두, 보류 포함 -->
+    <select id="countBlockingTradesByUser" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE
+        WHERE (SLLR_USR_SN = #{userSn} OR BYPR_USR_SN = #{userSn}
+               OR REQ_USR_SN = #{userSn} OR PRV_USR_SN = #{userSn})
+          AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005', 'TRDC0007')
     </select>
 
     <update id="holdTradeForMemberRestriction">
         UPDATE TRADE
-        SET TRD_STATUS_CD = 'TRDC0007',
+        SET TRD_UPDT_ID = CASE
+                WHEN TRD_STATUS_CD = 'TRDC0005' THEN TRD_UPDT_ID
+                ELSE #{updaterId}
+            END,
+            TRD_STATUS_CD = 'TRDC0007',
             TRD_AUTO_CMPL_DT = NULL,
-            TRD_UPDT_ID = #{updaterId}
+            TRD_UPDT_DT = NOW()
         WHERE TRD_SN = #{tradeId}
           AND TRD_STATUS_CD = #{expectedStatusCode}
           AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
+    </update>
+
+    <update id="restoreTradeAfterMemberRestriction">
+        UPDATE TRADE t
+           SET t.TRD_STATUS_CD = #{targetStatusCode},
+               t.TRD_AUTO_CMPL_DT = CASE
+                   WHEN #{targetStatusCode} = 'TRDC0005'
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   ELSE NULL
+               END,
+               t.TRD_UPDT_ID = CASE
+                   WHEN #{targetStatusCode} = 'TRDC0005' THEN t.TRD_UPDT_ID
+                   ELSE #{updaterId}
+               END
+         WHERE t.TRD_SN = #{tradeId}
+           AND t.TRD_STATUS_CD = 'TRDC0007'
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM ABUSE_REPORT_TRADE rt
+                 JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+                WHERE rt.TRD_SN = t.TRD_SN
+                  AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+           )
     </update>
 
     <!-- 서비스 완료 요청·확인·자동 완료가 같은 TRADE 행 잠금 기준으로 경합한다. -->
@@ -273,24 +299,26 @@
                t.QUT_SN AS quoteId,
                t.TRD_STATUS_CD AS tradeStatusCode,
                tradeStatus.CMM_NM AS tradeStatusName,
-               SUM(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017') THEN 1 ELSE 0 END)
+               SUM(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002') THEN 1 ELSE 0 END)
                    AS activeDisputeCount,
-               SUM(CASE WHEN dispute.TRD_DSP_STATUS_CD IS NOT NULL
-                   AND dispute.TRD_DSP_STATUS_CD NOT IN ('TRDC0016', 'TRDC0017', 'TRDC0018', 'TRDC0019')
+               SUM(CASE WHEN report.ABR_STATUS_CD IS NOT NULL
+                   AND report.ABR_STATUS_CD NOT IN ('ABSC0001', 'ABSC0002', 'ABSC0003', 'ABSC0004')
                    THEN 1 ELSE 0 END) AS unsupportedDisputeCount,
-               MAX(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-                   THEN dispute.TRD_DSP_SN END) AS activeDisputeId,
-               MAX(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-                   THEN dispute.TRD_DSP_STATUS_CD END) AS activeDisputeStatusCode,
-               MAX(CASE WHEN dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
-                   THEN disputeStatus.CMM_NM END) AS activeDisputeStatusName
+               MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+                   THEN report.ABR_SN END) AS activeDisputeId,
+               MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+                   THEN report.ABR_STATUS_CD END) AS activeDisputeStatusCode,
+               MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+                   THEN reportStatus.CMM_NM END) AS activeDisputeStatusName
           FROM TRADE t
           LEFT JOIN CMM_CODE tradeStatus
             ON tradeStatus.CMM_CD = t.TRD_STATUS_CD
-          LEFT JOIN TRADE_DISPUTE dispute
-            ON dispute.TRD_SN = t.TRD_SN
-          LEFT JOIN CMM_CODE disputeStatus
-            ON disputeStatus.CMM_CD = dispute.TRD_DSP_STATUS_CD
+          LEFT JOIN ABUSE_REPORT_TRADE reportTrade
+            ON reportTrade.TRD_SN = t.TRD_SN
+          LEFT JOIN ABUSE_REPORT report
+            ON report.ABR_SN = reportTrade.ABR_SN
+          LEFT JOIN CMM_CODE reportStatus
+            ON reportStatus.CMM_CD = report.ABR_STATUS_CD
          WHERE t.TRD_TYPE_CD = 'TRDC0002'
            AND t.SVC_REQ_SN IN
         <foreach collection="serviceRequestIds" item="serviceRequestId" open="(" separator="," close=")">
@@ -335,6 +363,7 @@
     <select id="findMyMaterialTrades" resultType="nct.trade.dto.TradeListItem">
         SELECT
             t.TRD_SN AS tradeId,
+            t.PRD_SN AS productId,
             CASE
                 WHEN t.BYPR_USR_SN = #{userId} THEN 'BUYER'
                 ELSE 'SELLER'
@@ -542,10 +571,22 @@
             END AS tradeMethod,
             CASE
                 WHEN chatRoom.CH_RM_SN IS NULL THEN 'NOT_STARTED'
-                WHEN t.TRD_STATUS_CD IN ('TRDC0006', 'TRDC0007', 'TRDC0008') THEN 'CLOSED'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006'
+                 AND completedHist.completedAt IS NOT NULL
+                 AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP THEN 'ACTIVE'
+                WHEN chatRoom.CH_RM_STATUS_CD = 'CHRC0002' THEN 'CLOSED'
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN 'CLOSED'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN 'CLOSED'
                 WHEN chatRoom.CH_RM_STATUS_CD = 'CHRC0001' THEN 'ACTIVE'
                 ELSE 'CLOSED'
             END AS chatRoomStatus,
+            CASE
+                WHEN t.TRD_STATUS_CD IN ('TRDC0007', 'TRDC0008') THEN FALSE
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN
+                    completedHist.completedAt IS NOT NULL
+                    AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP
+                ELSE TRUE
+            END AS chatAvailable,
             t.TRD_REG_DT AS createdAt,
             completedHist.completedAt AS completedAt,
             t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
@@ -639,6 +680,31 @@
             q.QUT_CN AS quoteSummary,
             requestedSchedule.scheduleLabel,
             CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
+                ELSE t.REQ_USR_SN
+            END AS counterpartUserId,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_NM
+                ELSE requester.USR_NM
+            END AS counterpartNickname,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN providerProfileFile.FL_PATH
+                ELSE requesterProfileFile.FL_PATH
+            END AS counterpartProfileImageUrl,
+            CASE
+                WHEN t.REQ_USR_SN = #{userId} THEN provider.USR_REG_DT
+                ELSE requester.USR_REG_DT
+            END AS counterpartJoinedAt,
+            (
+                SELECT COUNT(*)
+                FROM TRADE completedTrade
+                WHERE completedTrade.TRD_STATUS_CD = 'TRDC0006'
+                  AND (
+                      completedTrade.REQ_USR_SN = CASE WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN ELSE t.REQ_USR_SN END
+                      OR completedTrade.PRV_USR_SN = CASE WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN ELSE t.REQ_USR_SN END
+                  )
+            ) AS counterpartCompletedTradeCount,
+            CASE
                 WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
                 ELSE NULL
@@ -647,16 +713,62 @@
                 WHEN st.STLM_STATUS_CD = 'STLC0001' THEN '정산 대기 중입니다.'
                 WHEN st.STLM_STATUS_CD = 'STLC0002' THEN '분쟁 처리로 정산이 보류되었습니다.'
                 WHEN st.STLM_STATUS_CD = 'STLC0003' THEN '정산이 완료되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0004' THEN '보관금이 환불되어 정산이 종료되었습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0008' THEN '서비스 거래가 취소되어 보관금이 환불되었습니다.'
                 WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0005' THEN '서비스 완료 확인 후 정산이 진행됩니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0006' THEN '거래가 완료되어 정산을 준비하고 있습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0007' THEN '거래가 보류되어 보관금과 정산 처리가 중지되었습니다.'
                 ELSE NULL
             END AS escrowStatusLabel,
             CASE
-                WHEN t.TRD_STATUS_CD = 'TRDC0003'
+                WHEN t.TRD_STATUS_CD NOT IN ('TRDC0007', 'TRDC0008')
+                 AND (
+                    (t.TRD_STATUS_CD = 'TRDC0006'
+                     AND completedHist.completedAt IS NOT NULL
+                     AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP)
+                    OR (
+                        t.TRD_STATUS_CD &lt;&gt; 'TRDC0006'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM CHAT_ROOM cr
+                            WHERE cr.TRD_SN = t.TRD_SN
+                              AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                        )
+                    )
+                 )
                  AND EXISTS (
                     SELECT 1
                     FROM CHAT_ROOM cr
                     WHERE cr.TRD_SN = t.TRD_SN
-                      AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                 ) THEN 'ACTIVE'
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
+                ) THEN 'CLOSED'
+                ELSE 'NOT_STARTED'
+            END AS chatRoomStatus,
+            CASE
+                WHEN t.TRD_STATUS_CD NOT IN ('TRDC0007', 'TRDC0008')
+                 AND (
+                    (t.TRD_STATUS_CD = 'TRDC0006'
+                     AND completedHist.completedAt IS NOT NULL
+                     AND TIMESTAMPADD(HOUR, 48, completedHist.completedAt) &gt; CURRENT_TIMESTAMP)
+                    OR (
+                        t.TRD_STATUS_CD &lt;&gt; 'TRDC0006'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM CHAT_ROOM cr
+                            WHERE cr.TRD_SN = t.TRD_SN
+                              AND cr.CH_RM_STATUS_CD = 'CHRC0001'
+                        )
+                    )
+                 )
+                 AND EXISTS (
+                    SELECT 1
+                    FROM CHAT_ROOM cr
+                    WHERE cr.TRD_SN = t.TRD_SN
                  ) THEN TRUE
                 ELSE FALSE
             END AS chatAvailable,
@@ -680,9 +792,19 @@
                  ) THEN TRUE
                 ELSE FALSE
             END AS cancellationDecisionAvailable
+            , sr.SVC_REQ_CN AS serviceRequestContent,
+            t.QUT_SN AS selectedQuoteId
         FROM TRADE t
         JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
         JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
+        JOIN USERS requester ON requester.USR_SN = t.REQ_USR_SN
+        JOIN USERS provider ON provider.USR_SN = t.PRV_USR_SN
+        LEFT JOIN FILES requesterProfileFile
+          ON requesterProfileFile.FL_SN = requester.USR_PRFL_FL_SN
+         AND requesterProfileFile.FL_USE_YN = 'Y'
+        LEFT JOIN FILES providerProfileFile
+          ON providerProfileFile.FL_SN = provider.USR_PRFL_FL_SN
+         AND providerProfileFile.FL_USE_YN = 'Y'
         LEFT JOIN (
             /* 요청서의 카테고리별 날짜 필드 중 가장 이른 선택일을 기본 서비스 일정으로 표시한다. */
             SELECT i.SVC_REQ_SN,
@@ -693,9 +815,66 @@
             GROUP BY i.SVC_REQ_SN
         ) requestedSchedule ON requestedSchedule.SVC_REQ_SN = t.SVC_REQ_SN
         LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
+        LEFT JOIN (
+            SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+            FROM TRADE_STATUS_HIST
+            WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+            GROUP BY TRD_SN
+        ) completedHist ON completedHist.TRD_SN = t.TRD_SN
         WHERE t.TRD_SN = #{tradeId}
           AND t.TRD_TYPE_CD = 'TRDC0002'
           AND (t.REQ_USR_SN = #{userId} OR t.PRV_USR_SN = #{userId})
+    </select>
+
+    <!-- 담당자 7 · F-OPS-005: 관리자 전용 읽기 계약. 정확 주소와 당사자 전용 행동은 반환하지 않는다. -->
+    <select id="findAdminServiceTradeDetail" resultType="nct.trade.dto.ServiceTradeDetailSource">
+        SELECT
+            t.TRD_SN AS tradeId,
+            t.REQ_USR_SN AS requesterUserId,
+            t.PRV_USR_SN AS providerUserId,
+            t.SVC_REQ_SN AS serviceRequestId,
+            t.TRD_STATUS_CD AS tradeStatusCode,
+            t.TRD_AMT AS tradeAmount,
+            t.TRD_AUTO_CMPL_DT AS autoCompleteAt,
+            sr.SVC_REQ_TTL AS serviceRequestTitle,
+            q.QUT_CN AS quoteSummary,
+            requestedSchedule.scheduleLabel,
+            NULL AS counterpartUserId,
+            NULL AS counterpartNickname,
+            NULL AS counterpartProfileImageUrl,
+            NULL AS counterpartJoinedAt,
+            0 AS counterpartCompletedTradeCount,
+            CASE
+                WHEN st.STLM_STATUS_CD IS NOT NULL THEN st.STLM_STATUS_CD
+                WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN 'ESCROW_HELD'
+                ELSE NULL
+            END AS escrowStatusCode,
+            CASE
+                WHEN st.STLM_STATUS_CD = 'STLC0001' THEN '정산 대기 중입니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0002' THEN '분쟁 처리로 정산이 보류되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0003' THEN '정산이 완료되었습니다.'
+                WHEN st.STLM_STATUS_CD = 'STLC0004' THEN '전액 환불로 정산이 종결되었습니다.'
+                WHEN t.TRD_STATUS_CD = 'TRDC0003' THEN '보관금이 안전하게 보관 중입니다.'
+                ELSE NULL
+            END AS escrowStatusLabel,
+            FALSE AS chatAvailable,
+            FALSE AS cancellationDecisionAvailable,
+            sr.SVC_REQ_CN AS serviceRequestContent,
+            t.QUT_SN AS selectedQuoteId
+        FROM TRADE t
+        JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN QUOTE q ON q.QUT_SN = t.QUT_SN
+        LEFT JOIN (
+            SELECT i.SVC_REQ_SN,
+                   DATE_FORMAT(MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')), '%Y. %m. %d.') AS scheduleLabel
+            FROM SVC_REQ_ITEM i
+            JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+            WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+            GROUP BY i.SVC_REQ_SN
+        ) requestedSchedule ON requestedSchedule.SVC_REQ_SN = t.SVC_REQ_SN
+        LEFT JOIN SETTLEMENT st ON st.TRD_SN = t.TRD_SN
+        WHERE t.TRD_SN = #{tradeId}
+          AND t.TRD_TYPE_CD = 'TRDC0002'
     </select>
 
     <!-- 선택 견적이 거래로 확정된 뒤에는 요청자·제공자에게만 등록된 정확 주소를 제공한다. -->
@@ -712,8 +891,15 @@
         ORDER BY a.SVC_REQ_STEP_SN, a.ADDR_ROLE_KEY, a.SVC_REQ_ADDR_SEQ_NO
     </select>
 
-    <!-- F-SVC-016은 거래 상태를 바꾸지 않아도, 식별 가능한 상태 이력 사유로 요청 내역을 보존한다. -->
+    <!-- 일정·거래·보관금 변동의 공개 이력을 함께 반환한다. 신고 원문과 관리자 내부 사유는 노출하지 않는다. -->
     <select id="findServiceScheduleHistory" resultType="nct.trade.dto.ServiceScheduleHistoryItem">
+        SELECT history.id,
+               history.eventType,
+               history.occurredAt,
+               history.requestedScheduleAt,
+               history.reason,
+               history.actorRole
+        FROM (
         SELECT
             h.TRD_STS_HST_SN AS id,
             CASE
@@ -721,13 +907,24 @@
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%' THEN 'CANCEL_REQUEST'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE '%|APPROVED' THEN 'CANCEL_APPROVED'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE '%|REJECTED' THEN 'CANCEL_REJECTED'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%' THEN 'COMPLETION_REQUESTED'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0003'
+                 AND h.TRD_STS_HST_RSN_CN = '선택 견적으로 서비스 거래가 생성되었습니다.' THEN 'ESCROW_HELD'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0006' THEN 'SETTLEMENT_COMPLETED'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008' THEN 'ESCROW_REFUNDED'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.' THEN 'DISPUTE_REPORTED'
                 ELSE 'CANCEL'
             END AS eventType,
             h.TRD_STS_HST_REG_DT AS occurredAt,
             CASE
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
                     THEN STR_TO_DATE(
-                        SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1),
+                        CASE
+                            WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
+                                THEN SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 3), '|', -1)
+                            ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1)
+                        END,
                         '%Y-%m-%dT%H:%i:%s')
                 ELSE NULL
             END AS requestedScheduleAt,
@@ -736,20 +933,128 @@
                     THEN '상대방이 일정 취소 요청에 동의했습니다. 거래가 취소되고 보관금이 환불되었습니다.'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION%|REJECTED'
                     THEN '상대방이 일정 취소 요청을 거절했습니다. 거래는 계속 진행됩니다.'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
+                    THEN '서비스 완료 요청이 등록되어 의뢰자 확인을 기다립니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0003'
+                 AND h.TRD_STS_HST_RSN_CN = '선택 견적으로 서비스 거래가 생성되었습니다.'
+                    THEN '선택 견적이 확정되어 보관금이 예치되었습니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0005'
+                    THEN '서비스 완료 요청이 등록되어 의뢰자 확인을 기다립니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0006'
+                    THEN '거래가 완료되어 정산이 완료되었습니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
+                    THEN '거래가 취소되어 보관금이 환불되었습니다.'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.'
+                    THEN '거래 문제가 접수되어 거래와 정산이 보류되었습니다.'
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
+                    THEN SUBSTRING(
+                        h.TRD_STS_HST_RSN_CN,
+                        LOCATE('|', h.TRD_STS_HST_RSN_CN,
+                            LOCATE('|', h.TRD_STS_HST_RSN_CN,
+                                LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1) + 1)
                 ELSE SUBSTRING(
                     h.TRD_STS_HST_RSN_CN,
                     LOCATE('|', h.TRD_STS_HST_RSN_CN,
                         LOCATE('|', h.TRD_STS_HST_RSN_CN) + 1) + 1)
-            END AS reason
+            END AS reason,
+            CASE
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
+                    THEN CASE CAST(SUBSTRING_INDEX(
+                        SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1
+                    ) AS UNSIGNED)
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
+                    THEN CASE CAST(SUBSTRING_INDEX(
+                        SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 2), '|', -1
+                    ) AS UNSIGNED)
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION|%|%|%'
+                    THEN CASE CAST(SUBSTRING_INDEX(
+                        SUBSTRING_INDEX(h.TRD_STS_HST_RSN_CN, '|', 3), '|', -1
+                    ) AS UNSIGNED)
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+                WHEN h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
+                    THEN 'PROVIDER'
+                WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.'
+                    THEN CASE (
+                        SELECT r.RPRT_USR_SN
+                        FROM ABUSE_REPORT_TRADE rt
+                        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+                        WHERE rt.TRD_SN = h.TRD_SN
+                          AND rt.ABR_TRD_REG_DT &lt;= h.TRD_STS_HST_REG_DT
+                        ORDER BY rt.ABR_TRD_REG_DT DESC, r.ABR_SN DESC
+                        LIMIT 1
+                    )
+                        WHEN t.REQ_USR_SN THEN 'REQUESTER'
+                        WHEN t.PRV_USR_SN THEN 'PROVIDER'
+                    END
+            END AS actorRole
         FROM TRADE_STATUS_HIST h
+        JOIN TRADE t ON t.TRD_SN = h.TRD_SN
         WHERE h.TRD_SN = #{tradeId}
           AND (
               h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_REQUEST|%'
               OR h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CANCEL_DECISION|%'
+              OR h.TRD_STS_HST_RSN_CN LIKE 'SERVICE_COMPLETION_REQUEST|%'
+              OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0003'
+                  AND h.TRD_STS_HST_RSN_CN = '선택 견적으로 서비스 거래가 생성되었습니다.')
+              OR h.TRD_STS_HST_STATUS_CD = 'TRDC0006'
+              OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM ABUSE_REPORT_TRADE refundReportTrade
+                      JOIN ABUSE_REPORT refundReport
+                        ON refundReport.ABR_SN = refundReportTrade.ABR_SN
+                      WHERE refundReportTrade.TRD_SN = h.TRD_SN
+                        AND refundReport.ABR_STATUS_CD = 'ABSC0003'
+                        AND refundReportTrade.ABR_TRD_RSLT_CD = 'TRDC0012'
+                  ))
+              OR (h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
+                  AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.')
           )
-        ORDER BY h.TRD_STS_HST_REG_DT DESC, h.TRD_STS_HST_SN DESC
+        UNION ALL
+        SELECT
+            -r.ABR_SN AS id,
+            CASE
+                WHEN r.ABR_STATUS_CD = 'ABSC0002' AND rt.ABR_TRD_RSLT_CD = 'TRDC0013' THEN 'DISPUTE_HOLD'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0011' THEN 'DISPUTE_COMPLETE'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0012' THEN 'ADMIN_REFUND'
+                WHEN r.ABR_STATUS_CD = 'ABSC0004' THEN 'DISPUTE_REJECTED'
+            END AS eventType,
+            r.ABR_PROC_DT AS occurredAt,
+            NULL AS requestedScheduleAt,
+            CASE
+                WHEN r.ABR_STATUS_CD = 'ABSC0002' AND rt.ABR_TRD_RSLT_CD = 'TRDC0013'
+                    THEN '관리자 확인 결과 거래와 정산 보류가 유지됩니다.'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0011'
+                    THEN '관리자 확인이 완료되어 거래가 이전 상태로 복구되었습니다.'
+                WHEN r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD = 'TRDC0012'
+                    THEN '관리자 판정에 따라 보관금이 환불되어 거래가 취소되었습니다.'
+                WHEN r.ABR_STATUS_CD = 'ABSC0004'
+                    THEN '관리자 확인 결과 거래 문제가 반려되어 거래가 이전 상태로 복구되었습니다.'
+            END AS reason,
+            'ADMIN' AS actorRole
+        FROM ABUSE_REPORT_TRADE rt
+        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+        WHERE rt.TRD_SN = #{tradeId}
+          AND r.ABR_PROC_DT IS NOT NULL
+          AND (
+              (r.ABR_STATUS_CD = 'ABSC0002' AND rt.ABR_TRD_RSLT_CD = 'TRDC0013')
+              OR (r.ABR_STATUS_CD = 'ABSC0003' AND rt.ABR_TRD_RSLT_CD IN ('TRDC0011', 'TRDC0012'))
+              OR r.ABR_STATUS_CD = 'ABSC0004'
+          )
+        ) history
+        ORDER BY history.occurredAt DESC, history.id DESC
     </select>
 
     <select id="findPendingServiceScheduleCancellation"
@@ -781,6 +1086,29 @@
           AND TRD_STATUS_CD = 'TRDC0003'
     </update>
 
+    <update id="cancelServiceTradeForAdmin">
+        UPDATE TRADE
+           SET TRD_STATUS_CD = 'TRDC0008',
+               TRD_AUTO_CMPL_DT = NULL,
+               TRD_UPDT_ID = #{updaterId},
+               TRD_UPDT_DT = NOW()
+         WHERE TRD_SN = #{tradeId}
+           AND TRD_TYPE_CD = 'TRDC0002'
+           AND TRD_STATUS_CD = #{expectedStatusCode}
+           AND TRD_STATUS_CD IN ('TRDC0003', 'TRDC0005', 'TRDC0007')
+    </update>
+
+    <update id="completeCurrentTradeIncidentAfterPermanentCancellation">
+        UPDATE ABUSE_REPORT_TRADE rt
+        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+           SET rt.ABR_TRD_RSLT_CD = 'TRDC0012',
+               rt.ABR_TRD_UPDT_ID = #{updaterId},
+               rt.ABR_TRD_UPDT_DT = NOW()
+         WHERE rt.TRD_SN = #{tradeId}
+           AND rt.ABR_SN = #{sourceReportSn}
+           AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+    </update>
+
     <!-- 서비스 거래 당사자가 재진입할 목록이다. 요청서 주소·세부 항목 같은 민감 정보는 포함하지 않는다. -->
     <select id="findMyServiceTrades" resultType="nct.trade.dto.ServiceTradeListItem">
         SELECT
@@ -794,6 +1122,17 @@
             tradeStatus.CMM_NM AS tradeStatusName,
             t.TRD_AMT AS tradeAmount,
             sr.SVC_REQ_TTL AS serviceRequestTitle,
+            (
+                SELECT CONCAT('/api/service-requests/', image.SVC_REQ_SN, '/images/', image.FL_SN)
+                FROM SVC_REQ_IMAGE image
+                JOIN FILES file
+                  ON file.FL_SN = image.FL_SN
+                 AND file.FL_USE_YN = 'Y'
+                WHERE image.SVC_REQ_SN = sr.SVC_REQ_SN
+                ORDER BY image.SVC_REQ_IMG_SORT_NO ASC, image.FL_SN ASC
+                LIMIT 1
+            ) AS serviceRequestImageUrl,
+            category.CAT_NM AS categoryName,
             q.QUT_CN AS quoteSummary,
             CASE
                 WHEN t.REQ_USR_SN = #{userId} THEN t.PRV_USR_SN
@@ -807,13 +1146,16 @@
             t.TRD_REG_DT AS createdAt,
             EXISTS (
                 SELECT 1
-                FROM TRADE_DISPUTE dispute
-                WHERE dispute.TRD_SN = t.TRD_SN
-                  AND dispute.TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+                FROM ABUSE_REPORT_TRADE reportTrade
+                JOIN ABUSE_REPORT report ON report.ABR_SN = reportTrade.ABR_SN
+                WHERE reportTrade.TRD_SN = t.TRD_SN
+                  AND report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
             ) AS hasActiveDispute
         FROM TRADE t
         JOIN SERVICE_REQUEST sr
           ON sr.SVC_REQ_SN = t.SVC_REQ_SN
+        JOIN CATEGORY category
+          ON category.CAT_SN = sr.CAT_SN
         JOIN QUOTE q
           ON q.QUT_SN = t.QUT_SN
         JOIN USERS requester
@@ -1059,6 +1401,25 @@
           AND TRD_STATUS_CD = 'TRDC0005'
           AND TRD_UPDT_ID = #{completionRequesterId}
     </update>
+
+    <update id="rejectOfflineCompletionByCounterpart">
+        UPDATE TRADE
+        SET TRD_STATUS_CD = 'TRDC0004',
+            TRD_AUTO_CMPL_DT = NULL,
+            TRD_UPDT_ID = #{updaterId}
+        WHERE TRD_SN = #{tradeId}
+          AND TRD_METHOD_CD = 'TRDC0010'
+          AND TRD_STATUS_CD = 'TRDC0005'
+          AND TRD_UPDT_ID = #{completionRequesterId}
+    </update>
+
+    <select id="countOfflineCompletionRequestsByRequester" resultType="int">
+        SELECT COUNT(*)
+        FROM TRADE_STATUS_HIST h
+        WHERE h.TRD_SN = #{tradeId}
+          AND h.TRD_STS_HST_STATUS_CD = 'TRDC0005'
+          AND h.TRD_STS_HST_RSN_CN LIKE CONCAT('OFFLINE_COMPLETION_REQUEST|', #{userId}, '|%')
+    </select>
 
     <!-- 한 번의 스케줄 실행이 과도한 행을 잡지 않도록 만료 거래를 배치 크기로 나눠 조회한다. -->
     <select id="findExpiredAutoCompletionTradeIds" resultType="long">

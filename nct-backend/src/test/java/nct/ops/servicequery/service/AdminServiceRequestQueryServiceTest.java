@@ -300,6 +300,42 @@ class AdminServiceRequestQueryServiceTest {
     }
 
     @Test
+    void marksClosedRequestWithActiveQuotesAsCleanupRequired() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(41L)
+                .title("종료 후 활성 견적 잔존")
+                .statusCode("SVCC0004")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(41L)))
+                .thenReturn(Map.of(41L, quoteSummary(41L, 2, 2, null)));
+
+        var result = service.getPage(new AdminServiceRequestListRequest());
+
+        assertThat(result.items().get(0).integratedStatusCode()).isEqualTo("IN_PROGRESS");
+        assertThat(result.items().get(0).integratedStatusName()).isEqualTo("정리 필요");
+    }
+
+    @Test
+    void labelsClosedRequestWithoutActiveQuotesAsEnded() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(42L)
+                .title("정상 종료")
+                .statusCode("SVCC0004")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(42L)))
+                .thenReturn(Map.of(42L, quoteSummary(42L, 2, 0, null)));
+
+        var result = service.getPage(new AdminServiceRequestListRequest());
+
+        assertThat(result.items().get(0).integratedStatusCode()).isEqualTo("COMPLETED");
+        assertThat(result.items().get(0).integratedStatusName()).isEqualTo("종료");
+    }
+
+    @Test
     void joinsTradeSettlementDisputeAndEscrowInBatch() {
         AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
                 .serviceRequestId(5L)
@@ -319,7 +355,7 @@ class AdminServiceRequestQueryServiceTest {
         trade.setTradeStatusName("보류");
         trade.setActiveDisputeCount(1);
         trade.setActiveDisputeId(700L);
-        trade.setActiveDisputeStatusCode("TRDC0017");
+        trade.setActiveDisputeStatusCode("ABSC0002");
         trade.setActiveDisputeStatusName("처리중");
         when(tradeSummaryReader.findSummaries(List.of(5L))).thenReturn(Map.of(5L, trade));
 

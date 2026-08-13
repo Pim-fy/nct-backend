@@ -89,7 +89,7 @@
             <when test="condition.sellerId != null and condition.includeHistory">
               AND a.AUC_STATUS_CD IN (
                   'AUCC0001', 'AUCC0002', 'AUCC0003',
-                  'AUCC0004', 'AUCC0005', 'AUCC0006'
+                  'AUCC0004', 'AUCC0005', 'AUCC0006', 'AUCC9001'
               )
             </when>
             <otherwise>
@@ -110,7 +110,7 @@
                       <if test="condition.statusEndingSoon">
                         OR (
                             a.AUC_STATUS_CD = 'AUCC0002'
-                            AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 HOUR)
+                            AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
                         )
                       </if>
                     )
@@ -127,7 +127,7 @@
         </choose>
         <if test="condition.endingSoonOnly != null and condition.endingSoonOnly">
           AND a.AUC_STATUS_CD = 'AUCC0002'
-          AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 HOUR)
+          AND a.AUC_END_DT BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
         </if>
     </sql>
 
@@ -215,6 +215,19 @@
         WHERE PRD_SN IN
         <foreach collection="productIds" item="productId" open="(" separator="," close=")">
             #{productId}
+        </foreach>
+    </select>
+
+    <!-- 담당자 7 · F-COM-018: 과거 신고의 경매 번호 표시를 상품 제목으로 일괄 보정합니다. -->
+    <select id="findAuctionReferenceTitles" resultType="nct.auction.dto.AuctionReferenceTitle">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.PRD_NM AS title
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        WHERE a.AUC_SN IN
+        <foreach collection="auctionIds" item="auctionId" open="(" separator="," close=")">
+            #{auctionId}
         </foreach>
     </select>
 
@@ -412,6 +425,7 @@
         SELECT
             a.AUC_SN AS auctionId,
             p.PRD_SN AS productId,
+            p.PRD_USE_YN AS productUseYn,
             p.USR_SN AS sellerId,
             currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
@@ -461,6 +475,48 @@
         JOIN PRODUCT p
           ON p.PRD_SN = a.PRD_SN
         WHERE a.AUC_SN = #{auctionId}
+        FOR UPDATE
+    </select>
+
+    <!-- 담당자 7 · 신고 제재: 판매자 또는 현재 최고입찰자로 연관된 경매를 번호순으로 잠급니다. -->
+    <select id="findSanctionTargetsByMemberForUpdate"
+            resultType="nct.auction.dto.AuctionSanctionTarget">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.USR_SN AS sellerUserSn,
+            currentBid.BID_SN AS highestBidId,
+            currentBid.USR_SN AS highestBidderUserSn,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            a.AUC_START_DT AS startAt,
+            a.AUC_END_DT AS endAt,
+            NOW() AS databaseNow,
+            trade.TRD_SN AS tradeSn,
+            trade.TRD_STATUS_CD AS tradeStatusCode
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        LEFT JOIN BID currentBid
+          ON currentBid.BID_SN = (
+              SELECT b.BID_SN
+                FROM BID b
+               WHERE b.AUC_SN = a.AUC_SN
+                 AND b.BID_STATUS_CD = 'BIDC0001'
+               ORDER BY b.BID_AMT DESC, b.BID_SN DESC
+               LIMIT 1
+          )
+        LEFT JOIN TRADE trade
+          ON trade.TRD_SN = (
+              SELECT t.TRD_SN
+                FROM TRADE t
+               WHERE t.PRD_SN = p.PRD_SN
+                 AND t.TRD_TYPE_CD = 'TRDC0001'
+               ORDER BY t.TRD_REG_DT DESC, t.TRD_SN DESC
+               LIMIT 1
+          )
+        WHERE (p.USR_SN = #{userSn} OR currentBid.USR_SN = #{userSn})
+          AND a.AUC_STATUS_CD IN (
+              'AUCC0001', 'AUCC0002', 'AUCC0003', 'AUCC0006', 'AUCC0013', 'AUCC9001'
+          )
+        ORDER BY a.AUC_SN
         FOR UPDATE
     </select>
 
@@ -664,5 +720,73 @@
         WHERE AUC_SN = #{auctionId}
           AND AUC_STATUS_CD = #{expectedStatusCode}
     </update>
+
+    <update id="pauseAuctionForSanction">
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = 'AUCC0013',
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = NOW()
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = #{expectedStatusCode}
+           AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006')
+    </update>
+
+    <update id="pauseAuctionForAdmin">
+        /* 담당자 7 · F-OPS-003: 진행 중 경매만 수동 일시중지합니다. */
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = 'AUCC9001',
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = 'AUCC0002'
+           AND AUC_END_DT > CURRENT_TIMESTAMP
+    </update>
+
+    <update id="resumeAuctionAfterAdminPause">
+        /* 멈춘 시간만큼 종료시각을 연장해 일시중지 직전의 남은 시간을 보존합니다. */
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = 'AUCC0002',
+               AUC_END_DT = DATE_ADD(
+                   AUC_END_DT,
+                   INTERVAL GREATEST(
+                       COALESCE(TIMESTAMPDIFF(SECOND, AUC_UPDT_DT, CURRENT_TIMESTAMP), 0),
+                       1
+                   ) SECOND
+               ),
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = 'AUCC9001'
+    </update>
+
+    <update id="restoreAuctionAfterSanction">
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = #{statusCode},
+               AUC_START_DT = CASE
+                   WHEN #{statusCode} = 'AUCC0001'
+                       THEN DATE_ADD(NOW(), INTERVAL COALESCE(#{remainingStartSeconds}, 0) SECOND)
+                   ELSE AUC_START_DT
+               END,
+               AUC_END_DT = CASE
+                   WHEN #{statusCode} IN ('AUCC0001', 'AUCC0002')
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   ELSE AUC_END_DT
+               END,
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = NOW()
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = 'AUCC0013'
+    </update>
+
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 탈퇴 전 하드 차단 - 본인 판매 미종료 경매.
+         AUCC0001(준비/시작 전)·AUCC0002(진행중) 둘 다 미종료다(QA P1-2, ProductMapper.xml의
+         기존 미종료 판정과 동일 기준으로 맞춤). -->
+    <select id="countActiveSellerAuctions" resultType="int">
+        SELECT COUNT(*)
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        WHERE p.USR_SN = #{userSn}
+          AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC9001')
+    </select>
 
 </mapper>

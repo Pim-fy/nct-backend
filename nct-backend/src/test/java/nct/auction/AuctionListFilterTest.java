@@ -128,7 +128,7 @@ class AuctionListFilterTest extends ApprovedDatabaseWriteIntegrationTest {
                 null,
                 BigDecimal.valueOf(14000),
                 AuctionStatusCode.ACTIVE,
-                "TRDC0020");
+                "TRDC0015");
 
         AuctionListRequest request = keywordRequest("t_reference");
         request.setTradeMethod("delivery");
@@ -204,10 +204,6 @@ class AuctionListFilterTest extends ApprovedDatabaseWriteIntegrationTest {
                 LocalDateTime.now().plusHours(1));
         auctionIds.add(aucSn);
         return aucSn;
-    }
-
-    private long insertProduct(long sellerSn, String productName, BigDecimal instantBuyPrice) {
-        return insertProduct(sellerSn, productName, instantBuyPrice, "TRDC0009");
     }
 
     private long insertProduct(

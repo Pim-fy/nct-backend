@@ -218,4 +218,16 @@
            AND CST_INQ_USE_YN = 'Y'
     </update>
 
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 회원 탈퇴 시 본인 미답변 문의 일괄 종결.
+         실제 답변 없이 상태만 종결로 전환하므로 CST_INQ_ANS_CN/ANS_DT는 건드리지 않는다. -->
+    <update id="closeUnansweredByUser">
+        UPDATE CUSTOMER_INQUIRY
+           SET CST_INQ_STATUS_CD = #{closedStatusCode},
+               CST_INQ_UPDT_ID = #{actorId},
+               CST_INQ_UPDT_DT = NOW()
+         WHERE USR_SN = #{userSn}
+           AND CST_INQ_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+           AND CST_INQ_USE_YN = 'Y'
+    </update>
+
 </mapper>

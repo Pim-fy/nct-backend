@@ -38,6 +38,8 @@ class PointChargeOrderTest {
     @Autowired FieldCryptoService fieldCryptoService;
 
     long usrSn;
+    long minChargeAmount;
+    long maxChargeAmount;
 
     @BeforeEach
     void setUpUser() {
@@ -48,19 +50,22 @@ class PointChargeOrderTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        var limits = pointChargeService.getChargeLimits();
+        minChargeAmount = limits.getMinChrgAmt();
+        maxChargeAmount = limits.getMaxChrgAmt();
     }
 
     @Test
     @DisplayName("주문 생성: 대기 상태로 기록되고 이력 조회에 상태 한글명과 함께 나타난다")
     void createOrderAndList() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, minChargeAmount);
 
         assertThat(orderNo).startsWith("CHG-" + usrSn + "-");
         assertThat(pointChargeService.getOrderList(usrSn))
                 .singleElement()
                 .satisfies(o -> {
                     assertThat(o.getPtChgOrdNo()).isEqualTo(orderNo);
-                    assertThat(o.getPtChgOrdAmt()).isEqualTo(50000);
+                    assertThat(o.getPtChgOrdAmt()).isEqualTo(minChargeAmount);
                     assertThat(o.getPtChgOrdStatusCd()).isEqualTo(PointChargeOrderStatus.PENDING.getCode());
                     // CMM_CODE 조인으로 채우는 한글명 — 기초데이터 PCOC0001='대기'
                     assertThat(o.getStatusNm()).isEqualTo("대기");
@@ -81,10 +86,11 @@ class PointChargeOrderTest {
     @Test
     @DisplayName("주문 생성: SYSTEM_SETTING 충전 한도를 벗어나면 거부하고 이력에 흔적을 남기지 않는다")
     void createOrderOutOfChargeLimit() {
-        // 기초데이터 기준 SYS_SET_MIN_CHRG_AMT=10,000 / SYS_SET_MAX_CHRG_AMT=1,000,000 (D-010 단일 row)
-        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, 9_000))
-                .isInstanceOf(PointException.class);
-        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, 1_000_001))
+        if (minChargeAmount > 1) {
+            assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, minChargeAmount - 1))
+                    .isInstanceOf(PointException.class);
+        }
+        assertThatThrownBy(() -> pointChargeService.createOrder(usrSn, maxChargeAmount + 1))
                 .isInstanceOf(PointException.class);
 
         assertThat(pointChargeService.getOrderList(usrSn)).isEmpty();
@@ -93,7 +99,7 @@ class PointChargeOrderTest {
     @Test
     @DisplayName("만료(D-025): 3시간 지난 대기 주문은 승인이 거부된다")
     void confirmExpiredPendingOrder() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, minChargeAmount);
         backdateOrder(orderNo, 4); // 4시간 전 생성으로 되돌림 → 유효시간(3시간) 초과
 
         // 만료 검사는 토스 승인 호출보다 먼저 수행되므로 외부 API 없이 검증 가능
@@ -105,8 +111,8 @@ class PointChargeOrderTest {
     @Test
     @DisplayName("만료(D-025): 3시간 지난 대기 건은 이력에서 취소(시간 만료)로 표시된다")
     void listMarksExpiredPendingAsCanceled() {
-        String freshNo = pointChargeService.createOrder(usrSn, 20000);
-        String expiredNo = pointChargeService.createOrder(usrSn, 50000);
+        String freshNo = pointChargeService.createOrder(usrSn, minChargeAmount);
+        String expiredNo = pointChargeService.createOrder(usrSn, minChargeAmount);
         backdateOrder(expiredNo, 4);
 
         var orders = pointChargeService.getOrderList(usrSn);
@@ -132,8 +138,9 @@ class PointChargeOrderTest {
     @Test
     @DisplayName("이력 조회: 최신순 정렬, 응답 DTO 변환까지 프론트 계약대로 채워진다")
     void listOrderingAndDtoMapping() {
-        pointChargeService.createOrder(usrSn, 10000);
-        String latest = pointChargeService.createOrder(usrSn, 30000);
+        pointChargeService.createOrder(usrSn, minChargeAmount);
+        long latestAmount = minChargeAmount < maxChargeAmount ? minChargeAmount + 1 : minChargeAmount;
+        String latest = pointChargeService.createOrder(usrSn, latestAmount);
 
         var orders = pointChargeService.getOrderList(usrSn);
         assertThat(orders).hasSize(2);
@@ -141,7 +148,7 @@ class PointChargeOrderTest {
 
         PointChargeOrderResponse dto = PointChargeOrderResponse.from(orders.get(0));
         assertThat(dto.getOrderNo()).isEqualTo(latest);
-        assertThat(dto.getAmount()).isEqualTo(30000);
+        assertThat(dto.getAmount()).isEqualTo(latestAmount);
         assertThat(dto.getStatus()).isEqualTo("대기");
         assertThat(dto.getStatusCd()).isEqualTo(PointChargeOrderStatus.PENDING.getCode());
         assertThat(dto.getFailReason()).isNull();

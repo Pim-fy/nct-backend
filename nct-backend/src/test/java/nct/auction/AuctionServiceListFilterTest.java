@@ -132,6 +132,17 @@ class AuctionServiceListFilterTest {
     }
 
     @Test
+    void defaultsToLatestSortWhenSortIsBlank() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setSort("  ");
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.getSort()).isEqualTo("latest");
+    }
+
+    @Test
     void keepsFavoriteCountSortForMapper() {
         when(auctionMapper.countAuctions(any())).thenReturn(0L);
         AuctionListRequest request = new AuctionListRequest();
@@ -151,7 +162,7 @@ class AuctionServiceListFilterTest {
         auctionService.findAuctions(deliveryRequest);
 
         assertThat(deliveryRequest.getTradeMethodCodes())
-                .containsExactly("TRDC0009", "TRDC0020");
+                .containsExactly("TRDC0009", "TRDC0015");
 
         AuctionListRequest directRequest = new AuctionListRequest();
         directRequest.setTradeMethod("direct");
@@ -159,7 +170,7 @@ class AuctionServiceListFilterTest {
         auctionService.findAuctions(directRequest);
 
         assertThat(directRequest.getTradeMethodCodes())
-                .containsExactly("TRDC0010", "TRDC0020");
+                .containsExactly("TRDC0010", "TRDC0015");
     }
 
     @Test

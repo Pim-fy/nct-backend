@@ -1,6 +1,7 @@
 package nct.servicerequest.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -19,6 +20,9 @@ import nct.file.service.FileStorageService;
 import nct.global.dto.PagedResponse;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
+import nct.product.mapper.BannedKeywordMapper;
+import nct.quote.mapper.QuoteMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
 import nct.servicerequest.domain.SvcReqComment;
@@ -37,13 +41,14 @@ import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
 import nct.servicerequest.port.AdminServiceRequestReader;
+import nct.servicerequest.port.AdminServiceRequestCommandPort;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
-import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
 import nct.servicerequest.service.ServiceRequestFormService.ValidatedSubmission;
 
 @Service
 @RequiredArgsConstructor
-public class ServiceRequestService implements ServiceRequestQuoteReader, AdminServiceRequestReader {
+public class ServiceRequestService implements ServiceRequestQuoteReader, AdminServiceRequestReader,
+        AdminServiceRequestCommandPort {
 
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
@@ -52,6 +57,9 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
     private final ApplicationEventPublisher eventPublisher;
+    private final BannedKeywordMapper bannedKeywordMapper;
+    private final QuoteMapper quoteMapper;
+    private final NotificationService notificationService;
 
     // 변경사항 추가는 공개 상태에서만 — 매칭완료 이후로는 요청 내용이 확정된 것으로 보고 막는다
     private static final Set<String> COMMENTABLE_STATUS_CD = Set.of("SVCC0002");
@@ -60,7 +68,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
     private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
     private static final Set<String> SERVICE_REQUEST_STATUS_CD =
-            Set.of("SVCC0001", "SVCC0002", "SVCC0003", "SVCC0004");
+            Set.of("SVCC0001", "SVCC0002", "SVCC0003", "SVCC0004", "SVCC0005");
 
     private void validateClientStatusCd(String statusCd) {
         if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
@@ -68,12 +76,12 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
     }
 
-    // 희망 예산 상한 — 10억 원 (사용자 확정, 260810)
+    // 희망 예산 상한 — 1,000,000,000P (사용자 확정, 260810)
     private static final BigDecimal MAX_BUDGET_AMT = BigDecimal.valueOf(1_000_000_000);
 
     private void validateBudgetUnderMax(BigDecimal svcReqBdgtAmt) {
         if (svcReqBdgtAmt != null && svcReqBdgtAmt.compareTo(MAX_BUDGET_AMT) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "희망 예산은 " + MAX_BUDGET_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "희망 예산은 " + MAX_BUDGET_AMT.toPlainString() + "P 이하로 입력해 주세요.");
         }
     }
 
@@ -120,6 +128,84 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
     }
 
+    /** 담당자 7 소비 계약: 노출 여부와 무관하게 매칭 전 공개 요청을 취소하고 이미 취소된 요청은 멱등 반환합니다. */
+    @Override
+    @Transactional
+    public AdminServiceRequestCommandResult cancelOpen(Long serviceRequestId, Long actorUserId) {
+        if (serviceRequestId == null || serviceRequestId <= 0
+                || actorUserId == null || actorUserId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ServiceRequest request = serviceRequestMapper.findServiceRequestEntityByIdForUpdate(serviceRequestId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        if ("SVCC0004".equals(request.getSvcReqStatusCd())) {
+            return new AdminServiceRequestCommandResult(
+                    serviceRequestId,
+                    request.getUsrSn(),
+                    "SVCC0004",
+                    "SVCC0004",
+                    false);
+        }
+        if (!"SVCC0002".equals(request.getSvcReqStatusCd())) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "매칭 전 공개 상태의 견적 요청만 관리자 취소할 수 있습니다.");
+        }
+        if (serviceRequestMapper.adminCancelOpenServiceRequest(
+                serviceRequestId, String.valueOf(actorUserId)) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT, "견적 요청 상태가 이미 변경되었습니다.");
+        }
+        return new AdminServiceRequestCommandResult(
+                serviceRequestId,
+                request.getUsrSn(),
+                request.getSvcReqStatusCd(),
+                "SVCC0004",
+                true);
+    }
+
+    /** 담당자 7 소비 계약: 매칭 전 공개 요청을 숨김·복구하며 요청과 견적 이력은 보존합니다. */
+    @Override
+    @Transactional
+    public AdminServiceRequestVisibilityResult changeVisibility(
+            Long serviceRequestId, boolean visible, Long actorUserId) {
+        if (serviceRequestId == null || serviceRequestId <= 0
+                || actorUserId == null || actorUserId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ServiceRequest request = serviceRequestMapper.findServiceRequestEntityByIdForUpdate(serviceRequestId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        if (!"SVCC0002".equals(request.getSvcReqStatusCd())) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "거래가 생성되지 않은 공개 견적 요청만 숨김 상태를 변경할 수 있습니다.");
+        }
+
+        boolean previousVisible = Character.valueOf('Y').equals(request.getSvcReqUseYn());
+        if (previousVisible == visible) {
+            return new AdminServiceRequestVisibilityResult(
+                    serviceRequestId,
+                    request.getUsrSn(),
+                    previousVisible,
+                    visible,
+                    false);
+        }
+        String expectedUseYn = previousVisible ? "Y" : "N";
+        String targetUseYn = visible ? "Y" : "N";
+        if (serviceRequestMapper.updateAdminServiceRequestVisibility(
+                serviceRequestId,
+                expectedUseYn,
+                targetUseYn,
+                String.valueOf(actorUserId)) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT, "견적 요청 노출 상태가 이미 변경되었습니다.");
+        }
+        return new AdminServiceRequestVisibilityResult(
+                serviceRequestId,
+                request.getUsrSn(),
+                previousVisible,
+                visible,
+                true);
+    }
+
     @Transactional
     public ServiceRequestResponse registerServiceRequest(Long usrSn, ServiceRequestRegisterRequest req) {
         String statusCd = (req.getSvcReqStatusCd() != null) ? req.getSvcReqStatusCd() : "SVCC0002";
@@ -152,6 +238,9 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                     formSubmission);
         } else {
             saveItems(serviceRequest.getSvcReqSn(), req.getItems());
+        }
+        if ("SVCC0002".equals(statusCd)) {
+            serviceRequestMapper.refreshOpenDeadline(serviceRequest.getSvcReqSn());
         }
         saveImages(serviceRequest.getSvcReqSn(), usrSn, req.getFlSnList());
 
@@ -225,6 +314,9 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
             svcReqItemMapper.deleteBySvcReqSn(svcReqSn);
             saveItems(svcReqSn, req.getItems());
         }
+        if ("SVCC0002".equals(statusCd)) {
+            serviceRequestMapper.refreshOpenDeadline(svcReqSn);
+        }
 
         if (req.getFlSnList() != null) {
             svcReqImageMapper.deleteBySvcReqSn(svcReqSn);
@@ -275,11 +367,16 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 || !"SVCC0002".equals(existing.getSvcReqStatusCd())) {
             throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
         }
+        if (serviceRequestMapper.countOpenQuoteSubmissionWindow(svcReqSn) != 1) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "견적 접수가 마감된 서비스 요청입니다.");
+        }
         return new ServiceRequestQuoteTarget(existing.getUsrSn(), existing.getCatSn());
     }
 
     /**
-     * 담당자 7 통합, F-SVC-006·008: 견적 수정·철회·본인 조회에서 현재 카테고리 권한을
+     * 담당자 7 통합, F-SVC-006: 견적 수정·활성 견적 조회에서 현재 카테고리 권한을
      * 다시 확인할 수 있도록 요청자와 카테고리를 읽기 전용으로 제공한다.
      * 요청 상태는 견적 상태 검증과 별개이므로 여기서는 사용 여부만 확인한다.
      */
@@ -391,7 +488,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     /** 요청서 마감 — 공개(SVCC0002) 상태에서만 종료(SVCC0004)로 전환 가능 (F-SVC-003) */
     @Transactional
     public void closeServiceRequest(Long svcReqSn, Long usrSn) {
-        ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+        ServiceRequest serviceRequest = serviceRequestMapper.findServiceRequestEntityByIdForUpdate(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
 
         if (!serviceRequest.getUsrSn().equals(usrSn)) {
@@ -405,6 +502,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         if (updated == 0) {
             throw new CustomException(ErrorCode.CONFLICT, "요청서 상태가 이미 변경되었습니다.");
         }
+        notifyActiveQuoteProviders(svcReqSn);
     }
 
     /** 견적 요청 기간 만료 대상 조회 (F-SVC-003, 배치 전용) */
@@ -413,10 +511,83 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         return serviceRequestMapper.findExpiredOpenServiceRequestIds(limit);
     }
 
-    /** 견적 요청 기간 만료 자동 마감 — 이미 처리됐거나 상태가 바뀐 건은 조용히 넘어간다 (F-SVC-003, 배치 전용) */
+    /** 견적 요청 기간 만료 자동 마감 — 실제 상태 전이 여부를 종료 오케스트레이터에 반환한다. */
     @Transactional
-    public void autoCloseExpiredServiceRequest(Long svcReqSn) {
-        serviceRequestMapper.autoCloseServiceRequest(svcReqSn);
+    public boolean autoCloseExpiredServiceRequest(Long svcReqSn) {
+        boolean closed = serviceRequestMapper.autoCloseServiceRequest(svcReqSn) == 1;
+        if (closed) {
+            notifyActiveQuoteProviders(svcReqSn);
+        }
+        return closed;
+    }
+
+    // 마감 시점에 아직 선택되지 않은 활성 견적(제출됨·수정됨)의 제공자 전원에게 마감 알림을 보낸다.
+    // 수동/자동 마감 두 경로가 공유한다 (황성경 제보, 2026-08-13). 조우진의 ServiceRequestClosureService가
+    // 이 메서드 다음에 견적 만료(quoteExpirationPort.expireActiveQuotes)를 호출하므로, 견적이 아직
+    // 활성 상태인 이 시점에 알림을 먼저 보내야 조회 대상이 비어있지 않다.
+    private void notifyActiveQuoteProviders(Long svcReqSn) {
+        for (Long providerUsrSn : quoteMapper.findActiveQuoteProvidersBySvcReqSn(svcReqSn)) {
+            notificationService.notifyServiceRequestClosed(providerUsrSn, svcReqSn);
+        }
+    }
+
+    /** 마감 후 1일 경과 요청서 조회 (자동 삭제 배치 전용) */
+    @Transactional(readOnly = true)
+    public List<Long> findExpiredClosedServiceRequestIds(LocalDateTime cutoff, int limit) {
+        return serviceRequestMapper.findExpiredClosedServiceRequestIds(cutoff, limit);
+    }
+
+    /** 마감 후 1일 경과 요청서 자동 삭제 — ServiceRequestClosedAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
+    @Transactional
+    public void deleteExpiredClosedServiceRequest(Long svcReqSn) {
+        serviceRequestMapper.deleteExpiredClosedServiceRequest(svcReqSn);
+    }
+
+    // 마감(SVCC0004)된 요청서 재등록 — 원본은 이력으로 그대로 남기고, 내용을 복사한 새 요청서(임시저장)를
+    // 별도 svcReqSn으로 만든다. 같은 번호를 재사용하면 옛 견적·변경사항 기록이 새 라운드와 뒤섞이게 된다.
+    @Transactional
+    public ServiceRequestResponse reregisterServiceRequest(Long svcReqSn, Long usrSn) {
+        ServiceRequest original = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+
+        if (!original.getUsrSn().equals(usrSn)) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (!"SVCC0004".equals(original.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "마감된 요청서만 재등록할 수 있습니다.");
+        }
+
+        ServiceRequest copy = ServiceRequest.builder()
+                .usrSn(usrSn)
+                .catSn(original.getCatSn())
+                .formTemplateSn(original.getFormTemplateSn())
+                .svcReqTtl(original.getSvcReqTtl())
+                .svcReqCn(original.getSvcReqCn())
+                .svcReqBdgtAmt(original.getSvcReqBdgtAmt())
+                .svcReqStatusCd("SVCC0001")
+                .svcReqRegId(String.valueOf(usrSn))
+                .svcReqUpdtId(String.valueOf(usrSn))
+                .build();
+        serviceRequestMapper.saveServiceRequest(copy);
+
+        List<SvcReqItem> items = svcReqItemMapper.findItemEntitiesBySvcReqSn(svcReqSn);
+        if (!items.isEmpty()) {
+            List<SvcReqItem> copiedItems = items.stream()
+                    .map(item -> item.toBuilder().svcReqItmSn(null).svcReqSn(copy.getSvcReqSn()).build())
+                    .toList();
+            svcReqItemMapper.insertAll(copiedItems);
+        }
+
+        List<SvcReqImage> images = svcReqImageMapper.findImageEntitiesBySvcReqSn(svcReqSn);
+        if (!images.isEmpty()) {
+            List<SvcReqImage> copiedImages = images.stream()
+                    .map(image -> image.toBuilder().svcReqImgSn(null).svcReqSn(copy.getSvcReqSn()).build())
+                    .toList();
+            svcReqImageMapper.insertAll(copiedImages);
+        }
+
+        return serviceRequestMapper.findServiceRequestById(copy.getSvcReqSn())
+                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
     }
 
     // 삭제는 임시저장 상태만 허용 — 공개 이후에는 제공자가 이미 견적을 냈을 수 있어 셀프 삭제로
@@ -452,6 +623,12 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
             throw new CustomException(ErrorCode.CONFLICT, "변경사항은 최대 " + MAX_COMMENT_COUNT + "개까지 등록할 수 있습니다.");
         }
 
+        // 상품 변경사항(F-AUC-007)과 동일한 PRODUCT_BANNED_KEYWORD 목록으로 검사한다 —
+        // 공개 상세에 그대로 노출되는 자유 텍스트라 같은 우회 경로가 열려있다.
+        List<String> bannedKeywords = bannedKeywordMapper.findActiveBannedKeywords();
+        checkBannedKeyword(req.getTtl(), "변경사항 제목", bannedKeywords);
+        checkBannedKeyword(req.getCn(), "변경사항 내용", bannedKeywords);
+
         SvcReqComment comment = SvcReqComment.builder()
                 .svcReqSn(svcReqSn)
                 .usrSn(usrSn)
@@ -477,6 +654,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
         return svcReqCommentMapper.findLatestComments(svcReqSn, MAX_COMMENT_COUNT);
+    }
+
+    private void checkBannedKeyword(String text, String fieldLabel, List<String> keywords) {
+        if (text == null) return;
+        String lower = text.toLowerCase();
+        keywords.stream()
+                .filter(kwd -> lower.contains(kwd.toLowerCase()))
+                .findFirst()
+                .ifPresent(kwd -> {
+                    throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                            "'" + kwd + "'은(는) 등록할 수 없는 " + fieldLabel + "입니다.");
+                });
     }
 
     // 요청 항목 목록을 순서대로 SVC_REQ_ITEM에 저장

@@ -3,6 +3,7 @@ package nct.ops.operation.controller;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,11 +22,13 @@ import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
 import nct.ops.operation.dto.AdminReportPageResponse;
+import nct.ops.operation.dto.AdminReportSanctionReleaseRequest;
 import nct.ops.operation.service.AdminReportOperationService;
 
 /** 담당자 7 · F-OPS-007: 관리자 신고 조회·처리·반려 API입니다. */
 @RestController
 @RequestMapping("/api/admin/reports")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 @RequiredArgsConstructor
 public class AdminReportOperationController {
 
@@ -40,10 +43,11 @@ public class AdminReportOperationController {
     public ResponseEntity<ApiResponse<AdminReportPageResponse>> getReports(
             @RequestParam(name = "statusCode", required = false) String statusCode,
             @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "caseType", defaultValue = "ALL") String caseType,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                adminReportOperationService.getReports(statusCode, keyword, page, size)));
+                adminReportOperationService.getReports(statusCode, keyword, caseType, page, size)));
     }
 
     @GetMapping("/{reportSn}")
@@ -60,8 +64,20 @@ public class AdminReportOperationController {
         adminReportOperationService.decide(
                 reportSn,
                 request.getDecision(),
+                request.getTradeDecision(),
+                request.getEnforcementAction(),
                 request.getReason(),
                 userId(userDetails));
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    @PostMapping("/{reportSn}/sanction/release")
+    public ResponseEntity<ApiResponse<Void>> releaseSanction(
+            @PathVariable(name = "reportSn") Long reportSn,
+            @Valid @RequestBody AdminReportSanctionReleaseRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        adminReportOperationService.releaseSanction(
+                reportSn, request.reason(), userId(userDetails));
         return ResponseEntity.ok(ApiResponse.success());
     }
 

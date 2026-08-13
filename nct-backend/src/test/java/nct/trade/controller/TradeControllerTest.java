@@ -17,6 +17,7 @@ import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
 import nct.ops.security.service.SensitiveDataMasker;
 import nct.trade.dto.ServiceTradeCompletionRequest;
+import nct.trade.dto.ServiceTradeDisputeRequest;
 import nct.trade.dto.ServiceScheduleChangeRequest;
 import nct.trade.dto.ServiceScheduleCancellationRequest;
 import nct.trade.service.TradeService;
@@ -47,6 +48,29 @@ class TradeControllerTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         verify(tradeService).requestServiceCompletion(
                 81L, 22L, "에어컨 분해 청소와 시운전을 완료했습니다.");
+    }
+
+    @Test
+    void forwardsCommonTradeReportAndReturnsOk() {
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setReportTypeCode("ABRC0009");
+        request.setContent("배송 중 상품이 파손되었습니다.");
+
+        var response = new TradeController(tradeService)
+                .registerTradeReport(81L, request, providerUserDetails(22L));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        verify(tradeService).registerTradeReport(81L, 22L, request);
+    }
+
+    @Test
+    void rejectsBlankCommonTradeReportBeforeCallingService() throws Exception {
+        mockMvc.perform(post("/api/trades/81/reports")
+                        .contentType("application/json")
+                        .content("{\"reportTypeCode\":\"ABRC0009\",\"content\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(tradeService);
     }
 
     @Test

@@ -1,5 +1,7 @@
 package nct.ops.reference.service;
 
+import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ import nct.ops.reference.mapper.CommonCodeMapper;
 public class ReferenceDataService {
 
     private static final String CATEGORY_DOMAIN_GROUP = "CATG01";
+    private static final String BID_UNIT_GROUP = "AUCG02";
 
     private final CommonCodeMapper commonCodeMapper;
     private final CategoryMapper categoryMapper;
@@ -59,7 +62,13 @@ public class ReferenceDataService {
         if (isBlank(groupCode)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        return List.copyOf(commonCodeMapper.findActiveChildrenByGroup(groupCode));
+        List<CommonCode> codes = commonCodeMapper.findActiveChildrenByGroup(groupCode);
+        if (BID_UNIT_GROUP.equals(groupCode)) {
+            return codes.stream()
+                    .sorted(Comparator.comparing(this::bidUnitAmount))
+                    .toList();
+        }
+        return List.copyOf(codes);
     }
 
     /**
@@ -88,5 +97,16 @@ public class ReferenceDataService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /** 담당자 7 · F-AUC-013: 입찰 단위는 수동 표시 순서가 아니라 실제 금액 오름차순으로 제공합니다. */
+    private BigDecimal bidUnitAmount(CommonCode code) {
+        try {
+            return new BigDecimal(code.getName().trim());
+        } catch (RuntimeException exception) {
+            throw new CustomException(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "입찰 단위 기준값을 확인할 수 없습니다.");
+        }
     }
 }

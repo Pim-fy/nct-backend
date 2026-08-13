@@ -5,5 +5,19 @@ package nct.ops.operation.port;
  * TRADE와 TRADE_STATUS_HIST를 소유한 담당자 4 서비스가 상태·사유·감사 기록을 처리합니다.
  */
 public record SellerCancellationDecisionCommand(
-        Long tradeSn, SellerCancellationDecision decision, String reason, String adminId, String requestId) {
+        Long tradeSn,
+        SellerCancellationDecision decision,
+        String reason,
+        String adminId,
+        String requestId,
+        Long sourceReportSn) {
+
+    public SellerCancellationDecisionCommand(
+            Long tradeSn,
+            SellerCancellationDecision decision,
+            String reason,
+            String adminId,
+            String requestId) {
+        this(tradeSn, decision, reason, adminId, requestId, null);
+    }
 }

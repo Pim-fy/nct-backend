@@ -66,6 +66,28 @@
              #{qutRegId}, #{qutUpdtId})
     </insert>
 
+    <!-- 담당자 7 통합 · F-SVC-005: 요청 행 잠금 안에서 동일 제공자의 활성 견적 중복을 확인한다. -->
+    <select id="countActiveQuotesByRequestAndProvider" resultType="int">
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN = #{usrSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
+    <select id="countActiveQuotesByServiceRequestId" resultType="int">
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
+    <select id="countTradeLinksByQuoteId" resultType="int">
+        SELECT COUNT(*)
+          FROM TRADE
+         WHERE QUT_SN = #{qutSn}
+    </select>
+
     <!-- ── 견적 단건 조회 (읽기 전용: 소유권 확인·이력 조회 용도) ── -->
     <select id="findQuoteById" resultMap="QuoteEntityMap">
         /* QuoteMapper.findQuoteById */
@@ -107,6 +129,104 @@
          WHERE QUT_SN = #{qutSn}
     </update>
 
+    <!-- 담당자 7 · F-OPS-021: 거래 생성 전 활성 견적만 관리자 운영 명령으로 무효화한다. -->
+    <update id="adminInvalidateActiveQuote">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{updtId}
+         WHERE QUT_SN = #{qutSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE
+                WHERE QUT_SN = #{qutSn}
+           )
+    </update>
+
+    <select id="findActiveQuotesByServiceRequestIdForUpdate" resultMap="QuoteEntityMap">
+        SELECT QUT_SN, SVC_REQ_SN, USR_SN, QUT_AMT, QUT_CN, QUT_TTL,
+               QUT_STATUS_CD, QUT_REVISE_CNT, QUT_REG_ID, QUT_UPDT_ID
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+         ORDER BY QUT_SN
+        FOR UPDATE
+    </select>
+
+    <update id="adminInvalidateActiveQuotes">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <!-- 담당자 7 통합 · F-SVC-003: 요청 마감 시 선택 전 견적을 만료 상태로 함께 전환한다. -->
+    <update id="expireActiveQuotesByServiceRequestId">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0003',
+               QUT_UPDT_ID = #{updtId}
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE
+                WHERE TRADE.QUT_SN = QUOTE.QUT_SN
+           )
+    </update>
+
+    <select id="findSanctionTargetsByMemberForUpdate"
+            resultType="nct.quote.dto.QuoteSanctionTarget">
+        SELECT q.QUT_SN AS quoteId,
+               q.SVC_REQ_SN AS serviceRequestId,
+               q.USR_SN AS providerUserSn,
+               sr.USR_SN AS requestOwnerUserSn,
+               q.QUT_STATUS_CD AS statusCode,
+               (
+                   SELECT t.TRD_STATUS_CD
+                     FROM TRADE t
+                    WHERE t.SVC_REQ_SN = q.SVC_REQ_SN
+                    ORDER BY t.TRD_SN DESC
+                    LIMIT 1
+               ) AS linkedTradeStatusCode
+          FROM QUOTE q
+          JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
+         WHERE (q.USR_SN = #{userSn} OR sr.USR_SN = #{userSn})
+           AND q.QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002', 'QUTC0004')
+         ORDER BY q.QUT_SN
+         FOR UPDATE
+    </select>
+
+    <update id="withdrawQuoteForSanction">
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{actorId},
+               QUT_UPDT_DT = NOW()
+         WHERE QUT_SN = #{quoteId}
+           AND QUT_STATUS_CD = #{expectedStatusCode}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
+    <update id="withdrawSelectedQuoteAfterTradeCancellation">
+        UPDATE QUOTE q
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID = #{actorId},
+               QUT_UPDT_DT = NOW()
+         WHERE q.QUT_SN = #{quoteId}
+           AND q.QUT_STATUS_CD = 'QUTC0004'
+           AND EXISTS (
+               SELECT 1
+                 FROM TRADE t
+                WHERE t.SVC_REQ_SN = q.SVC_REQ_SN
+           )
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM TRADE t
+                WHERE t.SVC_REQ_SN = q.SVC_REQ_SN
+                  AND t.TRD_STATUS_CD != 'TRDC0008'
+           )
+    </update>
+
     <!-- ── 내 견적 목록 (제공자 본인) ─────────────────── -->
     <select id="findMyQuotes" resultMap="QuoteResponseMap">
         /* QuoteMapper.findMyQuotes */
@@ -138,6 +258,31 @@
         SELECT COUNT(*)
           FROM QUOTE
          WHERE USR_SN = #{usrSn}
+    </select>
+
+    <!-- 담당자 7 연결 · F-SVC-005~008: 제공자 본인 견적 상세 조회 -->
+    <select id="findMyQuote" resultMap="QuoteResponseMap">
+        /* QuoteMapper.findMyQuote */
+        SELECT q.QUT_SN, q.SVC_REQ_SN,
+               sr.SVC_REQ_TTL,
+               c.CAT_NM,
+               sr.SVC_REQ_BDGT_AMT,
+               sr.SVC_REQ_REG_DT,
+               hope.HOPE_DT,
+               q.QUT_AMT, q.QUT_CN, q.QUT_TTL, q.QUT_STATUS_CD, q.QUT_REVISE_CNT,
+               q.QUT_REG_DT, q.QUT_UPDT_DT
+          FROM QUOTE q
+          LEFT JOIN SERVICE_REQUEST sr ON sr.SVC_REQ_SN = q.SVC_REQ_SN
+          LEFT JOIN CATEGORY c ON c.CAT_SN = sr.CAT_SN
+          LEFT JOIN (
+              SELECT i.SVC_REQ_SN, MIN(STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d')) AS HOPE_DT
+                FROM SVC_REQ_ITEM i
+                JOIN SVC_REQ_FIELD_DEF f ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+               WHERE f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+               GROUP BY i.SVC_REQ_SN
+          ) hope ON hope.SVC_REQ_SN = q.SVC_REQ_SN
+         WHERE q.USR_SN = #{usrSn}
+           AND q.QUT_SN = #{qutSn}
     </select>
 
     <!-- 담당자 7 · F-PROV-009: 제공자 대시보드용 견적 상태를 한 번의 SQL로 집계한다. -->
@@ -267,6 +412,16 @@
            AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
     </update>
 
+    <!-- @ai_generated F-AUTH-011/POL-AUTH-013: 회원 탈퇴 시 본인(제공자) 진행 중 견적 일괄 철회 -->
+    <update id="withdrawAllByUser">
+        /* QuoteMapper.withdrawAllByUser */
+        UPDATE QUOTE
+           SET QUT_STATUS_CD = 'QUTC0005',
+               QUT_UPDT_ID   = #{updtId}
+         WHERE USR_SN = #{usrSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </update>
+
     <!-- ── 견적 작업사진 INSERT ──────────────────────── -->
     <insert id="insertQuotePhoto" useGeneratedKeys="true" keyProperty="qutPhtSn">
         /* QuoteMapper.insertQuotePhoto */
@@ -307,6 +462,15 @@
         SELECT DISTINCT USR_SN
           FROM QUOTE
          WHERE SVC_REQ_SN = #{svcReqSn}
+    </select>
+
+    <!-- ── 담당자2 소비: 서비스 요청 마감 시 미선택 활성 견적 제공자 USR_SN (QUTC0001/0002만) ── -->
+    <select id="findActiveQuoteProvidersBySvcReqSn" resultType="java.lang.Long">
+        /* QuoteMapper.findActiveQuoteProvidersBySvcReqSn */
+        SELECT DISTINCT USR_SN
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
     </select>
 
     <!-- ── 받은 견적 목록 (요청자용) ─────────────────── -->

@@ -21,6 +21,7 @@ import nct.auth.service.PasswordResetService;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
 import nct.global.utils.CookieUtil;
+import jakarta.servlet.http.HttpServletRequest;
 
 // @ai_generated CHG-032/F-PROV-015: controller가 갱신 access cookie와 현재 ROLE 응답을 함께 주는지 검증한다.
 class AuthControllerTest {
@@ -53,10 +54,10 @@ class AuthControllerTest {
         when(cookieUtil.createRefreshTokenCookie("admin-refresh-token", true))
                 .thenReturn(ResponseCookie.from(CookieUtil.REFRESH_TOKEN_COOKIE, "admin-refresh-token").build());
 
-        var result = controller.adminLogin(request, response);
+        var result = controller.adminLogin(request, response, mock(HttpServletRequest.class));
 
         assertThat(result.getBody()).isNotNull();
-        assertThat(result.getBody().getData().getRole()).isEqualTo("ROLE_ADMIN");
+        assertThat(((LoginResponse) result.getBody().getData()).getRole()).isEqualTo("ROLE_ADMIN");
         assertThat(response.getHeaders(HttpHeaders.SET_COOKIE)).hasSize(2);
         verify(authService).adminLogin(request);
         verify(cookieUtil).createRefreshTokenCookie("admin-refresh-token", true);

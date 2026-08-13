@@ -73,15 +73,15 @@ public class ProductService {
         }
     }
 
-    // 시작가·즉시구매가 상한 — 1억 원 (사용자 확정, 260810)
+    // 시작가·즉시구매가 상한 — 100,000,000P (사용자 확정, 260810)
     private static final BigDecimal MAX_PRICE_AMT = BigDecimal.valueOf(100_000_000);
 
     private void validatePriceUnderMax(BigDecimal prdStartAmt, BigDecimal prdIbyAmt) {
         if (prdStartAmt != null && prdStartAmt.compareTo(MAX_PRICE_AMT) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "시작가는 " + MAX_PRICE_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "시작가는 " + MAX_PRICE_AMT.toPlainString() + "P 이하로 입력해 주세요.");
         }
         if (prdIbyAmt != null && prdIbyAmt.compareTo(MAX_PRICE_AMT) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "즉시구매가는 " + MAX_PRICE_AMT.toPlainString() + "원 이하로 입력해 주세요.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "즉시구매가는 " + MAX_PRICE_AMT.toPlainString() + "P 이하로 입력해 주세요.");
         }
     }
 
@@ -136,8 +136,8 @@ public class ProductService {
                     product.getPrdSn(),
                     req.getPrdStartAmt(),
                     req.getBidUnit(),
+                    req.getAucStartDt(),
                     req.getAucEndDt(),
-                    true,
                     usrSn);
         }
 
@@ -199,8 +199,8 @@ public class ProductService {
                     prdSn,
                     req.getPrdStartAmt(),
                     req.getBidUnit(),
+                    req.getAucStartDt(),
                     req.getAucEndDt(),
-                    true,
                     usrSn);
         }
 
@@ -269,7 +269,7 @@ public class ProductService {
         productImageMapper.insertAll(images);
     }
 
-    // 희망 거래지역 저장 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)에서만 프론트가 값을 보내지만,
+    // 희망 거래지역 저장 — 직거래(TRDC0010)·둘 다 가능(TRDC0015)에서만 프론트가 값을 보내지만,
     // 어떤 거래방식이든 보낸 값 그대로 저장한다(검증은 요청 시점 @Size(max=5)로 충분)
     private void saveTradeRegions(Long prdSn, List<ProductTradeRegionItem> tradeRegions) {
         if (tradeRegions == null || tradeRegions.isEmpty()) return;
@@ -291,6 +291,45 @@ public class ProductService {
         product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
         product.setTradeRegions(productTradeRegionMapper.findByPrdSn(prdSn));
         return product;
+    }
+
+    /**
+     * 담당자 7 · F-OPS-003: 관리자 경매 운영 화면은 공개 숨김 상품도 조회합니다.
+     * 실제 삭제 상태(PRDC0004)는 복구 대상이 아니므로 조회하지 않습니다.
+     */
+    @Transactional(readOnly = true)
+    public ProductResponse getProductForAdmin(Long prdSn) {
+        if (prdSn == null || prdSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ProductResponse product = productMapper.findProductForAdminById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        product.setImageList(productImageMapper.findImagesByPrdSn(prdSn));
+        product.setTradeRegions(productTradeRegionMapper.findByPrdSn(prdSn));
+        return product;
+    }
+
+    /** 담당자 7 · F-OPS-003: 상품 삭제 없이 공개 노출만 숨김·복구합니다. */
+    @Transactional
+    public boolean changeVisibilityForAdmin(Long prdSn, boolean visible, Long adminUserSn) {
+        if (prdSn == null || prdSn <= 0 || adminUserSn == null || adminUserSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ProductResponse product = productMapper.findProductForAdminById(prdSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+        String currentUseYn = product.getPrdUseYn();
+        String nextUseYn = visible ? "Y" : "N";
+        if (nextUseYn.equals(currentUseYn)) {
+            return false;
+        }
+        if (productMapper.updateProductVisibility(
+                prdSn,
+                currentUseYn,
+                nextUseYn,
+                String.valueOf(adminUserSn)) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT, "상품 노출 상태가 이미 변경되었습니다.");
+        }
+        return true;
     }
 
     /** 내 판매 목록 필터 탭 개수 — 목록 조회(getMyProducts)와 달리 경매·거래 상태 enrichment 없이 개수만 집계 */
@@ -362,6 +401,10 @@ public class ProductService {
         if (productCommentMapper.findLatestComments(prdSn, Integer.MAX_VALUE).size() >= 3) {
             throw new CustomException(ErrorCode.CONFLICT, "변경 내역은 최대 3개까지 등록할 수 있습니다.");
         }
+
+        List<String> bannedKeywords = bannedKeywordMapper.findActiveBannedKeywords();
+        checkBannedKeyword(req.getTtl(), "변경사항 제목", bannedKeywords);
+        checkBannedKeyword(req.getCn(), "변경사항 내용", bannedKeywords);
 
         ProductComment comment = ProductComment.builder()
                 .prdSn(prdSn)
@@ -465,6 +508,8 @@ public class ProductService {
             }
         });
 
+        validateInquiryContent(req.getCn());
+
         ProductComment inquiry = ProductComment.builder()
                 .prdSn(prdSn)
                 .usrSn(usrSn)
@@ -494,6 +539,8 @@ public class ProductService {
         if (!inquiry.getUsrSn().equals(usrSn)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
+
+        validateInquiryContent(req.getCn());
 
         int updated = productCommentMapper.updateInquiry(ProductComment.builder()
                 .prdCmtSn(inquirySn)
@@ -526,6 +573,13 @@ public class ProductService {
         return productCommentMapper.findInquiries(prdSn);
     }
 
+    private void validateInquiryContent(String content) {
+        checkBannedKeyword(
+                content,
+                "문의 내용",
+                bannedKeywordMapper.findActiveBannedKeywords());
+    }
+
     /** 판매자 답변 등록 (F-AUC-012) */
     @Transactional
     public ProductInquiryResponse addReply(Long prdSn, Long inquirySn, Long usrSn, ProductInquiryRequest req) {
@@ -546,6 +600,8 @@ public class ProductService {
         if (productCommentMapper.findReplyByParentSn(inquirySn).isPresent()) {
             throw new CustomException(ErrorCode.CONFLICT, "이미 답변이 등록된 문의입니다.");
         }
+
+        checkBannedKeyword(req.getCn(), "답변 내용", bannedKeywordMapper.findActiveBannedKeywords());
 
         ProductComment reply = ProductComment.builder()
                 .prdSn(prdSn)
@@ -585,6 +641,8 @@ public class ProductService {
         if (Duration.between(reply.getPrdCmtRegDt(), LocalDateTime.now()).toMinutes() >= REPLY_EDIT_WINDOW_MINUTES) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "답변 등록 후 10분이 지나 수정할 수 없습니다.");
         }
+
+        checkBannedKeyword(req.getCn(), "답변 내용", bannedKeywordMapper.findActiveBannedKeywords());
 
         ProductComment updated = ProductComment.builder()
                 .prdCmtSn(reply.getPrdCmtSn())

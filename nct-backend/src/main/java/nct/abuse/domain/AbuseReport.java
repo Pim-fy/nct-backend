@@ -25,6 +25,7 @@ public class AbuseReport {
     private String targetName;
     private String content;
     private String processReason;
+    private String processRequestId;
     private String registeredBy;
     private String updatedBy;
 }

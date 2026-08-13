@@ -35,9 +35,9 @@ public class SmtpEmailSender implements EmailSender {
 
             helper.setFrom(new InternetAddress(from, fromName));
             helper.setTo(email);
-            helper.setSubject("[NCT] 회원가입 이메일 인증번호");
+            helper.setSubject("[에누리컷] 회원가입 이메일 인증번호");
             helper.setText("""
-                    안녕하세요. NCT 회원가입 이메일 인증번호입니다.
+                    안녕하세요. 에누리컷 회원가입 이메일 인증번호입니다.
 
                     인증번호: %s
                     유효시간: 발송 후 3분
@@ -59,9 +59,9 @@ public class SmtpEmailSender implements EmailSender {
 
             helper.setFrom(new InternetAddress(from, fromName));
             helper.setTo(email);
-            helper.setSubject("[NCT] 비밀번호 재설정 안내");
+            helper.setSubject("[에누리컷] 비밀번호 재설정 안내");
             helper.setText("""
-                    <p>안녕하세요. NCT 비밀번호 재설정 링크입니다.</p>
+                    <p>안녕하세요. 에누리컷 비밀번호 재설정 링크입니다.</p>
                     <p>아래 링크를 클릭해 새 비밀번호를 설정해 주세요.</p>
                     <p><a href="%1$s">%1$s</a></p>
                     <p>유효시간: 발송 후 1시간 (1회 사용)</p>
@@ -82,14 +82,39 @@ public class SmtpEmailSender implements EmailSender {
 
             helper.setFrom(new InternetAddress(from, fromName));
             helper.setTo(email);
-            helper.setSubject("[NCT] 회원 탈퇴 확인 안내");
+            helper.setSubject("[에누리컷] 회원 탈퇴 확인 안내");
             helper.setText("""
-                    <p>안녕하세요. NCT 회원 탈퇴 확인 링크입니다.</p>
+                    <p>안녕하세요. 에누리컷 회원 탈퇴 확인 링크입니다.</p>
                     <p>본인이 요청하셨다면 아래 링크를 클릭해 탈퇴를 완료해 주세요.</p>
                     <p><a href="%1$s">%1$s</a></p>
                     <p>유효시간: 발송 후 1시간 (1회 사용)</p>
                     <p>본인이 요청하지 않았다면 이 메일을 무시해 주세요. 탈퇴는 이 링크를 클릭해야만 진행됩니다.</p>
                     """.formatted(link), true);
+            javaMailSender.send(message);
+        } catch (MessagingException | UnsupportedEncodingException | MailException ex) {
+            throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);
+        }
+    }
+
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 문의 답변 통보(일방향, 회신 불가 안내 포함)
+    @Override
+    public void sendSuspendedInquiryAnswer(String email, String question, String answer) {
+        try {
+            MimeMessage message = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+
+            helper.setFrom(new InternetAddress(from, fromName));
+            helper.setTo(email);
+            helper.setSubject("[NCT] 문의하신 내용에 답변이 등록되었습니다");
+            helper.setText("""
+                    <p>안녕하세요. 문의하신 내용에 관리자 답변이 등록되었습니다.</p>
+                    <p><b>문의 내용</b></p>
+                    <p>%s</p>
+                    <p><b>답변 내용</b></p>
+                    <p>%s</p>
+                    <p>이 메일은 발신 전용이라 회신하셔도 확인할 수 없습니다. 추가 문의가 있으시면
+                    다시 로그인하시거나(정지 해제된 경우) 고객센터로 전화 문의해 주세요.</p>
+                    """.formatted(question, answer), true);
             javaMailSender.send(message);
         } catch (MessagingException | UnsupportedEncodingException | MailException ex) {
             throw new CustomException(ErrorCode.EMAIL_DELIVERY_UNAVAILABLE);

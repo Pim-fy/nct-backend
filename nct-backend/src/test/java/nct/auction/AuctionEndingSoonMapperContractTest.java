@@ -12,8 +12,8 @@ import org.springframework.core.io.ClassPathResource;
 class AuctionEndingSoonMapperContractTest {
 
     @Test
-    @DisplayName("마감 임박 목록 조건은 종료 1시간 이내로 제한한다")
-    void endingSoonFiltersUseOneHourWindow() throws IOException {
+    @DisplayName("마감 임박 목록 조건은 종료 24시간 이내로 제한한다")
+    void endingSoonFiltersUseTwentyFourHourWindow() throws IOException {
         ClassPathResource mapperResource = new ClassPathResource("mapper/auction/AuctionMapper.xml");
         String mapperXml;
 
@@ -22,9 +22,9 @@ class AuctionEndingSoonMapperContractTest {
         }
 
         assertThat(mapperXml)
-                .contains("DATE_ADD(NOW(), INTERVAL 1 HOUR)")
-                .doesNotContain("DATE_ADD(NOW(), INTERVAL 24 HOUR)");
-        assertThat(countOccurrences(mapperXml, "DATE_ADD(NOW(), INTERVAL 1 HOUR)"))
+                .contains("DATE_ADD(NOW(), INTERVAL 24 HOUR)")
+                .doesNotContain("DATE_ADD(NOW(), INTERVAL 1 HOUR)");
+        assertThat(countOccurrences(mapperXml, "DATE_ADD(NOW(), INTERVAL 24 HOUR)"))
                 .isEqualTo(2);
     }
 

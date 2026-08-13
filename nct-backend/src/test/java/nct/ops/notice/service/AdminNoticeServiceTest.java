@@ -157,7 +157,8 @@ class AdminNoticeServiceTest {
         Notice before = notice(10L, "NTCC0007", "Y");
         Notice published = notice(10L, "NTCC0006", "Y");
         when(noticeMapper.findAdminNoticeById(10L))
-                .thenReturn(Optional.of(before), Optional.of(published));
+                .thenReturn(Optional.of(before))
+                .thenReturn(Optional.of(published));
         String expectedRevision = service.getNotice(10L).getRevisionToken();
         when(noticeMapper.findAdminNoticeByIdForUpdate(10L)).thenReturn(Optional.of(before));
         when(noticeMapper.publishAdminNotice(10L, "USR:7")).thenReturn(1);

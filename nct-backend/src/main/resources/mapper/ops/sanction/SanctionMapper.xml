@@ -26,6 +26,7 @@
 
     <sql id="sanctionRecordColumns">
         S.SNC_SN AS sanctionSn,
+        S.SNC_SRC_ABR_SN AS sourceReportSn,
         S.USR_SN AS userSn,
         S.SNC_PROC_USR_SN AS processorUserSn,
         S.SNC_TYPE_CD AS sanctionTypeCode,
@@ -51,6 +52,31 @@
           LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
          WHERE S.SNC_REL_REQ_ID = #{requestId}
          LIMIT 1
+    </select>
+
+    <select id="findBySourceReportForUpdate" resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.SNC_SRC_ABR_SN = #{reportSn}
+         LIMIT 1
+         FOR UPDATE
+    </select>
+
+    <select id="findBySourceReport" resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.SNC_SRC_ABR_SN = #{reportSn}
+         LIMIT 1
+    </select>
+
+    <select id="findBySanctionIdForUpdate" resultType="nct.ops.sanction.domain.SanctionRecord">
+        SELECT <include refid="sanctionRecordColumns" />
+          FROM SANCTION S
+          LEFT JOIN CMM_CODE C ON C.CMM_CD = S.SNC_TYPE_CD
+         WHERE S.SNC_SN = #{sanctionSn}
+         FOR UPDATE
     </select>
 
     <select id="findActiveAccountSuspensionsForUpdate"
@@ -88,6 +114,36 @@
         )
     </insert>
 
+    <insert id="insertReportAccountSuspension"
+            parameterType="nct.ops.sanction.domain.SanctionRecord"
+            useGeneratedKeys="true"
+            keyProperty="sanctionSn"
+            keyColumn="SNC_SN">
+        INSERT INTO SANCTION (
+            SNC_SRC_ABR_SN,
+            USR_SN,
+            SNC_PROC_USR_SN,
+            SNC_TYPE_CD,
+            SNC_RSN_CN,
+            SNC_START_DT,
+            SNC_END_DT,
+            SNC_REQ_ID,
+            SNC_REG_ID,
+            SNC_UPDT_ID
+        ) VALUES (
+            #{sourceReportSn},
+            #{userSn},
+            #{processorUserSn},
+            'SNCC0003',
+            #{reason},
+            CURRENT_TIMESTAMP,
+            #{endedAt},
+            #{restrictRequestId},
+            #{processorUserSn},
+            #{processorUserSn}
+        )
+    </insert>
+
     <update id="releaseAccountSuspension">
         UPDATE SANCTION
            SET SNC_END_DT = CURRENT_TIMESTAMP,
@@ -99,6 +155,71 @@
            AND SNC_START_DT &lt;= CURRENT_TIMESTAMP
            AND (SNC_END_DT IS NULL OR SNC_END_DT &gt; CURRENT_TIMESTAMP)
     </update>
+
+    <update id="releaseTemporaryReportSanction">
+        UPDATE SANCTION
+           SET SNC_END_DT = CASE
+                   WHEN #{automatic} THEN SNC_END_DT
+                   ELSE CURRENT_TIMESTAMP
+               END,
+               SNC_REL_REQ_ID = #{releaseRequestId},
+               SNC_UPDT_ID = #{actorId},
+               SNC_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE SNC_SN = #{sanctionSn}
+           AND SNC_SRC_ABR_SN IS NOT NULL
+           AND SNC_TYPE_CD = 'SNCC0003'
+           AND SNC_END_DT IS NOT NULL
+           AND SNC_REL_REQ_ID IS NULL
+           AND (
+               (#{automatic} = TRUE AND SNC_END_DT &lt;= CURRENT_TIMESTAMP)
+               OR (#{automatic} = FALSE AND SNC_END_DT &gt; CURRENT_TIMESTAMP)
+           )
+    </update>
+
+    <select id="findExpiredUnprocessedReportSanctionIds" resultType="long">
+        SELECT SNC_SN
+          FROM SANCTION
+         WHERE SNC_SRC_ABR_SN IS NOT NULL
+           AND SNC_TYPE_CD = 'SNCC0003'
+           AND SNC_END_DT IS NOT NULL
+           AND SNC_END_DT &lt;= CURRENT_TIMESTAMP
+           AND SNC_REL_REQ_ID IS NULL
+         ORDER BY SNC_END_DT, SNC_SN
+         LIMIT #{limit}
+    </select>
+
+    <select id="countOtherActiveAccountSuspensions" resultType="int">
+        SELECT COUNT(*)
+          FROM SANCTION
+         WHERE USR_SN = #{userSn}
+           AND SNC_TYPE_CD = 'SNCC0003'
+           AND SNC_SN != #{excludeSanctionSn}
+           AND SNC_START_DT &lt;= CURRENT_TIMESTAMP
+           AND (SNC_END_DT IS NULL OR SNC_END_DT &gt; CURRENT_TIMESTAMP)
+    </select>
+
+    <select id="existsActiveReportSanction" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM SANCTION
+             WHERE USR_SN = #{userSn}
+               AND SNC_SRC_ABR_SN IS NOT NULL
+               AND SNC_TYPE_CD = 'SNCC0003'
+               AND SNC_START_DT &lt;= CURRENT_TIMESTAMP
+               AND (SNC_END_DT IS NULL OR SNC_END_DT &gt; CURRENT_TIMESTAMP)
+        )
+    </select>
+
+    <select id="existsActiveAccountSuspension" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM SANCTION
+             WHERE USR_SN = #{userSn}
+               AND SNC_TYPE_CD = 'SNCC0003'
+               AND SNC_START_DT &lt;= CURRENT_TIMESTAMP
+               AND (SNC_END_DT IS NULL OR SNC_END_DT &gt; CURRENT_TIMESTAMP)
+        )
+    </select>
 
     <select id="findHistory" resultType="nct.ops.sanction.domain.SanctionRecord">
         SELECT <include refid="sanctionRecordColumns" />

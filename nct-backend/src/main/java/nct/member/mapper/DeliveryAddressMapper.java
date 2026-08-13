@@ -22,8 +22,6 @@ public interface DeliveryAddressMapper {
 
     DeliveryAddress findDefaultActiveByUserId(@Param("userId") Long userId);
 
-    Long findFirstActiveId(@Param("userId") Long userId);
-
     int countActiveByUserId(@Param("userId") Long userId);
 
     int insert(DeliveryAddress address);

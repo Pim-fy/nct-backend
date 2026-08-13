@@ -267,15 +267,17 @@ public class NotificationService {
 
     // ---------- 신규 이벤트 발행 계약 (2026-07-24) — 경매(담당자5)·거래(담당자4)·서비스(담당자5)·
     // 운영(담당자7) 쪽에 호출 추가를 요청함(팀전달_알림설정_*_260724.md 3건).
-    // 연결 현황 (2026-08-07 확인): 입찰가 갱신·마감임박(경매), 배송 시작·거래 완료(거래),
+    // 연결 현황 (2026-08-13 확인): 입찰가 갱신·마감임박(경매), 배송 시작·거래 완료(거래),
     // 새 채팅 메시지(채팅), 제공자 승인 결과(제공자)는 호출 연결 완료. 견적 도착/선택·서비스 완료·
-    // 공지 발행·분쟁 접수/판정 6종은 아직 담당 파트 호출 대기 상태 ----------
+    // 공지 발행·분쟁 접수/판정 6종은 아직 담당 파트 호출 대기 상태. 신규 3종(일정 변경/취소 요청,
+    // 서비스 요청 마감)도 계약만 추가된 상태 — 일정 변경/취소는 서비스 거래 담당(4), 서비스 요청
+    // 마감은 서비스 요청 담당(2)이 각자 호출 추가할 예정(황성경 제보, 260813) ----------
 
     /** 입찰가 갱신 — 경매/입찰 담당(5)이 새 최고 입찰 발생 시 호출 (대상: 밀려난 이전 최고 입찰자 등) */
     public void notifyBidUpdated(long usrSn, long auctionId, long newPrice) {
         notifyForEvent(usrSn, NotificationEvent.BID_UPDATED, NotificationAudience.GENERAL,
                 "입찰가가 갱신되었습니다",
-                String.format("관심 경매의 입찰가가 %,d원으로 갱신되었습니다.", newPrice),
+                String.format("관심 경매의 입찰가가 %,dP로 갱신되었습니다.", newPrice),
                 RefType.AUCTION, auctionId);
     }
 
@@ -287,13 +289,23 @@ public class NotificationService {
                 RefType.AUCTION, auctionId);
     }
 
-    /** 낙찰/유찰 결과 — 경매 담당(5)이 마감 처리 시 호출 */
-    public void notifyAuctionResult(long usrSn, long auctionId, boolean won) {
+    /**
+     * 낙찰/유찰 결과 — 경매 담당(5)이 마감 처리 시 호출.
+     * 낙찰(tradeId 있음)이면 알림을 눌렀을 때 더 이상 할 게 없는 경매 페이지 대신
+     * 거래 상세로 바로 가도록 참조를 거래로 남긴다(유찰은 거래가 없으니 경매 참조 유지).
+     */
+    public void notifyAuctionResult(long usrSn, long auctionId, boolean won, Long tradeId) {
         String title = auctionResultTitle(auctionId, won ? "낙찰되었습니다" : "유찰되었습니다");
+        RefType refType = RefType.AUCTION;
+        long refSn = auctionId;
+        if (won && tradeId != null) {
+            refType = RefType.TRADE;
+            refSn = tradeId;
+        }
         notifyForEvent(usrSn, NotificationEvent.AUCTION_RESULT, NotificationAudience.GENERAL,
                 title,
                 won ? "축하합니다! 입찰하신 경매에 낙찰되었습니다." : "입찰하신 경매가 유찰되었습니다.",
-                RefType.AUCTION, auctionId);
+                refType, refSn);
     }
 
     /**
@@ -389,6 +401,30 @@ public class NotificationService {
                 RefType.TRADE, tradeId);
     }
 
+    /** 서비스 거래 일정 취소 요청이 상대방 거절로 무산된 결과를 요청자에게 알린다. */
+    public void notifyServiceScheduleCancellationRejected(long usrSn, long tradeId) {
+        notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
+                "일정 취소 요청이 거절되었습니다",
+                "요청하신 서비스 일정 취소에 상대방이 동의하지 않아 거래가 계속 진행됩니다.",
+                RefType.TRADE, tradeId);
+    }
+
+    /** 서비스 거래 일정 변경 요청 — 요청한 쪽의 상대방에게, 서비스 거래 담당(4)이 호출 */
+    public void notifyServiceScheduleChange(long usrSn, long tradeId) {
+        notifyForEvent(usrSn, NotificationEvent.SERVICE_SCHEDULE_CHANGE, NotificationAudience.GENERAL,
+                "일정 변경 요청이 도착했습니다",
+                "거래 상세에서 요청 내용을 확인하세요.",
+                RefType.TRADE, tradeId);
+    }
+
+    /** 서비스 거래 일정 취소 요청 — 요청한 쪽의 상대방에게, 서비스 거래 담당(4)이 호출 */
+    public void notifyServiceScheduleCancellation(long usrSn, long tradeId) {
+        notifyForEvent(usrSn, NotificationEvent.SERVICE_SCHEDULE_CANCELLATION, NotificationAudience.GENERAL,
+                "일정 취소 요청이 도착했습니다",
+                "거래 상세에서 동의 또는 거절해 주세요.",
+                RefType.TRADE, tradeId);
+    }
+
     /** 새 견적 도착 — 서비스 요청자에게, 서비스 매칭 담당(5, 2단계)이 호출 */
     public void notifyNewQuote(long usrSn, long requestId) {
         notifyForEvent(usrSn, NotificationEvent.NEW_QUOTE, NotificationAudience.GENERAL,
@@ -403,6 +439,14 @@ public class NotificationService {
                 "견적이 선택되었습니다",
                 "제출하신 견적이 선택되었습니다.",
                 RefType.QUOTE, quoteId);
+    }
+
+    /** 서비스 요청 마감 — 견적을 제출했으나 선택되지 않은 제공자에게, 서비스 요청 담당(2)이 호출 */
+    public void notifyServiceRequestClosed(long usrSn, long svcReqSn) {
+        notifyForEvent(usrSn, NotificationEvent.SERVICE_REQUEST_CLOSED, NotificationAudience.PROVIDER,
+                "서비스 요청이 마감되었습니다",
+                "제출하신 견적이 선택되지 않았습니다.",
+                RefType.SERVICE_REQUEST, svcReqSn);
     }
 
     /** 서비스 완료 — 서비스 매칭 담당(5, 2단계)이 호출 */
@@ -456,20 +500,20 @@ public class NotificationService {
                 RefType.TRADE, trdSn);
     }
 
-    /** 거래 문제(분쟁) 접수 알림 — 접수 시 상대 당사자에게, 분쟁 담당자(5)가 호출 */
-    public void notifyDisputeReceived(long usrSn, long trdDspSn) {
+    /** 담당자 7 · F-OPS-005/007: 거래 신고 접수 시 상대 당사자에게 알립니다. */
+    public void notifyTradeReportReceived(long usrSn, long reportSn) {
         notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
                 "거래 문제 접수",
                 "회원님이 당사자인 거래에 거래 문제가 접수되었습니다. 처리 완료 전까지 관련 정산·포인트 전환이 보류될 수 있습니다.",
-                RefType.TRADE_DISPUTE, trdDspSn);
+                RefType.ABUSE_REPORT, reportSn);
     }
 
-    /** 거래 문제(분쟁) 판정 결과 알림 — 처리 완료/반려 시 양 당사자에게, 분쟁 담당자(5)가 호출 */
-    public void notifyDisputeResolved(long usrSn, long trdDspSn, String resultText) {
+    /** 담당자 7 · F-OPS-005/007: 거래 신고 판정 결과를 양 당사자에게 알립니다. */
+    public void notifyTradeReportResolved(long usrSn, long reportSn, String resultText) {
         notifyImportant(usrSn, NotificationType.OPS, NotificationDomain.TRADE, NotificationAudience.GENERAL,
                 "거래 문제 처리 결과",
                 "접수된 거래 문제가 처리되었습니다. 결과: " + resultText,
-                RefType.TRADE_DISPUTE, trdDspSn);
+                RefType.ABUSE_REPORT, reportSn);
     }
 
     /** 포인트 홀딩 반환 알림 (업무분장: 입찰·낙찰·반환 알림) — PointService.releaseHold가 호출 */
@@ -542,7 +586,7 @@ public class NotificationService {
                 refType, refSn);
     }
 
-    /** 분쟁 판정 보관금 환불 알림 — PointService.refundEscrow가 호출. 판정 내용 이메일은 notifyDisputeResolved(분쟁 담당자 호출) 몫이라 여기서는 인앱만 */
+    /** 거래 신고 판정 보관금 환불 알림 — 판정 결과 알림은 관리자 거래 신고 서비스가 별도로 발행합니다. */
     public void notifyPointRefund(long usrSn, long amt, RefType refType, long refSn, String reason) {
         notify(usrSn, NotificationType.TRADE, NotificationDomain.TRADE,
                 "포인트 환불",
@@ -588,8 +632,8 @@ public class NotificationService {
     // ---------- 알림 수신 설정 (F-COM-012) ----------
     // 도메인 단위 UserNotificationSetting(경매/거래/서비스 3종 고정컬럼)은 2026-07-24부터 설정
     // 화면·저장 API에서는 더 이상 쓰지 않는다(위 이벤트 단위로 교체). 다만 테이블·컬럼과
-    // emailEligible()은 그대로 남겨둔다 — 아직 이벤트 목록에 없는 "분쟁 접수/판정"
-    // (notifyDisputeReceived/Resolved, TRADE 도메인) 이메일 게이팅이 계속 이 값을 쓰기 때문.
+    // emailEligible()은 그대로 남겨둔다 — 아직 이벤트 목록에 없는 "거래 신고 접수/판정"
+    // 이메일 게이팅이 계속 이 값을 쓰기 때문이다.
     // 즉 회원이 UI로 이 값을 더 바꿀 방법은 없어졌고, 마지막 저장값(또는 기본 Y)으로 고정된다 —
     // 분쟁 이메일도 세분화하려면 이벤트 목록에 추가하고 이 경로를 걷어내면 된다.
 }

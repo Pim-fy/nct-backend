@@ -15,7 +15,6 @@ import nct.trade.dto.TradeCancellationTarget;
 import nct.trade.dto.TradeDetailResponse;
 import nct.trade.dto.TradeDeliveryProofFile;
 import nct.trade.dto.TradeDeliverySubmitTarget;
-import nct.trade.dto.TradeDeliveryProofSubmitRequest;
 import nct.trade.dto.TradeConfirmationTarget;
 import nct.trade.dto.TradeDisputeTarget;
 import nct.trade.dto.TradeListItem;
@@ -58,33 +57,45 @@ public interface TradeMapper {
 
     /**
      * 거래 문제 접수·정산 보류 흐름이 같은 트랜잭션에서 사용할 TRADE 잠금 조회다.
-     * 소비자는 이 결과를 받은 뒤에만 자신의 TRADE_DISPUTE·SETTLEMENT 계약을 실행한다.
+     * 소비자는 이 결과를 받은 뒤에만 신고ㆍ정산 계약을 실행한다.
      */
-    TradeDisputeTarget findTradeDisputeTargetForUpdate(@Param("tradeId") long tradeId);
+    TradeDisputeTarget findTradeReportTargetForUpdate(@Param("tradeId") long tradeId);
 
-    /** 같은 거래의 접수·처리중 분쟁이 있는지 조회한다. TRADE 행 잠금 뒤에 호출한다. */
-    boolean hasOpenTradeDispute(@Param("tradeId") long tradeId);
-
-    int insertTradeDispute(
-            @Param("tradeId") long tradeId,
-            @Param("disputerUserId") long disputerUserId,
-            @Param("disputeTypeCode") String disputeTypeCode,
-            @Param("content") String content,
-            @Param("previousTradeStatusCode") String previousTradeStatusCode,
-            @Param("updaterId") String updaterId);
-
-    /** 서비스 거래 문제 접수 성공 후에만 거래를 보류 상태로 전환한다. */
-    int holdServiceTradeForDispute(
+    /** 거래 문제 접수 성공 후에만 활성 거래를 보류 상태로 전환한다. */
+    int holdTradeForReport(
             @Param("tradeId") long tradeId,
             @Param("updaterId") String updaterId);
 
     /** 담당자 7 · F-OPS-020: 제한 대상자의 모든 진행 거래를 잠금 조회합니다. */
     List<MemberActiveTradeTarget> findActiveTradesByMemberForUpdate(@Param("userSn") long userSn);
 
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 전 하드 차단용. 물건(SLLR/BYPR)·서비스(REQ/PRV)
+    // 거래 모두, 진행중·배송중·완료확인대기·보류(TRDC0003/0004/0005/0007) 건수를 센다.
+    // findActiveTradesByMemberForUpdate(위)는 물건 거래 전용이고 보류를 포함하지 않아 재사용하지 않는다.
+    int countBlockingTradesByUser(@Param("userSn") long userSn);
+
     /** 담당자 7 · F-OPS-020: 잠금 시점 상태가 유지된 거래만 보류합니다. */
     int holdTradeForMemberRestriction(
             @Param("tradeId") long tradeId,
             @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("updaterId") String updaterId);
+
+    int restoreTradeAfterMemberRestriction(
+            @Param("tradeId") Long tradeId,
+            @Param("targetStatusCode") String targetStatusCode,
+            @Param("remainingSeconds") Long remainingSeconds,
+            @Param("updaterId") String updaterId);
+
+    int cancelServiceTradeForAdmin(
+            @Param("tradeId") long tradeId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("updaterId") String updaterId);
+
+    int completeCurrentTradeIncidentAfterPermanentCancellation(
+            @Param("tradeId") long tradeId,
+            @Param("sourceReportSn") long sourceReportSn,
+            @Param("reason") String reason,
+            @Param("adminUserSn") long adminUserSn,
             @Param("updaterId") String updaterId);
 
     /** 서비스 거래 완료 처리 전 거래 행을 잠가 당사자·금액·분쟁 상태를 재검증한다. */
@@ -163,6 +174,9 @@ public interface TradeMapper {
     ServiceTradeDetailSource findMyServiceTradeDetail(
             @Param("tradeId") long tradeId,
             @Param("userId") long userId);
+
+    /** 관리자 전용 서비스 거래 상세는 당사자 전용 조회와 별도 계약으로 제공합니다. */
+    ServiceTradeDetailSource findAdminServiceTradeDetail(@Param("tradeId") long tradeId);
 
     /** 선택 견적 거래의 두 당사자에게만 요청서 정확 주소 암호문을 제공한다. */
     List<ServiceTradeAddressSource> findMyServiceTradeAddresses(
@@ -262,6 +276,17 @@ public interface TradeMapper {
             @Param("tradeId") long tradeId,
             @Param("completionRequesterId") String completionRequesterId,
             @Param("updaterId") String updaterId);
+
+    /** 직거래 완료 요청을 받은 상대방이 거절하면 자동 완료 시각을 제거하고 직거래 진행으로 돌린다. */
+    int rejectOfflineCompletionByCounterpart(
+            @Param("tradeId") long tradeId,
+            @Param("completionRequesterId") String completionRequesterId,
+            @Param("updaterId") String updaterId);
+
+    /** 직거래 완료 확인 요청만 요청자별로 누적해 반복 완료 요청을 제한한다. */
+    int countOfflineCompletionRequestsByRequester(
+            @Param("tradeId") long tradeId,
+            @Param("userId") long userId);
 
     /** 자동 완료 시각이 지난 확인 대기 거래를 배치 단위로 조회한다. */
     List<Long> findExpiredAutoCompletionTradeIds(

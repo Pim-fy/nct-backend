@@ -14,6 +14,7 @@ public class AdminAuctionListRequest {
     private String keyword;
     private String auctionStatusCode;
     private String tradeStatusCode;
+    private Boolean productVisible;
     private Boolean cancellationPending;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)

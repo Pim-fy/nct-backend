@@ -45,6 +45,7 @@ class PointChargeRetryTest {
     @MockitoBean TossPaymentsClient tossPaymentsClient;
 
     long usrSn;
+    long validChargeAmount;
 
     @BeforeEach
     void setUpUser() {
@@ -55,16 +56,17 @@ class PointChargeRetryTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        validChargeAmount = pointChargeService.getChargeLimits().getMinChrgAmt();
     }
 
     @Test
     @DisplayName("통신 실패가 2회 이어져도 3번째 시도에서 성공하면 정상 지급된다")
     void retriesUntilSuccess() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
                 .thenThrow(new PointException(ErrorCode.EXTERNAL_API_ERROR, "일시 통신 오류"))
                 .thenThrow(new PointException(ErrorCode.EXTERNAL_API_ERROR, "일시 통신 오류"))
-                .thenReturn(TossConfirmResult.success(50000));
+                .thenReturn(TossConfirmResult.success(validChargeAmount));
 
         pointChargeService.confirm(orderNo, "test-payment-key");
 
@@ -80,7 +82,7 @@ class PointChargeRetryTest {
         // 단정 기록하지 않는다 — 대기로 남겨야 2단계 대사 배치가 나중에 토스에 직접 확인해
         // "사실 결제는 성공했더라"를 복구할 수 있다. 여기서 FAILED로 확정해버리면 그 복구
         // 경로 자체가 막힌다.
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
                 .thenThrow(new PointException(ErrorCode.EXTERNAL_API_ERROR, "일시 통신 오류"));
 
@@ -96,7 +98,7 @@ class PointChargeRetryTest {
     @Test
     @DisplayName("비즈니스 거절(카드 한도초과 등)은 재시도 없이 즉시 실패한다")
     void businessRejectionSkipsRetry() {
-        String orderNo = pointChargeService.createOrder(usrSn, 50000);
+        String orderNo = pointChargeService.createOrder(usrSn, validChargeAmount);
         when(tossPaymentsClient.confirm(anyString(), anyString(), anyLong()))
                 .thenReturn(TossConfirmResult.failure("카드 한도 초과"));
 

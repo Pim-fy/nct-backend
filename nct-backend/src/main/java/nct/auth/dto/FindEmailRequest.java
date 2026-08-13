@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 // @ai_generated
-/** F-AUTH-014: 이메일+이름 매칭으로 아이디를 찾는 요청이다. */
+/** F-AUTH-014: 이메일+가입 닉네임 매칭으로 아이디를 찾는 요청이다. */
 @Getter
 @Setter
 public class FindEmailRequest {
@@ -15,6 +15,6 @@ public class FindEmailRequest {
     @Email(message = "이메일 형식이 올바르지 않습니다.")
     private String email;
 
-    @NotBlank(message = "이름은 필수입니다.")
-    private String name;
+    @NotBlank(message = "닉네임은 필수입니다.")
+    private String nickname;
 }

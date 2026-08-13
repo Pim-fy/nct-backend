@@ -3,12 +3,15 @@
 <mapper namespace="nct.trade.mapper.AdminTradeDisputeCommandMapper">
 
     <select id="findForUpdate" resultType="nct.trade.dto.AdminTradeDisputeDecisionTarget">
-        SELECT d.TRD_DSP_SN AS disputeSn,
-               d.TRD_SN AS tradeSn,
-               d.DSPT_USR_SN AS disputerUserSn,
-               d.TRD_DSP_STATUS_CD AS disputeStatusCode,
-               d.TRD_DSP_RSLT_CD AS disputeResultCode,
-               d.TRD_DSP_PREV_TRD_STATUS_CD AS previousTradeStatusCode,
+        SELECT r.ABR_SN AS reportSn,
+               rt.TRD_SN AS tradeSn,
+               r.RPRT_USR_SN AS reporterUserSn,
+               r.ABR_STATUS_CD AS reportStatusCode,
+               rt.ABR_TRD_RSLT_CD AS tradeDecisionResultCode,
+               rt.ABR_TRD_PREV_STATUS_CD AS previousTradeStatusCode,
+               rt.ABR_TRD_REMAIN_SEC AS remainingAutoCompleteSeconds,
+               (rt.ABR_TRD_STLM_HOLD_YN = 'Y') AS settlementHoldApplied,
+               (rt.ABR_TRD_CHAT_CLOSE_YN = 'Y') AS chatClosed,
                t.TRD_TYPE_CD AS tradeTypeCode,
                t.TRD_STATUS_CD AS tradeStatusCode,
                t.BID_SN AS bidSn,
@@ -16,36 +19,41 @@
                t.BYPR_USR_SN AS buyerUserSn,
                t.REQ_USR_SN AS requesterUserSn,
                t.PRV_USR_SN AS providerUserSn
-        FROM TRADE_DISPUTE d
-        JOIN TRADE t ON t.TRD_SN = d.TRD_SN
-        WHERE d.TRD_DSP_SN = #{disputeSn}
+        FROM ABUSE_REPORT r
+        JOIN ABUSE_REPORT_TRADE rt ON rt.ABR_SN = r.ABR_SN
+        JOIN TRADE t ON t.TRD_SN = rt.TRD_SN
+        WHERE r.ABR_SN = #{reportSn}
         FOR UPDATE
     </select>
 
     <update id="updateTradeStatus">
         UPDATE TRADE
-        SET TRD_STATUS_CD = #{targetStatusCode},
+        SET TRD_UPDT_ID = CASE
+                WHEN #{targetStatusCode} = 'TRDC0005' THEN TRD_UPDT_ID
+                ELSE #{updaterId}
+            END,
+            TRD_STATUS_CD = #{targetStatusCode},
             TRD_AUTO_CMPL_DT = CASE
-                WHEN #{targetStatusCode} = 'TRDC0005' THEN TRD_AUTO_CMPL_DT
+                WHEN #{targetStatusCode} = 'TRDC0005'
+                    THEN DATE_ADD(
+                        NOW(),
+                        INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND
+                    )
                 ELSE NULL
             END,
-            TRD_UPDT_ID = #{updaterId},
             TRD_UPDT_DT = NOW()
         WHERE TRD_SN = #{tradeSn}
           AND TRD_STATUS_CD = #{expectedStatusCode}
     </update>
 
-    <update id="updateDisputeDecision">
-        UPDATE TRADE_DISPUTE
-        SET TRD_DSP_RSLT_CD = #{resultCode},
-            TRD_DSP_STATUS_CD = #{statusCode},
-            TRD_DSP_PROC_RSN_CN = #{reason},
-            TRD_DSP_PROC_USR_SN = #{processorUserSn},
-            TRD_DSP_PROC_DT = NOW(),
-            TRD_DSP_UPDT_ID = #{updaterId},
-            TRD_DSP_UPDT_DT = NOW()
-        WHERE TRD_DSP_SN = #{disputeSn}
-          AND TRD_DSP_STATUS_CD IN ('TRDC0016', 'TRDC0017')
+    <update id="updateTradeReportResult">
+        UPDATE ABUSE_REPORT_TRADE rt
+        JOIN ABUSE_REPORT r ON r.ABR_SN = rt.ABR_SN
+        SET rt.ABR_TRD_RSLT_CD = #{resultCode},
+            rt.ABR_TRD_UPDT_ID = #{updaterId},
+            rt.ABR_TRD_UPDT_DT = NOW()
+        WHERE rt.ABR_SN = #{reportSn}
+          AND r.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
     </update>
 
     <insert id="insertTradeStatusHistory">

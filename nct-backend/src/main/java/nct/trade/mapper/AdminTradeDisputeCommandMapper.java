@@ -5,24 +5,22 @@ import org.apache.ibatis.annotations.Param;
 
 import nct.trade.dto.AdminTradeDisputeDecisionTarget;
 
-/** 담당자 7 · F-OPS-006: 관리자 분쟁 판정용 조건부 상태변경 Mapper입니다. */
+/** 담당자 7 · F-OPS-005/006: 관리자 거래 신고 판정용 조건부 상태변경 Mapper입니다. */
 @Mapper
 public interface AdminTradeDisputeCommandMapper {
 
-    AdminTradeDisputeDecisionTarget findForUpdate(@Param("disputeSn") long disputeSn);
+    AdminTradeDisputeDecisionTarget findForUpdate(@Param("reportSn") long reportSn);
 
     int updateTradeStatus(
             @Param("tradeSn") long tradeSn,
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("targetStatusCode") String targetStatusCode,
+            @Param("remainingSeconds") Long remainingSeconds,
             @Param("updaterId") String updaterId);
 
-    int updateDisputeDecision(
-            @Param("disputeSn") long disputeSn,
+    int updateTradeReportResult(
+            @Param("reportSn") long reportSn,
             @Param("resultCode") String resultCode,
-            @Param("statusCode") String statusCode,
-            @Param("reason") String reason,
-            @Param("processorUserSn") long processorUserSn,
             @Param("updaterId") String updaterId);
 
     int insertTradeStatusHistory(

@@ -27,5 +27,10 @@ public class ProviderApplicationResponse {
     private AdminMemberIdentityResponse processorMember;
     private LocalDateTime processedAt;
     private String processedReason;
+    private Long permissionSn;
+    private String permissionStatusCode;
+    private String permissionStatusName;
+    private String permissionUseYn;
+    private LocalDateTime permissionUpdatedAt;
     private List<ProviderApplicationFileResponse> files = List.of();
 }

@@ -84,11 +84,18 @@ public class ReviewController {
     public ResponseEntity<ApiResponse<PageResponse<UserReviewItem>>> getReviewsAboutUser(
             @PathVariable("usrSn") long usrSn,
             @RequestParam(value = "dealType", required = false) String dealType,
+            @RequestParam(value = "role", required = false) String role,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        PageResponse<UserReviewItem> result = reviewService.getReviewsAboutUser(usrSn, dealType, page, size);
+        // 담당자 7 · F-COM-008: 물품 리뷰 목록만 판매자/구매자 역할별로 조회한다.
+        PageResponse<UserReviewItem> result = reviewService.getReviewsAboutUser(
+                usrSn,
+                dealType,
+                role,
+                page,
+                size);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
@@ -110,7 +117,8 @@ public class ReviewController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         long usrSn = userDetails.getMember().getId();
-        ReviewCreateResult result = reviewService.createReview(usrSn, targetId, rating, content, photos);
+        String nickname = userDetails.getMember().getNickname();
+        ReviewCreateResult result = reviewService.createReview(usrSn, targetId, rating, content, photos, nickname);
         return ResponseEntity.status(201).body(ApiResponse.created(result));
     }
 

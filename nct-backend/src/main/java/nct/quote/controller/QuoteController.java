@@ -61,8 +61,8 @@ public class QuoteController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    /** F-SVC-008: 견적 철회 (요청자 선택 전까지만) */
-    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    /** 담당자 7 통합 · F-SVC-008: 권한이 변경돼도 본인 소유의 선택 전 견적은 철회할 수 있습니다. */
+    @PreAuthorize("hasAnyAuthority('ROLE_USER', 'ROLE_SERVICE')")
     @DeleteMapping("/{quoteId}")
     public ResponseEntity<ApiResponse<Void>> withdrawQuote(
             @AuthenticationPrincipal CustomUserDetails userDetails,
@@ -84,6 +84,18 @@ public class QuoteController {
         Long usrSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 quoteService.getMyQuotes(usrSn, page, size)));
+    }
+
+    /** 담당자 7 연결 · F-SVC-005~008: 제공자가 본인 견적 상세를 조회합니다. */
+    @PreAuthorize("hasAuthority('ROLE_SERVICE')")
+    @GetMapping("/me/{quoteId}")
+    public ResponseEntity<ApiResponse<QuoteResponse>> getMyQuote(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable(name = "quoteId") Long quoteId) {
+
+        Long usrSn = userDetails.getMember().getId();
+        return ResponseEntity.ok(ApiResponse.success(
+                quoteService.getMyQuote(usrSn, quoteId)));
     }
 
     /** 담당자 7 연동 · F-PROV-009: 제공자 대시보드용 활성 견적 집계입니다. */

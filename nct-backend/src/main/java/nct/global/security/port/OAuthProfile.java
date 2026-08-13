@@ -26,6 +26,7 @@ public class OAuthProfile {
     private final String telno;
     private final String address;
     private final String detailAddress;
+    private final String zip;
     private final String bankName;
     private final String accountNo;
 

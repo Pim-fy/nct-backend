@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
  * - 기존 문자열 행과 F-SVC-002 구조화 답변 행을 함께 표현한다.
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class SvcReqItem {

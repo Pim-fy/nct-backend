@@ -16,8 +16,10 @@ import nct.auction.dto.AuctionBidTarget;
 import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionImageItem;
+import nct.auction.dto.AuctionReferenceTitle;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
+import nct.auction.dto.AuctionSanctionTarget;
 
 @Mapper
 public interface AuctionMapper {
@@ -37,6 +39,9 @@ public interface AuctionMapper {
     // 리뷰 목록처럼 여러 행을 한 번에 조회할 때 상품 수만큼 개별 호출(N+1)하지 않기 위함.
     List<AuctionIdByProduct> findAuctionIdsByProductIds(@Param("productIds") List<Long> productIds);
 
+    List<AuctionReferenceTitle> findAuctionReferenceTitles(
+            @Param("auctionIds") List<Long> auctionIds);
+
     AuctionDetailResponse findAuctionDetail(
             @Param("auctionId") Long auctionId,
             @Param("userId") Long userId);
@@ -52,6 +57,8 @@ public interface AuctionMapper {
     AuctionBidTarget findAuctionBidTargetForUpdate(@Param("auctionId") Long auctionId);
 
     AuctionCancellationTarget findAuctionCancellationTargetForUpdate(@Param("auctionId") Long auctionId);
+
+    List<AuctionSanctionTarget> findSanctionTargetsByMemberForUpdate(@Param("userSn") Long userSn);
 
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
@@ -117,4 +124,30 @@ public interface AuctionMapper {
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
             @Param("actor") String actor);
+
+    int pauseAuctionForSanction(
+            @Param("auctionId") Long auctionId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("actor") String actor);
+
+    /** 담당자 7 · F-OPS-003: 진행 중 경매를 관리자 수동 일시중지 상태로 전환합니다. */
+    int pauseAuctionForAdmin(
+            @Param("auctionId") Long auctionId,
+            @Param("actor") String actor);
+
+    /** 관리자 일시중지 시간을 종료시각에 더해 진행 상태로 복구합니다. */
+    int resumeAuctionAfterAdminPause(
+            @Param("auctionId") Long auctionId,
+            @Param("actor") String actor);
+
+    int restoreAuctionAfterSanction(
+            @Param("auctionId") Long auctionId,
+            @Param("statusCode") String statusCode,
+            @Param("remainingStartSeconds") Long remainingStartSeconds,
+            @Param("remainingSeconds") Long remainingSeconds,
+            @Param("actor") String actor);
+
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 탈퇴 전
+    // 하드 차단용. 본인이 판매자인 상품 중 진행 중(AUCC0002) 경매 건수를 센다.
+    int countActiveSellerAuctions(@Param("userSn") Long userSn);
 }

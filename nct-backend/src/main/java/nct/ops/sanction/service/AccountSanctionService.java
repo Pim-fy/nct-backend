@@ -36,7 +36,8 @@ public class AccountSanctionService implements AccountSanctionPort {
             return;
         }
 
-        if (!sanctionMapper.findActiveAccountSuspensionsForUpdate(valid.userSn()).isEmpty()) {
+        if (sanctionMapper.findActiveAccountSuspensionsForUpdate(valid.userSn()).stream()
+                .anyMatch(sanction -> sanction.getSourceReportSn() == null)) {
             return;
         }
 
@@ -75,6 +76,10 @@ public class AccountSanctionService implements AccountSanctionPort {
         if (active.isEmpty()) {
             return;
         }
+        active = active.stream()
+                .filter(sanction -> sanction.getSourceReportSn() == null)
+                .toList();
+        if (active.isEmpty()) return;
 
         for (int index = 0; index < active.size(); index++) {
             SanctionRecord sanction = active.get(index);
@@ -94,6 +99,24 @@ public class AccountSanctionService implements AccountSanctionPort {
                 return;
             }
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasActiveReportSanction(Long userSn) {
+        if (userSn == null || userSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return sanctionMapper.existsActiveReportSanction(userSn);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasActiveSuspension(Long userSn) {
+        if (userSn == null || userSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return sanctionMapper.existsActiveAccountSuspension(userSn);
     }
 
     @Override

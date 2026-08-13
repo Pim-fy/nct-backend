@@ -143,6 +143,10 @@ public class SecurityConfig {
                 // 조회수 증가 — 비로그인 경매 상세에서도 호출된다.
                 .requestMatchers(HttpMethod.POST, "/api/products/*/view")
                     .permitAll()
+                // F-AUTH-017/POL-AUTH-016: 정지 계정 비로그인 문의 접수 — 세션이 아니라
+                // SuspendedInquiryTokenService가 검증하는 단발성 토큰으로 인가한다.
+                .requestMatchers(HttpMethod.POST, "/api/customer-inquiries/suspended")
+                    .permitAll()
                 // 구매자 문의 목록 — 비로그인 조회 허용 (F-AUC-012)
                 .requestMatchers(HttpMethod.GET, "/api/products/*/inquiries")
                     .permitAll()

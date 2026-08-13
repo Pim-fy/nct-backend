@@ -3,13 +3,13 @@
 <!-- Claude Code 작성 (BJN, 2026-07-18) -->
 <mapper namespace="nct.agree.mapper.AgreeHistoryMapper">
 
-    <!-- 동의 이력 행 추가. 참조 5종 중 정확히 1개만 non-null이어야 한다 (DB CHECK 제약 + 서비스 검증 이중 방어) -->
+    <!-- 동의 이력 행 추가. 통합 후 거래 문제 접수는 거래 번호(TRD_SN)를 참조합니다. -->
     <insert id="insert" parameterType="nct.agree.domain.AgreeHistory"
             useGeneratedKeys="true" keyProperty="agrHstSn">
         /* 동의: 행위 시점 동의 이력 기록 */
-        INSERT INTO AGREE_HISTORY (USR_SN, BID_SN, AUC_SN, PT_LDG_SN, TRD_DSP_SN, TRD_SN,
+        INSERT INTO AGREE_HISTORY (USR_SN, BID_SN, AUC_SN, PT_LDG_SN, TRD_SN,
                                    AGR_TYPE_CD, AGR_ACT_TYPE_CD, AGR_HST_AGR_YN)
-        VALUES (#{usrSn}, #{bidSn}, #{aucSn}, #{ptLdgSn}, #{trdDspSn}, #{trdSn},
+        VALUES (#{usrSn}, #{bidSn}, #{aucSn}, #{ptLdgSn}, #{trdSn},
                 #{agrTypeCd}, #{agrActTypeCd}, #{agrHstAgrYn})
     </insert>
 
@@ -22,7 +22,6 @@
                BID_SN          AS bidSn,
                AUC_SN          AS aucSn,
                PT_LDG_SN       AS ptLdgSn,
-               TRD_DSP_SN      AS trdDspSn,
                TRD_SN          AS trdSn,
                AGR_TYPE_CD     AS agrTypeCd,
                AGR_ACT_TYPE_CD AS agrActTypeCd,

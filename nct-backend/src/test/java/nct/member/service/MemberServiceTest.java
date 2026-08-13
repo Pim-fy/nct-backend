@@ -38,6 +38,8 @@ import nct.member.dto.PasswordChangeRequest;
 import nct.member.dto.ProfileUpdateRequest;
 import nct.member.dto.ProfileUpdateResponse;
 import nct.member.mapper.MemberMapper;
+import nct.member.port.CustomerInquiryWithdrawalPort;
+import nct.quote.service.QuoteService;
 
 // @ai_generated
 /** F-AUTH-010: 닉네임 변경시에만 중복 확인·DB 제약 위반 변환. F-AUTH-011: 비밀번호 재확인 후
@@ -54,6 +56,14 @@ class MemberServiceTest {
     private FieldCryptoService fieldCryptoService;
     @Mock
     private FileStorageService fileStorageService;
+    // @ai_generated: F-AUTH-011/POL-AUTH-013 - 탈퇴 전 하드 차단 검증/자동 정리 협력자. 기본
+    // Mockito 동작(void 메서드는 no-op)으로 충분해 개별 테스트에서 별도 stub이 필요 없다.
+    @Mock
+    private MemberWithdrawalPreCheckService withdrawalPreCheckService;
+    @Mock
+    private QuoteService quoteService;
+    @Mock
+    private CustomerInquiryWithdrawalPort customerInquiryWithdrawalPort;
 
     private PasswordEncoder passwordEncoder;
     private MemberService memberService;
@@ -64,7 +74,8 @@ class MemberServiceTest {
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.emailHmac(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        memberService = new MemberService(memberMapper, authMemberPort, passwordEncoder, fieldCryptoService, fileStorageService);
+        memberService = new MemberService(memberMapper, authMemberPort, passwordEncoder, fieldCryptoService,
+                fileStorageService, withdrawalPreCheckService, quoteService, customerInquiryWithdrawalPort);
     }
 
     // 담당자 7 · F-AUTH-010: 계좌 쌍의 보존·삭제·갱신·부분 입력 계약을 회귀 검증한다.
@@ -259,9 +270,25 @@ class MemberServiceTest {
         verify(authMemberPort, never()).updateRefreshToken(anyLong(), isNull());
     }
 
+    // @ai_generated: (QA 후속, 2026-08-12) 소셜 전용 계정은 비밀번호가 없어 빈 값을 보내도 탈퇴가
+    // 진행돼야 한다(A안 - 비밀번호 검증 자체를 건너뜀).
+    @Test
+    void 소셜_전용_계정은_비밀번호_없이도_탈퇴를_처리한다() {
+        AuthMember socialMember = AuthMember.builder()
+                .id(101L).loginId("OAUTH_ABC123").email("user@example.com")
+                .name("구매자").nickname("구매자").role("ROLE_USER").status("USRC0001")
+                .password(null).build();
+        when(authMemberPort.findById(101L)).thenReturn(Optional.of(socialMember));
+
+        memberService.withdrawActive(101L, "");
+
+        verify(memberMapper).withdraw(eq(101L), anyString(), anyString(), anyString());
+        verify(authMemberPort).updateRefreshToken(101L, null);
+    }
+
     @Test
     void 공통_탈퇴_처리는_익명값으로_치환하고_리프레시토큰을_무효화한다() {
-        memberService.withdraw(101L);
+        memberService.withdraw(101L, false);
 
         verify(memberMapper).withdraw(eq(101L), eq("withdrawn_101@withdrawn.local"),
                 eq("withdrawn_101@withdrawn.local"), eq("탈퇴한 사용자_101"));

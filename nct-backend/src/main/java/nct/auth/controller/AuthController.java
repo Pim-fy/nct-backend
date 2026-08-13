@@ -24,11 +24,14 @@ import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.FindEmailResponse;
 import nct.auth.dto.PasswordResetConfirmRequest;
 import nct.auth.dto.PasswordResetRequestDto;
+import nct.auth.dto.SuspendedAccountResponse;
 import nct.auth.service.AuthService;
 import nct.auth.service.AuthSessionResult;
 import nct.auth.service.EmailVerificationService;
 import nct.auth.service.OauthOnboardingService;
 import nct.auth.service.PasswordResetService;
+import nct.auth.service.SuspendedAccountException;
+import nct.global.exception.ErrorCode;
 import nct.global.idempotency.SkipIdempotency;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
@@ -110,7 +113,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    /** F-AUTH-014: 아이디 찾기 - 이메일+이름 불일치·탈퇴·정지·미가입 전부 동일한 실패 응답 */
+    /** F-AUTH-014: 아이디 찾기 - 이메일+닉네임 불일치·탈퇴·정지·미가입 전부 동일한 실패 응답 */
     @PostMapping("/find-email")
     public ResponseEntity<ApiResponse<FindEmailResponse>> findEmail(
             @Valid @RequestBody FindEmailRequest request) {
@@ -164,21 +167,43 @@ public class AuthController {
     /** 로그인 - 토큰은 httpOnly 쿠키로, 본문에는 사용자 정보만 */
     @SkipIdempotency // @ai_generated: Set-Cookie 응답이라 전역 중복요청 방지 재반환과 충돌 (F-COM-017)
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request,
-                                                             HttpServletResponse response) {
-        AuthSessionResult session = authService.login(request);
-        writeLoginCookies(response, session, request.isRememberMe());
-        return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
+    public ResponseEntity<ApiResponse<?>> login(@Valid @RequestBody LoginRequest request,
+                                                 HttpServletResponse response,
+                                                 HttpServletRequest servletRequest) {
+        try {
+            AuthSessionResult session = authService.login(request);
+            writeLoginCookies(response, session, request.isRememberMe());
+            return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
+        } catch (SuspendedAccountException ex) {
+            return suspendedAccountResponse(ex, servletRequest);
+        }
     }
 
     /** 담당자 7 · F-OPS-001: 관리자 계정은 이 전용 경로에서만 신규 세션을 발급한다. */
     @SkipIdempotency
     @PostMapping("/admin/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> adminLogin(@Valid @RequestBody LoginRequest request,
-                                                                  HttpServletResponse response) {
-        AuthSessionResult session = authService.adminLogin(request);
-        writeLoginCookies(response, session, request.isRememberMe());
-        return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
+    public ResponseEntity<ApiResponse<?>> adminLogin(@Valid @RequestBody LoginRequest request,
+                                                       HttpServletResponse response,
+                                                       HttpServletRequest servletRequest) {
+        try {
+            AuthSessionResult session = authService.adminLogin(request);
+            writeLoginCookies(response, session, request.isRememberMe());
+            return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
+        } catch (SuspendedAccountException ex) {
+            return suspendedAccountResponse(ex, servletRequest);
+        }
+    }
+
+    // @ai_generated: F-AUTH-017/POL-AUTH-016 - 정지 계정 로그인 실패 응답에 문의 접수 토큰을 실어
+    // 보낸다. 공용 GlobalExceptionHandler는 CustomException만 다루므로(구조화 데이터 미지원),
+    // 이 컨트롤러에서만 SuspendedAccountException을 별도로 잡아 응답을 조립한다.
+    private ResponseEntity<ApiResponse<?>> suspendedAccountResponse(
+            SuspendedAccountException ex, HttpServletRequest servletRequest) {
+        ErrorCode errorCode = ErrorCode.ACCOUNT_SUSPENDED;
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiResponse.errorWithData(
+                        errorCode.code(), errorCode.message(), servletRequest.getRequestURI(),
+                        errorCode.name(), new SuspendedAccountResponse(ex.getInquiryToken())));
     }
 
     /** Access Token 재발급 (Refresh 쿠키 필요) */

@@ -6,21 +6,21 @@ import org.springframework.context.annotation.Primary;
 import lombok.RequiredArgsConstructor;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
+import nct.common.domain.RefType;
 import nct.ops.reference.port.CategoryChangeHistoryCommand;
 import nct.ops.reference.port.CategoryChangeHistoryPort;
 import nct.ops.security.service.SensitiveDataMasker;
 
 /**
  * 담당자 7 · F-COM-003/F-OPS-015: 카테고리 변경 이력을 실제 AUDIT_LOG에 남깁니다.
- * 현재 공통 RefType에 CATEGORY가 없어 참조유형은 비우고, 자동 작업명과 전후값에 categorySn을 명시합니다.
+ * 카테고리 번호를 주 참조로 사용해 카테고리 상세의 공통 히스토리에서 조회할 수 있게 합니다.
  */
 @Component
 @Primary
 @RequiredArgsConstructor
 public class AuditCategoryChangeHistoryAdapter implements CategoryChangeHistoryPort {
 
-    private static final int MAX_REASON_LENGTH = 500;
-    private static final int MAX_SUMMARY_LENGTH = 160;
+    private static final int MAX_CONTENT_LENGTH = 4000;
 
     private final AuditLogService auditLogService;
     private final SensitiveDataMasker sensitiveDataMasker;
@@ -33,9 +33,14 @@ public class AuditCategoryChangeHistoryAdapter implements CategoryChangeHistoryP
         auditLogService.record(
                 command.actorUserId(),
                 type(command.action()),
-                null,
+                RefType.CATEGORY,
                 command.categorySn(),
-                reason(command),
+                safe(command.reason()),
+                safe(command.beforeSummary()),
+                safe(command.afterSummary()),
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -47,20 +52,11 @@ public class AuditCategoryChangeHistoryAdapter implements CategoryChangeHistoryP
         };
     }
 
-    private String reason(CategoryChangeHistoryCommand command) {
-        String prefix = "카테고리 변경 categorySn=" + command.categorySn() + "; reason=";
-        String summaries = "; before=" + limit(safe(command.beforeSummary()), MAX_SUMMARY_LENGTH)
-                + "; after=" + limit(safe(command.afterSummary()), MAX_SUMMARY_LENGTH);
-        int reasonLength = Math.max(0, MAX_REASON_LENGTH - prefix.length() - summaries.length());
-        return prefix + limit(safe(command.reason()), reasonLength) + summaries;
-    }
-
     private String safe(String value) {
-        return sensitiveDataMasker.maskText(value == null ? "-" : value)
+        String masked = sensitiveDataMasker.maskText(value == null ? "-" : value)
                 .replaceAll("[\\r\\n\\t]+", " ");
-    }
-
-    private String limit(String value, int maxLength) {
-        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+        return masked.length() <= MAX_CONTENT_LENGTH
+                ? masked
+                : masked.substring(0, MAX_CONTENT_LENGTH);
     }
 }

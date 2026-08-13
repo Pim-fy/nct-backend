@@ -19,7 +19,7 @@ public class AuctionTradeCreateCommand {
     private final long buyerUserId;
     private final BigDecimal tradeAmount;
     private final AuctionTradeSource source;
-    /** 실제 거래방식. 혼합 상품(TRDC0020)은 택배 또는 직거래 중 하나여야 한다. */
+    /** 실제 거래방식. 혼합 상품(TRDC0015)은 택배 또는 직거래 중 하나여야 한다. */
     private final String selectedTradeMethodCode;
     /** 배송 거래일 때 입찰자가 선택한 USER_DELIVERY_ADDRESS 식별자다. */
     private final Long selectedDeliveryAddressId;

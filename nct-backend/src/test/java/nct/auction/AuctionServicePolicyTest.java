@@ -93,6 +93,7 @@ class AuctionServicePolicyTest {
         target.setBidUnitPrice(BigDecimal.valueOf(1000));
         target.setTradeMethodCode("TRDC0010");
         target.setAuctionStatusCode(AuctionStatusCode.ACTIVE);
+        target.setProductUseYn("Y");
         target.setEndDateTime(LocalDateTime.now().plusMinutes(2));
         target.setDatabaseNow(LocalDateTime.now());
         lenient().when(auctionMapper.findAuctionBidTargetForUpdate(10L)).thenReturn(target);
@@ -101,6 +102,17 @@ class AuctionServicePolicyTest {
         lenient().when(buyerDeliveryAddressReader.getOwnedActiveAddressSnapshot(anyLong(), any()))
                 .thenReturn(new BuyerDeliveryAddressSnapshot(
                         70L, "구매자", "01012345678", "01234", "서울시 마포구", "101호"));
+    }
+
+    @Test
+    void placeBidRejectsHiddenProduct() {
+        target.setProductUseYn("N");
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, bidRequest(12000)))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("숨김 처리된 상품");
+
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
     }
 
     @Test
@@ -219,7 +231,7 @@ class AuctionServicePolicyTest {
         assertThat(response.getTradeId()).isEqualTo(900L);
         verify(buyerDeliveryAddressReader).getOwnedActiveAddressSnapshot(40L, 70L);
         verify(notificationService).notifyBidUpdated(35L, 10L, 30000L);
-        verify(notificationService).notifyAuctionResult(40L, 10L, true);
+        verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
         verifyRealtimeEvent("BUY_NOW");
     }
 
@@ -241,7 +253,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidRejectsMixedAuctionDeliverySelectionWhenBuyerAddressIsIncomplete() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         AuctionBidRequest request = bidRequest(12000);
         request.setTradeMethod("TRDC0009");
         doThrow(new CustomException(ErrorCode.BUYER_ADDRESS_INCOMPLETE))
@@ -259,7 +271,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidRejectsMixedAuctionWithoutTradeMethodSelection() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
 
         assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, bidRequest(12000)))
                 .isInstanceOf(CustomException.class)
@@ -270,7 +282,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void placeBidStoresMixedAuctionOfflineSelectionWithoutCheckingDeliveryAddress() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
         when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
         when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
@@ -293,7 +305,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void currentHighestBidderChangesMixedAuctionTradeMethodToDelivery() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -378,7 +390,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeRejectsUserWhoIsNotCurrentHighestBidder() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(41L);
 
@@ -395,7 +407,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeRejectsDeliveryWhenBuyerAddressIsIncomplete() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -417,7 +429,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeReturnsCurrentDetailWhenMethodIsUnchanged() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -437,7 +449,7 @@ class AuctionServicePolicyTest {
 
     @Test
     void tradeMethodChangeFailsWhenHighestBidChangedDuringUpdate() {
-        target.setTradeMethodCode("TRDC0020");
+        target.setTradeMethodCode("TRDC0015");
         target.setCurrentHighestBidId(45L);
         target.setCurrentHighestBidderId(40L);
         target.setCurrentHighestTradeMethodCode("TRDC0010");
@@ -491,7 +503,7 @@ class AuctionServicePolicyTest {
         auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest());
 
         verify(notificationService, never()).notifyBidUpdated(anyLong(), anyLong(), anyLong());
-        verify(notificationService).notifyAuctionResult(40L, 10L, true);
+        verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
     }
 
     @Test
@@ -539,7 +551,7 @@ class AuctionServicePolicyTest {
         assertThat(command.getSource()).isEqualTo(AuctionTradeSource.AUCTION_WIN);
         assertThat(command.getSelectedTradeMethodCode()).isEqualTo("TRDC0009");
         assertThat(command.getSelectedDeliveryAddressId()).isEqualTo(70L);
-        verify(notificationService).notifyAuctionResult(40L, 10L, true);
+        verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
         verifyRealtimeEvent("AUCTION_FINALIZED");
     }
 

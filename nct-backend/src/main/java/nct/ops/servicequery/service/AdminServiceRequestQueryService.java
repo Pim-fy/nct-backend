@@ -318,8 +318,12 @@ public class AdminServiceRequestQueryService {
             case "SVCC0002" -> activeQuoteCount > 0
                     ? new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "처리중")
                     : new AdminServiceRequestIntegratedStatus("RECEIVED", "접수");
-            case "SVCC0003" -> new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "처리중");
-            case "SVCC0004" -> new AdminServiceRequestIntegratedStatus("COMPLETED", "완료");
+            case "SVCC0003" -> activeQuoteCount > 0
+                    ? new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "정리 필요")
+                    : new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "거래 진행");
+            case "SVCC0004" -> activeQuoteCount > 0
+                    ? new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "정리 필요")
+                    : new AdminServiceRequestIntegratedStatus("COMPLETED", "종료");
             default -> throw new CustomException(
                     ErrorCode.INTERNAL_SERVER_ERROR,
                     "알 수 없는 서비스 요청 상태입니다: " + sourceStatusCode);

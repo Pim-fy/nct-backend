@@ -21,6 +21,9 @@ import nct.global.security.service.ProviderAccessGuard;
 import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
+import nct.audit.domain.AuditLogType;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.quote.domain.Quote;
 import nct.quote.domain.QuoteHistory;
 import nct.quote.domain.QuotePhoto;
@@ -38,10 +41,12 @@ import nct.quote.dto.QuoteUpdateRequest;
 import nct.quote.dto.ReceivedQuoteResponse;
 import nct.quote.mapper.QuoteMapper;
 import nct.quote.port.AdminQuoteListReader;
+import nct.quote.port.AdminQuoteModerationPort;
 import nct.quote.port.AdminQuoteSummaryReader;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.SelectedServiceQuoteReader;
 import nct.quote.port.ServiceRequestQuoteProviderReader;
+import nct.quote.port.ServiceRequestQuoteExpirationPort;
 import nct.provider.service.ActiveProviderGuard;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarget;
@@ -49,7 +54,8 @@ import nct.servicerequest.port.ServiceRequestQuoteReader.ServiceRequestQuoteTarg
 @Service
 @RequiredArgsConstructor
 public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteReader,
-        AdminQuoteSummaryReader, AdminQuoteListReader, ServiceRequestQuoteProviderReader {
+        AdminQuoteSummaryReader, AdminQuoteListReader, AdminQuoteModerationPort,
+        ServiceRequestQuoteProviderReader, ServiceRequestQuoteExpirationPort {
 
     private static final String STATUS_SUBMITTED = "QUTC0001";
     private static final String STATUS_REVISED   = "QUTC0002";
@@ -72,6 +78,8 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
     private final ActiveProviderGuard activeProviderGuard;
     private final FileStorageService fileStorageService;
     private final NotificationService notificationService;
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011 회원 탈퇴 자동철회 감사 기록용
+    private final AuditLogPort auditLogPort;
 
     /** F-OPS-021: 관리자 목록과 상세가 사용할 견적 요약을 요청 단위로 일괄 제공합니다. */
     @Override
@@ -132,6 +140,86 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 "관리자 견적 목록 데이터가 일관되지 않습니다.");
     }
 
+    /** 담당자 7 소비 계약: 선택 전 활성 견적만 관리자 사유로 무효화합니다. */
+    @Override
+    @Transactional
+    public AdminQuoteModerationResult invalidateActiveQuote(
+            Long serviceRequestId,
+            Long quoteId,
+            Long actorUserId) {
+        validateAdminModerationInput(serviceRequestId, actorUserId);
+        if (quoteId == null || quoteId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        Quote quote = quoteMapper.findQuoteByIdForUpdate(quoteId);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!serviceRequestId.equals(quote.getSvcReqSn())) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_IN_SERVICE_REQUEST);
+        }
+        if (STATUS_WITHDRAWN.equals(quote.getQutStatusCd())) {
+            return new AdminQuoteModerationResult(
+                    serviceRequestId,
+                    quoteId,
+                    quote.getUsrSn(),
+                    STATUS_WITHDRAWN,
+                    STATUS_WITHDRAWN,
+                    false);
+        }
+        if (!STATUS_SUBMITTED.equals(quote.getQutStatusCd())
+                && !STATUS_REVISED.equals(quote.getQutStatusCd())) {
+            throw new CustomException(
+                    ErrorCode.QUOTE_INVALID_STATUS,
+                    "선택되거나 종료된 견적은 관리자 무효화 대상이 아닙니다.");
+        }
+        if (quoteMapper.countTradeLinksByQuoteId(quoteId) > 0) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "거래에 연결된 견적은 취소할 수 없습니다.");
+        }
+        if (quoteMapper.adminInvalidateActiveQuote(quoteId, String.valueOf(actorUserId)) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT, "견적 상태가 이미 변경되었습니다.");
+        }
+        return new AdminQuoteModerationResult(
+                serviceRequestId,
+                quoteId,
+                quote.getUsrSn(),
+                quote.getQutStatusCd(),
+                STATUS_WITHDRAWN,
+                true);
+    }
+
+    /** 담당자 7 소비 계약: 요청 취소 시 아직 활성인 견적만 같은 트랜잭션에서 일괄 무효화합니다. */
+    @Override
+    @Transactional
+    public AdminQuoteBulkModerationResult invalidateActiveQuotes(
+            Long serviceRequestId,
+            Long actorUserId) {
+        validateAdminModerationInput(serviceRequestId, actorUserId);
+        List<Quote> activeQuotes = quoteMapper.findActiveQuotesByServiceRequestIdForUpdate(serviceRequestId);
+        if (activeQuotes.isEmpty()) {
+            return new AdminQuoteBulkModerationResult(serviceRequestId, List.of(), 0);
+        }
+        int changed = quoteMapper.adminInvalidateActiveQuotes(
+                serviceRequestId, String.valueOf(actorUserId));
+        if (changed != activeQuotes.size()) {
+            throw new CustomException(ErrorCode.CONFLICT, "견적 상태가 동시에 변경되었습니다.");
+        }
+        List<Long> providerUserIds = activeQuotes.stream()
+                .map(Quote::getUsrSn)
+                .distinct()
+                .toList();
+        return new AdminQuoteBulkModerationResult(serviceRequestId, providerUserIds, changed);
+    }
+
+    private void validateAdminModerationInput(Long serviceRequestId, Long actorUserId) {
+        if (serviceRequestId == null || serviceRequestId <= 0
+                || actorUserId == null || actorUserId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
     private void validateAdminSummary(AdminQuoteSummary summary) {
         if (summary.getServiceRequestId() == null
                 || summary.getSelectedQuoteCount() < 0
@@ -167,6 +255,9 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (usrSn.equals(target.requesterUsrSn())) {
             throw new CustomException(ErrorCode.QUOTE_SELF_TRADE);
         }
+        if (quoteMapper.countActiveQuotesByRequestAndProvider(request.svcReqSn(), usrSn) > 0) {
+            throw new CustomException(ErrorCode.QUOTE_ALREADY_EXISTS);
+        }
 
         String actorId = String.valueOf(usrSn);
         Quote quote = Quote.builder()
@@ -187,14 +278,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
 
         savePhotos(quote.getQutSn(), usrSn, request.photoFlSns());
 
-        notificationService.notify(
-                target.requesterUsrSn(),
-                NotificationType.SERVICE,
-                NotificationDomain.SERVICE,
-                "새 견적이 도착했습니다",
-                "등록하신 서비스 요청에 새 견적이 도착했습니다.",
-                RefType.QUOTE,
-                quote.getQutSn());
+        notificationService.notifyNewQuote(target.requesterUsrSn(), quote.getSvcReqSn());
         return new QuoteCreateResponse(quote.getQutSn());
     }
 
@@ -245,11 +329,14 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 NotificationDomain.SERVICE,
                 "받은 견적이 수정되었습니다",
                 "견적이 수정되었습니다",
-                RefType.QUOTE,
-                qutSn);
+                RefType.SERVICE_REQUEST,
+                quote.getSvcReqSn());
     }
 
-    /** F-SVC-008: 견적 철회. 요청자 선택(QUTC0004) 이후 불가. */
+    /**
+     * 담당자 7 통합 · F-SVC-008: 본인 소유의 선택 전 견적을 철회합니다.
+     * 권한 상실 뒤에도 활동 중단은 가능해야 하므로 현재 카테고리 권한을 다시 요구하지 않습니다.
+     */
     @Transactional
     public void withdrawQuote(Long usrSn, Long qutSn) {
         if (usrSn == null || usrSn <= 0 || qutSn == null || qutSn <= 0) {
@@ -263,7 +350,6 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         if (!usrSn.equals(quote.getUsrSn())) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
-        requireCurrentProviderAccess(usrSn, quote.getSvcReqSn());
         if (STATUS_SELECTED.equals(quote.getQutStatusCd())) {
             throw new CustomException(ErrorCode.QUOTE_ALREADY_SELECTED);
         }
@@ -275,6 +361,44 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
         int updated = quoteMapper.withdrawQuote(qutSn, String.valueOf(usrSn));
         if (updated != 1) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+    }
+
+    /** 담당자 7 통합 · F-SVC-003: 요청 종료 트랜잭션에서 선택 전 견적을 만료시킵니다. */
+    @Override
+    @Transactional
+    public int expireActiveQuotes(Long serviceRequestId, String actorId) {
+        if (serviceRequestId == null || serviceRequestId <= 0
+                || actorId == null || actorId.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        int changed = quoteMapper.expireActiveQuotesByServiceRequestId(
+                serviceRequestId,
+                actorId.trim());
+        if (quoteMapper.countActiveQuotesByServiceRequestId(serviceRequestId) > 0) {
+            throw new CustomException(
+                    ErrorCode.CONFLICT,
+                    "거래에 연결된 활성 견적이 있어 요청을 종료할 수 없습니다.");
+        }
+        return changed;
+    }
+
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 회원 탈퇴 시
+    // MemberService.withdraw() 트랜잭션 안에서 호출된다. 본인(제공자) 소유 진행 중 견적을 전부
+    // 철회 처리하고 감사 로그만 남긴다(상대방 알림 없음 - 사용자 결정, ISS-026).
+    @Transactional
+    public void withdrawAllQuotesByUser(Long usrSn) {
+        int updated = quoteMapper.withdrawAllByUser(usrSn, String.valueOf(usrSn));
+        if (updated > 0) {
+            auditLogPort.record(new AuditLogCommand(
+                    AuditLogType.STATUS_CHANGE.name(),
+                    String.valueOf(usrSn),
+                    RefType.MEMBER.getCode(),
+                    usrSn,
+                    "회원 탈퇴에 따른 진행 중 견적 자동 철회",
+                    "QUTC0001/QUTC0002",
+                    "QUTC0005(" + updated + "건)",
+                    null));
         }
     }
 
@@ -308,6 +432,33 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
                 .size(size)
                 .hasNext(offset + content.size() < total)
                 .build();
+    }
+
+    /**
+     * 담당자 7 연결 · F-SVC-005~008: 목록 이동 상태 없이도 제공자가 본인 견적 상세를 조회합니다.
+     * 작성자 소유권을 먼저 확인하고, 첨부파일은 권한 검증이 적용된 견적 전용 URL만 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public QuoteResponse getMyQuote(Long usrSn, Long qutSn) {
+        if (usrSn == null || usrSn <= 0 || qutSn == null || qutSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        activeProviderGuard.requireActive(usrSn);
+
+        Quote quote = quoteMapper.findQuoteById(qutSn);
+        if (quote == null) {
+            throw new CustomException(ErrorCode.QUOTE_NOT_FOUND);
+        }
+        if (!usrSn.equals(quote.getUsrSn())) {
+            throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        QuoteResponse response = quoteMapper.findMyQuote(usrSn, qutSn);
+        if (response == null) {
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+        populateAttachments(response);
+        return response;
     }
 
     /** 담당자 7 · F-PROV-009: 제공자 대시보드용 상태별 견적 수를 반환합니다. */
@@ -495,6 +646,7 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
         quoteMapper.withdrawCompetingQuotes(svcReqSn, quoteId, actorId);
+        notificationService.notifyQuoteSelected(quote.getUsrSn(), quoteId);
 
         return new SelectedQuoteResult(quote.getQutSn(), quote.getUsrSn(), quote.getQutAmt());
     }

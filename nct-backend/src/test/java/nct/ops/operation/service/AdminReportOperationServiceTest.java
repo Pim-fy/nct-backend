@@ -1,6 +1,9 @@
 package nct.ops.operation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -14,48 +17,157 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import nct.ops.operation.port.AdminReportDecision;
-import nct.ops.operation.port.AdminReportDecisionCommand;
-import nct.ops.operation.port.AdminReportDecisionPort;
 import nct.abuse.dto.AdminAbuseReportResponse;
+import nct.abuse.domain.AbuseReport;
 import nct.abuse.service.AbuseReportService;
+import nct.global.exception.CustomException;
 import nct.global.response.PageResponse;
 import nct.member.dto.AdminMemberIdentityResponse;
 import nct.member.port.AdminMemberIdentityReader;
 import nct.ops.operation.dto.AdminReportPageResponse;
+import nct.ops.operation.domain.AdminDisputeDecision;
+import nct.ops.operation.domain.ReportEnforcementAction;
+import nct.ops.sanction.mapper.SanctionImpactMapper;
+import nct.ops.sanction.service.ReportEnforcementService;
+import nct.ops.sanction.service.ReportSanctionService;
 
 /** 담당자 7 · F-OPS-007: 신고 처리 계약에 관리자·사유·결정값을 전달하는지 검증합니다. */
 class AdminReportOperationServiceTest {
 
-    private AdminReportDecisionPort adminReportDecisionPort;
     private AbuseReportService abuseReportService;
     private AdminMemberIdentityReader memberIdentityReader;
+    private ReportEnforcementService reportEnforcementService;
+    private AdminDisputeDecisionService tradeReportDecisionService;
+    private ReportSanctionService reportSanctionService;
+    private SanctionImpactMapper sanctionImpactMapper;
     private AdminReportOperationService service;
 
     @BeforeEach
     void setUp() {
-        adminReportDecisionPort = mock(AdminReportDecisionPort.class);
         abuseReportService = mock(AbuseReportService.class);
         memberIdentityReader = mock(AdminMemberIdentityReader.class);
+        reportEnforcementService = mock(ReportEnforcementService.class);
+        tradeReportDecisionService = mock(AdminDisputeDecisionService.class);
+        reportSanctionService = mock(ReportSanctionService.class);
+        sanctionImpactMapper = mock(SanctionImpactMapper.class);
         when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
         service = new AdminReportOperationService(
-                adminReportDecisionPort, abuseReportService, memberIdentityReader);
+                abuseReportService,
+                memberIdentityReader,
+                reportEnforcementService,
+                tradeReportDecisionService,
+                reportSanctionService,
+                sanctionImpactMapper);
     }
 
     @Test
     void forwardsProcessedDecisionWithNormalizedReason() {
-        service.decide(91L, AdminReportDecision.PROCESSED, " confirmed by admin ", 7L);
+        when(abuseReportService.lockForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder().statusCode("ABSC0002").build());
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(false);
 
-        ArgumentCaptor<AdminReportDecisionCommand> commandCaptor =
-                ArgumentCaptor.forClass(AdminReportDecisionCommand.class);
-        verify(adminReportDecisionPort).decide(commandCaptor.capture());
+        service.decide(
+                91L,
+                AdminReportDecision.PROCESSED,
+                null,
+                ReportEnforcementAction.TEMPORARY_SUSPENSION_7_DAYS,
+                " confirmed by admin ",
+                7L);
 
-        AdminReportDecisionCommand command = commandCaptor.getValue();
-        assertThat(command.reportSn()).isEqualTo(91L);
-        assertThat(command.decision()).isEqualTo(AdminReportDecision.PROCESSED);
-        assertThat(command.reason()).isEqualTo("confirmed by admin");
-        assertThat(command.adminId()).isEqualTo("7");
-        assertThat(command.requestId()).startsWith("admin-report:");
+        ArgumentCaptor<String> requestIdCaptor = ArgumentCaptor.forClass(String.class);
+        verify(reportEnforcementService).decide(
+                org.mockito.ArgumentMatchers.eq(91L),
+                org.mockito.ArgumentMatchers.eq(AdminReportDecision.PROCESSED),
+                org.mockito.ArgumentMatchers.eq(ReportEnforcementAction.TEMPORARY_SUSPENSION_7_DAYS),
+                org.mockito.ArgumentMatchers.eq("confirmed by admin"),
+                org.mockito.ArgumentMatchers.eq(7L),
+                requestIdCaptor.capture());
+        assertThat(requestIdCaptor.getValue()).startsWith("admin-report:");
+        verifyNoInteractions(tradeReportDecisionService);
+    }
+
+    @Test
+    void coordinatesTradeRefundBeforeFinalReportDecision() {
+        when(abuseReportService.lockForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder().statusCode("ABSC0001").build());
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(true);
+
+        service.decide(
+                91L,
+                AdminReportDecision.PROCESSED,
+                AdminDisputeDecision.REFUND,
+                ReportEnforcementAction.PERMANENT_SUSPENSION,
+                " full refund ",
+                7L);
+
+        verify(reportEnforcementService).decide(
+                eq(91L),
+                eq(AdminReportDecision.PROCESSING),
+                eq(ReportEnforcementAction.NONE),
+                eq("full refund"),
+                eq(7L),
+                anyString());
+        verify(tradeReportDecisionService).decide(
+                91L, AdminDisputeDecision.REFUND, "full refund", 7L);
+        verify(reportEnforcementService).decide(
+                eq(91L),
+                eq(AdminReportDecision.PROCESSED),
+                eq(ReportEnforcementAction.PERMANENT_SUSPENSION),
+                eq("full refund"),
+                eq(7L),
+                anyString());
+    }
+
+    @Test
+    void rejectsTradeDecisionForGeneralReport() {
+        when(abuseReportService.lockForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder().statusCode("ABSC0002").build());
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.decide(
+                91L,
+                AdminReportDecision.PROCESSED,
+                AdminDisputeDecision.COMPLETE,
+                ReportEnforcementAction.NONE,
+                "confirmed",
+                7L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("일반 신고");
+    }
+
+    @Test
+    void requiresMatchingTradeDecisionForTradeReport() {
+        when(abuseReportService.lockForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder().statusCode("ABSC0001").build());
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.decide(
+                91L,
+                AdminReportDecision.PROCESSING,
+                AdminDisputeDecision.REFUND,
+                ReportEnforcementAction.NONE,
+                "still reviewing",
+                7L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("일치하지 않습니다");
+    }
+
+    @Test
+    void permanentSuspensionOfTradeReportRequiresRefund() {
+        when(abuseReportService.lockForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder().statusCode("ABSC0001").build());
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.decide(
+                91L,
+                AdminReportDecision.PROCESSED,
+                AdminDisputeDecision.COMPLETE,
+                ReportEnforcementAction.PERMANENT_SUSPENSION,
+                "permanent suspension",
+                7L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("전액 환불");
     }
 
     @Test
@@ -69,7 +181,7 @@ class AdminReportOperationServiceTest {
     @Test
     void mapsFilteredReportPageFromAbuseReportService() {
         AdminAbuseReportResponse report = new AdminAbuseReportResponse();
-        when(abuseReportService.getAdminReports("ABRC0007", "신고", 2, 20))
+        when(abuseReportService.getAdminReports("ABSC0003", "신고", "GENERAL", 2, 20))
                 .thenReturn(PageResponse.<AdminAbuseReportResponse>builder()
                         .content(List.of(report))
                         .totalCount(21)
@@ -78,12 +190,13 @@ class AdminReportOperationServiceTest {
                         .hasNext(false)
                         .build());
 
-        AdminReportPageResponse result = service.getReports("ABRC0007", "신고", 2, 20);
+        AdminReportPageResponse result = service.getReports(
+                "ABSC0003", "신고", "GENERAL", 2, 20);
 
         assertThat(result.items()).containsExactly(report);
         assertThat(result.totalItems()).isEqualTo(21);
         assertThat(result.totalPages()).isEqualTo(2);
-        verify(abuseReportService).getAdminReports("ABRC0007", "신고", 2, 20);
+        verify(abuseReportService).getAdminReports("ABSC0003", "신고", "GENERAL", 2, 20);
     }
 
     @Test

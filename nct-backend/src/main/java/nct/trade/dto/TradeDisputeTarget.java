@@ -1,5 +1,7 @@
 package nct.trade.dto;
 
+import java.time.LocalDateTime;
+
 import lombok.Data;
 
 /**
@@ -15,5 +17,8 @@ public class TradeDisputeTarget {
     private Long requesterUserId;
     private Long providerUserId;
     private String tradeTypeCode;
+    private String tradeMethodCode;
     private String tradeStatusCode;
+    private LocalDateTime autoCompleteAt;
+    private LocalDateTime databaseNow;
 }

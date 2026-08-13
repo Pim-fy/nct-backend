@@ -1,5 +1,6 @@
 package nct.chat.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class ChatService {
     private static final String ACTIVE_ROOM = "CHRC0001";
     private static final String CLOSED_ROOM = "CHRC0002";
     private static final String TRADE_REFERENCE = "REFC0005";
+    private static final long COMPLETED_TRADE_CHAT_GRACE_HOURS = 48;
 
     private final ChatMapper chatMapper;
     private final SensitiveContentInspectionUseCase sensitiveContentInspectionUseCase;
@@ -106,26 +108,36 @@ public class ChatService {
         return new ServiceTradeChatRoomCreateResult(chatRoom.getRoomId(), true);
     }
 
-    /** 거래 완료 트랜잭션에 합류해 직거래 채팅방을 읽기 전용으로 닫는다. */
+    /** 서비스 거래의 취소·분쟁 확정 트랜잭션에 합류해 채팅방을 읽기 전용으로 닫는다. */
     @Transactional
-    public void closeOfflineTradeChatRoom(long tradeId) {
+    public boolean closeServiceTradeChatRoom(long tradeId) {
         if (tradeId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래 번호가 올바르지 않습니다.");
         }
 
-        chatMapper.closeOfflineTradeChatRoom(tradeId);
+        return chatMapper.closeServiceTradeChatRoom(tradeId) > 0;
     }
 
-    /** 서비스 거래의 완료·취소·분쟁 확정 트랜잭션에 합류해 채팅방을 읽기 전용으로 닫는다. */
+    /** 거래 취소·분쟁은 완료 48시간 채팅 유예와 달리 즉시 채팅을 종료한다. */
     @Transactional
-    public void closeServiceTradeChatRoom(long tradeId) {
+    public boolean closeTradeChatRoom(long tradeId) {
         if (tradeId <= 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "거래 번호가 올바르지 않습니다.");
         }
 
-        chatMapper.closeServiceTradeChatRoom(tradeId);
+        return chatMapper.closeTradeChatRoom(tradeId) > 0;
+    }
+
+    /** 담당자 7 · F-OPS-005/006: 거래 신고 완료ㆍ반려로 복구된 채팅을 조건부로 다시 엽니다. */
+    @Transactional
+    public boolean reopenTradeChatRoom(long tradeId) {
+        if (tradeId <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "거래 번호가 올바르지 않습니다.");
+        }
+        return chatMapper.reopenTradeChatRoom(tradeId) > 0;
     }
 
     /** 로그인 사용자가 참여하는 대면 거래 채팅방만 조회한다. */
@@ -239,8 +251,19 @@ public class ChatService {
 
     private boolean isReadOnly(ChatRoomAccess chatRoom) {
         return CLOSED_ROOM.equals(chatRoom.getRoomStatus())
-                || "TRDC0006".equals(chatRoom.getTradeStatus())
                 || "TRDC0007".equals(chatRoom.getTradeStatus())
-                || "TRDC0008".equals(chatRoom.getTradeStatus());
+                || "TRDC0008".equals(chatRoom.getTradeStatus())
+                || isCompletedTradeChatGraceExpired(chatRoom);
+    }
+
+    private boolean isCompletedTradeChatGraceExpired(ChatRoomAccess chatRoom) {
+        if (!"TRDC0006".equals(chatRoom.getTradeStatus())) {
+            return false;
+        }
+
+        // 기존 완료 거래 중 완료 이력이 없는 데이터는 종료 시점을 확정할 수 없어 안전하게 읽기 전용으로 처리한다.
+        LocalDateTime completedAt = chatRoom.getCompletedAt();
+        return completedAt == null
+                || !completedAt.plusHours(COMPLETED_TRADE_CHAT_GRACE_HOURS).isAfter(LocalDateTime.now());
     }
 }

@@ -1,5 +1,6 @@
 package nct.ops.operation.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -7,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
@@ -14,10 +16,20 @@ import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.ops.operation.dto.AdminReportDecisionRequest;
 import nct.ops.operation.dto.AdminReportPageResponse;
 import nct.ops.operation.port.AdminReportDecision;
+import nct.ops.operation.domain.AdminDisputeDecision;
+import nct.ops.operation.domain.ReportEnforcementAction;
 import nct.ops.operation.service.AdminReportOperationService;
 
 /** 담당자 7 · F-OPS-007: 관리자 신고 처리 컨트롤러 전달값을 검증합니다. */
 class AdminReportOperationControllerTest {
+
+    @Test
+    void requiresAdminRoleForEveryReportOperation() {
+        PreAuthorize annotation = AdminReportOperationController.class.getAnnotation(PreAuthorize.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.value()).isEqualTo("hasAuthority('ROLE_ADMIN')");
+    }
 
     @Test
     void forwardsDecisionWithAuthenticatedAdmin() {
@@ -25,11 +37,18 @@ class AdminReportOperationControllerTest {
         AdminReportOperationController controller = new AdminReportOperationController(service);
         AdminReportDecisionRequest request = new AdminReportDecisionRequest();
         request.setDecision(AdminReportDecision.REJECTED);
+        request.setTradeDecision(AdminDisputeDecision.REJECT);
         request.setReason(" insufficient evidence ");
 
         controller.decide(91L, request, adminUserDetails(7L));
 
-        verify(service).decide(91L, AdminReportDecision.REJECTED, " insufficient evidence ", 7L);
+        verify(service).decide(
+                91L,
+                AdminReportDecision.REJECTED,
+                AdminDisputeDecision.REJECT,
+                ReportEnforcementAction.NONE,
+                " insufficient evidence ",
+                7L);
     }
 
     @Test
@@ -55,11 +74,11 @@ class AdminReportOperationControllerTest {
                 .totalItems(21)
                 .totalPages(2)
                 .build();
-        when(service.getReports("ABRC0007", "신고", 2, 20)).thenReturn(page);
+        when(service.getReports("ABSC0003", "신고", "TRADE_ISSUE", 2, 20)).thenReturn(page);
 
-        controller.getReports("ABRC0007", "신고", 2, 20);
+        controller.getReports("ABSC0003", "신고", "TRADE_ISSUE", 2, 20);
 
-        verify(service).getReports("ABRC0007", "신고", 2, 20);
+        verify(service).getReports("ABSC0003", "신고", "TRADE_ISSUE", 2, 20);
     }
 
     @Test

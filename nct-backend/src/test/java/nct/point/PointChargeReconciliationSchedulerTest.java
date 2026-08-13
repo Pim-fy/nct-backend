@@ -63,6 +63,7 @@ class PointChargeReconciliationSchedulerTest {
     @MockitoBean RiskEventService riskEventService;
 
     long usrSn;
+    long validChargeAmount;
 
     @BeforeEach
     void setUpUser() {
@@ -73,6 +74,7 @@ class PointChargeReconciliationSchedulerTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        validChargeAmount = pointChargeService.getChargeLimits().getMinChrgAmt();
 
         // 공유 DB에 이 테스트가 만들지 않은 다른 오래된 PENDING 주문이 이미 있을 수 있다 —
         // 배치는 그 주문들까지 함께 훑으므로, 내 테스트 주문 외에는 안전하게 "통신 실패"로
@@ -101,9 +103,10 @@ class PointChargeReconciliationSchedulerTest {
     @Test
     @DisplayName("토스가 결제완료(DONE)를 확인해주면 confirm 콜백 없이도 자동 지급된다")
     void recoversDonePaymentAutomatically() {
-        String orderNo = createStaleOrder(50000, Duration.ofMinutes(20));
+        String orderNo = createStaleOrder(validChargeAmount, Duration.ofMinutes(20));
         when(tossPaymentsClient.lookupByOrderId(orderNo))
-                .thenReturn(TossOrderLookupResult.found("DONE", 50000, "recovered-payment-key"));
+                .thenReturn(TossOrderLookupResult.found(
+                        "DONE", validChargeAmount, "recovered-payment-key"));
 
         scheduler.reconcilePendingOrders();
 
@@ -117,7 +120,7 @@ class PointChargeReconciliationSchedulerTest {
     @Test
     @DisplayName("결제 이력이 없고 TTL(3시간)도 지나면 실패로 확정된다")
     void expiresOrderWithNoPaymentHistoryPastTtl() {
-        String orderNo = createStaleOrder(30000, Duration.ofHours(4));
+        String orderNo = createStaleOrder(validChargeAmount, Duration.ofHours(4));
         when(tossPaymentsClient.lookupByOrderId(orderNo))
                 .thenReturn(TossOrderLookupResult.notFound());
 
@@ -129,7 +132,7 @@ class PointChargeReconciliationSchedulerTest {
     @Test
     @DisplayName("아직 TTL 이내면 결제 이력이 안 보여도 대기 상태를 그대로 둔다")
     void leavesRecentOrderPendingWhenNotYetDone() {
-        String orderNo = createStaleOrder(20000, Duration.ofMinutes(30));
+        String orderNo = createStaleOrder(validChargeAmount, Duration.ofMinutes(30));
         when(tossPaymentsClient.lookupByOrderId(orderNo))
                 .thenReturn(TossOrderLookupResult.notFound());
 
@@ -141,7 +144,7 @@ class PointChargeReconciliationSchedulerTest {
     @Test
     @DisplayName("토스 통신 실패면 TTL이 지났어도 확정하지 않고 다음 주기로 넘긴다")
     void skipsWhenTossUnreachable() {
-        String orderNo = createStaleOrder(20000, Duration.ofHours(4));
+        String orderNo = createStaleOrder(validChargeAmount, Duration.ofHours(4));
         when(tossPaymentsClient.lookupByOrderId(orderNo))
                 .thenReturn(TossOrderLookupResult.unreachable());
 

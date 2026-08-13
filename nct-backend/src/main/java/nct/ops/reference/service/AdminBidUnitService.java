@@ -2,6 +2,7 @@ package nct.ops.reference.service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +43,7 @@ public class AdminBidUnitService {
         requireGroup(false);
         return mapper.findAllByGroup(BID_UNIT_GROUP).stream()
                 .map(code -> AdminBidUnitResponse.from(code, amount(code.getName())))
+                .sorted(Comparator.comparing(AdminBidUnitResponse::amount))
                 .toList();
     }
 
@@ -52,9 +54,8 @@ public class AdminBidUnitService {
         BigDecimal amount = normalize(request.amount());
         rejectDuplicate(amount, null);
 
-        Integer maxSequence = mapper.findMaxCodeSequence(AUCTION_CODE_PREFIX);
-        int nextSequence = (maxSequence == null ? 0 : maxSequence) + 1;
-        if (nextSequence > MAX_CODE_SEQUENCE) {
+        Integer nextSequence = mapper.findFirstAvailableCodeSequence(AUCTION_CODE_PREFIX);
+        if (nextSequence == null || nextSequence <= 0 || nextSequence > MAX_CODE_SEQUENCE) {
             throw new CustomException(ErrorCode.CONFLICT, "새 입찰 단위 코드를 생성할 수 없습니다.");
         }
 
@@ -183,6 +184,7 @@ public class AdminBidUnitService {
         }
         return reordered.stream()
                 .map(code -> AdminBidUnitResponse.from(code, amount(code.getName())))
+                .sorted(Comparator.comparing(AdminBidUnitResponse::amount))
                 .toList();
     }
 

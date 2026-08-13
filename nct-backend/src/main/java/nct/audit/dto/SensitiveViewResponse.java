@@ -19,11 +19,9 @@ public class SensitiveViewResponse {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final Long chMsgSn;
-    private final Long chRmSn;
 
-    /** 발신자 (이름 + 회원번호) */
+    /** 발신자 이름 */
     private final String senderName;
-    private final Long senderSn;
 
     /** 메시지 원문 */
     private final String content;
@@ -33,9 +31,7 @@ public class SensitiveViewResponse {
     public static SensitiveViewResponse from(ChatMessageView m) {
         return SensitiveViewResponse.builder()
                 .chMsgSn(m.getChMsgSn())
-                .chRmSn(m.getChRmSn())
                 .senderName(m.getUsrNm())
-                .senderSn(m.getUsrSn())
                 .content(m.getChMsgCn())
                 .sentAt(m.getChMsgRegDt() != null ? m.getChMsgRegDt().format(DATE_FMT) : null)
                 .build();

@@ -49,7 +49,7 @@ public class ProductRegisterRequest {
     // 경매 종료일시 — 임시저장(PRDC0001)이면 draft 보존용, 공개 등록(PRDC0002)이면 필수(실제 AUCTION 값)
     private LocalDateTime aucEndDt;
 
-    // 입찰 단위 — null이면 AuctionService 기본값(1,000원) 적용
+    // 입찰 단위 — null이면 AuctionService 기본값(1,000P) 적용
     @DecimalMin(value = "1", message = "입찰 단위는 1 이상이어야 합니다.")
     private BigDecimal bidUnit;
 
@@ -60,7 +60,7 @@ public class ProductRegisterRequest {
     // true면 재개 시 상품입력 탭 필수값이 다 채워져 있다는 전제하에 등록확인 탭으로 바로 이동시킨다.
     private Boolean policyAgreed;
 
-    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0020)일 때만 의미 있음, 최대 5곳
+    // 희망 거래지역 — 직거래(TRDC0010)·둘 다 가능(TRDC0015)일 때만 의미 있음, 최대 5곳
     @Valid
     @Size(max = 5, message = "희망 거래지역은 최대 5곳까지 선택할 수 있습니다.")
     private List<ProductTradeRegionItem> tradeRegions;

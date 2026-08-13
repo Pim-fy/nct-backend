@@ -15,12 +15,21 @@ import nct.quote.dto.QuoteAttachmentResponse;
 import nct.quote.dto.QuoteHistoryResponse;
 import nct.quote.dto.QuoteResponse;
 import nct.quote.dto.QuoteUpdateRequest;
+import nct.quote.dto.QuoteSanctionTarget;
 import nct.quote.dto.ReceivedQuoteResponse;
 
 @Mapper
 public interface QuoteMapper {
 
     int insertQuote(Quote quote);
+
+    int countActiveQuotesByRequestAndProvider(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("usrSn") Long usrSn);
+
+    int countActiveQuotesByServiceRequestId(@Param("svcReqSn") Long svcReqSn);
+
+    int countTradeLinksByQuoteId(@Param("qutSn") Long qutSn);
 
     /** 잠금 없는 단건 조회 — 소유권 확인, 이력 조회 등 읽기 전용 용도 */
     Quote findQuoteById(@Param("qutSn") Long qutSn);
@@ -37,10 +46,41 @@ public interface QuoteMapper {
             @Param("qutSn") Long qutSn,
             @Param("updtId") String updtId);
 
+    int adminInvalidateActiveQuote(
+            @Param("qutSn") Long qutSn,
+            @Param("updtId") String updtId);
+
+    List<Quote> findActiveQuotesByServiceRequestIdForUpdate(
+            @Param("svcReqSn") Long svcReqSn);
+
+    int adminInvalidateActiveQuotes(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("updtId") String updtId);
+
+    int expireActiveQuotesByServiceRequestId(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("updtId") String updtId);
+
+    List<QuoteSanctionTarget> findSanctionTargetsByMemberForUpdate(
+            @Param("userSn") Long userSn);
+
+    int withdrawQuoteForSanction(
+            @Param("quoteId") Long quoteId,
+            @Param("expectedStatusCode") String expectedStatusCode,
+            @Param("actorId") String actorId);
+
+    int withdrawSelectedQuoteAfterTradeCancellation(
+            @Param("quoteId") Long quoteId,
+            @Param("actorId") String actorId);
+
     List<QuoteResponse> findMyQuotes(
             @Param("usrSn") Long usrSn,
             @Param("offset") int offset,
             @Param("size") int size);
+
+    QuoteResponse findMyQuote(
+            @Param("usrSn") Long usrSn,
+            @Param("qutSn") Long qutSn);
 
     int countMyQuotes(@Param("usrSn") Long usrSn);
 
@@ -82,6 +122,15 @@ public interface QuoteMapper {
             @Param("excludeQutSn") Long excludeQutSn,
             @Param("updtId") String updtId);
 
+    // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 회원 탈퇴 시
+    // 본인(제공자)이 제출한 진행 중 견적을 전부 철회 처리한다. 영향 행 수를 반환한다.
+    int withdrawAllByUser(
+            @Param("usrSn") Long usrSn,
+            @Param("updtId") String updtId);
+
     /** 담당자2 소비: 해당 서비스 요청에 견적을 제출한 제공자 USR_SN distinct 목록 (철회 포함) */
     List<Long> findProviderUsrSnBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
+
+    /** 담당자2 소비: 서비스 요청 마감 시 미선택 활성 견적 제공자 USR_SN 목록 (QUTC0001/0002만) */
+    List<Long> findActiveQuoteProvidersBySvcReqSn(@Param("svcReqSn") Long svcReqSn);
 }

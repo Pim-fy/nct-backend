@@ -121,10 +121,10 @@ class PointEscrowTest {
     }
 
     @Test
-    @DisplayName("정산 전환: 진행 중(접수) 거래 문제가 있으면 차단된다 — 분쟁 접수 시 정산 보류")
+    @DisplayName("정산 전환: 접수 중인 거래 신고가 있으면 차단된다")
     void creditEscrowBlockedByDispute() {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
-        insertDispute(trdSn, "TRDC0016"); // 접수 상태
+        insertTradeReport(trdSn, "ABSC0001");
 
         assertThatThrownBy(() -> pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산"))
                 .isInstanceOf(PointException.class)
@@ -133,10 +133,10 @@ class PointEscrowTest {
     }
 
     @Test
-    @DisplayName("정산 전환: 처리 완료된 거래 문제는 막지 않는다 — 해소된 분쟁은 무관")
+    @DisplayName("정산 전환: 처리 완료된 거래 신고는 막지 않는다")
     void creditEscrowAllowedWhenDisputeResolved() {
         pointService.debitEscrow(requesterSn, 30000, RefType.TRADE, trdSn, "견적 선택 보관금");
-        insertDispute(trdSn, "TRDC0018"); // 완료 상태
+        insertTradeReport(trdSn, "ABSC0003");
 
         pointService.creditEscrowToSettleable(providerSn, trdSn, RefType.TRADE, trdSn, "서비스 완료 정산");
 
@@ -256,11 +256,24 @@ class PointEscrowTest {
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
-    /** 해당 거래에 지정 상태의 거래 문제를 건다 (PointConvertTest와 같은 방식, 서비스 거래 버전) */
-    private void insertDispute(long targetTrdSn, String statusCd) {
+    /** 담당자 7 · F-OPS-005: 서비스 거래에 새 통합 거래 신고 fixture를 연결합니다. */
+    private void insertTradeReport(long targetTrdSn, String statusCd) {
         jdbc.update("""
-                INSERT INTO TRADE_DISPUTE (TRD_SN, DSPT_USR_SN, TRD_DSP_TYPE_CD, TRD_DSP_STATUS_CD, TRD_DSP_CN)
-                VALUES (?, ?, 'TRDC0013', ?, '정산 전환 차단 테스트용 거래 문제')
-                """, targetTrdSn, requesterSn, statusCd);
+                INSERT INTO ABUSE_REPORT (
+                    RPRT_USR_SN, RPTD_USR_SN, ABR_TYPE_CD, ABR_STATUS_CD,
+                    ABR_REF_TYPE_CD, ABR_REF_SN, ABR_CN, ABR_REG_ID, ABR_UPDT_ID
+                ) VALUES (?, ?, 'ABRC0011', ?, 'REFC0005', ?,
+                          '정산 전환 차단 테스트용 거래 신고', ?, ?)
+                """, requesterSn, providerSn, statusCd, targetTrdSn,
+                String.valueOf(requesterSn), String.valueOf(requesterSn));
+        long reportSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+        jdbc.update("""
+                INSERT INTO ABUSE_REPORT_TRADE (
+                    ABR_SN, TRD_SN, ABR_TRD_PREV_STATUS_CD,
+                    ABR_TRD_REG_ID, ABR_TRD_UPDT_ID
+                ) VALUES (?, ?, 'TRDC0003', ?, ?)
+                """, reportSn, targetTrdSn,
+                String.valueOf(requesterSn), String.valueOf(requesterSn));
     }
 }

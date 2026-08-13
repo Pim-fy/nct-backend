@@ -1,5 +1,7 @@
 package nct.settlement.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +41,10 @@ public class SettlementService {
     private static final String SYSTEM_ACTOR = "SYSTEM";
     private static final String MATERIAL_TRADE = "TRDC0001";
     private static final String SERVICE_TRADE = "TRDC0002";
+    // 거래 수수료율 (팀 합의 2026-08-13) — 거래유형별 단일 고정. 구간형 대신 고정으로 확정한
+    // 배경은 팀전달_거래수수료_정책제안_260813 문서 참조 (경매는 진입장벽 최소화, 서비스는 업계 평균 이하)
+    private static final BigDecimal MATERIAL_TRADE_FEE_RATE = new BigDecimal("0.05");
+    private static final BigDecimal SERVICE_TRADE_FEE_RATE = new BigDecimal("0.10");
 
     private final SettlementMapper settlementMapper;
     private final PointService pointService;
@@ -115,7 +121,22 @@ public class SettlementService {
                             + ", 정산금액: " + s.getStlmAmt()
                             + ", 보관금: " + creditedAmount);
         }
-        // 정산 적립 알림은 creditEscrowToSettleable 내부에서 함께 발행한다.
+
+        // 거래 수수료 차감 (팀 합의 2026-08-13) — 전액 적립·정합성 검증이 끝난 뒤 같은 트랜잭션에서
+        // 거래유형별 요율(경매 5% / 서비스 10%)로 계산한 수수료를 −행으로 짝 기록한다
+        boolean materialTrade = MATERIAL_TRADE.equals(escrowReference.tradeTypeCode());
+        BigDecimal feeRate = materialTrade ? MATERIAL_TRADE_FEE_RATE : SERVICE_TRADE_FEE_RATE;
+        long fee = BigDecimal.valueOf(creditedAmount).multiply(feeRate)
+                .setScale(0, RoundingMode.HALF_UP).longValueExact();
+        pointService.deductCommission(s.getUsrSn(), fee,
+                escrowReference.refType(), escrowReference.refSn(),
+                "거래 수수료 차감 (" + (materialTrade ? "경매 5%" : "서비스 10%")
+                        + ", 정산번호 " + stlmSn + ")");
+
+        // 정산 적립 알림 — 수수료 계산이 끝난 이 시점에 발행해야 총액·수수료·실수령액을 한 문장에
+        // 담을 수 있다 (2026-08-13, 알림 문구 개선. 예전엔 PointService가 전액만 알고 발행했음)
+        notificationService.notifyEscrowSettled(s.getUsrSn(), creditedAmount, fee,
+                escrowReference.refType(), escrowReference.refSn());
     }
 
     private EscrowReference resolveEscrowReference(long trdSn) {
@@ -132,9 +153,9 @@ public class SettlementService {
                     throw new SettlementException(ErrorCode.CONFLICT,
                             "물건 거래의 낙찰 입찰 참조가 없습니다: " + trdSn);
                 }
-                yield new EscrowReference(RefType.BID, bidSn);
+                yield new EscrowReference(RefType.BID, bidSn, MATERIAL_TRADE);
             }
-            case SERVICE_TRADE -> new EscrowReference(RefType.TRADE, trdSn);
+            case SERVICE_TRADE -> new EscrowReference(RefType.TRADE, trdSn, SERVICE_TRADE);
             default -> throw new SettlementException(ErrorCode.CONFLICT,
                     "지원하지 않는 거래 유형입니다: " + reference.getTradeTypeCode());
         };
@@ -324,6 +345,7 @@ public class SettlementService {
         }
     }
 
-    private record EscrowReference(RefType refType, long refSn) {
+    // tradeTypeCode: 수수료율 판단용 거래유형 (팀 합의 2026-08-13 — 경매 5% / 서비스 10%)
+    private record EscrowReference(RefType refType, long refSn, String tradeTypeCode) {
     }
 }

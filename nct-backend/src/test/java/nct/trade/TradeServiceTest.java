@@ -705,7 +705,8 @@ class TradeServiceTest {
                 81L,
                 "TRDC0005",
                 "SERVICE_COMPLETION_REQUEST|에어컨 분해 청소와 시운전을 완료했습니다.");
-        verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5);
+        // 서비스 거래 구분(true) — 알림 이동이 서비스 거래 상세로 향하도록 (2026-08-13 404 수정)
+        verify(notificationService).notifyTradeConfirmRequest(11L, 81L, 5, true);
     }
 
     @Test
@@ -731,8 +732,8 @@ class TradeServiceTest {
         verify(settlementService).completeAutomatically(61L);
         verify(chatService, never()).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
-        verify(notificationService).notifyTradeComplete(11L, 81L, false);
-        verify(notificationService).notifyTradeComplete(22L, 81L, false);
+        verify(notificationService).notifyTradeComplete(11L, 81L, false, true);
+        verify(notificationService).notifyTradeComplete(22L, 81L, false, true);
     }
 
     @Test
@@ -746,8 +747,8 @@ class TradeServiceTest {
 
         assertThat(completed).isTrue();
         verify(chatService, never()).closeServiceTradeChatRoom(81L);
-        verify(notificationService).notifyTradeComplete(11L, 81L, true);
-        verify(notificationService).notifyTradeComplete(22L, 81L, true);
+        verify(notificationService).notifyTradeComplete(11L, 81L, true, true);
+        verify(notificationService).notifyTradeComplete(22L, 81L, true, true);
     }
 
     @Test

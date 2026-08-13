@@ -161,6 +161,15 @@ class SettlementServiceTest {
                 RefType.BID,
                 801L,
                 "정산 완료 (정산번호 501)");
+        // 경매(물건) 거래 수수료 5% — 30,000P의 5% = 1,500P 차감 (팀 합의 2026-08-13)
+        verify(pointService).deductCommission(
+                10L,
+                1_500L,
+                RefType.BID,
+                801L,
+                "거래 수수료 차감 (경매 5%, 정산번호 501)");
+        // 정산 적립 알림 — 총액·수수료가 확정된 이 시점에 발행 (2026-08-13 문구 개선)
+        verify(notificationService).notifyEscrowSettled(10L, 30_000L, 1_500L, RefType.BID, 801L);
         verify(notificationService, never())
                 .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }
@@ -197,8 +206,52 @@ class SettlementServiceTest {
                 RefType.TRADE,
                 91L,
                 "정산 완료 (정산번호 501)");
+        // 서비스 거래 수수료 10% — 30,000P의 10% = 3,000P 차감 (팀 합의 2026-08-13)
+        verify(pointService).deductCommission(
+                10L,
+                3_000L,
+                RefType.TRADE,
+                91L,
+                "거래 수수료 차감 (서비스 10%, 정산번호 501)");
+        verify(notificationService).notifyEscrowSettled(10L, 30_000L, 3_000L, RefType.TRADE, 91L);
         verify(notificationService, never())
                 .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void completeRoundsCommissionToNearestPoint() {
+        // 반올림 검증 — 홀수 금액 30,001P의 경매 5%는 1,500.05P → HALF_UP 반올림으로 1,500P
+        Settlement pending = settlement(
+                501L,
+                91L,
+                10L,
+                30_001L,
+                SettlementStatus.PENDING);
+        when(settlementMapper.selectForUpdate(501L)).thenReturn(pending);
+        when(settlementMapper.updateStatus(
+                501L,
+                SettlementStatus.COMPLETED.getCode(),
+                "700"))
+                .thenReturn(1);
+        when(tradeSettlementReferenceReader.getByTradeSn(91L))
+                .thenReturn(tradeReference(91L, "TRDC0001", 801L));
+        when(pointService.creditEscrowToSettleable(
+                10L,
+                91L,
+                RefType.BID,
+                801L,
+                "정산 완료 (정산번호 501)"))
+                .thenReturn(30_001L);
+
+        settlementService.complete(501L, 700L);
+
+        verify(pointService).deductCommission(
+                10L,
+                1_500L,
+                RefType.BID,
+                801L,
+                "거래 수수료 차감 (경매 5%, 정산번호 501)");
+        verify(notificationService).notifyEscrowSettled(10L, 30_001L, 1_500L, RefType.BID, 801L);
     }
 
     @Test
@@ -251,6 +304,11 @@ class SettlementServiceTest {
                 .isInstanceOf(SettlementException.class)
                 .hasMessageContaining("정산 금액과 보관금 잔액");
 
+        // 정합성 검증에 걸리면 수수료 차감·정산 알림까지 진행되지 않는다 (전액 롤백 경로)
+        verify(pointService, never()).deductCommission(
+                anyLong(), anyLong(), any(), anyLong(), anyString());
+        verify(notificationService, never())
+                .notifyEscrowSettled(anyLong(), anyLong(), anyLong(), any(), anyLong());
         verify(notificationService, never())
                 .notifySettlement(anyLong(), anyString(), anyString(), anyLong());
     }

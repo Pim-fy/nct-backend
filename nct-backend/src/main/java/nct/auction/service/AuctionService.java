@@ -830,9 +830,9 @@ public class AuctionService {
         request.setStatusActive(!hasStatusFilter
                 || statuses.contains("active")
                 || statuses.contains(AuctionStatusCode.ACTIVE));
-        request.setStatusEnded(!hasStatusFilter
-                || statuses.contains("ended")
-                || statuses.contains(AuctionStatusCode.ENDED));
+        request.setStatusEnded(hasStatusFilter
+                ? statuses.contains("ended") || statuses.contains(AuctionStatusCode.ENDED)
+                : request.getKeyword() != null);
         request.setStatusEndingSoon(hasStatusFilter && statuses.contains("endingSoon"));
     }
 

@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import nct.global.validation.PasswordPolicy;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -27,7 +28,7 @@ public class SignUpRequest {
     private String loginId;
 
     @NotBlank(message = "비밀번호는 필수입니다.")
-    @Size(min = 8, max = 20, message = "비밀번호는 8~20자여야 합니다.")
+    @Pattern(regexp = PasswordPolicy.REGEXP, message = PasswordPolicy.MESSAGE)
     private String password;
 
     @NotBlank(message = "닉네임은 필수입니다.")

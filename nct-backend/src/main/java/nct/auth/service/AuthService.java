@@ -1,6 +1,8 @@
 package nct.auth.service;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -14,12 +16,14 @@ import nct.auth.dto.AvailabilityResponse;
 import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.FindEmailResponse;
 import nct.auth.mapper.UserAgreementMapper;
+import nct.auth.mapper.UserOauthMapper;
 import nct.auth.util.AgreementValidator;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.global.security.port.LocalSignUpProfile;
+import nct.global.security.port.OAuthProviderParser;
 import nct.global.security.provider.JwtTokenProvider;
 import nct.global.utils.TokenHashUtil;
 import nct.ops.sanction.port.SanctionStatusReader;
@@ -44,6 +48,9 @@ public class AuthService {
     private static final String ROLE_USER = "ROLE_USER";
     private static final String ROLE_SERVICE = "ROLE_SERVICE";
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
+    private static final String SYSTEM_LOGIN_ID_PREFIX = "OAUTH_";
+    private static final String ACCOUNT_TYPE_LOCAL = "LOCAL";
+    private static final String ACCOUNT_TYPE_SOCIAL_ONLY = "SOCIAL_ONLY";
     // @ai_generated: F-AUTH-014 - 마스킹된 로그인ID 앞부분 노출 글자 수(목업 "hong****" 패턴 기준)
     private static final int MASK_VISIBLE_CHARS = 4;
 
@@ -52,6 +59,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final EmailVerificationService emailVerificationService;
     private final UserAgreementMapper userAgreementMapper;
+    private final UserOauthMapper userOauthMapper;
     private final Validator validator;
     private final TokenHashUtil tokenHashUtil;
     private final ProviderApplicationService providerApplicationService;
@@ -133,32 +141,61 @@ public class AuthService {
 
     /**
      * F-AUTH-014: 아이디 찾기
-     * - 이메일+이름이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
-     * - 이메일 불일치·이름 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
+     * - 이메일+가입 닉네임이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
+     * - 이메일 불일치·닉네임 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
      *   (계정 존재 여부 노출 방지 - login()의 INVALID_CREDENTIALS 통일과 동일한 설계).
      */
     @Transactional(readOnly = true)
     public FindEmailResponse findEmail(FindEmailRequest request) {
         String email = normalizeEmail(request.getEmail());
-        String name = requireText(request.getName(), ErrorCode.INVALID_INPUT_VALUE);
+        String nickname = requireText(request.getNickname(), ErrorCode.INVALID_INPUT_VALUE);
 
         AuthMember member = authMemberPort.findByEmail(email).orElse(null);
         boolean matched = member != null
-                && name.equals(member.getName())
+                && nickname.equals(member.getNickname())
                 && STATUS_ACTIVE.equals(member.getStatus());
         if (!matched) {
             throw new CustomException(ErrorCode.USER_NOT_FOUND);
         }
 
+        if (isSystemGeneratedLoginId(member.getLoginId())) {
+            List<String> providers = userOauthMapper.findByUsrSn(member.getId()).stream()
+                    .map(link -> toSupportedProviderKey(link.providerCd()))
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            return FindEmailResponse.builder()
+                                    .accountType(ACCOUNT_TYPE_SOCIAL_ONLY)
+                                    .oauthProviders(providers)
+                                    .build();
+        }
+
         return FindEmailResponse.builder()
+                                .accountType(ACCOUNT_TYPE_LOCAL)
                                 .maskedLoginId(maskLoginId(member.getLoginId()))
+                                .oauthProviders(List.of())
                                 .build();
+    }
+
+    private String toSupportedProviderKey(String providerCd) {
+        if (providerCd == null) {
+            return null;
+        }
+        try {
+            return OAuthProviderParser.providerCdToFriendlyKey(providerCd);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     // @ai_generated: 실제 길이를 노출하지 않도록 앞 N자 뒤에 항상 고정 4개의 '*'를 붙인다(목업 "hong****" 패턴).
     private String maskLoginId(String loginId) {
         int visible = Math.min(MASK_VISIBLE_CHARS, loginId.length());
         return loginId.substring(0, visible) + "****";
+    }
+
+    private boolean isSystemGeneratedLoginId(String loginId) {
+        return loginId != null && loginId.toUpperCase(Locale.ROOT).startsWith(SYSTEM_LOGIN_ID_PREFIX);
     }
 
     /**

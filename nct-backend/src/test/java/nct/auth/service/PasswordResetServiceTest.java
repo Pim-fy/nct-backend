@@ -121,6 +121,19 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void 소셜전용계정은_재설정요청을_조용히_무시하고_메일을_보내지_않는다() {
+        when(authMemberPort.findByLoginId("OAUTH_01JTESTSYSTEMID"))
+                .thenReturn(Optional.of(socialOnlyMember()));
+
+        assertThatCode(() -> passwordResetService.requestReset(
+                resetRequest("OAUTH_01JTESTSYSTEMID", "user@example.com")))
+                .doesNotThrowAnyException();
+
+        verify(emailVerificationMapper, never()).insertPasswordReset(any());
+        verify(emailSender, never()).sendPasswordResetLink(anyString(), anyString());
+    }
+
+    @Test
     void 마지막_발송_1분_이내_재발송은_차단한다() {
         when(authMemberPort.findByLoginId("buyer01")).thenReturn(Optional.of(activeMember()));
         EmailVerification pending = EmailVerification.builder()
@@ -219,6 +232,23 @@ class PasswordResetServiceTest {
         verify(authMemberPort).updateRefreshToken(101L, null);
     }
 
+    @Test
+    void 기존링크가_있어도_소셜전용계정은_확정단계에서_비밀번호변경을_차단한다() {
+        EmailVerification pending = pendingVerification(LocalDateTime.now().plusHours(1));
+        when(emailVerificationMapper.findPasswordResetByTokenHashForUpdate(anyString()))
+                .thenReturn(Optional.of(pending));
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(Optional.of(socialOnlyMember()));
+
+        assertThatThrownBy(() -> passwordResetService.confirmReset(confirmRequest("token")))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND);
+
+        verify(emailVerificationMapper).markExpired(1L);
+        verify(emailVerificationMapper, never()).markVerified(eq(1L), any(LocalDateTime.class));
+        verify(authMemberPort, never()).updatePassword(any(), anyString());
+    }
+
     private EmailVerification pendingVerification(LocalDateTime expiresAt) {
         return EmailVerification.builder()
                 .emlVrfSn(1L)
@@ -231,6 +261,12 @@ class PasswordResetServiceTest {
     private AuthMember activeMember() {
         return AuthMember.builder()
                 .id(101L).loginId("buyer01").email("user@example.com")
+                .name("구매자").nickname("구매자").role("ROLE_USER").status("USRC0001").build();
+    }
+
+    private AuthMember socialOnlyMember() {
+        return AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
                 .name("구매자").nickname("구매자").role("ROLE_USER").status("USRC0001").build();
     }
 

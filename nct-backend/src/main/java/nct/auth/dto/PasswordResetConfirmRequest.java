@@ -1,7 +1,8 @@
 package nct.auth.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
+import nct.global.validation.PasswordPolicy;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,6 +16,6 @@ public class PasswordResetConfirmRequest {
     private String token;
 
     @NotBlank(message = "비밀번호는 필수입니다.")
-    @Size(min = 8, max = 20, message = "비밀번호는 8~20자여야 합니다.")
+    @Pattern(regexp = PasswordPolicy.REGEXP, message = PasswordPolicy.MESSAGE)
     private String newPassword;
 }

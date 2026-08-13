@@ -62,28 +62,25 @@ public class AdminDisputeDecisionService {
         }
         requireOpen(target);
 
-        long refundedAmount = switch (decision) {
+        switch (decision) {
             case HOLD -> {
                 settlementService.holdUpByTradeIfPending(target.getTradeSn(), normalizedReason);
                 disputeCommandPort.keepOnHold(
                         target, decision.getResultCode(), normalizedReason, adminUserSn);
-                yield 0L;
             }
             case COMPLETE -> {
                 disputeCommandPort.restoreAndClose(
                         target, decision.getResultCode(),
                         normalizedReason, adminUserSn);
                 restoreReportEffects(target, adminUserSn);
-                yield 0L;
             }
             case REJECT -> {
                 disputeCommandPort.restoreAndClose(
                         target, null, normalizedReason, adminUserSn);
                 restoreReportEffects(target, adminUserSn);
-                yield 0L;
             }
             case REFUND -> refund(target, decision, normalizedReason, adminUserSn);
-        };
+        }
 
         recordAudit(target, decision, normalizedReason, adminUserSn);
         publishFinalDecisionNotification(target, decision);
@@ -100,7 +97,7 @@ public class AdminDisputeDecisionService {
         }
     }
 
-    private long refund(
+    private void refund(
             AdminTradeDisputeDecisionTarget target,
             AdminDisputeDecision decision,
             String reason,
@@ -109,7 +106,7 @@ public class AdminDisputeDecisionService {
         disputeCommandPort.cancelAndClose(
                 target, decision.getResultCode(), reason, adminUserSn);
         settlementService.closeRefundedByTradeIfOpen(target.getTradeSn(), adminUserSn);
-        return pointService.refundEscrow(
+        pointService.refundEscrow(
                 escrowOwner.userSn(),
                 target.getTradeSn(),
                 escrowOwner.refType(),

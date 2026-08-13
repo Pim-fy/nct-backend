@@ -25,8 +25,6 @@ import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.service.RiskEventService;
-import nct.product.service.ProductService;
-
 class AbuseReportTargetNameEnrichmentTest {
 
     private AbuseReportMapper mapper;

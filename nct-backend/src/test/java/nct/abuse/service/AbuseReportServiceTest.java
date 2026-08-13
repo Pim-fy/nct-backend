@@ -86,11 +86,15 @@ class AbuseReportServiceTest {
         auditLogPort = mock(AuditLogPort.class);
         notificationService = mock(NotificationService.class);
         productService = mock(ProductService.class);
-        productServiceProvider = mock(ObjectProvider.class);
+        productServiceProvider = new ObjectProvider<>() {
+            @Override
+            public ProductService getObject() {
+                return productService;
+            }
+        };
         authMemberPort = mock(AuthMemberPort.class);
         fileStorageService = mock(FileStorageService.class);
         riskEventService = mock(RiskEventService.class);
-        when(productServiceProvider.getObject()).thenReturn(productService);
         when(referenceValidationService.requireValid(any(), any(), any(), any()))
                 .thenAnswer(invocation -> {
                     Long reportedUserSn = invocation.getArgument(1);

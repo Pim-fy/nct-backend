@@ -132,7 +132,8 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
 
         if (AuctionStatusCode.READY.equals(previousStatusCode)
                 || AuctionStatusCode.ACTIVE.equals(previousStatusCode)
-                || AuctionStatusCode.OPERATION_HOLD.equals(previousStatusCode)) {
+                || AuctionStatusCode.OPERATION_HOLD.equals(previousStatusCode)
+                || AuctionStatusCode.ADMIN_PAUSED.equals(previousStatusCode)) {
             cancelActiveAuctionBid(auction, valid.adminUserId(), valid.reason());
         } else if (AuctionStatusCode.ENDED.equals(previousStatusCode)) {
             cancelEndedAuctionTrade(

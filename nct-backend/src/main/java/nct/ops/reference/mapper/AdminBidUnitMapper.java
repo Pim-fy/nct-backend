@@ -31,7 +31,7 @@ public interface AdminBidUnitMapper {
 
     java.math.BigDecimal findMaxSortNoByGroup(@Param("groupCode") String groupCode);
 
-    Integer findMaxCodeSequence(@Param("codePrefix") String codePrefix);
+    Integer findFirstAvailableCodeSequence(@Param("codePrefix") String codePrefix);
 
     int insert(@Param("code") CommonCode code, @Param("actorId") String actorId);
 

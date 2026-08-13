@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
 import nct.auction.port.AdminAuctionCancellationResult;
+import nct.auction.port.AdminAuctionPauseResult;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
@@ -22,6 +23,8 @@ import nct.ops.operation.dto.AdminAuctionListRequest;
 import nct.ops.operation.dto.AdminAuctionPageResponse;
 import nct.ops.operation.dto.AdminAuctionOverviewResponse;
 import nct.ops.operation.dto.AdminOperationReasonRequest;
+import nct.ops.operation.dto.AdminProductVisibilityRequest;
+import nct.ops.operation.dto.AdminProductVisibilityResult;
 import nct.ops.operation.service.AdminAuctionOperationService;
 import nct.ops.operation.service.AdminAuctionQueryService;
 
@@ -51,6 +54,43 @@ public class AdminAuctionQueryController {
             @Valid @RequestBody AdminOperationReasonRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         return ResponseEntity.ok(ApiResponse.success(operationService.forceCancel(
+                auctionSn,
+                request.reason(),
+                request.requestId(),
+                actorId(userDetails))));
+    }
+
+    @PostMapping("/{auctionSn}/product-visibility")
+    public ResponseEntity<ApiResponse<AdminProductVisibilityResult>> changeProductVisibility(
+            @PathVariable(name = "auctionSn") Long auctionSn,
+            @Valid @RequestBody AdminProductVisibilityRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(operationService.changeProductVisibility(
+                auctionSn,
+                request.visible(),
+                request.reason(),
+                request.requestId(),
+                actorId(userDetails))));
+    }
+
+    @PostMapping("/{auctionSn}/pause")
+    public ResponseEntity<ApiResponse<AdminAuctionPauseResult>> pause(
+            @PathVariable(name = "auctionSn") Long auctionSn,
+            @Valid @RequestBody AdminOperationReasonRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(operationService.pause(
+                auctionSn,
+                request.reason(),
+                request.requestId(),
+                actorId(userDetails))));
+    }
+
+    @PostMapping("/{auctionSn}/resume")
+    public ResponseEntity<ApiResponse<AdminAuctionPauseResult>> resume(
+            @PathVariable(name = "auctionSn") Long auctionSn,
+            @Valid @RequestBody AdminOperationReasonRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(operationService.resume(
                 auctionSn,
                 request.reason(),
                 request.requestId(),

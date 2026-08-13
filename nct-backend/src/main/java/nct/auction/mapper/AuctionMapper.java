@@ -130,6 +130,16 @@ public interface AuctionMapper {
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("actor") String actor);
 
+    /** 담당자 7 · F-OPS-003: 진행 중 경매를 관리자 수동 일시중지 상태로 전환합니다. */
+    int pauseAuctionForAdmin(
+            @Param("auctionId") Long auctionId,
+            @Param("actor") String actor);
+
+    /** 관리자 일시중지 시간을 종료시각에 더해 진행 상태로 복구합니다. */
+    int resumeAuctionAfterAdminPause(
+            @Param("auctionId") Long auctionId,
+            @Param("actor") String actor);
+
     int restoreAuctionAfterSanction(
             @Param("auctionId") Long auctionId,
             @Param("statusCode") String statusCode,

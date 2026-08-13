@@ -89,7 +89,7 @@
             <when test="condition.sellerId != null and condition.includeHistory">
               AND a.AUC_STATUS_CD IN (
                   'AUCC0001', 'AUCC0002', 'AUCC0003',
-                  'AUCC0004', 'AUCC0005', 'AUCC0006'
+                  'AUCC0004', 'AUCC0005', 'AUCC0006', 'AUCC9001'
               )
             </when>
             <otherwise>
@@ -425,6 +425,7 @@
         SELECT
             a.AUC_SN AS auctionId,
             p.PRD_SN AS productId,
+            p.PRD_USE_YN AS productUseYn,
             p.USR_SN AS sellerId,
             currentBid.BID_SN AS currentHighestBidId,
             currentBid.USR_SN AS currentHighestBidderId,
@@ -513,7 +514,7 @@
           )
         WHERE (p.USR_SN = #{userSn} OR currentBid.USR_SN = #{userSn})
           AND a.AUC_STATUS_CD IN (
-              'AUCC0001', 'AUCC0002', 'AUCC0003', 'AUCC0006', 'AUCC0013'
+              'AUCC0001', 'AUCC0002', 'AUCC0003', 'AUCC0006', 'AUCC0013', 'AUCC9001'
           )
         ORDER BY a.AUC_SN
         FOR UPDATE
@@ -730,6 +731,34 @@
            AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006')
     </update>
 
+    <update id="pauseAuctionForAdmin">
+        /* 담당자 7 · F-OPS-003: 진행 중 경매만 수동 일시중지합니다. */
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = 'AUCC9001',
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = 'AUCC0002'
+           AND AUC_END_DT > CURRENT_TIMESTAMP
+    </update>
+
+    <update id="resumeAuctionAfterAdminPause">
+        /* 멈춘 시간만큼 종료시각을 연장해 일시중지 직전의 남은 시간을 보존합니다. */
+        UPDATE AUCTION
+           SET AUC_STATUS_CD = 'AUCC0002',
+               AUC_END_DT = DATE_ADD(
+                   AUC_END_DT,
+                   INTERVAL GREATEST(
+                       COALESCE(TIMESTAMPDIFF(SECOND, AUC_UPDT_DT, CURRENT_TIMESTAMP), 0),
+                       1
+                   ) SECOND
+               ),
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE AUC_SN = #{auctionId}
+           AND AUC_STATUS_CD = 'AUCC9001'
+    </update>
+
     <update id="restoreAuctionAfterSanction">
         UPDATE AUCTION
            SET AUC_STATUS_CD = #{statusCode},
@@ -757,7 +786,7 @@
         FROM AUCTION a
         JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
         WHERE p.USR_SN = #{userSn}
-          AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+          AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC9001')
     </select>
 
 </mapper>

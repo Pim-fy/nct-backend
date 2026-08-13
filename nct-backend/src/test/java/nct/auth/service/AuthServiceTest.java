@@ -20,11 +20,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import nct.auth.domain.UserAgreement;
+import nct.auth.domain.UserOauthLinkRow;
 import nct.auth.dto.AgreementRequest;
 import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.LoginRequest;
 import nct.auth.dto.SignUpRequest;
 import nct.auth.mapper.UserAgreementMapper;
+import nct.auth.mapper.UserOauthMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.port.AuthMember;
@@ -53,6 +55,8 @@ class AuthServiceTest {
     @Mock
     private UserAgreementMapper userAgreementMapper;
     @Mock
+    private UserOauthMapper userOauthMapper;
+    @Mock
     private TokenHashUtil tokenHashUtil;
     @Mock
     private ProviderApplicationService providerApplicationService;
@@ -72,6 +76,7 @@ class AuthServiceTest {
                 jwtTokenProvider,
                 emailVerificationService,
                 userAgreementMapper,
+                userOauthMapper,
                 Validation.buildDefaultValidatorFactory().getValidator(),
                 tokenHashUtil,
                 providerApplicationService,
@@ -577,7 +582,75 @@ class AuthServiceTest {
 
         var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
 
+        assertThat(response.getAccountType()).isEqualTo("LOCAL");
         assertThat(response.getMaskedLoginId()).isEqualTo("hong****");
+        assertThat(response.getOauthProviders()).isEmpty();
+    }
+
+    @Test
+    void 소셜전용계정은_시스템아이디를_숨기고_연결된_제공자를_모두_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+        when(userOauthMapper.findByUsrSn(101L)).thenReturn(List.of(
+                new UserOauthLinkRow("USRC0004", java.time.LocalDateTime.now()),
+                new UserOauthLinkRow("USRC0005", java.time.LocalDateTime.now())));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("SOCIAL_ONLY");
+        assertThat(response.getMaskedLoginId()).isNull();
+        assertThat(response.getOauthProviders()).containsExactly("kakao", "naver");
+    }
+
+    @Test
+    void 소셜전용계정의_미지원_제공자코드는_제외하고_지원_제공자만_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+        when(userOauthMapper.findByUsrSn(101L)).thenReturn(List.of(
+                new UserOauthLinkRow("USRC9999", java.time.LocalDateTime.now()),
+                new UserOauthLinkRow("USRC0006", java.time.LocalDateTime.now())));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("SOCIAL_ONLY");
+        assertThat(response.getMaskedLoginId()).isNull();
+        assertThat(response.getOauthProviders()).containsExactly("google");
+    }
+
+    @Test
+    void 소셜전용계정의_제공자코드가_null이거나_모두_미지원이면_빈목록을_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("OAUTH_01JTESTSYSTEMID").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+        when(userOauthMapper.findByUsrSn(101L)).thenReturn(List.of(
+                new UserOauthLinkRow(null, java.time.LocalDateTime.now()),
+                new UserOauthLinkRow("USRC9999", java.time.LocalDateTime.now())));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("SOCIAL_ONLY");
+        assertThat(response.getMaskedLoginId()).isNull();
+        assertThat(response.getOauthProviders()).isEmpty();
+    }
+
+    @Test
+    void 로컬계정에_소셜이_연동돼도_로컬아이디만_반환한다() {
+        AuthMember member = AuthMember.builder()
+                .id(101L).loginId("honggildong").email("user@example.com")
+                .name("홍길동").nickname("홍길동").role("ROLE_USER").status("USRC0001").build();
+        when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
+
+        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+
+        assertThat(response.getAccountType()).isEqualTo("LOCAL");
+        assertThat(response.getMaskedLoginId()).isEqualTo("hong****");
+        assertThat(response.getOauthProviders()).isEmpty();
+        verify(userOauthMapper, never()).findByUsrSn(any());
     }
 
     @Test

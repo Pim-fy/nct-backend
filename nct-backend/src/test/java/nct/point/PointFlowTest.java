@@ -178,7 +178,9 @@ class PointFlowTest {
         settlementService.complete(stlmSn, TEST_ADMIN_USR_SN);
 
         PointBalance sellerBal = pointService.getBalance(sellerSn);
-        assertThat(sellerBal.getSettleableAmt()).isEqualTo(30000);
+        // 경매 수수료 5% 도입(팀 합의 2026-08-13) — 전액 적립(+30,000) 후 수수료(−1,500) 짝 기록
+        // ⚠️ 실DB CMM_CODE에 PTLC0014 등록 전에는 FK 위반으로 실패한다
+        assertThat(sellerBal.getSettleableAmt()).isEqualTo(28500);
         assertThat(settlementService.getListByUser(sellerSn))
                 .singleElement()
                 .satisfies(s -> assertThat(s.getStlmStatusCd()).isEqualTo(SettlementStatus.COMPLETED.getCode()));
@@ -200,7 +202,8 @@ class PointFlowTest {
 
         settlementService.resume(stlmSn);
         settlementService.complete(stlmSn, TEST_ADMIN_USR_SN);
-        assertThat(pointService.getBalance(sellerSn).getSettleableAmt()).isEqualTo(30000);
+        // 경매 수수료 5% 반영 — 30,000 − 1,500 = 28,500 (팀 합의 2026-08-13)
+        assertThat(pointService.getBalance(sellerSn).getSettleableAmt()).isEqualTo(28500);
     }
 
     // ---------- 픽스처 ----------

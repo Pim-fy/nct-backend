@@ -90,10 +90,12 @@ class TradeAutoCompletionFlowTest {
         // + 거래 자동 완료(notifyTradeComplete). 예전엔 4건이었으나 알림 흐름이 정리되며 3건으로
         // 줄었는데 이 기댓값만 갱신이 안 되어 있었다.
         assertThat(notificationService.getUnreadCount(sellerUserId)).isEqualTo(3);
+        // 경매 수수료 5% 도입(팀 합의 2026-08-13) — 전액 적립(+10,000) 후 수수료(−500)가 짝으로
+        // 남아 정산가능 합계는 9,500P. ⚠️ 실DB CMM_CODE에 PTLC0014 등록 전에는 FK 위반으로 실패한다
         assertThat(jdbc.queryForObject(
                 "SELECT COALESCE(SUM(PT_LDG_AMT), 0) FROM POINT_LEDGER WHERE USR_SN = ? AND PT_LDG_PT_TYPE_CD = 'PTLC0003'",
                 Long.class,
-                sellerUserId)).isEqualTo(10_000L);
+                sellerUserId)).isEqualTo(9_500L);
     }
 
     private long insertUser(String prefix) {

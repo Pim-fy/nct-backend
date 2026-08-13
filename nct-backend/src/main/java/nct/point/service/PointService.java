@@ -168,12 +168,12 @@ public class PointService {
      * 묶은 creditEscrowToSettleable로 대체됐다(SettlementService 참조). 다만 환전 주문 테스트
      * (PointExchangeOrderTest)가 정산가능 잔액을 시딩하는 용도로 쓰고 있어 유지한다 (2026-08-05 점검 정정).
      *
-     * 수수료 정책 (F-PAY-008/009):
-     * - MVP 거래 수수료는 0원 — 그래서 거래대금 "전액"이 그대로 적립되며, 이게 빠뜨린 게 아니라
-     *   의도된 동작임을 원장 사유에 "(수수료 0원)"으로 명시해 기록한다.
-     * - 향후 수수료를 도입할 때의 확장 지점: 원장유형 공통코드(PTLG02)에 '수수료' 유형을 추가하고
-     *   여기서 적립(+전액)과 수수료 차감(-수수료) 두 행을 짝으로 기록하면 된다. 요율은 이미
-     *   SYSTEM_SETTING.SYS_SET_SVC_FEE_RATE(관리자 시스템 설정 화면)에서 관리되고 있다.
+     * 수수료 정책 (F-PAY-008/009, 팀 합의 2026-08-13 개정):
+     * - 거래 수수료는 거래유형별 단일 고정 — 경매 5%, 서비스 10%. 요율 판단은 거래유형을 아는
+     *   SettlementService가 하고, 여기(포인트)는 적립(+전액)과 수수료 차감(-수수료, FEE 유형)
+     *   두 행을 짝으로 기록하는 구조다(deductCommission 참조).
+     * - 이 메서드(creditSettleable)는 실서비스 호출부가 없어 수수료 로직을 태우지 않는다 —
+     *   테스트 시딩 용도 그대로 유지.
      */
     @Transactional
     public void creditSettleable(long usrSn, long amt, RefType refType, long refSn, String reason) {
@@ -371,7 +371,7 @@ public class PointService {
      * @param tradeSn    분쟁 조회 기준 거래일련번호
      * @param refType    보관금을 만들 때 쓴 참조 유형 (물건 거래는 BID, 서비스 거래는 TRADE)
      * @param refSn      참조 일련번호 (물건 거래는 bidSn, 서비스 거래는 tradeSn과 같은 값)
-     * @return 적립된 금액 (보관금 전액 — 수수료 0원 정책)
+     * @return 적립된 금액 (보관금 전액 — 수수료 차감은 호출자가 deductCommission으로 별도 기록)
      */
     @Transactional
     public long creditEscrowToSettleable(long providerSn, long tradeSn, RefType refType, long refSn, String reason) {
@@ -398,13 +398,37 @@ public class PointService {
 
         long amt = -escrowNet; // 보관금 잔존액 = 적립할 금액 (호출자가 금액을 잘못 넘길 여지 자체를 없앤다)
         PointBalance bal = pointMapper.selectBalance(providerSn);
-        // 수수료 0원 정책(F-PAY-008/009) — creditSettleable과 같은 명시 규칙으로 기록
+        // 적립은 전액(+) 기록 — 수수료는 호출자(SettlementService)가 요율을 정해 deductCommission으로
+        // 별도 −행을 짝으로 남긴다 (팀 합의 2026-08-13: 경매 5% / 서비스 10% 단일 고정)
         insertLedger(providerSn, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
-                bal.getSettleableAmt() + amt, refType, refSn, reason + " (수수료 0원)");
+                bal.getSettleableAmt() + amt, refType, refSn, reason);
 
         // 같은 트랜잭션 안에서 알림까지 기록 — 정산대금을 받는 쪽(제공자 업무)이라 PROVIDER 구분
         notificationService.notifyEscrowSettled(providerSn, amt, refType, refSn);
         return amt;
+    }
+
+    /**
+     * 거래 수수료 차감 (팀 합의 2026-08-13 — 경매 5% / 서비스 10% 단일 고정).
+     * 정산 적립(+전액, 위 creditEscrowToSettleable) 직후 같은 트랜잭션에서 호출되어
+     * 정산가능 버킷에 −수수료 단식 1행(FEE 유형)을 짝으로 남긴다 — 원장만 봐도
+     * "전액 적립 후 수수료가 얼마 빠졌는지"가 그대로 드러나는 구조다.
+     *
+     * 요율 계산은 거래유형(경매/서비스)을 아는 호출자(SettlementService)의 책임이고,
+     * 여기서는 이미 계산된 수수료 금액만 받아 기록한다.
+     *
+     * @param feeAmt 차감할 수수료 금액 — 0 이하면 기록 없이 반환 (소액 정산은 반올림상 0원이 될 수 있음)
+     */
+    @Transactional
+    public void deductCommission(long usrSn, long feeAmt, RefType refType, long refSn, String reason) {
+        if (feeAmt <= 0) {
+            return;
+        }
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.FEE, -feeAmt,
+                bal.getSettleableAmt() - feeAmt, refType, refSn, reason);
     }
 
     /**

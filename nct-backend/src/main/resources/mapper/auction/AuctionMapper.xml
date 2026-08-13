@@ -116,7 +116,14 @@
                     )
                   </when>
                   <otherwise>
-                    AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0003')
+                    <choose>
+                      <when test="condition.keyword != null">
+                        AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0003')
+                      </when>
+                      <otherwise>
+                        AND a.AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002')
+                      </otherwise>
+                    </choose>
                   </otherwise>
               </choose>
               AND (
@@ -153,31 +160,32 @@
             thumb.THUMBNAIL_PATH AS thumbnailPath
         <include refid="auctionListFrom"/>
         <include refid="auctionListWhere"/>
+        ORDER BY
+        <if test="condition.keyword != null">
+            CASE WHEN a.AUC_STATUS_CD = 'AUCC0003' THEN 1 ELSE 0 END ASC,
+        </if>
         <choose>
             <when test="condition.sort == 'priceAsc'">
-                ORDER BY a.AUC_CUR_AMT ASC, a.AUC_END_DT ASC
+                a.AUC_CUR_AMT ASC, a.AUC_END_DT ASC
             </when>
             <when test="condition.sort == 'bidsDesc'">
-                ORDER BY COALESCE(bid.BID_COUNT, 0) DESC, a.AUC_END_DT ASC
+                COALESCE(bid.BID_COUNT, 0) DESC, a.AUC_END_DT ASC
             </when>
             <when test="condition.sort == 'favoritesDesc'">
-                ORDER BY COALESCE(favorite.FAVORITE_COUNT, 0) DESC, a.AUC_SN DESC
+                COALESCE(favorite.FAVORITE_COUNT, 0) DESC, a.AUC_SN DESC
             </when>
             <when test="condition.sort == 'popular'">
-                ORDER BY
-                    (COALESCE(favorite.FAVORITE_COUNT, 0) * 100)
+                (COALESCE(favorite.FAVORITE_COUNT, 0) * 100)
                         + COALESCE(p.PRD_VIEW_CNT, 0) DESC,
                     COALESCE(favorite.FAVORITE_COUNT, 0) DESC,
                     COALESCE(p.PRD_VIEW_CNT, 0) DESC,
                     a.AUC_SN DESC
             </when>
             <when test="condition.sort == 'latest'">
-                ORDER BY a.AUC_REG_DT DESC, a.AUC_SN DESC
+                a.AUC_REG_DT DESC, a.AUC_SN DESC
             </when>
             <otherwise>
-                ORDER BY
-                    CASE WHEN a.AUC_STATUS_CD = 'AUCC0003' THEN 1 ELSE 0 END ASC,
-                    CASE WHEN a.AUC_STATUS_CD != 'AUCC0003' THEN a.AUC_END_DT END ASC,
+                CASE WHEN a.AUC_STATUS_CD != 'AUCC0003' THEN a.AUC_END_DT END ASC,
                     CASE WHEN a.AUC_STATUS_CD = 'AUCC0003' THEN a.AUC_END_DT END DESC,
                     a.AUC_SN DESC
             </otherwise>

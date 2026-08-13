@@ -3,6 +3,7 @@ package nct.servicerequest.service;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -21,7 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import nct.file.service.FileStorageService;
 import nct.global.exception.CustomException;
+import nct.notification.service.NotificationService;
 import nct.product.mapper.BannedKeywordMapper;
+import nct.quote.mapper.QuoteMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.dto.AdminServiceRequestListItem;
 import nct.servicerequest.dto.AdminServiceRequestSearchCondition;
@@ -53,6 +56,10 @@ class ServiceRequestServiceTest {
     private ApplicationEventPublisher eventPublisher;
     @Mock
     private BannedKeywordMapper bannedKeywordMapper;
+    @Mock
+    private QuoteMapper quoteMapper;
+    @Mock
+    private NotificationService notificationService;
 
     private ServiceRequestService service;
 
@@ -66,7 +73,9 @@ class ServiceRequestServiceTest {
                 formService,
                 fileStorageService,
                 eventPublisher,
-                bannedKeywordMapper);
+                bannedKeywordMapper,
+                quoteMapper,
+                notificationService);
     }
 
     @Test
@@ -483,6 +492,43 @@ class ServiceRequestServiceTest {
         assertThatThrownBy(() -> service.addComment(31L, 7L, req))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining("금지어");
+    }
+
+    @Test
+    void notifiesActiveQuoteProvidersWhenManuallyClosed() {
+        ServiceRequest open = ServiceRequest.builder()
+                .svcReqSn(31L)
+                .usrSn(7L)
+                .svcReqStatusCd("SVCC0002")
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityById(31L)).thenReturn(Optional.of(open));
+        when(serviceRequestMapper.closeServiceRequest(31L, 7L, "7")).thenReturn(1);
+        when(quoteMapper.findActiveQuoteProvidersBySvcReqSn(31L)).thenReturn(List.of(101L, 102L));
+
+        service.closeServiceRequest(31L, 7L);
+
+        verify(notificationService).notifyServiceRequestClosed(101L, 31L);
+        verify(notificationService).notifyServiceRequestClosed(102L, 31L);
+    }
+
+    @Test
+    void notifiesActiveQuoteProvidersWhenAutoClosed() {
+        when(serviceRequestMapper.autoCloseServiceRequest(31L)).thenReturn(1);
+        when(quoteMapper.findActiveQuoteProvidersBySvcReqSn(31L)).thenReturn(List.of(101L));
+
+        service.autoCloseExpiredServiceRequest(31L);
+
+        verify(notificationService).notifyServiceRequestClosed(101L, 31L);
+    }
+
+    @Test
+    void skipsNotificationWhenAutoCloseAffectsNoRows() {
+        when(serviceRequestMapper.autoCloseServiceRequest(31L)).thenReturn(0);
+
+        service.autoCloseExpiredServiceRequest(31L);
+
+        verify(notificationService, never()).notifyServiceRequestClosed(anyLong(), anyLong());
+        verify(quoteMapper, never()).findActiveQuoteProvidersBySvcReqSn(any());
     }
 
     private ServiceRequest draft(Long svcReqSn, Long catSn, Long formTemplateSn) {

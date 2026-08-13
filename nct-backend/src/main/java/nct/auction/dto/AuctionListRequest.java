@@ -21,7 +21,7 @@ public class AuctionListRequest {
     private Long sellerId;
     private boolean includeHistory;
     private String tradeMethod = "all";
-    private String sort = "deadline";
+    private String sort = "latest";
     private int page = 1;
     private int size = 12;
 

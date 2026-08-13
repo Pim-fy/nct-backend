@@ -132,6 +132,17 @@ class AuctionServiceListFilterTest {
     }
 
     @Test
+    void defaultsToLatestSortWhenSortIsBlank() {
+        when(auctionMapper.countAuctions(any())).thenReturn(0L);
+        AuctionListRequest request = new AuctionListRequest();
+        request.setSort("  ");
+
+        auctionService.findAuctions(request);
+
+        assertThat(request.getSort()).isEqualTo("latest");
+    }
+
+    @Test
     void keepsFavoriteCountSortForMapper() {
         when(auctionMapper.countAuctions(any())).thenReturn(0L);
         AuctionListRequest request = new AuctionListRequest();

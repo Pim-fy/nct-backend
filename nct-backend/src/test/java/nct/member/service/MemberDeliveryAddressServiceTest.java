@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -110,15 +111,15 @@ class MemberDeliveryAddressServiceTest {
     }
 
     @Test
-    void deletingDefaultPromotesNextActiveAddress() {
+    void deletingDefaultAddressIsRejected() {
         when(memberMapper.findMemberByIdForUpdate(10L)).thenReturn(Optional.of(member()));
         when(deliveryAddressMapper.findOwnedActiveById(10L, 101L)).thenReturn(address("Y"));
-        when(deliveryAddressMapper.softDelete(10L, 101L, "10")).thenReturn(1);
-        when(deliveryAddressMapper.findFirstActiveId(10L)).thenReturn(102L);
 
-        service.delete(10L, 101L);
+        assertThatThrownBy(() -> service.delete(10L, 101L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("기본 배송지는 삭제할 수 없습니다");
 
-        verify(deliveryAddressMapper).setDefault(10L, 102L, "10");
+        verify(deliveryAddressMapper, never()).softDelete(10L, 101L, "10");
     }
 
     private Member member() {

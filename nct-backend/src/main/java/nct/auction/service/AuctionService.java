@@ -801,7 +801,7 @@ public class AuctionService {
         }
 
         request.setKeyword(blankToNull(request.getKeyword()));
-        request.setSort(blankToDefault(request.getSort(), "deadline"));
+        request.setSort(blankToDefault(request.getSort(), "latest"));
         request.setTradeMethod(blankToDefault(request.getTradeMethod(), "all"));
         request.setTradeMethodCodes(resolveTradeMethodCodes(request.getTradeMethod()));
 

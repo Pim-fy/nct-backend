@@ -433,12 +433,19 @@ public class NotificationService {
                 RefType.SERVICE_REQUEST, requestId);
     }
 
-    /** 견적 선택됨 — 견적 제출한 제공자에게, 서비스 매칭 담당(5, 2단계)이 호출 */
-    public void notifyQuoteSelected(long usrSn, long quoteId) {
+    /**
+     * 견적 선택됨 — 견적 제출한 제공자에게, 견적 선택·거래 생성 트랜잭션이 거래 생성 후 호출.
+     *
+     * 참조를 견적이 아니라 생성된 서비스 거래로 저장한다 (2026-08-13 이동 버튼 누락 수정) —
+     * 견적 상세 경로는 요청번호+견적번호 두 값이 필요해 알림 참조 한 쌍(quoteId)만으로는 이동
+     * 화면을 만들 수 없었고, 선택 이후 제공자가 실제로 움직일 화면도 거래 상세다(낙찰 알림의
+     * 거래 참조 전환과 같은 원칙). 본문에 견적 금액을 넣어 어떤 견적인지 식별할 수 있게 한다.
+     */
+    public void notifyQuoteSelected(long usrSn, long serviceTradeId, long quoteAmount) {
         notifyForEvent(usrSn, NotificationEvent.QUOTE_SELECTED, NotificationAudience.PROVIDER,
                 "견적이 선택되었습니다",
-                "제출하신 견적이 선택되었습니다.",
-                RefType.QUOTE, quoteId);
+                String.format("제출하신 견적(%,dP)이 선택되어 거래가 시작되었습니다.", quoteAmount),
+                RefType.TRADE, serviceTradeId);
     }
 
     /** 서비스 요청 마감 — 견적을 제출했으나 선택되지 않은 제공자에게, 서비스 요청 담당(2)이 호출 */

@@ -616,7 +616,9 @@ public class QuoteService implements QuoteSelectionPort, SelectedServiceQuoteRea
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
         quoteMapper.withdrawCompetingQuotes(svcReqSn, quoteId, actorId);
-        notificationService.notifyQuoteSelected(quote.getUsrSn(), quoteId);
+        // 선택 알림은 여기서 발행하지 않는다 — 이 시점엔 거래가 아직 생성되지 않아 알림에 이동
+        // 가능한 참조(거래번호)를 달 수 없다. 거래 생성까지 끝난 뒤 호출자(견적 선택 트랜잭션)가
+        // 거래 참조로 발행한다 (담당자6 BJN, 2026-08-13 — 알림 이동 버튼 누락 수정)
 
         return new SelectedQuoteResult(quote.getQutSn(), quote.getUsrSn(), quote.getQutAmt());
     }

@@ -18,6 +18,7 @@ import org.mockito.InOrder;
 
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.provider.service.ActiveProviderGuard;
 import nct.quote.port.QuoteSelectionPort;
 import nct.quote.port.QuoteSelectionPort.SelectedQuoteResult;
@@ -35,11 +36,13 @@ class ServiceRequestQuoteSelectionServiceTest {
         QuoteSelectionPort quoteSelectionPort = mock(QuoteSelectionPort.class);
         ActiveProviderGuard activeProviderGuard = mock(ActiveProviderGuard.class);
         ServiceTradeCreationCoordinator tradeCreationCoordinator = mock(ServiceTradeCreationCoordinator.class);
+        NotificationService notificationService = mock(NotificationService.class);
         ServiceRequestQuoteSelectionService service = new ServiceRequestQuoteSelectionService(
                 requestMapper,
                 quoteSelectionPort,
                 activeProviderGuard,
-                tradeCreationCoordinator);
+                tradeCreationCoordinator,
+                notificationService);
         ServiceRequest request = ServiceRequest.builder()
                 .svcReqSn(31L)
                 .usrSn(11L)
@@ -58,11 +61,15 @@ class ServiceRequestQuoteSelectionServiceTest {
         ServiceRequestQuoteSelectionResponse result = service.selectQuoteAndCreateTrade(31L, 41L, 11L);
 
         assertThat(result.tradeId()).isEqualTo(91L);
-        InOrder order = inOrder(quoteSelectionPort, activeProviderGuard, requestMapper, tradeCreationCoordinator);
+        InOrder order = inOrder(
+                quoteSelectionPort, activeProviderGuard, requestMapper,
+                tradeCreationCoordinator, notificationService);
         order.verify(quoteSelectionPort).selectQuote(41L, 31L, 11L);
         order.verify(activeProviderGuard).requireActiveForCategory(22L, 7L);
         order.verify(requestMapper).markServiceRequestMatched(31L, 11L, "11");
         order.verify(tradeCreationCoordinator).create(11L, 31L, 41L);
+        // 견적 선택 알림은 거래 생성 뒤 생성된 거래번호·견적금액으로 발행된다 (2026-08-13 이동 버튼 수정)
+        order.verify(notificationService).notifyQuoteSelected(22L, 91L, 150000L);
     }
 
     @Test
@@ -71,11 +78,13 @@ class ServiceRequestQuoteSelectionServiceTest {
         QuoteSelectionPort quoteSelectionPort = mock(QuoteSelectionPort.class);
         ActiveProviderGuard activeProviderGuard = mock(ActiveProviderGuard.class);
         ServiceTradeCreationCoordinator tradeCreationCoordinator = mock(ServiceTradeCreationCoordinator.class);
+        NotificationService notificationService = mock(NotificationService.class);
         ServiceRequestQuoteSelectionService service = new ServiceRequestQuoteSelectionService(
                 requestMapper,
                 quoteSelectionPort,
                 activeProviderGuard,
-                tradeCreationCoordinator);
+                tradeCreationCoordinator,
+                notificationService);
         ServiceRequest request = ServiceRequest.builder()
                 .svcReqSn(31L)
                 .usrSn(11L)
@@ -94,6 +103,8 @@ class ServiceRequestQuoteSelectionServiceTest {
         verify(activeProviderGuard, never()).requireActiveForCategory(any(), any());
         verify(requestMapper, never()).markServiceRequestMatched(any(), any(), any());
         verify(tradeCreationCoordinator).create(11L, 31L, 41L);
+        // 매칭 완료 재호출(멱등 경로)에서는 선택 알림을 다시 보내지 않는다
+        verify(notificationService, never()).notifyQuoteSelected(anyLong(), anyLong(), anyLong());
     }
 
     // 잔액부족: 요청서는 이미 매칭완료로 전이된 뒤 담당자6 보관금 계약(코디네이터 내부)이
@@ -106,11 +117,13 @@ class ServiceRequestQuoteSelectionServiceTest {
         QuoteSelectionPort quoteSelectionPort = mock(QuoteSelectionPort.class);
         ActiveProviderGuard activeProviderGuard = mock(ActiveProviderGuard.class);
         ServiceTradeCreationCoordinator tradeCreationCoordinator = mock(ServiceTradeCreationCoordinator.class);
+        NotificationService notificationService = mock(NotificationService.class);
         ServiceRequestQuoteSelectionService service = new ServiceRequestQuoteSelectionService(
                 requestMapper,
                 quoteSelectionPort,
                 activeProviderGuard,
-                tradeCreationCoordinator);
+                tradeCreationCoordinator,
+                notificationService);
         ServiceRequest request = ServiceRequest.builder()
                 .svcReqSn(31L)
                 .usrSn(11L)
@@ -135,6 +148,8 @@ class ServiceRequestQuoteSelectionServiceTest {
         order.verify(quoteSelectionPort).selectQuote(41L, 31L, 11L);
         order.verify(requestMapper).markServiceRequestMatched(31L, 11L, "11");
         order.verify(tradeCreationCoordinator).create(11L, 31L, 41L);
+        // 거래 생성이 실패하면 선택 알림도 발행되지 않는다 (알림이 거래 생성 뒤로 이동했기 때문)
+        verify(notificationService, never()).notifyQuoteSelected(anyLong(), anyLong(), anyLong());
     }
 
     // 부분실패: 견적 잠금(selectQuote)까지는 성공했지만, 그 사이 동시 요청으로 서비스 요청서
@@ -146,11 +161,13 @@ class ServiceRequestQuoteSelectionServiceTest {
         QuoteSelectionPort quoteSelectionPort = mock(QuoteSelectionPort.class);
         ActiveProviderGuard activeProviderGuard = mock(ActiveProviderGuard.class);
         ServiceTradeCreationCoordinator tradeCreationCoordinator = mock(ServiceTradeCreationCoordinator.class);
+        NotificationService notificationService = mock(NotificationService.class);
         ServiceRequestQuoteSelectionService service = new ServiceRequestQuoteSelectionService(
                 requestMapper,
                 quoteSelectionPort,
                 activeProviderGuard,
-                tradeCreationCoordinator);
+                tradeCreationCoordinator,
+                notificationService);
         ServiceRequest request = ServiceRequest.builder()
                 .svcReqSn(31L)
                 .usrSn(11L)

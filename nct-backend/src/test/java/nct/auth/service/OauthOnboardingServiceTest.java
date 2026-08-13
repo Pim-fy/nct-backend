@@ -55,6 +55,7 @@ class OauthOnboardingServiceTest {
         OauthOnboardingRequest request = validRequest();
         request.setTelno(" 01012345678 ");
         request.setAddress(" 서울특별시 종로구 세종대로 1 ");
+        request.setZip("03154");
         request.setDetailAddress(" 101동 1001호 ");
         request.setBankName(" 에누리은행 ");
         request.setAccountNo(" 123-456-789 ");
@@ -73,6 +74,7 @@ class OauthOnboardingServiceTest {
         assertThat(profile.getProviderKey()).isEqualTo("provider-user-1");
         assertThat(profile.getTelno()).isEqualTo("01012345678");
         assertThat(profile.getAddress()).isEqualTo("서울특별시 종로구 세종대로 1");
+        assertThat(profile.getZip()).isEqualTo("03154");
         assertThat(profile.getDetailAddress()).isEqualTo("101동 1001호");
         assertThat(profile.getBankName()).isEqualTo("에누리은행");
         assertThat(profile.getAccountNo()).isEqualTo("123-456-789");

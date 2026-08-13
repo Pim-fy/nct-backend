@@ -113,7 +113,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    /** F-AUTH-014: 아이디 찾기 - 이메일+이름 불일치·탈퇴·정지·미가입 전부 동일한 실패 응답 */
+    /** F-AUTH-014: 아이디 찾기 - 이메일+닉네임 불일치·탈퇴·정지·미가입 전부 동일한 실패 응답 */
     @PostMapping("/find-email")
     public ResponseEntity<ApiResponse<FindEmailResponse>> findEmail(
             @Valid @RequestBody FindEmailRequest request) {

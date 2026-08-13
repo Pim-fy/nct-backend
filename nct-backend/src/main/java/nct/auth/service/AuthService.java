@@ -141,18 +141,18 @@ public class AuthService {
 
     /**
      * F-AUTH-014: 아이디 찾기
-     * - 이메일+이름이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
-     * - 이메일 불일치·이름 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
+     * - 이메일+가입 닉네임이 모두 일치하고 활성 상태인 계정만 성공으로 처리한다.
+     * - 이메일 불일치·닉네임 불일치·정지·탈퇴·미가입을 구분하지 않고 전부 동일한 USER_NOT_FOUND로 응답한다
      *   (계정 존재 여부 노출 방지 - login()의 INVALID_CREDENTIALS 통일과 동일한 설계).
      */
     @Transactional(readOnly = true)
     public FindEmailResponse findEmail(FindEmailRequest request) {
         String email = normalizeEmail(request.getEmail());
-        String name = requireText(request.getName(), ErrorCode.INVALID_INPUT_VALUE);
+        String nickname = requireText(request.getNickname(), ErrorCode.INVALID_INPUT_VALUE);
 
         AuthMember member = authMemberPort.findByEmail(email).orElse(null);
         boolean matched = member != null
-                && name.equals(member.getName())
+                && nickname.equals(member.getNickname())
                 && STATUS_ACTIVE.equals(member.getStatus());
         if (!matched) {
             throw new CustomException(ErrorCode.USER_NOT_FOUND);

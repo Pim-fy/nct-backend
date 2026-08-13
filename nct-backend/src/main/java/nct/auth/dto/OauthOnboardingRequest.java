@@ -31,6 +31,9 @@ public class OauthOnboardingRequest {
     @Size(max = 200, message = "상세주소는 200자 이하여야 합니다.")
     private String detailAddress;
 
+    @Pattern(regexp = "^$|^\\d{5}$", message = "우편번호는 5자리 숫자여야 합니다.")
+    private String zip;
+
     @Size(max = 100, message = "은행명은 100자 이하여야 합니다.")
     private String bankName;
 

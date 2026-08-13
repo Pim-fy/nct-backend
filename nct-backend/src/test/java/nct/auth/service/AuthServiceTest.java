@@ -574,13 +574,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void 이메일과_이름이_모두_일치하는_활성계정은_마스킹된_아이디를_반환한다() {
+    void 이메일과_닉네임이_모두_일치하는_활성계정은_마스킹된_아이디를_반환한다() {
         AuthMember member = AuthMember.builder()
                 .id(101L).loginId("honggildong").email("user@example.com")
                 .name("홍길동").nickname("구매자").role("ROLE_USER").status("USRC0001").build();
         when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
 
-        var response = authService.findEmail(findEmailRequest("user@example.com", "홍길동"));
+        var response = authService.findEmail(findEmailRequest("user@example.com", "구매자"));
 
         assertThat(response.getAccountType()).isEqualTo("LOCAL");
         assertThat(response.getMaskedLoginId()).isEqualTo("hong****");
@@ -654,7 +654,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void 이름이_일치하지_않으면_계정이_있어도_USER_NOT_FOUND로_통일한다() {
+    void 닉네임이_일치하지_않으면_계정이_있어도_USER_NOT_FOUND로_통일한다() {
         AuthMember member = AuthMember.builder()
                 .id(101L).loginId("honggildong").email("user@example.com")
                 .name("홍길동").nickname("구매자").role("ROLE_USER").status("USRC0001").build();
@@ -667,13 +667,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void 정지된_계정은_이름이_일치해도_USER_NOT_FOUND로_통일한다() {
+    void 정지된_계정은_닉네임이_일치해도_USER_NOT_FOUND로_통일한다() {
         AuthMember member = AuthMember.builder()
                 .id(101L).loginId("honggildong").email("user@example.com")
                 .name("홍길동").nickname("구매자").role("ROLE_USER").status("USRC0002").build();
         when(authMemberPort.findByEmail("user@example.com")).thenReturn(java.util.Optional.of(member));
 
-        assertThatThrownBy(() -> authService.findEmail(findEmailRequest("user@example.com", "홍길동")))
+        assertThatThrownBy(() -> authService.findEmail(findEmailRequest("user@example.com", "구매자")))
                 .isInstanceOf(CustomException.class)
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.USER_NOT_FOUND);
@@ -689,10 +689,10 @@ class AuthServiceTest {
                 .isEqualTo(ErrorCode.USER_NOT_FOUND);
     }
 
-    private FindEmailRequest findEmailRequest(String email, String name) {
+    private FindEmailRequest findEmailRequest(String email, String nickname) {
         FindEmailRequest request = new FindEmailRequest();
         request.setEmail(email);
-        request.setName(name);
+        request.setNickname(nickname);
         return request;
     }
 

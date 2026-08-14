@@ -1,7 +1,6 @@
 package nct.servicerequest.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -558,18 +557,6 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         for (Long providerUsrSn : quoteMapper.findActiveQuoteProvidersBySvcReqSn(svcReqSn)) {
             notificationService.notifyServiceRequestClosed(providerUsrSn, svcReqSn);
         }
-    }
-
-    /** 마감 후 1일 경과 요청서 조회 (자동 삭제 배치 전용) */
-    @Transactional(readOnly = true)
-    public List<Long> findExpiredClosedServiceRequestIds(LocalDateTime cutoff, int limit) {
-        return serviceRequestMapper.findExpiredClosedServiceRequestIds(cutoff, limit);
-    }
-
-    /** 마감 후 1일 경과 요청서 자동 삭제 — ServiceRequestClosedAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
-    @Transactional
-    public void deleteExpiredClosedServiceRequest(Long svcReqSn) {
-        serviceRequestMapper.deleteExpiredClosedServiceRequest(svcReqSn);
     }
 
     // 마감(SVCC0004)된 요청서 재등록 — 원본은 이력으로 그대로 남기고, 내용을 복사한 새 요청서(임시저장)를

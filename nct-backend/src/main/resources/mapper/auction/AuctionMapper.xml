@@ -739,6 +739,15 @@
           AND AUC_STATUS_CD = #{expectedStatusCode}
     </update>
 
+    <update id="extendAuctionEndDateTime">
+        /* AuctionMapper.extendAuctionEndDateTime */
+        UPDATE AUCTION
+           SET AUC_END_DT = #{newEndDateTime},
+               AUC_UPDT_ID = #{actor},
+               AUC_UPDT_DT = NOW()
+         WHERE AUC_SN = #{auctionId}
+    </update>
+
     <update id="pauseAuctionForSanction">
         UPDATE AUCTION
            SET AUC_STATUS_CD = 'AUCC0013',

@@ -77,6 +77,27 @@ class AuctionCancellationServiceTest {
     }
 
     @Test
+    @DisplayName("예약 상태 경매는 아직 입찰이 없어 관리자 승인 없이 즉시 취소된다")
+    void requestCancellationForReadyAuctionCancelsInstantly() {
+        long sellerSn = insertUser("t_auc_cancel_seller");
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(prdSn, AuctionStatusCode.READY);
+
+        AuctionCancelRequestResponse response = cancellationService.requestCancellation(
+                aucSn,
+                sellerSn,
+                "예약 취소");
+
+        assertThat(response.getPrevAucStatusCd()).isEqualTo(AuctionStatusCode.READY);
+        assertThat(response.getAucStatusCd()).isEqualTo(AuctionStatusCode.CANCELED);
+        assertThat(auctionStatus(aucSn)).isEqualTo(AuctionStatusCode.CANCELED);
+
+        Map<String, Object> request = processedRequest(response.getAucCnlReqSn());
+        assertThat(request.get("AUC_CNL_REQ_APRV_YN")).isEqualTo("Y");
+        assertThat(((Number) request.get("PROC_USR_SN")).longValue()).isEqualTo(sellerSn);
+    }
+
+    @Test
     @DisplayName("판매자가 아닌 회원은 경매 취소를 요청할 수 없다")
     void rejectCancellationFromNonOwner() {
         long sellerSn = insertUser("t_auc_cancel_seller");
@@ -94,12 +115,11 @@ class AuctionCancellationServiceTest {
     }
 
     @Test
-    @DisplayName("준비·유찰·취소 상태의 경매는 취소 요청할 수 없다")
+    @DisplayName("유찰·취소 상태의 경매는 취소 요청할 수 없다")
     void rejectCancellationFromInvalidStatuses() {
         long sellerSn = insertUser("t_auc_cancel_seller");
 
         for (String statusCode : new String[] {
-                AuctionStatusCode.READY,
                 AuctionStatusCode.FAILED,
                 AuctionStatusCode.CANCELED}) {
             long prdSn = insertProduct(sellerSn, null);
@@ -196,6 +216,8 @@ class AuctionCancellationServiceTest {
         assertThat(((Number) processed.get("PROC_USR_SN")).longValue()).isEqualTo(adminSn);
         assertThat(processed.get("AUC_CNL_REQ_PROC_RSN_CN")).isEqualTo("관리자 취소 승인");
         assertThat(processed.get("AUC_CNL_REQ_PROC_DT")).isNotNull();
+
+        assertThat(auctionCancelledNotificationCount(bidderSn, aucSn)).isEqualTo(1);
     }
 
     @Test
@@ -244,6 +266,49 @@ class AuctionCancellationServiceTest {
         Map<String, Object> processed = processedRequest(request.getAucCnlReqSn());
         assertThat(processed.get("AUC_CNL_REQ_APRV_YN")).isEqualTo("N");
         assertThat(processed.get("AUC_CNL_REQ_PROC_RSN_CN")).isEqualTo("판매를 계속할 수 있음");
+    }
+
+    @Test
+    @DisplayName("종료시각이 지난 뒤 반려되면 반려 시점 기준 1시간으로 종료시각이 연장된다")
+    void rejectCancellationExtendsExpiredEndDateTime() {
+        long sellerSn = insertUser("t_auc_cancel_seller");
+        long adminSn = insertUser("t_auc_cancel_admin");
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(prdSn, AuctionStatusCode.ACTIVE);
+        jdbc.update("UPDATE AUCTION SET AUC_END_DT = ? WHERE AUC_SN = ?",
+                LocalDateTime.now().minusMinutes(10), aucSn);
+
+        AuctionCancelRequestResponse request = cancellationService.requestCancellation(
+                aucSn, sellerSn, "상품 정보 오류");
+        LocalDateTime beforeReject = LocalDateTime.now();
+        cancellationService.rejectCancellation(
+                request.getAucCnlReqSn(), adminSn, "판매를 계속할 수 있음");
+
+        assertThat(auctionStatus(aucSn)).isEqualTo(AuctionStatusCode.ACTIVE);
+        LocalDateTime newEndDt = jdbc.queryForObject(
+                "SELECT AUC_END_DT FROM AUCTION WHERE AUC_SN = ?", LocalDateTime.class, aucSn);
+        assertThat(newEndDt).isAfter(beforeReject.plusMinutes(59));
+        assertThat(newEndDt).isBefore(LocalDateTime.now().plusHours(1).plusMinutes(1));
+    }
+
+    @Test
+    @DisplayName("종료시각이 아직 안 지났으면 반려해도 종료시각을 건드리지 않는다")
+    void rejectCancellationKeepsEndDateTimeWhenNotExpired() {
+        long sellerSn = insertUser("t_auc_cancel_seller");
+        long adminSn = insertUser("t_auc_cancel_admin");
+        long prdSn = insertProduct(sellerSn, null);
+        long aucSn = insertAuction(prdSn, AuctionStatusCode.ACTIVE);
+        LocalDateTime originalEndDt = jdbc.queryForObject(
+                "SELECT AUC_END_DT FROM AUCTION WHERE AUC_SN = ?", LocalDateTime.class, aucSn);
+
+        AuctionCancelRequestResponse request = cancellationService.requestCancellation(
+                aucSn, sellerSn, "상품 정보 오류");
+        cancellationService.rejectCancellation(
+                request.getAucCnlReqSn(), adminSn, "판매를 계속할 수 있음");
+
+        LocalDateTime newEndDt = jdbc.queryForObject(
+                "SELECT AUC_END_DT FROM AUCTION WHERE AUC_SN = ?", LocalDateTime.class, aucSn);
+        assertThat(newEndDt).isEqualTo(originalEndDt);
     }
 
     @Test
@@ -370,6 +435,17 @@ class AuctionCancellationServiceTest {
                 WHERE AUC_SN = ?
                   AND AUC_CNL_REQ_APRV_YN IS NULL
                 """, aucSn);
+    }
+
+    private int auctionCancelledNotificationCount(long usrSn, long aucSn) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM NOTIFICATION
+                WHERE USR_SN = ?
+                  AND NTF_REF_TYPE_CD = 'REFC0003'
+                  AND NTF_REF_SN = ?
+                  AND NTF_TTL = '경매가 취소되었습니다'
+                """, Integer.class, usrSn, aucSn);
     }
 
     private Map<String, Object> processedRequest(long cancelRequestSn) {

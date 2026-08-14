@@ -272,31 +272,6 @@
            AND USR_SN = #{usrSn}
     </update>
 
-    <!-- ── 취소 확정 1일 경과 상품 조회 (자동 삭제 스케줄러 전용) ──
-         AUCTION은 옥동민(5) 소유지만 조회(JOIN)는 기존에 합의된 방식 -->
-    <select id="findExpiredCancelledProductIds" resultType="java.lang.Long">
-        /* ProductMapper.findExpiredCancelledProductIds */
-        SELECT p.PRD_SN
-          FROM PRODUCT p
-          JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
-         WHERE p.PRD_USE_YN = 'Y'
-           AND a.AUC_STATUS_CD = 'AUCC0005'
-           AND a.AUC_UPDT_DT &lt;= #{cutoff}
-         ORDER BY a.AUC_UPDT_DT ASC
-         LIMIT #{limit}
-    </select>
-
-    <!-- ── 취소 확정 1일 경과 상품 자동 삭제 (시스템 주체, 소유자 확인 없음) ─ -->
-    <update id="deleteExpiredCancelledProduct">
-        /* ProductMapper.deleteExpiredCancelledProduct */
-        UPDATE PRODUCT
-           SET PRD_USE_YN    = 'N',
-               PRD_STATUS_CD = 'PRDC0004',
-               PRD_UPDT_ID   = 'SYSTEM'
-         WHERE PRD_SN = #{prdSn}
-           AND PRD_USE_YN = 'Y'
-    </update>
-
     <!-- ── 상품 변경사항 알림 대상(입찰자 전원) 조회 — BID/AUCTION은 옥동민(5) 소유, 조회만(기존 합의된 방식) ─ -->
     <select id="findAuctionBidderIds" resultType="java.lang.Long">
         /* ProductMapper.findAuctionBidderIds */

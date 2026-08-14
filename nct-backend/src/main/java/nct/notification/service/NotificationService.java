@@ -557,6 +557,14 @@ public class NotificationService {
                 RefType.ABUSE_REPORT, reportSn);
     }
 
+    /** 판매자 취소 승인으로 최고입찰이 무효화됨을 입찰자에게 안내 — AuctionCancellationService.cancelActiveAuctionBid가 호출 */
+    public void notifyAuctionCancelled(long usrSn, long auctionId) {
+        notify(usrSn, NotificationType.BID, NotificationDomain.AUCTION,
+                "경매가 취소되었습니다",
+                "판매자 취소 승인으로 입찰하신 경매가 취소되었습니다.",
+                RefType.AUCTION, auctionId);
+    }
+
     /** 포인트 홀딩 반환 알림 (업무분장: 입찰·낙찰·반환 알림) — PointService.releaseHold가 호출 */
     public void notifyPointRelease(long usrSn, long amt, RefType refType, long refSn, String reason) {
         notify(usrSn, NotificationType.BID, NotificationDomain.AUCTION,

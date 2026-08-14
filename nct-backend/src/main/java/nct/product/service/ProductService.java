@@ -366,6 +366,9 @@ public class ProductService {
                 p.setAucSn(s.getAucSn());
                 p.setAucStatusCd(s.getAucStatusCd());
                 p.setAucStatusNm(s.getAucStatusNm());
+                // @ai_generated 판매 목록이 시작가를 확정가로 오인하지 않도록 경매 가격 요약을 병합합니다.
+                p.setCurrentPrice(s.getCurrentPrice());
+                p.setBidCount(s.getBidCount());
             }
 
             SellerTradeStatusItem tradeStatus = tradeStatusMap.get(p.getPrdSn());
@@ -467,18 +470,6 @@ public class ProductService {
         }
 
         productMapper.deleteProduct(prdSn, usrSn);
-    }
-
-    /** 취소 확정(AUCC0005) 후 cutoff 이전에 승인된 상품 prdSn 목록 — ProductCancelledAutoDeleteScheduler 전용 */
-    @Transactional(readOnly = true)
-    public List<Long> findExpiredCancelledProductIds(LocalDateTime cutoff, int limit) {
-        return productMapper.findExpiredCancelledProductIds(cutoff, limit);
-    }
-
-    /** 취소 확정 1일 경과 상품 자동 삭제 — ProductCancelledAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
-    @Transactional
-    public void deleteExpiredCancelledProduct(Long prdSn) {
-        productMapper.deleteExpiredCancelledProduct(prdSn);
     }
 
     /** 신고 검증용 문의 단건 조회 — 타 도메인 공개 계약 (F-AUC-013) */

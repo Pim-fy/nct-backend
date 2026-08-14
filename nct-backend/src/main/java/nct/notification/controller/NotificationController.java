@@ -20,7 +20,6 @@ import nct.global.security.domain.CustomUserDetails;
 import nct.notification.dto.NotificationResponse;
 import nct.notification.dto.NotificationSettingRequest;
 import nct.notification.dto.NotificationSettingResponse;
-import nct.notification.dto.UnreadCountResponse;
 import nct.notification.service.NotificationEventBroker;
 import nct.notification.service.NotificationService;
 import reactor.core.publisher.Flux;
@@ -30,7 +29,6 @@ import reactor.core.publisher.Flux;
  *
  * 엔드포인트 (모두 로그인 필요):
  *   GET   /api/notification               내 알림 목록 (최신순 100건)
- *   GET   /api/notification/unread-count  미읽음 개수 (헤더 배지용)
  *   GET   /api/notification/stream        실시간 push 구독 (SSE, 2026-07-22 신설 — 별도 기능ID 없음)
  *   PATCH /api/notification/{id}/read     개별 읽음 처리
  *   PATCH /api/notification/read-all      전체 읽음 처리
@@ -58,18 +56,6 @@ public class NotificationController {
         List<NotificationResponse> body = notificationService.getList(usrSn).stream()
                 .map(NotificationResponse::from)
                 .toList();
-        return ResponseEntity.ok(ApiResponse.success(body));
-    }
-
-    /** 미읽음 개수 조회 */
-    @GetMapping("/unread-count")
-    public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
-            @AuthenticationPrincipal CustomUserDetails userDetails) {
-
-        long usrSn = userDetails.getMember().getId();
-        UnreadCountResponse body = UnreadCountResponse.builder()
-                .count(notificationService.getUnreadCount(usrSn))
-                .build();
         return ResponseEntity.ok(ApiResponse.success(body));
     }
 

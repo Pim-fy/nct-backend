@@ -25,8 +25,12 @@ public class PointBalance {
         return availableAmt + holdAmt + settleableAmt;
     }
 
-    /** 환전 가능 포인트 = 사용가능 + 정산가능 (2026-07-22 사용자 결정 — 충전분도 환전 대상) */
+    /**
+     * 환전 가능 포인트 = 사용가능만 (원래 설계, 2026-08-14 재확인).
+     * 정산가능(판매대금) 포인트는 분쟁 조정 재원으로 남아야 해서 환전 대상이 아니다 —
+     * 사용하려면 전환(F-PAY-010, 분쟁 게이트 통과)으로 사용가능에 옮긴 뒤에만 환전할 수 있다.
+     */
     public long getExchangeableAmt() {
-        return availableAmt + settleableAmt;
+        return availableAmt;
     }
 }

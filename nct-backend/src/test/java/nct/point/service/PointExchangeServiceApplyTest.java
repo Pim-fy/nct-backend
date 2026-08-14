@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -94,5 +95,27 @@ class PointExchangeServiceApplyTest {
                         && "snapshot-bank".equals(order.getPtExcOrdBankNm())
                         && "snapshot-account".equals(order.getPtExcOrdAcntNo())));
         verify(notificationService).notifyExchangeRequest(101L, 10_000L);
+    }
+
+    @Test
+    void 활성_신고_제한은_환전_주문과_알림을_남기기_전에_전파된다() {
+        UserAccount account = new UserAccount();
+        account.setBankNm("encrypted-bank");
+        account.setAcntNo("encrypted-account");
+        when(exchangeMapper.selectUserAccount(101L)).thenReturn(account);
+        when(fieldCryptoService.decrypt("encrypted-bank")).thenReturn("우리은행");
+        when(fieldCryptoService.decrypt("encrypted-account")).thenReturn("123-456");
+        doThrow(new PointException(
+                ErrorCode.POINT_CONVERT_EXCHANGE_BLOCKED_BY_ACTIVE_REPORT,
+                "접수 또는 처리 중인 신고의 대상 회원입니다."))
+                .when(pointService).debitExchange(101L, 10_000L, "환전 신청 차감");
+
+        assertThatThrownBy(() -> service.apply(101L, 10_000L))
+                .isInstanceOf(PointException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.POINT_CONVERT_EXCHANGE_BLOCKED_BY_ACTIVE_REPORT);
+
+        verify(exchangeMapper, never()).insert(any(PointExchangeOrder.class));
+        verifyNoInteractions(notificationService, auditLogService);
     }
 }

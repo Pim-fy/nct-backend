@@ -538,6 +538,23 @@
         FOR UPDATE
     </select>
 
+    <!-- 담당자 7 · F-OPS-007: 신고된 경매 한 건만 보류하기 위한 잠금 조회입니다. -->
+    <select id="findReportHoldTargetForUpdate"
+            resultType="nct.auction.dto.AuctionSanctionTarget">
+        SELECT
+            a.AUC_SN AS auctionId,
+            p.USR_SN AS sellerUserSn,
+            a.AUC_STATUS_CD AS auctionStatusCode,
+            a.AUC_START_DT AS startAt,
+            a.AUC_END_DT AS endAt,
+            a.AUC_UPDT_DT AS updatedAt,
+            CURRENT_TIMESTAMP AS databaseNow
+        FROM AUCTION a
+        JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+        WHERE a.AUC_SN = #{auctionId}
+        FOR UPDATE
+    </select>
+
     <select id="findExpiredActiveAuctionIds" resultType="long">
         SELECT AUC_SN
         FROM AUCTION

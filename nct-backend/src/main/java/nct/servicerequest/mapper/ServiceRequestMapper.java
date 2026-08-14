@@ -71,6 +71,10 @@ public interface ServiceRequestMapper {
     List<ServiceRequestSanctionTarget> findSanctionTargetsByOwnerForUpdate(
             @Param("userSn") Long userSn);
 
+    /** 담당자 7 · F-OPS-007: 신고된 견적 요청 한 건의 상태와 남은 시간을 잠금 조회합니다. */
+    ServiceRequestSanctionTarget findReportHoldTargetForUpdate(
+            @Param("serviceRequestId") Long serviceRequestId);
+
     int pauseServiceRequestForSanction(
             @Param("serviceRequestId") Long serviceRequestId,
             @Param("expectedStatusCode") String expectedStatusCode,

@@ -472,18 +472,6 @@ public class ProductService {
         productMapper.deleteProduct(prdSn, usrSn);
     }
 
-    /** 취소 확정(AUCC0005) 후 cutoff 이전에 승인된 상품 prdSn 목록 — ProductCancelledAutoDeleteScheduler 전용 */
-    @Transactional(readOnly = true)
-    public List<Long> findExpiredCancelledProductIds(LocalDateTime cutoff, int limit) {
-        return productMapper.findExpiredCancelledProductIds(cutoff, limit);
-    }
-
-    /** 취소 확정 1일 경과 상품 자동 삭제 — ProductCancelledAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
-    @Transactional
-    public void deleteExpiredCancelledProduct(Long prdSn) {
-        productMapper.deleteExpiredCancelledProduct(prdSn);
-    }
-
     /** 신고 검증용 문의 단건 조회 — 타 도메인 공개 계약 (F-AUC-013) */
     @Transactional(readOnly = true)
     public InquiryReportTarget getInquiryReportTarget(Long prdCmtSn) {

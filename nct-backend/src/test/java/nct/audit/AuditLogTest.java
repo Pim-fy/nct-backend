@@ -1,7 +1,6 @@
 package nct.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
@@ -17,13 +16,12 @@ import nct.audit.domain.AuditLog;
 import nct.audit.domain.AuditLogType;
 import nct.audit.service.AuditLogService;
 import nct.common.domain.RefType;
-import nct.global.exception.CustomException;
 import nct.global.security.crypto.FieldCryptoService;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-18)
  *
- * [테스트 - 감사로그 기록·조회·민감정보 제한 조회] (F-OPS-014/015/016)
+ * [테스트 - 감사로그 기록·조회] (F-OPS-015/016)
  *
  * 공유 DB(NCTDB) 주의사항 (PointFlowTest와 동일):
  * - @Transactional 테스트는 메소드 종료 시 전부 롤백되어 행을 남기지 않는다
@@ -78,42 +76,6 @@ class AuditLogTest {
         });
     }
 
-    @Test
-    @DisplayName("민감정보 제한 조회: 사유가 없으면 실패한다 — 감사로그도 남지 않는다 (F-OPS-014)")
-    void sensitiveViewWithoutReasonFails() {
-        ChatFixture fixture = insertChatMessage("원문 테스트 메시지");
-
-        assertThatThrownBy(() -> auditLogService.viewChatMessage(
-                adminSn, fixture.messageSn(), fixture.reportSn(), " ", "127.0.0.1"))
-                .isInstanceOf(CustomException.class)
-                .hasMessageContaining("사유");
-
-        // 실패한 시도는 원문조회 로그를 만들지 않았어야 한다
-        assertThat(auditLogService.search(adminSn, AuditLogType.SENSITIVE_VIEW.getCode(), null, null, 10))
-                .isEmpty();
-    }
-
-    @Test
-    @DisplayName("민감정보 제한 조회: 사유·거래 신고와 함께 요청하면 원문이 반환되고 감사로그가 남는다 (F-OPS-014)")
-    void sensitiveViewRecordsAuditLog() {
-        ChatFixture fixture = insertChatMessage("분쟁 증거 원문입니다");
-
-        var view = auditLogService.viewChatMessage(
-                adminSn,
-                fixture.messageSn(),
-                fixture.reportSn(),
-                "거래 신고 증거 확인",
-                "127.0.0.1");
-
-        assertThat(view.getChMsgCn()).isEqualTo("분쟁 증거 원문입니다");
-        assertThat(auditLogService.search(adminSn, AuditLogType.SENSITIVE_VIEW.getCode(), null, null, 10))
-                .singleElement().satisfies(log -> {
-                    assertThat(log.getAudLogRefSn()).isEqualTo(fixture.reportSn()); // 신고 건 연결
-                    assertThat(log.getAudLogRsonCn()).contains("거래 신고 증거 확인"); // 사유 보존
-                    assertThat(log.getAudLogRsonCn()).contains(String.valueOf(fixture.messageSn())); // 어떤 메시지였는지
-                });
-    }
-
     // ---------- 픽스처 ----------
 
     private long insertUser(String prefix) {
@@ -124,57 +86,5 @@ class AuditLogTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-    }
-
-    /** 제한 조회 대상 채팅 메시지 픽스처 — 채팅방은 거래에 1:1로 묶이므로 상품·거래부터 만든다 */
-    private ChatFixture insertChatMessage(String content) {
-        jdbc.update("""
-                INSERT INTO PRODUCT (USR_SN, CAT_SN, PRD_NM, PRD_STATUS_CD, PRD_START_AMT, PRD_TRD_METHOD_CD)
-                VALUES (?, 2, '감사 테스트 상품', 'PRDC0003', 10000,
-                        (SELECT C.CMM_CD FROM CMM_CODE C
-                         JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
-                         WHERE P.CMM_CD = 'TRDG03' ORDER BY C.CMM_SORT_NO LIMIT 1))
-                """, targetSn);
-        long prdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-
-        jdbc.update("""
-                INSERT INTO TRADE (TRD_TYPE_CD, TRD_STATUS_CD, TRD_AMT, SLLR_USR_SN, BYPR_USR_SN, PRD_SN)
-                VALUES ('TRDC0001', 'TRDC0006', 10000, ?, ?, ?)
-                """, targetSn, adminSn, prdSn);
-        long trdSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-
-        jdbc.update("""
-                INSERT INTO ABUSE_REPORT (
-                    RPRT_USR_SN, RPTD_USR_SN, ABR_TYPE_CD, ABR_STATUS_CD,
-                    ABR_REF_TYPE_CD, ABR_REF_SN, ABR_CN, ABR_REG_ID, ABR_UPDT_ID
-                )
-                VALUES (?, ?, 'ABRC0011', 'ABSC0001', 'REFC0005', ?,
-                        '감사 테스트 거래 신고', ?, ?)
-                """, targetSn, adminSn, trdSn, String.valueOf(targetSn), String.valueOf(targetSn));
-        long reportSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        jdbc.update("""
-                INSERT INTO ABUSE_REPORT_TRADE (
-                    ABR_SN, TRD_SN, ABR_TRD_PREV_STATUS_CD, ABR_TRD_REG_ID, ABR_TRD_UPDT_ID
-                )
-                VALUES (?, ?, 'TRDC0006', ?, ?)
-                """, reportSn, trdSn, String.valueOf(targetSn), String.valueOf(targetSn));
-
-        jdbc.update("""
-                INSERT INTO CHAT_ROOM (TRD_SN, CH_RM_STATUS_CD)
-                VALUES (?, (SELECT C.CMM_CD FROM CMM_CODE C
-                            JOIN CMM_CODE P ON C.CMM_PARENT_SN = P.CMM_SN
-                            WHERE P.CMM_CD = 'CHRG01' ORDER BY C.CMM_SORT_NO LIMIT 1))
-                """, trdSn);
-        long roomSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-
-        jdbc.update("""
-                INSERT INTO CHAT_MESSAGE (CH_RM_SN, USR_SN, CH_MSG_CN)
-                VALUES (?, ?, ?)
-                """, roomSn, targetSn, content);
-        long messageSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        return new ChatFixture(reportSn, messageSn);
-    }
-
-    private record ChatFixture(long reportSn, long messageSn) {
     }
 }

@@ -6,7 +6,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,7 +31,6 @@ import nct.global.security.domain.CustomUserDetails;
  * 엔드포인트:
  *   POST   /api/attachment           이미지 1개 업로드(service 구분 필수) → FILES 행 생성, {flSn, url} 반환
  *   DELETE /api/attachment/{flSn}    본인이 올린 파일 삭제 (상품에 연결된 파일은 409 거부)
- *   PUT    /api/attachment/{flSn}    본인이 올린 파일 교체 — flSn 유지한 채 파일만 교체, {flSn, url} 반환
  *
  * 상품 등록처럼 여러 장을 올리는 화면은 선택 즉시 POST를 파일마다 한 번씩 호출해
  * flSn을 모아뒀다가, 최종 등록 요청에 그 목록을 함께 보내는 2단계 방식을 쓴다.
@@ -71,22 +69,5 @@ public class FileController {
         Long usrSn = userDetails.getMember().getId();
         fileStorageService.deleteImage(flSn, usrSn);
         return ResponseEntity.ok(ApiResponse.success());
-    }
-
-    @SkipIdempotency // @ai_generated: 멀티파트 바디라 전역 중복요청 방지 캐싱 대상에서 제외 (F-COM-017)
-    @PutMapping("/{flSn}")
-    public ResponseEntity<ApiResponse<FileUploadResponse>> replace(
-            @PathVariable(name = "flSn") Long flSn,
-            @RequestParam("file") MultipartFile file,
-            @AuthenticationPrincipal CustomUserDetails userDetails) {
-
-        Long usrSn = userDetails.getMember().getId();
-        FileMeta fileMeta = fileStorageService.replaceImage(flSn, file, usrSn);
-
-        FileUploadResponse body = FileUploadResponse.builder()
-                .flSn(fileMeta.getFlSn())
-                .url(fileMeta.getFlPath())
-                .build();
-        return ResponseEntity.ok(ApiResponse.success(body));
     }
 }

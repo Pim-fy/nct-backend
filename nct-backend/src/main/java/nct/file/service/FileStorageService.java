@@ -38,7 +38,6 @@ import nct.global.exception.ErrorCode;
  *   - 운영 루트는 /home/nct/attachment 를 프로퍼티 오버라이드로 주입 (dev는 ./uploads)
  *   - URL(FL_PATH)은 /api/attachment/{서비스}/{yyyyMMdd}/UUID.확장자 — 프론트가 그대로 <img src>에 사용
  * 삭제 정책: FILES는 소프트 삭제(FL_USE_YN='N', 이력 보존) + 디스크 파일은 물리 삭제
- * 교체 정책: flSn을 유지한 채 메타만 갱신 — PRODUCT_IMAGE 등의 참조가 끊기지 않고 파일만 바뀐다
  *
  * 확장자 정책은 서비스 구분별로 다르다 (2026-07-20, 담당자7 요청·사용자 확정):
  *   - product(상품 이미지): 이미지만 — 비로그인 탐색 화면에 공개 서빙되는 파일
@@ -111,7 +110,7 @@ public class FileStorageService {
     public FileMeta storeImage(MultipartFile file, String service, Long usrSn) {
         String svc = validateService(service);
         String ext = validateFile(file, svc); // 확장자 정책은 서비스 구분별 (provider는 pdf 포함)
-        StoredFile stored = writeToDisk(file, svc, ext); // 디스크 저장은 교체와 공용 헬퍼
+        StoredFile stored = writeToDisk(file, svc, ext);
 
         FileMeta fileMeta = FileMeta.builder()
                 .flOrgNm(file.getOriginalFilename())
@@ -163,47 +162,6 @@ public class FileStorageService {
         deleteQuietly(toDiskPath(fileMeta.getFlPath()));
     }
 
-    /**
-     * 교체(수정): 존재·소유자 검증 → 새 파일 저장 → 같은 행(flSn 유지)의 메타 갱신 → 구 파일 삭제.
-     * 일반 화면용 참조 파일은 flSn을 유지한 채 바꿀 수 있지만, 신고 첨부는 접수 시점의 증거 원문을
-     * 보존해야 하므로 ABUSE_REPORT_FILE에 연결된 뒤에는 교체도 거부한다.
-     */
-    @Transactional
-    public FileMeta replaceImage(Long flSn, MultipartFile file, Long usrSn) {
-        FileMeta oldMeta = requireOwnedActiveFileForUpdate(flSn, usrSn);
-        String svc = extractService(oldMeta.getFlPath()); // 서비스 구분은 원본 파일의 것을 그대로 따른다
-        // 담당자 7 · F-COM-018: 접수된 신고 증거는 삭제뿐 아니라 같은 번호로 교체하는 우회도 차단한다.
-        if ("abuse-report".equals(svc) && fileMapper.countAbuseReportFileRefs(flSn) > 0) {
-            throw new CustomException(ErrorCode.FILE_IN_USE);
-        }
-
-        String ext = validateFile(file, svc); // 교체 파일도 해당 서비스의 확장자 정책을 따른다
-        StoredFile stored = writeToDisk(file, svc, ext); // 디스크 저장은 업로드와 공용 헬퍼
-
-        FileMeta newMeta = FileMeta.builder()
-                .flSn(flSn)
-                .flOrgNm(file.getOriginalFilename())
-                .flSaveNm(stored.saveNm())
-                .flPath(stored.url())
-                .flExt(ext)
-                .flSizeAmt(BigDecimal.valueOf(file.getSize()))
-                .flTypeCd(resolveTypeCd(ext)) // pdf↔이미지 교체 시 유형도 함께 갱신
-                .flUpdtId(String.valueOf(usrSn))
-                .build();
-
-        try {
-            fileMapper.updateMeta(newMeta);
-        } catch (RuntimeException e) {
-            // 메타 갱신 실패 시 방금 저장한 새 파일을 정리 — DB는 롤백되므로 기존 상태 그대로 유지된다
-            deleteQuietly(stored.path());
-            throw e;
-        }
-
-        // 교체 완료 후 구 파일 정리 — 실패해도 교체 자체는 성공이므로 WARN만
-        deleteQuietly(toDiskPath(oldMeta.getFlPath()));
-        return newMeta;
-    }
-
     /*===========================
      * 관리자 전용 열람 (제공자 서류 심사)
      *===========================*/
@@ -216,7 +174,7 @@ public class FileStorageService {
      *  1. 신청 건에 실제 연결된 파일인지 — flSn만 추측해 다른 파일을 여는 시도 차단
      *  2. 살아있는 파일인지 — findById가 소프트 삭제(FL_USE_YN='N') 행을 제외하므로 자동 차단
      *  3. 감사 기록을 원문 반환보다 먼저 — 같은 트랜잭션이라 기록 실패 시 열람도 함께 실패,
-     *     "로그 없이 원문만 새는 경로"가 코드상 존재하지 않는다 (viewChatMessage와 동일 구조)
+     *     "로그 없이 원문만 새는 경로"가 코드상 존재하지 않는다 (AuditLogService.viewDisputeChatMessages와 동일 구조)
      * 사유는 자동 기록("서류 심사") — 심사 열람은 심사 자체가 사유라 매건 입력을 요구하지 않는다 (사용자 결정 2026-07-20)
      *
      * @return 열람 대상 파일 메타 (컨트롤러가 diskPathOf로 실제 파일을 스트림한다)
@@ -341,7 +299,7 @@ public class FileStorageService {
         return fileMeta;
     }
 
-    /** 신고 연결과 일반 교체·삭제가 같은 FILES 행을 동시에 바꾸지 못하도록 트랜잭션 행 잠금을 잡습니다. */
+    /** 신고 연결과 일반 삭제가 같은 FILES 행을 동시에 바꾸지 못하도록 트랜잭션 행 잠금을 잡습니다. */
     private FileMeta requireOwnedActiveFileForUpdate(Long flSn, Long usrSn) {
         FileMeta fileMeta = fileMapper.findByIdForUpdate(flSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));

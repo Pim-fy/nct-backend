@@ -45,19 +45,6 @@ class AuditLogServiceSensitiveViewTest {
     }
 
     @Test
-    void rejectsMessageThatIsNotLinkedToTheDispute() {
-        when(mapper.countDisputeChatMessageLink(11L, 22L)).thenReturn(0);
-
-        assertThatThrownBy(() -> service.viewChatMessage(
-                7L, 11L, 22L, "분쟁 증거 확인", "127.0.0.1"))
-                .isInstanceOf(CustomException.class)
-                .hasMessageContaining("연결된 채팅 메시지");
-
-        verify(mapper, never()).insert(any(AuditLog.class));
-        verify(mapper, never()).selectChatMessageView(11L);
-    }
-
-    @Test
     void recordsAuditBeforeReadingLinkedDisputeChatPage() {
         DisputeChatTarget target = target(22L, 33L, 44L, 2L);
         ChatMessageView newer = message(102L, "두 번째", LocalDateTime.of(2026, 8, 11, 11, 2));

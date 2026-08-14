@@ -60,6 +60,9 @@ public interface AuctionMapper {
 
     List<AuctionSanctionTarget> findSanctionTargetsByMemberForUpdate(@Param("userSn") Long userSn);
 
+    /** 담당자 7 · F-OPS-007: 신고된 경매 한 건의 상태와 남은 시간을 잠금 조회합니다. */
+    AuctionSanctionTarget findReportHoldTargetForUpdate(@Param("auctionId") Long auctionId);
+
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
     List<Long> findReadyAuctionIds(@Param("limit") int limit);
@@ -123,6 +126,12 @@ public interface AuctionMapper {
             @Param("auctionId") Long auctionId,
             @Param("expectedStatusCode") String expectedStatusCode,
             @Param("newStatusCode") String newStatusCode,
+            @Param("actor") String actor);
+
+    /** 취소 요청 반려 시점에 이미 종료시각이 지났으면 새 종료시각으로 덮어쓴다 — 검토 지연 보상용 */
+    void extendAuctionEndDateTime(
+            @Param("auctionId") Long auctionId,
+            @Param("newEndDateTime") LocalDateTime newEndDateTime,
             @Param("actor") String actor);
 
     int pauseAuctionForSanction(

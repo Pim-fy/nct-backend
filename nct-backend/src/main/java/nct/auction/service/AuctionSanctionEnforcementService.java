@@ -43,6 +43,11 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
             AuctionStatusCode.READY,
             AuctionStatusCode.ACTIVE,
             AuctionStatusCode.CANCEL_REQUESTED);
+    private static final Set<String> RESTORABLE_AFTER_SANCTION = Set.of(
+            AuctionStatusCode.READY,
+            AuctionStatusCode.ACTIVE,
+            AuctionStatusCode.CANCEL_REQUESTED,
+            AuctionStatusCode.ADMIN_PAUSED);
 
     private final AuctionMapper auctionMapper;
     private final ReferenceDataService referenceDataService;
@@ -62,33 +67,13 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
         for (AuctionSanctionTarget target :
                 auctionMapper.findSanctionTargetsByMemberForUpdate(valid.userSn())) {
             String previous = target.getAuctionStatusCode();
-            String role = role(target, valid.userSn());
-            boolean sellerOwned = role.startsWith("SELLER");
-            boolean bidderOnly = "HIGHEST_BIDDER".equals(role);
-
-            if (bidderOnly
-                    && target.getHighestBidId() != null
-                    && (PAUSABLE.contains(previous)
-                            || AuctionStatusCode.OPERATION_HOLD.equals(previous)
-                            || AuctionStatusCode.ADMIN_PAUSED.equals(previous))) {
-                cancelHighestBid(target, valid.adminUserSn(), valid.reason());
-                impacts.add(impact(
-                        target,
-                        valid.userSn(),
-                        "BID_CANCELED",
-                        previous,
-                        "7일 이용정지 회원의 최고입찰만 취소하고 홀딩 포인트를 반환했습니다."));
-                continue;
-            }
-            if (!sellerOwned) {
-                continue;
-            }
             if (AuctionStatusCode.OPERATION_HOLD.equals(previous)) {
                 impacts.add(impact(
                         target, valid.userSn(), "PAUSED", previous, "다른 운영 제재로 이미 보류 중입니다."));
                 continue;
             }
-            if (!PAUSABLE.contains(previous)) {
+            if (!PAUSABLE.contains(previous)
+                    && !AuctionStatusCode.ADMIN_PAUSED.equals(previous)) {
                 continue;
             }
             if (auctionMapper.pauseAuctionForSanction(
@@ -216,7 +201,7 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                 || command.auctionId() <= 0
                 || command.adminUserSn() == null
                 || command.adminUserSn() <= 0
-                || !PAUSABLE.contains(command.previousStatusCode())) {
+                || !RESTORABLE_AFTER_SANCTION.contains(command.previousStatusCode())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         referenceDataService.requireActiveCode(AUCTION_STATUS_GROUP, command.previousStatusCode());
@@ -237,6 +222,9 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
         LocalDateTime now = target.getDatabaseNow() == null
                 ? LocalDateTime.now()
                 : target.getDatabaseNow();
+        Long remainingSeconds = AuctionStatusCode.ADMIN_PAUSED.equals(previousStatus)
+                ? remaining(target.getUpdatedAt(), target.getEndAt())
+                : remaining(now, target.getEndAt());
         return new AuctionEnforcementImpact(
                 target.getAuctionId(),
                 role(target, restrictedUserSn),
@@ -245,7 +233,7 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                 target.getStartAt(),
                 target.getEndAt(),
                 remaining(now, target.getStartAt()),
-                remaining(now, target.getEndAt()),
+                remainingSeconds,
                 result);
     }
 

@@ -140,27 +140,30 @@
                </when>
                <when test="filterType == 'ACTIVE'">
                    AND p.PRD_STATUS_CD = 'PRDC0002'
-                   AND a.AUC_STATUS_CD = 'AUCC0002'
+                   <!-- 담당자 7 · 임시 제재/관리자 일시중지는 종료가 아니라 재개 가능한 진행 건이다. -->
+                   AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0013', 'AUCC9001')
                </when>
                <when test="filterType == 'TRADING'">
                    AND (t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                      OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL))
                </when>
+               <!-- AUCC0006(취소요청)은 관리자 반려 시 경매가 요청 전 상태로 복귀하는 미확정 상태라
+                    확정 취소(AUCC0005)와 분리해 보류/분쟁으로 분류한다. -->
                <when test="filterType == 'DISPUTE'">
-                   AND t.TRD_STATUS_CD = 'TRDC0007'
+                   AND (t.TRD_STATUS_CD = 'TRDC0007' OR a.AUC_STATUS_CD = 'AUCC0006')
                </when>
                <when test="filterType == 'DONE'">
                    AND t.TRD_STATUS_CD = 'TRDC0006'
                </when>
                <when test="filterType == 'CANCELED'">
-                   AND a.AUC_STATUS_CD IN ('AUCC0005', 'AUCC0006')
+                   AND a.AUC_STATUS_CD = 'AUCC0005'
                </when>
                <when test="filterType == 'ENDED'">
                    AND a.AUC_STATUS_CD = 'AUCC0004'
                </when>
                <when test="filterType == 'CLOSED'">
                    AND (t.TRD_STATUS_CD = 'TRDC0006'
-                     OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006'))
+                     OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005'))
                </when>
            </choose>
          ORDER BY p.PRD_REG_DT DESC
@@ -181,12 +184,14 @@
                             OR (p.PRD_STATUS_CD = 'PRDC0002'
                                AND a.AUC_STATUS_CD = 'AUCC0001') THEN 1 ELSE 0 END), 0) AS reserved,
             COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0002'
-                               AND a.AUC_STATUS_CD = 'AUCC0002' THEN 1 ELSE 0 END), 0) AS active,
+                               AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0013', 'AUCC9001')
+                              THEN 1 ELSE 0 END), 0) AS active,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')
                                OR (a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL) THEN 1 ELSE 0 END), 0) AS trading,
-            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0007' THEN 1 ELSE 0 END), 0) AS dispute,
+            COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0007'
+                               OR a.AUC_STATUS_CD = 'AUCC0006' THEN 1 ELSE 0 END), 0) AS dispute,
             COALESCE(SUM(CASE WHEN t.TRD_STATUS_CD = 'TRDC0006'
-                               OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005', 'AUCC0006') THEN 1 ELSE 0 END), 0) AS closed
+                               OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005') THEN 1 ELSE 0 END), 0) AS closed
           FROM PRODUCT p
           LEFT JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
           LEFT JOIN TRADE t ON t.PRD_SN = p.PRD_SN AND t.TRD_TYPE_CD = 'TRDC0001'
@@ -265,31 +270,6 @@
                PRD_UPDT_ID   = CAST(#{usrSn} AS CHAR)
          WHERE PRD_SN = #{prdSn}
            AND USR_SN = #{usrSn}
-    </update>
-
-    <!-- ── 취소 확정 1일 경과 상품 조회 (자동 삭제 스케줄러 전용) ──
-         AUCTION은 옥동민(5) 소유지만 조회(JOIN)는 기존에 합의된 방식 -->
-    <select id="findExpiredCancelledProductIds" resultType="java.lang.Long">
-        /* ProductMapper.findExpiredCancelledProductIds */
-        SELECT p.PRD_SN
-          FROM PRODUCT p
-          JOIN AUCTION a ON a.PRD_SN = p.PRD_SN
-         WHERE p.PRD_USE_YN = 'Y'
-           AND a.AUC_STATUS_CD = 'AUCC0005'
-           AND a.AUC_UPDT_DT &lt;= #{cutoff}
-         ORDER BY a.AUC_UPDT_DT ASC
-         LIMIT #{limit}
-    </select>
-
-    <!-- ── 취소 확정 1일 경과 상품 자동 삭제 (시스템 주체, 소유자 확인 없음) ─ -->
-    <update id="deleteExpiredCancelledProduct">
-        /* ProductMapper.deleteExpiredCancelledProduct */
-        UPDATE PRODUCT
-           SET PRD_USE_YN    = 'N',
-               PRD_STATUS_CD = 'PRDC0004',
-               PRD_UPDT_ID   = 'SYSTEM'
-         WHERE PRD_SN = #{prdSn}
-           AND PRD_USE_YN = 'Y'
     </update>
 
     <!-- ── 상품 변경사항 알림 대상(입찰자 전원) 조회 — BID/AUCTION은 옥동민(5) 소유, 조회만(기존 합의된 방식) ─ -->

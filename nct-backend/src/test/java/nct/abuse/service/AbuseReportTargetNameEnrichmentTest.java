@@ -21,14 +21,20 @@ import nct.auction.port.AuctionReferenceTitleReader;
 import nct.file.service.FileStorageService;
 import nct.global.response.PageResponse;
 import nct.global.security.port.AuthMemberPort;
+import nct.member.port.MemberOperationLockPort;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.service.RiskEventService;
+import nct.servicerequest.port.ServiceRequestQuoteReader;
+import nct.trade.dto.AdminReportTradeReference;
+import nct.trade.port.AdminReportTradeReferenceReader;
 class AbuseReportTargetNameEnrichmentTest {
 
     private AbuseReportMapper mapper;
     private AuctionReferenceTitleReader auctionTitleReader;
+    private ServiceRequestQuoteReader serviceRequestTitleReader;
+    private AdminReportTradeReferenceReader tradeReferenceReader;
     private AbuseReportService service;
 
     @BeforeEach
@@ -36,17 +42,24 @@ class AbuseReportTargetNameEnrichmentTest {
     void setUp() {
         mapper = mock(AbuseReportMapper.class);
         auctionTitleReader = mock(AuctionReferenceTitleReader.class);
+        serviceRequestTitleReader = mock(ServiceRequestQuoteReader.class);
+        tradeReferenceReader = mock(AdminReportTradeReferenceReader.class);
+        when(tradeReferenceReader.findByTradeSns(any())).thenReturn(Map.of());
         service = new AbuseReportService(
                 mapper,
                 auctionTitleReader,
+                serviceRequestTitleReader,
+                tradeReferenceReader,
                 mock(ReferenceDataService.class),
                 mock(AbuseReportReferenceValidationService.class),
                 mock(AuditLogPort.class),
                 mock(NotificationService.class),
                 mock(ObjectProvider.class),
                 mock(AuthMemberPort.class),
+                mock(MemberOperationLockPort.class),
                 mock(FileStorageService.class),
-                mock(RiskEventService.class));
+                mock(RiskEventService.class),
+                mock(ReportTargetHoldService.class));
     }
 
     @Test
@@ -103,6 +116,83 @@ class AbuseReportTargetNameEnrichmentTest {
                 service.getAdminReports(null, null, "ALL", 1, 20);
 
         assertThat(result.getContent().get(0).getTargetName()).isEqualTo("검증된 경매 글 제목");
+        assertThat(result.getContent().get(0).getReferenceTitle()).isEqualTo("검증된 경매 글 제목");
+        assertThat(result.getContent().get(0).getReferenceDetailType()).isEqualTo("AUCTION");
+        assertThat(result.getContent().get(0).getReferenceDetailSn()).isEqualTo(8806L);
+    }
+
+    @Test
+    void resolvesServiceTradeTitleAndAdminDetailTarget() {
+        AdminAbuseReportResponse report = new AdminAbuseReportResponse();
+        report.setReportSn(55L);
+        report.setReferenceTypeCode(AbuseReportService.TRADE_REFERENCE_TYPE);
+        report.setReferenceSn(40790L);
+        report.setTradeSn(40790L);
+        report.setServiceRequestSn(1256L);
+        report.setTargetName("거래 #40790");
+        when(mapper.countAdminReports(null, null, "ALL")).thenReturn(1L);
+        when(mapper.findAdminReports(null, null, "ALL", 0L, 20)).thenReturn(List.of(report));
+        when(serviceRequestTitleReader.findTitles(List.of(1256L)))
+                .thenReturn(Map.of(1256L, "로고 디자인 요청"));
+
+        PageResponse<AdminAbuseReportResponse> result =
+                service.getAdminReports(null, null, "ALL", 1, 20);
+
+        AdminAbuseReportResponse resolved = result.getContent().get(0);
+        assertThat(resolved.getReferenceTitle()).isEqualTo("로고 디자인 요청");
+        assertThat(resolved.getReferenceDetailType()).isEqualTo("SERVICE_TRADE");
+        assertThat(resolved.getReferenceDetailSn()).isEqualTo(40790L);
+    }
+
+    @Test
+    void resolvesAuctionTradeTitleAndAdminDetailTarget() {
+        AdminAbuseReportResponse report = new AdminAbuseReportResponse();
+        report.setReportSn(56L);
+        report.setReferenceTypeCode(AbuseReportService.TRADE_REFERENCE_TYPE);
+        report.setReferenceSn(40791L);
+        report.setTradeSn(40791L);
+        report.setProductSn(11599L);
+        report.setTargetName("거래 #40791");
+        when(mapper.countAdminReports(null, null, "ALL")).thenReturn(1L);
+        when(mapper.findAdminReports(null, null, "ALL", 0L, 20)).thenReturn(List.of(report));
+        when(auctionTitleReader.findAuctionIdsByProductIds(List.of(11599L)))
+                .thenReturn(Map.of(11599L, 8825L));
+        when(auctionTitleReader.findTitles(List.of(8825L)))
+                .thenReturn(Map.of(8825L, "케이스티파이 맥세이프 투명 케이스"));
+
+        PageResponse<AdminAbuseReportResponse> result =
+                service.getAdminReports(null, null, "ALL", 1, 20);
+
+        AdminAbuseReportResponse resolved = result.getContent().get(0);
+        assertThat(resolved.getReferenceTitle()).isEqualTo("케이스티파이 맥세이프 투명 케이스");
+        assertThat(resolved.getReferenceDetailType()).isEqualTo("AUCTION");
+        assertThat(resolved.getReferenceDetailSn()).isEqualTo(8825L);
+    }
+
+    @Test
+    void resolvesAutomaticTradeReportWithoutStoredTradeContext() {
+        AdminAbuseReportResponse report = new AdminAbuseReportResponse();
+        report.setReportSn(57L);
+        report.setReferenceTypeCode(AbuseReportService.TRADE_REFERENCE_TYPE);
+        report.setReferenceSn(40792L);
+
+        AdminReportTradeReference tradeReference = new AdminReportTradeReference();
+        tradeReference.setTradeSn(40792L);
+        tradeReference.setServiceRequestSn(1257L);
+        when(mapper.countAdminReports(null, null, "ALL")).thenReturn(1L);
+        when(mapper.findAdminReports(null, null, "ALL", 0L, 20)).thenReturn(List.of(report));
+        when(tradeReferenceReader.findByTradeSns(List.of(40792L)))
+                .thenReturn(Map.of(40792L, tradeReference));
+        when(serviceRequestTitleReader.findTitles(List.of(1257L)))
+                .thenReturn(Map.of(1257L, "웨딩 촬영 요청"));
+
+        PageResponse<AdminAbuseReportResponse> result =
+                service.getAdminReports(null, null, "ALL", 1, 20);
+
+        AdminAbuseReportResponse resolved = result.getContent().get(0);
+        assertThat(resolved.getReferenceTitle()).isEqualTo("웨딩 촬영 요청");
+        assertThat(resolved.getReferenceDetailType()).isEqualTo("SERVICE_TRADE");
+        assertThat(resolved.getReferenceDetailSn()).isEqualTo(40792L);
     }
 
     private MyAbuseReportResponse report(String targetName) {

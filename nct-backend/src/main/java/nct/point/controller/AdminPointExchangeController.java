@@ -26,7 +26,6 @@ import nct.member.port.AdminMemberIdentityReader;
 import nct.point.domain.PointExchangeOrder;
 import nct.point.dto.AdminExchangeRejectRequest;
 import nct.point.dto.AdminPointExchangeAccountResponse;
-import nct.point.dto.AdminPointExchangeOrderResponse;
 import nct.point.dto.AdminPointExchangePageResponse;
 import nct.point.service.PointExchangeService;
 
@@ -36,7 +35,6 @@ import nct.point.service.PointExchangeService;
  * [포인트 환전 - 관리자 처리 REST 컨트롤러] (F-PAY-012, D-026)
  *
  * 엔드포인트 (전부 관리자 전용 — /api/admin/**는 SecurityConfig에서 ROLE_ADMIN만 통과):
- *   GET  /api/admin/point/exchange/orders          처리 대기(신청) 목록 — 오래된 순
  *   GET  /api/admin/point/exchange/orders/search   처리 전후 목록 — 상태·검색·페이지 조건
  *   GET  /api/admin/point/exchange/orders/{번호}/account 신청 건 지급 계좌 제한 조회
  *   POST /api/admin/point/exchange/{번호}/complete  지급 완료 처리 (실제 이체를 마친 뒤)
@@ -52,17 +50,6 @@ public class AdminPointExchangeController {
 
     private final PointExchangeService pointExchangeService;
     private final AdminMemberIdentityReader memberIdentityReader;
-
-    /** 처리 대기 목록 — 관리자가 "누구에게 어디로 얼마" 보낼지 보는 화면의 데이터 */
-    @GetMapping("/orders")
-    public ResponseEntity<ApiResponse<List<AdminPointExchangeOrderResponse>>> getRequestedOrders() {
-        List<PointExchangeOrder> orders = pointExchangeService.getRequestedListForAdmin();
-        Map<Long, AdminMemberIdentityResponse> identities = identitiesFor(orders);
-        List<AdminPointExchangeOrderResponse> body = orders.stream()
-                .map(order -> AdminPointExchangeOrderResponse.from(order, identities))
-                .toList();
-        return ResponseEntity.ok(ApiResponse.success(body));
-    }
 
     /** 담당자 7 · F-PAY-012: 처리 전후 환전 주문을 상태·검색 조건으로 페이지 조회합니다. */
     @GetMapping("/orders/search")

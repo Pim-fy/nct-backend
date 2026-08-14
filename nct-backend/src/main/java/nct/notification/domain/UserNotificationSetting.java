@@ -19,16 +19,9 @@ public class UserNotificationSetting {
     private Long usrNtfStgSn;
     private Long usrSn;
 
-    /** 경매 인앱/이메일 수신여부 ('Y'/'N') */
-    private String usrNtfStgAucInappYn;
+    /** 경매/거래/서비스 이메일 수신여부 ('Y'/'N') — emailEligible()의 도메인별 게이트로만 쓰인다 */
     private String usrNtfStgAucEmailYn;
-
-    /** 거래 인앱/이메일 수신여부 */
-    private String usrNtfStgTrdInappYn;
     private String usrNtfStgTrdEmailYn;
-
-    /** 서비스 인앱/이메일 수신여부 */
-    private String usrNtfStgSvcInappYn;
     private String usrNtfStgSvcEmailYn;
 
     private LocalDateTime usrNtfStgRegDt;
@@ -38,11 +31,8 @@ public class UserNotificationSetting {
     public static UserNotificationSetting defaultOf(long usrSn) {
         UserNotificationSetting s = new UserNotificationSetting();
         s.setUsrSn(usrSn);
-        s.setUsrNtfStgAucInappYn("Y");
         s.setUsrNtfStgAucEmailYn("Y");
-        s.setUsrNtfStgTrdInappYn("Y");
         s.setUsrNtfStgTrdEmailYn("Y");
-        s.setUsrNtfStgSvcInappYn("Y");
         s.setUsrNtfStgSvcEmailYn("Y");
         return s;
     }

@@ -22,6 +22,8 @@ public class PointLedger {
     /** 원장참조유형명 (예: 입찰, 거래) — CMM_CODE 조인 결과 */
     private String refTypeNm;
     private Long ptLdgRefSn;
+    /** 담당자 7 · 거래 참조 원장의 물건/서비스 상세 경로 구분용 조회 값. */
+    private String tradeTypeCode;
 
     /** 포인트분류공통코드(PTLG01: 사용가능/홀딩/정산가능) — 어느 버킷이 움직였는지 */
     private String ptLdgPtTypeCd;

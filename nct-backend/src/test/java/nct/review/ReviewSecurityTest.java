@@ -15,7 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.service.ReviewService;
 
-/** 담당자 7 · F-COM-009~010: 공개 신뢰도 조회와 인증 전용 리뷰 API의 경계를 검증한다. */
+/** 담당자 7 · F-COM-009: 공개 통합 평점 조회와 인증 전용 리뷰 API의 경계를 검증한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
 class ReviewSecurityTest {
@@ -32,10 +32,6 @@ class ReviewSecurityTest {
                 .usrSn(42L)
                 .totalScore(4.5)
                 .totalCount(8)
-                .goodsScore(4.7)
-                .goodsCount(5)
-                .serviceScore(4.2)
-                .serviceCount(3)
                 .hasReviews(true)
                 .build());
 
@@ -43,7 +39,9 @@ class ReviewSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.usrSn").value(42))
                 .andExpect(jsonPath("$.data.totalScore").value(4.5))
-                .andExpect(jsonPath("$.data.totalCount").value(8));
+                .andExpect(jsonPath("$.data.totalCount").value(8))
+                .andExpect(jsonPath("$.data.goodsScore").doesNotExist())
+                .andExpect(jsonPath("$.data.serviceScore").doesNotExist());
     }
 
     @Test

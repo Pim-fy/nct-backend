@@ -82,16 +82,18 @@
 
     <select id="selectListByUser" resultType="nct.settlement.domain.Settlement">
         /* 정산: 회원별 목록 (최신순 100건) */
-        SELECT STLM_SN        AS stlmSn,
-               TRD_SN         AS trdSn,
-               USR_SN         AS usrSn,
-               STLM_AMT       AS stlmAmt,
-               STLM_STATUS_CD AS stlmStatusCd,
-               STLM_REG_DT    AS stlmRegDt,
-               STLM_UPDT_DT   AS stlmUpdtDt
-        FROM SETTLEMENT
-        WHERE USR_SN = #{usrSn}
-        ORDER BY STLM_SN DESC
+        SELECT S.STLM_SN        AS stlmSn,
+               S.TRD_SN         AS trdSn,
+               T.TRD_TYPE_CD    AS tradeTypeCode,
+               S.USR_SN         AS usrSn,
+               S.STLM_AMT       AS stlmAmt,
+               S.STLM_STATUS_CD AS stlmStatusCd,
+               S.STLM_REG_DT    AS stlmRegDt,
+               S.STLM_UPDT_DT   AS stlmUpdtDt
+        FROM SETTLEMENT S
+        LEFT JOIN TRADE T ON T.TRD_SN = S.TRD_SN
+        WHERE S.USR_SN = #{usrSn}
+        ORDER BY S.STLM_SN DESC
         LIMIT 100
     </select>
 

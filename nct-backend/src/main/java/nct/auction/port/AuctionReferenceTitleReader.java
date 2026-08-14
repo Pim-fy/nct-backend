@@ -7,4 +7,7 @@ import java.util.Map;
 public interface AuctionReferenceTitleReader {
 
     Map<Long, String> findTitles(Collection<Long> auctionIds);
+
+    /** 담당자 7 · F-OPS-007: 거래의 상품 번호를 관리자 경매 상세 경로로 변환합니다. */
+    Map<Long, Long> findAuctionIdsByProductIds(Collection<Long> productIds);
 }

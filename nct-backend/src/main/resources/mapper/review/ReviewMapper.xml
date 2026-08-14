@@ -4,7 +4,7 @@
 
     <!--
         ============================================================================
-         [임시 코드 - TRADE 읽기 전용 조회] TODO: 담당자4가 TRADE 모듈을 만들면 교체
+         [임시 코드 - TRADE 읽기 전용 조회] TODO: 담당자4의 리뷰 가능 거래 조회 계약 제공 시 교체
         ============================================================================
         무엇을 위한 임시 코드인가:
           아래 selectWritableTrades / selectWritableTrade 두 쿼리는 "이 회원이 참여한 완료된
@@ -16,17 +16,15 @@
 
         무엇을 대신하고 있는가:
           원래대로라면 "TRD_SN이 완료 상태인지, 내가 판매자/구매자/요청자/제공자 중 누구인지,
-          상대방이 누구인지"는 담당자4가 만들 TRADE 서비스 계약(예: 담당자3의 AuctionMapper처럼
-          TRADE 전용 매퍼+서비스)을 호출해서 받아와야 한다. 그 모듈이 아직 없어서 이 매퍼가
-          임시로 직접 조회한다.
+          상대방이 누구인지"는 담당자4의 TRADE 서비스 계약을 호출해서 받아와야 한다. TRADE
+          모듈은 존재하지만 리뷰 가능 거래 전용 조회 계약이 아직 없어 이 매퍼가 임시로 직접 조회한다.
 
-        담당자4가 TRADE 모듈을 만들면 해야 할 일:
+        담당자4가 리뷰 가능 거래 조회 계약을 제공하면 해야 할 일:
           1) 이 두 <select> 를 지우고, ReviewService 에서 담당자4의 TRADE 조회 서비스를
              호출하도록 바꾼다 (예: tradeQueryService.findReviewableTrade(tradeId, usrSn)).
           2) 상대방 판별 로직(판매자/구매자/제공자/요청자)도 그쪽 서비스가 대신 계산해주는 형태로
              옮기는 것이 맞다 - 지금은 REVIEW 도메인이 TRADE의 내부 구조(SLLR_USR_SN 등 컬럼명)를
              직접 알고 있는데, 이건 원래 담당자4만 알아야 하는 정보다.
-          3) TempTradeCode.java 상수 클래스는 삭제한다.
         ============================================================================
     -->
 
@@ -102,8 +100,6 @@
             DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d')                        AS completedDate,
             DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
             <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
-            CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
-                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider,
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001'
                  THEN thumb.THUMBNAIL_PATH
                  ELSE (
@@ -148,9 +144,7 @@
             CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN P.PRD_NM ELSE S.SVC_REQ_TTL END AS title,
             DATE_FORMAT(completedHist.completedDate, '%Y-%m-%d')                        AS completedDate,
             DATE_FORMAT(DATE_ADD(completedHist.completedDate, INTERVAL 30 DAY), '%Y-%m-%d') AS reviewDeadline,
-            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn,
-            CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' AND T.REQ_USR_SN = #{usrSn}
-                 THEN TRUE ELSE FALSE END AS counterpartServiceProvider
+            <include refid="counterpartUsrSnCase"/> AS counterpartUsrSn
         FROM TRADE T
         LEFT JOIN PRODUCT P ON T.TRD_TYPE_CD = 'TRDC0001' AND P.PRD_SN = T.PRD_SN
         LEFT JOIN SERVICE_REQUEST S ON T.TRD_TYPE_CD = 'TRDC0002' AND S.SVC_REQ_SN = T.SVC_REQ_SN
@@ -281,14 +275,8 @@
 
     <!-- 수정·삭제 전 피평가자 식별도 작성자 소유·활성 조건을 통과한 리뷰만 허용한다. -->
     <select id="selectOwnedActiveReviewRatingTarget" resultType="nct.review.dto.ReviewRatingTarget">
-        SELECT R.REVWD_USR_SN AS receiverUserSn,
-               R.RVW_DOMAIN_CD AS domainCode,
-               CASE WHEN R.RVW_DOMAIN_CD = 'RVWC0002'
-                          AND T.TRD_TYPE_CD = 'TRDC0002'
-                          AND T.PRV_USR_SN = R.REVWD_USR_SN
-                    THEN TRUE ELSE FALSE END AS receivedAsServiceProvider
+        SELECT R.REVWD_USR_SN AS receiverUserSn
         FROM REVIEW R
-        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.RVW_SN = #{rvwSn}
           AND R.REVWR_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
@@ -391,36 +379,24 @@
           <include refid="receivedGoodsRoleFilter"/>
     </select>
 
-    <!-- 신뢰지표 집계 (F-COM-009~010) — 리뷰 없으면 totalCount=0, 점수는 null -->
+    <!-- 통합 평점 집계 (F-COM-009) — 리뷰 없으면 totalCount=0, 점수는 null -->
     <select id="selectTrustScore" resultType="nct.review.dto.TrustScoreResponse">
-        /* 리뷰: 신뢰지표 집계 (F-COM-009~010) */
+        /* 리뷰: 통합 평점 집계 (F-COM-009) */
         SELECT
-            COUNT(*)                                                                       AS totalCount,
-            ROUND(AVG(R.RVW_SCORE), 1)                                                    AS totalScore,
-            COUNT(CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN 1 END)                       AS goodsCount,
-            ROUND(AVG(CASE WHEN T.TRD_TYPE_CD = 'TRDC0001' THEN R.RVW_SCORE END), 1)     AS goodsScore,
-            COUNT(CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' THEN 1 END)                       AS serviceCount,
-            ROUND(AVG(CASE WHEN T.TRD_TYPE_CD = 'TRDC0002' THEN R.RVW_SCORE END), 1)     AS serviceScore
+            COUNT(*)                    AS totalCount,
+            ROUND(AVG(R.RVW_SCORE), 1) AS totalScore
         FROM REVIEW R
-        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.REVWD_USR_SN = #{usrSn}
           AND R.RVW_USE_YN = 'Y'
     </select>
 
-    <!-- 제공자 프로필에는 서비스 거래에서 제공자로서 받은 활성 리뷰만 반영한다.
-         기존 리뷰 임시 조회 경계를 따라 TRADE를 읽기 전용 JOIN한다. 담당자4의 거래 리뷰방향
-         bulk/read 포트가 제공되면 ReviewService 조합 계약으로 교체한다. -->
-    <select id="selectServiceReviewRatingSummary" resultType="nct.review.dto.ServiceReviewRatingSummary">
+    <!-- 제공자 검색용 캐시도 회원이 받은 활성 리뷰 전체의 통합 평점을 사용한다. -->
+    <select id="selectReviewRatingSummary" resultType="nct.review.dto.ReviewRatingSummary">
         SELECT COALESCE(ROUND(AVG(R.RVW_SCORE), 1), 0.0) AS averageScore,
                COUNT(*) AS reviewCount
         FROM REVIEW R
-        JOIN TRADE T ON T.TRD_SN = R.TRD_SN
         WHERE R.REVWD_USR_SN = #{usrSn}
-          AND R.RVW_DOMAIN_CD = 'RVWC0002'
           AND R.RVW_USE_YN = 'Y'
-          AND T.TRD_TYPE_CD = 'TRDC0002'
-          AND R.REVWR_USR_SN = T.REQ_USR_SN
-          AND T.PRV_USR_SN = R.REVWD_USR_SN
     </select>
 
 </mapper>

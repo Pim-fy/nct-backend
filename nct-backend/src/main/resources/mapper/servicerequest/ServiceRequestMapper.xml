@@ -160,6 +160,16 @@
            AND s.SVC_REQ_USE_YN = 'Y'
     </select>
 
+    <!-- 담당자 7 · F-SVC-006: 본인 또는 해당 견적 작성자에게만 서비스 계층에서 제한해 제공하는 이력 projection. -->
+    <select id="findServiceRequestHistoryById" resultMap="ServiceRequestResponseMap">
+        SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
+               s.SVC_REQ_TTL, s.SVC_REQ_CN, s.SVC_REQ_BDGT_AMT, s.SVC_REQ_STATUS_CD,
+               s.SVC_REQ_REG_DT, s.SVC_REQ_UPDT_DT
+          FROM SERVICE_REQUEST s
+          JOIN CATEGORY c ON c.CAT_SN = s.CAT_SN
+         WHERE s.SVC_REQ_SN = #{svcReqSn}
+    </select>
+
     <!-- 제공자 상세는 현재 견적 접수 중인 공개 상태만 조회한다. -->
     <select id="findPublicServiceRequestById" resultMap="ServiceRequestResponseMap">
         /* ServiceRequestMapper.findPublicServiceRequestById */
@@ -376,7 +386,43 @@
                'SVCC0001', 'SVCC0002', 'SVCC0003', 'SVCC0005'
            )
          ORDER BY s.SVC_REQ_SN
-         FOR UPDATE
+        FOR UPDATE
+    </select>
+
+    <!-- 담당자 7 · F-OPS-007: 신고된 견적 요청 한 건만 보류하기 위한 잠금 조회입니다. -->
+    <select id="findReportHoldTargetForUpdate"
+            resultType="nct.servicerequest.dto.ServiceRequestSanctionTarget">
+        SELECT
+            s.SVC_REQ_SN AS serviceRequestId,
+            s.USR_SN AS ownerUserSn,
+            s.SVC_REQ_STATUS_CD AS statusCode,
+            CASE
+                WHEN s.SVC_REQ_STATUS_CD = 'SVCC0002' THEN COALESCE(
+                    s.SVC_REQ_DEADLINE_DT,
+                    LEAST(
+                        DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                        COALESCE(
+                            (
+                                SELECT MIN(DATE_ADD(
+                                    STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d'),
+                                    INTERVAL 1 DAY))
+                                  FROM SVC_REQ_ITEM i
+                                  JOIN SVC_REQ_FIELD_DEF f
+                                    ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+                                 WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                                   AND f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+                            ),
+                            DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY)
+                        )
+                    )
+                )
+                ELSE NULL
+            END AS effectiveDeadlineAt,
+            CURRENT_TIMESTAMP AS databaseNow
+        FROM SERVICE_REQUEST s
+        WHERE s.SVC_REQ_SN = #{serviceRequestId}
+          AND s.SVC_REQ_USE_YN = 'Y'
+        FOR UPDATE
     </select>
 
     <update id="pauseServiceRequestForSanction">
@@ -537,29 +583,6 @@
                        )
                    )
                ) &lt;= NOW()
-    </update>
-
-    <!-- ── 마감 후 1일 경과 요청서 조회 (자동 삭제 스케줄러 전용) ──
-         ProductCancelledAutoDeleteScheduler와 동일한 방식 -->
-    <select id="findExpiredClosedServiceRequestIds" resultType="java.lang.Long">
-        /* ServiceRequestMapper.findExpiredClosedServiceRequestIds */
-        SELECT SVC_REQ_SN
-          FROM SERVICE_REQUEST
-         WHERE SVC_REQ_USE_YN = 'Y'
-           AND SVC_REQ_STATUS_CD = 'SVCC0004'
-           AND SVC_REQ_UPDT_DT &lt;= #{cutoff}
-         ORDER BY SVC_REQ_SN
-         LIMIT #{limit}
-    </select>
-
-    <!-- ── 마감 후 1일 경과 요청서 자동 삭제 (시스템 주체, 소유자 확인 없음) ─ -->
-    <update id="deleteExpiredClosedServiceRequest">
-        /* ServiceRequestMapper.deleteExpiredClosedServiceRequest */
-        UPDATE SERVICE_REQUEST
-           SET SVC_REQ_USE_YN  = 'N',
-               SVC_REQ_UPDT_ID = 'SYSTEM'
-         WHERE SVC_REQ_SN = #{svcReqSn}
-           AND SVC_REQ_STATUS_CD = 'SVCC0004'
     </update>
 
     <!-- ── 소유자 확인용 엔티티 조회 ──────────────────────── -->

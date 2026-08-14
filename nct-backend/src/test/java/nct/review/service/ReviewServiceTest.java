@@ -46,7 +46,7 @@ import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.ReviewRatingTarget;
 import nct.review.dto.ReviewUpdateResult;
-import nct.review.dto.ServiceReviewRatingSummary;
+import nct.review.dto.ReviewRatingSummary;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
@@ -101,20 +101,19 @@ class ReviewServiceTest {
                 .partyName("이**")
                 .completedDate("2026-06-18")
                 .counterpartUsrSn(COUNTERPART_USR_SN)
-                .counterpartServiceProvider("service".equals(dealType))
                 .build();
     }
 
-    private void allowServiceReviewMutation(long reviewId) {
+    private void allowReviewMutation(long reviewId) {
         when(reviewMapper.selectOwnedActiveReviewRatingTarget(reviewId, USR_SN))
                 .thenReturn(Optional.of(
-                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.SERVICE, true)));
+                        new ReviewRatingTarget(COUNTERPART_USR_SN)));
     }
 
-    private void serviceRatingSummary(String averageScore, long reviewCount) {
+    private void reviewRatingSummary(String averageScore, long reviewCount) {
         when(providerReviewRatingPort.lockReviewRating(COUNTERPART_USR_SN)).thenReturn(true);
-        when(reviewMapper.selectServiceReviewRatingSummary(COUNTERPART_USR_SN))
-                .thenReturn(new ServiceReviewRatingSummary(new BigDecimal(averageScore), reviewCount));
+        when(reviewMapper.selectReviewRatingSummary(COUNTERPART_USR_SN))
+                .thenReturn(new ReviewRatingSummary(new BigDecimal(averageScore), reviewCount));
     }
 
     @Test
@@ -301,7 +300,7 @@ class ReviewServiceTest {
     void 서비스거래_리뷰는_RVWC0002_도메인코드로_저장된다() {
         setUp();
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(healthyTrade("service")));
-        serviceRatingSummary("4.0", 1L);
+        reviewRatingSummary("4.0", 1L);
 
         reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
@@ -314,7 +313,7 @@ class ReviewServiceTest {
                 1L);
         InOrder refreshOrder = inOrder(providerReviewRatingPort, reviewMapper);
         refreshOrder.verify(providerReviewRatingPort).lockReviewRating(COUNTERPART_USR_SN);
-        refreshOrder.verify(reviewMapper).selectServiceReviewRatingSummary(COUNTERPART_USR_SN);
+        refreshOrder.verify(reviewMapper).selectReviewRatingSummary(COUNTERPART_USR_SN);
         refreshOrder.verify(providerReviewRatingPort).updateReviewRating(
                 COUNTERPART_USR_SN,
                 new BigDecimal("4.0"),
@@ -329,23 +328,23 @@ class ReviewServiceTest {
 
         reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
-        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
+        verify(reviewMapper, never()).selectReviewRatingSummary(anyLong());
         verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test
-    void 제공자가_요청자에게_남긴_서비스_리뷰는_요청자의_제공자_평점_캐시를_건드리지_않는다() {
+    void 서비스_요청자가_제공자_프로필도_가지면_받은_리뷰를_통합_평점에_반영한다() {
         setUp();
-        WritableTradeItem requesterTarget = healthyTrade("service").toBuilder()
-                .counterpartServiceProvider(false)
-                .build();
+        WritableTradeItem requesterTarget = healthyTrade("service");
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(requesterTarget));
+        reviewRatingSummary("4.0", 1L);
 
         reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
-        verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
-        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
-        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
+        verify(providerReviewRatingPort).updateReviewRating(
+                COUNTERPART_USR_SN,
+                new BigDecimal("4.0"),
+                1L);
     }
 
     @Test
@@ -477,9 +476,9 @@ class ReviewServiceTest {
     @Test
     void 리뷰_수정이_성공하면_평점과_내용이_반영된다() {
         setUp();
-        allowServiceReviewMutation(900L);
+        allowReviewMutation(900L);
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
-        serviceRatingSummary("4.3", 3L);
+        reviewRatingSummary("4.3", 3L);
 
         ReviewUpdateResult result = reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null);
 
@@ -494,25 +493,28 @@ class ReviewServiceTest {
     }
 
     @Test
-    void 요청자로서_받은_서비스_리뷰를_수정해도_제공자_평점_캐시를_건드리지_않는다() {
+    void 리뷰를_수정하면_도메인과_관계없이_통합_평점_캐시를_갱신한다() {
         setUp();
         when(reviewMapper.selectOwnedActiveReviewRatingTarget(900L, USR_SN))
                 .thenReturn(Optional.of(
-                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.SERVICE, false)));
+                        new ReviewRatingTarget(COUNTERPART_USR_SN)));
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+        reviewRatingSummary("4.2", 4L);
 
         reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null);
 
-        verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
-        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
+        verify(providerReviewRatingPort).updateReviewRating(
+                COUNTERPART_USR_SN,
+                new BigDecimal("4.2"),
+                4L);
     }
 
     @Test
     void 리뷰_수정시_새_사진이_있으면_REVIEW_IMAGE에_추가로_연결한다() {
         setUp();
-        allowServiceReviewMutation(900L);
+        allowReviewMutation(900L);
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
-        serviceRatingSummary("4.0", 1L);
+        reviewRatingSummary("4.0", 1L);
         when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
                 .thenReturn(FileMeta.builder().flSn(20L).build());
         MultipartFile photo = new MockMultipartFile("photos", "c.jpg", "image/jpeg", "data".getBytes());
@@ -529,7 +531,7 @@ class ReviewServiceTest {
     @Test
     void 수정시_기존_사진과_새_사진을_합쳐_5장을_넘으면_거부된다() {
         setUp();
-        allowServiceReviewMutation(900L);
+        allowReviewMutation(900L);
         when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(
                 List.of("a.jpg", "b.jpg", "c.jpg", "d.jpg")); // 기존 4장
 
@@ -543,11 +545,11 @@ class ReviewServiceTest {
     @Test
     void 수정시_기존_사진과_새_사진을_합쳐_정확히_5장이면_허용된다() {
         setUp();
-        allowServiceReviewMutation(900L);
+        allowReviewMutation(900L);
         when(reviewImageMapper.selectUrlsByReviewSn(900L)).thenReturn(
                 List.of("a.jpg", "b.jpg", "c.jpg")); // 기존 3장
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
-        serviceRatingSummary("4.0", 1L);
+        reviewRatingSummary("4.0", 1L);
         when(fileStorageService.storeImage(any(), eq("review"), eq(USR_SN)))
                 .thenReturn(FileMeta.builder().flSn(30L).build())
                 .thenReturn(FileMeta.builder().flSn(31L).build());
@@ -570,9 +572,9 @@ class ReviewServiceTest {
     @Test
     void 리뷰_삭제가_성공하면_매퍼의_소프트_삭제가_호출된다() {
         setUp();
-        allowServiceReviewMutation(900L);
+        allowReviewMutation(900L);
         when(reviewMapper.deleteReview(900L, USR_SN)).thenReturn(1);
-        serviceRatingSummary("0.0", 0L);
+        reviewRatingSummary("0.0", 0L);
 
         reviewService.deleteReview(USR_SN, 900L);
 

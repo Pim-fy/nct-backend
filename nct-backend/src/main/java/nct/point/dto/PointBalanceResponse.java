@@ -21,7 +21,7 @@ public class PointBalanceResponse {
     private final long settleable;
     /** 총 보유 = 세 버킷 합 (서버 계산 제공) */
     private final long total;
-    /** 환전 가능 = 사용가능 + 정산가능 (서버 계산 제공, 2026-07-22 사용자 결정) */
+    /** 환전 가능 = 사용가능만 (서버 계산 제공, 정산가능은 환전 대상 아님 — 2026-08-14 재확인) */
     private final long exchangeable;
 
     /** 도메인 모델 → 응답 DTO 변환 */

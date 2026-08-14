@@ -12,7 +12,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -127,15 +126,11 @@ public class TradeService implements
     private final BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private final SettlementService settlementService;
     private final ChatService chatService;
-    // 기존 단위 테스트와 외부 생성자의 생성자 시그니처를 유지하기 위해 선택 주입한다.
-    @Autowired
-    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
+    private final TradeOfflineScheduleProposalService offlineScheduleProposalService;
     private final PointService pointService;
     private final ReferenceDataService referenceDataService;
-    @Autowired
-    private ActiveAbuseReportReferenceReader activeReportReferenceReader;
-    @Autowired
-    private TradeIncidentReportPort tradeIncidentReportPort;
+    private final ActiveAbuseReportReferenceReader activeReportReferenceReader;
+    private final TradeIncidentReportPort tradeIncidentReportPort;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
     // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 TradeService를

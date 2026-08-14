@@ -32,7 +32,7 @@ public class WritableTradeItem {
     @JsonIgnore
     private Long productId;
     private Long tradeId;       // 리뷰 등록 대상 거래
-    private String thumbnail;   // TODO: PRODUCT_IMAGE 연동 전까지 항상 null (프론트는 null 정상 처리)
+    private String thumbnail;   // 물건은 PRODUCT_IMAGE, 서비스는 요청 이미지의 대표 경로
     private String title;
     private String dealType;    // "goods" | "service"
     private String partyLabel;  // "판매자" | "구매자" | "제공자" | "요청자"
@@ -40,6 +40,4 @@ public class WritableTradeItem {
     private String completedDate;
     private String reviewDeadline; // 거래 완료일 + 30일 (yyyy-MM-dd). 프론트에서 기간 만료 여부 판별에 사용.
     private Long counterpartUsrSn; // 리뷰 저장 시 REVWD_USR_SN에 넣을 값 (응답에도 그대로 노출됨 - 참여자 본인 확인용)
-    @JsonIgnore
-    private boolean counterpartServiceProvider; // 제공자로서 받은 서비스 리뷰 캐시만 갱신하기 위한 내부 판정값
 }

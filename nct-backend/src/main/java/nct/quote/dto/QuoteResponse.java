@@ -26,6 +26,8 @@ public class QuoteResponse {
     private List<QuoteAttachmentResponse> attachments;
     private String qutTtl;
     private String catNm;
+    // 담당자 7 · 제공자 견적 목록에서 원본 요청의 운영 보류 여부를 표시합니다.
+    private String svcReqStatusCode;
     private Long svcReqBdgtAmt;
     private LocalDateTime svcReqRegDt;
     private String svcReqHopeDt;

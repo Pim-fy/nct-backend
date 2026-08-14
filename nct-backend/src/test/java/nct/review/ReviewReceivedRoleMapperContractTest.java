@@ -35,15 +35,17 @@ class ReviewReceivedRoleMapperContractTest {
     }
 
     @Test
-    void combinedTrustScoreRemainsIndependentFromRoleFilter() throws IOException {
+    void combinedTrustScoreUsesOnlyTheOverallAverageAndRemainsIndependentFromRoleFilter() throws IOException {
         String mapper = resource("mapper/review/ReviewMapper.xml");
         String trustScoreQuery = mapper.substring(
                 mapper.indexOf("<select id=\"selectTrustScore\""),
                 mapper.indexOf("</select>", mapper.indexOf("<select id=\"selectTrustScore\"")));
 
         assertThat(trustScoreQuery)
-                .contains("AS goodsCount")
-                .contains("AS goodsScore")
+                .contains("AS totalCount")
+                .contains("AS totalScore")
+                .doesNotContain("goodsScore")
+                .doesNotContain("serviceScore")
                 .doesNotContain("receivedGoodsRoleFilter");
     }
 

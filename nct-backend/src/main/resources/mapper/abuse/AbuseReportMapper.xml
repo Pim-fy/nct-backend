@@ -484,4 +484,14 @@
           AND ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
     </select>
 
+    <!-- 담당자 7 · F-OPS-007/F-PAY-010/F-PAY-012: 신고자는 제외하고 피신고자의 활성 신고만 확인 -->
+    <select id="existsActiveReportAgainst" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM ABUSE_REPORT
+            WHERE RPTD_USR_SN = #{reportedUserSn}
+              AND ABR_STATUS_CD IN (#{receivedStatus}, #{processingStatus})
+        )
+    </select>
+
 </mapper>

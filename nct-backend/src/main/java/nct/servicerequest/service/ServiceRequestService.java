@@ -1,7 +1,6 @@
 package nct.servicerequest.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +24,7 @@ import nct.product.mapper.BannedKeywordMapper;
 import nct.quote.mapper.QuoteMapper;
 import nct.servicerequest.domain.ServiceRequest;
 import nct.servicerequest.domain.ServiceRequestCommentAddedEvent;
+import nct.servicerequest.domain.SvcReqAddress;
 import nct.servicerequest.domain.SvcReqComment;
 import nct.servicerequest.domain.SvcReqImage;
 import nct.servicerequest.domain.SvcReqItem;
@@ -37,6 +37,7 @@ import nct.servicerequest.dto.ServiceRequestResponse;
 import nct.servicerequest.dto.SvcReqCommentRequest;
 import nct.servicerequest.dto.SvcReqCommentResponse;
 import nct.servicerequest.mapper.ServiceRequestMapper;
+import nct.servicerequest.mapper.SvcReqAddressMapper;
 import nct.servicerequest.mapper.SvcReqCommentMapper;
 import nct.servicerequest.mapper.SvcReqImageMapper;
 import nct.servicerequest.mapper.SvcReqItemMapper;
@@ -53,6 +54,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     private final ServiceRequestMapper serviceRequestMapper;
     private final SvcReqItemMapper svcReqItemMapper;
     private final SvcReqImageMapper svcReqImageMapper;
+    private final SvcReqAddressMapper svcReqAddressMapper;
     private final SvcReqCommentMapper svcReqCommentMapper;
     private final ServiceRequestFormService serviceRequestFormService;
     private final FileStorageService fileStorageService;
@@ -334,7 +336,9 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
         boolean owner = viewerUsrSn != null && existing.getUsrSn().equals(viewerUsrSn);
         if (owner && !providerViewer) {
-            return buildOwnerResponse(existing);
+            return Character.valueOf('N').equals(existing.getSvcReqUseYn())
+                    ? buildOwnerHistoryResponse(existing)
+                    : buildOwnerResponse(existing);
         }
 
         // 담당자 7 통합: 일반회원은 URL을 직접 입력해도 다른 회원의 요청을 볼 수 없다.
@@ -344,7 +348,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
 
         // 담당자 7: 정본 F-SVC-003에 따라 임시저장은 존재 여부까지 외부에 노출하지 않는다.
         ServiceRequestResponse response = serviceRequestMapper.findPublicServiceRequestById(svcReqSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+                .orElseGet(() -> findProviderQuoteHistory(svcReqSn, viewerUsrSn));
         response.setItems(svcReqItemMapper.findPublicItemContentsBySvcReqSn(svcReqSn));
         response.setImageList(svcReqImageMapper.findImagesBySvcReqSn(svcReqSn));
         return response;
@@ -436,14 +440,11 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
 
         ServiceRequest existing = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
-        if (!Character.valueOf('Y').equals(existing.getSvcReqUseYn())) {
-            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
-        }
-
         boolean owner = existing.getUsrSn().equals(viewerUsrSn);
         if (providerViewer) {
-            serviceRequestMapper.findPublicServiceRequestById(svcReqSn)
-                    .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+            if (serviceRequestMapper.findPublicServiceRequestById(svcReqSn).isEmpty()) {
+                requireProviderQuoteHistory(svcReqSn, viewerUsrSn);
+            }
         } else if (!owner) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
@@ -476,6 +477,33 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
             response.setAddressList(serviceRequestFormService.getOwnerAddresses(svcReqSn));
         }
         return response;
+    }
+
+    private ServiceRequestResponse buildOwnerHistoryResponse(ServiceRequest existing) {
+        Long svcReqSn = existing.getSvcReqSn();
+        ServiceRequestResponse response = serviceRequestMapper.findServiceRequestHistoryById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        response.setItems(svcReqItemMapper.findAllItemContentsBySvcReqSn(svcReqSn));
+        response.setImageList(svcReqImageMapper.findImagesBySvcReqSn(svcReqSn));
+        if (existing.getFormTemplateSn() != null) {
+            response.setStructuredAnswers(serviceRequestFormService.getOwnerAnswers(svcReqSn));
+            response.setAddressList(serviceRequestFormService.getOwnerAddresses(svcReqSn));
+        }
+        return response;
+    }
+
+    private ServiceRequestResponse findProviderQuoteHistory(Long svcReqSn, Long viewerUsrSn) {
+        requireProviderQuoteHistory(svcReqSn, viewerUsrSn);
+        return serviceRequestMapper.findServiceRequestHistoryById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+    }
+
+    private void requireProviderQuoteHistory(Long svcReqSn, Long viewerUsrSn) {
+        if (viewerUsrSn == null
+                || viewerUsrSn <= 0
+                || quoteMapper.countQuotesByRequestAndProvider(svcReqSn, viewerUsrSn) == 0) {
+            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -531,18 +559,6 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
     }
 
-    /** 마감 후 1일 경과 요청서 조회 (자동 삭제 배치 전용) */
-    @Transactional(readOnly = true)
-    public List<Long> findExpiredClosedServiceRequestIds(LocalDateTime cutoff, int limit) {
-        return serviceRequestMapper.findExpiredClosedServiceRequestIds(cutoff, limit);
-    }
-
-    /** 마감 후 1일 경과 요청서 자동 삭제 — ServiceRequestClosedAutoDeleteScheduler 전용, 소유자 확인 없이 시스템이 직접 처리 */
-    @Transactional
-    public void deleteExpiredClosedServiceRequest(Long svcReqSn) {
-        serviceRequestMapper.deleteExpiredClosedServiceRequest(svcReqSn);
-    }
-
     // 마감(SVCC0004)된 요청서 재등록 — 원본은 이력으로 그대로 남기고, 내용을 복사한 새 요청서(임시저장)를
     // 별도 svcReqSn으로 만든다. 같은 번호를 재사용하면 옛 견적·변경사항 기록이 새 라운드와 뒤섞이게 된다.
     @Transactional
@@ -584,6 +600,18 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                     .map(image -> image.toBuilder().svcReqImgSn(null).svcReqSn(copy.getSvcReqSn()).build())
                     .toList();
             svcReqImageMapper.insertAll(copiedImages);
+        }
+
+        List<SvcReqAddress> addresses = svcReqAddressMapper.findBySvcReqSn(svcReqSn);
+        if (!addresses.isEmpty()) {
+            List<SvcReqAddress> copiedAddresses = addresses.stream()
+                    .map(address -> address.toBuilder()
+                            .svcReqSn(copy.getSvcReqSn())
+                            .regId(String.valueOf(usrSn))
+                            .updtId(String.valueOf(usrSn))
+                            .build())
+                    .toList();
+            svcReqAddressMapper.insertAll(copiedAddresses);
         }
 
         return serviceRequestMapper.findServiceRequestById(copy.getSvcReqSn())

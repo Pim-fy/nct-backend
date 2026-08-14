@@ -23,6 +23,7 @@ import nct.auction.port.AdminAuctionCancellationResult;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.reference.service.ReferenceDataService;
@@ -46,6 +47,7 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
     private final TradeService tradeService;
     private final PointService pointService;
     private final ActiveAbuseReportReferenceReader activeReportReferenceReader;
+    private final NotificationService notificationService;
 
     /**
      * 관리자 직접 취소: 판매자 취소 요청 없이 경매 상태에 맞는 자금 정리까지 한 트랜잭션으로 처리한다.
@@ -193,13 +195,14 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
         if (cancelRequestMapper.existsPendingByAuctionId(aucSn)) {
             throw new CustomException(ErrorCode.AUCTION_CANCEL_REQUEST_ALREADY_PENDING);
         }
-        if (!REQUESTABLE_STATUSES.contains(target.getAucStatusCd())) {
+        // 예약(AUCC0001)은 아직 입찰이 없어 정리할 자금·거래가 없으므로, 관리자 승인 절차 없이 즉시 취소한다.
+        boolean instantCancel = AuctionStatusCode.READY.equals(target.getAucStatusCd());
+        if (!instantCancel && !REQUESTABLE_STATUSES.contains(target.getAucStatusCd())) {
             throw new CustomException(ErrorCode.PRODUCT_CANCEL_INVALID_STATUS);
         }
 
-        referenceDataService.requireActiveCode(
-                AUCTION_STATUS_GROUP_CODE,
-                AuctionStatusCode.CANCEL_REQUESTED);
+        String newStatusCd = instantCancel ? AuctionStatusCode.CANCELED : AuctionStatusCode.CANCEL_REQUESTED;
+        referenceDataService.requireActiveCode(AUCTION_STATUS_GROUP_CODE, newStatusCd);
 
         AuctionCancelRequestCreateCommand command = new AuctionCancelRequestCreateCommand(
                 aucSn,
@@ -212,17 +215,20 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
         int updated = auctionMapper.updateAuctionStatusForCancellation(
                 aucSn,
                 target.getAucStatusCd(),
-                AuctionStatusCode.CANCEL_REQUESTED,
+                newStatusCd,
                 requesterUsrSn.toString());
         if (updated != 1) {
             throw new CustomException(ErrorCode.CONFLICT, "경매 상태가 이미 변경되었습니다.");
+        }
+        if (instantCancel) {
+            processRequest(command.getAucCnlReqSn(), "Y", requesterUsrSn, normalizedReason);
         }
 
         return AuctionCancelRequestResponse.builder()
                 .aucCnlReqSn(command.getAucCnlReqSn())
                 .aucSn(aucSn)
                 .prevAucStatusCd(target.getAucStatusCd())
-                .aucStatusCd(AuctionStatusCode.CANCEL_REQUESTED)
+                .aucStatusCd(newStatusCd)
                 .build();
     }
 
@@ -269,7 +275,11 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
         processRequest(cancelRequestSn, "Y", adminUsrSn, reason);
     }
 
-    /** 관리자 반려: 포인트와 거래는 건드리지 않고 경매만 요청 전 상태로 복귀시킨다. */
+    /**
+     * 관리자 반려: 포인트와 거래는 건드리지 않고 경매만 요청 전 상태로 복귀시킨다.
+     * 검토가 늦어져 원래 종료시각이 이미 지난 채로 반려된 경우, 검토 지연으로 판매자가
+     * 손해 보지 않도록 반려 시점 기준 1시간을 종료시각으로 보장한다 (담당자2·희준 협의, 2026-08-14).
+     */
     @Transactional
     public void rejectCancellation(
             Long cancelRequestSn,
@@ -277,7 +287,7 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
             String rejectReason) {
         String reason = validateProcessValues(cancelRequestSn, adminUsrSn, rejectReason);
         AuctionCancelRequestProcessTarget request = requirePendingRequest(cancelRequestSn);
-        requireCancelRequestedAuction(request);
+        AuctionBidTarget auction = requireCancelRequestedAuction(request);
 
         referenceDataService.requireActiveCode(
                 AUCTION_STATUS_GROUP_CODE,
@@ -287,6 +297,15 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
                 AuctionStatusCode.CANCEL_REQUESTED,
                 request.getPreviousAuctionStatusCode(),
                 adminUsrSn);
+
+        if (auction.getEndDateTime() != null && auction.getDatabaseNow() != null
+                && auction.getDatabaseNow().isAfter(auction.getEndDateTime())) {
+            auctionMapper.extendAuctionEndDateTime(
+                    request.getAuctionId(),
+                    auction.getDatabaseNow().plusHours(1),
+                    adminUsrSn.toString());
+        }
+
         processRequest(cancelRequestSn, "N", adminUsrSn, reason);
     }
 
@@ -331,6 +350,7 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
                 RefType.BID,
                 auction.getCurrentHighestBidId(),
                 "경매 취소 승인 홀딩 반환: " + reason);
+        notificationService.notifyAuctionCancelled(auction.getCurrentHighestBidderId(), auction.getAuctionId());
     }
 
     private void cancelEndedAuctionTrade(

@@ -143,17 +143,13 @@ class AuctionServiceDetailTest {
                 .usrSn(30L)
                 .totalScore(3.8)
                 .totalCount(20)
-                .goodsScore(4.2)
-                .goodsCount(12)
-                .serviceScore(3.1)
-                .serviceCount(8)
                 .hasReviews(true)
                 .build());
 
         AuctionDetailResponse response = auctionService.findAuctionDetail(10L);
 
-        assertThat(response.getSellerRating()).isEqualTo(4.2);
-        assertThat(response.getSellerReviewCount()).isEqualTo(12);
+        assertThat(response.getSellerRating()).isEqualTo(3.8);
+        assertThat(response.getSellerReviewCount()).isEqualTo(20);
         verify(reviewService).getTrustScore(30L);
     }
 

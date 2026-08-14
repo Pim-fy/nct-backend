@@ -8,20 +8,18 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
-/** 담당자 7 · F-COM-009: 제공자 리뷰 별점 캐시 SQL의 도메인·권한 경계를 고정한다. */
+/** 담당자 7 · F-COM-009: 제공자 통합 평점 캐시 SQL의 권한 경계를 고정한다. */
 class ReviewRatingCacheMapperContractTest {
 
     @Test
-    void serviceRatingSummaryUsesOnlyActiveReviewsReceivedAsProvider() throws IOException {
+    void reviewRatingSummaryUsesAllActiveReviewsReceivedByTheMember() throws IOException {
         String mapper = resource("mapper/review/ReviewMapper.xml");
 
         assertThat(mapper)
-                .contains("<select id=\"selectServiceReviewRatingSummary\"")
-                .contains("R.RVW_DOMAIN_CD = 'RVWC0002'")
+                .contains("<select id=\"selectReviewRatingSummary\"")
                 .contains("R.RVW_USE_YN = 'Y'")
-                .contains("T.TRD_TYPE_CD = 'TRDC0002'")
-                .contains("R.REVWR_USR_SN = T.REQ_USR_SN")
-                .contains("T.PRV_USR_SN = R.REVWD_USR_SN");
+                .contains("R.REVWD_USR_SN = #{usrSn}")
+                .doesNotContain("selectServiceReviewRatingSummary");
     }
 
     @Test
@@ -33,17 +31,7 @@ class ReviewRatingCacheMapperContractTest {
                 .contains("R.RVW_SN = #{rvwSn}")
                 .contains("R.REVWR_USR_SN = #{usrSn}")
                 .contains("R.RVW_USE_YN = 'Y'")
-                .contains("T.PRV_USR_SN = R.REVWD_USR_SN")
-                .contains("AS receivedAsServiceProvider");
-    }
-
-    @Test
-    void writableServiceReviewMarksOnlyRequesterToProviderDirectionAsCacheEligible() throws IOException {
-        String mapper = resource("mapper/review/ReviewMapper.xml");
-
-        assertThat(mapper)
-                .contains("T.REQ_USR_SN = #{usrSn}")
-                .contains("AS counterpartServiceProvider");
+                .contains("R.REVWD_USR_SN AS receiverUserSn");
     }
 
     @Test

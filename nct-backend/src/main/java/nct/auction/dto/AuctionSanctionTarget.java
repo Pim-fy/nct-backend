@@ -19,6 +19,7 @@ public class AuctionSanctionTarget {
     private String auctionStatusCode;
     private LocalDateTime startAt;
     private LocalDateTime endAt;
+    private LocalDateTime updatedAt;
     private LocalDateTime databaseNow;
     private Long tradeSn;
     private String tradeStatusCode;

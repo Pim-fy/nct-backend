@@ -1,6 +1,5 @@
 package nct.servicerequest.mapper;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,6 +36,9 @@ public interface ServiceRequestMapper {
 
     Optional<ServiceRequestResponse> findServiceRequestById(@Param("svcReqSn") Long svcReqSn);
 
+    Optional<ServiceRequestResponse> findServiceRequestHistoryById(
+            @Param("svcReqSn") Long svcReqSn);
+
     Optional<ServiceRequestResponse> findPublicServiceRequestById(@Param("svcReqSn") Long svcReqSn);
 
     List<ServiceRequestResponse> findServiceRequestTitles(@Param("svcReqSnList") List<Long> svcReqSnList);
@@ -68,6 +70,10 @@ public interface ServiceRequestMapper {
 
     List<ServiceRequestSanctionTarget> findSanctionTargetsByOwnerForUpdate(
             @Param("userSn") Long userSn);
+
+    /** 담당자 7 · F-OPS-007: 신고된 견적 요청 한 건의 상태와 남은 시간을 잠금 조회합니다. */
+    ServiceRequestSanctionTarget findReportHoldTargetForUpdate(
+            @Param("serviceRequestId") Long serviceRequestId);
 
     int pauseServiceRequestForSanction(
             @Param("serviceRequestId") Long serviceRequestId,
@@ -101,10 +107,4 @@ public interface ServiceRequestMapper {
 
     /** 견적 요청 기간 만료 자동 마감 — 시스템 배치 전용, 소유자 검증 없이 상태만 확인 */
     int autoCloseServiceRequest(@Param("svcReqSn") Long svcReqSn);
-
-    /** 마감(SVCC0004) 후 일정 기간 지난 요청서 목록 — 자동 삭제 배치 전용 */
-    List<Long> findExpiredClosedServiceRequestIds(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
-
-    /** 마감 후 일정 기간 경과 요청서 자동 삭제 — 시스템 배치 전용, 소유자 검증 없음 */
-    void deleteExpiredClosedServiceRequest(@Param("svcReqSn") Long svcReqSn);
 }

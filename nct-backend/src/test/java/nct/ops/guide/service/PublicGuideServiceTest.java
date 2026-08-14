@@ -22,10 +22,15 @@ class PublicGuideServiceTest {
                 .extracting("guideId")
                 .containsExactly(
                         "product-register",
-                        "service-request",
-                        "quote-selection",
                         "bid",
+                        "auction-result",
                         "trade-completion",
+                        "auction-review",
+                        "service-request",
+                        "quote-submit",
+                        "quote-selection",
+                        "service-progress",
+                        "service-review",
                         "point-exchange");
         assertThat(guides)
                 .allSatisfy(guide -> assertThat(guide.routePath()).startsWith("/customersupport/guide?flow="));
@@ -36,7 +41,7 @@ class PublicGuideServiceTest {
         var detail = service.getGuide(" BID ");
 
         assertThat(detail.guideId()).isEqualTo("bid");
-        assertThat(detail.steps()).hasSizeGreaterThanOrEqualTo(4);
+        assertThat(detail.steps()).hasSizeBetween(1, 2);
         assertThat(detail.relatedRoutes()).isNotEmpty();
     }
 
@@ -44,9 +49,23 @@ class PublicGuideServiceTest {
     void firstGuideIsProductRegistrationNotMemberRegistration() {
         var detail = service.getGuide("product-register");
 
-        assertThat(detail.title()).isEqualTo("상품 등록");
+        assertThat(detail.title()).isEqualTo("상품 등록·경매 탐색");
         assertThat(detail.steps()).anySatisfy(step -> assertThat(step).contains("시작가"));
         assertThat(detail.relatedRoutes()).contains("/product/register");
+    }
+
+    @Test
+    void providesFiveConciseStepsForAuctionAndServiceJourneys() {
+        var guideIds = service.getGuides().stream()
+                .map(guide -> guide.guideId())
+                .toList();
+
+        assertThat(guideIds.subList(0, 5)).containsExactly(
+                "product-register", "bid", "auction-result", "trade-completion", "auction-review");
+        assertThat(guideIds.subList(5, 10)).containsExactly(
+                "service-request", "quote-submit", "quote-selection", "service-progress", "service-review");
+        guideIds.subList(0, 10).forEach(guideId ->
+                assertThat(service.getGuide(guideId).steps()).hasSizeBetween(1, 2));
     }
 
     @Test

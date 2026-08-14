@@ -34,6 +34,11 @@
         <result property="svcReqHopeDt"   column="HOPE_DT"          />
     </resultMap>
 
+    <!-- 담당자 7 · 제공자 견적 목록에서 원본 요청의 운영 상태를 함께 조회합니다. -->
+    <resultMap id="MyQuoteListResponseMap" type="nct.quote.dto.QuoteResponse" extends="QuoteResponseMap">
+        <result property="svcReqStatusCode" column="SVC_REQ_STATUS_CD" />
+    </resultMap>
+
     <resultMap id="QuoteEntityMap" type="nct.quote.domain.Quote">
         <id     property="qutSn"        column="QUT_SN"         />
         <result property="svcReqSn"     column="SVC_REQ_SN"     />
@@ -73,6 +78,13 @@
          WHERE SVC_REQ_SN = #{svcReqSn}
            AND USR_SN = #{usrSn}
            AND QUT_STATUS_CD IN ('QUTC0001', 'QUTC0002')
+    </select>
+
+    <select id="countQuotesByRequestAndProvider" resultType="int">
+        SELECT COUNT(*)
+          FROM QUOTE
+         WHERE SVC_REQ_SN = #{svcReqSn}
+           AND USR_SN = #{usrSn}
     </select>
 
     <select id="countActiveQuotesByServiceRequestId" resultType="int">
@@ -228,10 +240,11 @@
     </update>
 
     <!-- ── 내 견적 목록 (제공자 본인) ─────────────────── -->
-    <select id="findMyQuotes" resultMap="QuoteResponseMap">
+    <select id="findMyQuotes" resultMap="MyQuoteListResponseMap">
         /* QuoteMapper.findMyQuotes */
         SELECT q.QUT_SN, q.SVC_REQ_SN,
                sr.SVC_REQ_TTL,
+               sr.SVC_REQ_STATUS_CD,
                c.CAT_NM,
                sr.SVC_REQ_BDGT_AMT,
                sr.SVC_REQ_REG_DT,

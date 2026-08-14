@@ -135,4 +135,10 @@ public interface AbuseReportMapper {
     // @ai_generated (담당자1 황희준, 2026-08-12, 조율 대기): F-AUTH-011/POL-AUTH-013 - 탈퇴 전
     // 하드 차단용. 본인이 신고자 또는 피신고자인 접수·처리중(ABSC0001·0002) 신고 건수를 센다.
     int countOpenReportsByUser(@Param("userSn") Long userSn);
+
+    /** 담당자 7 · F-OPS-007: 접수·처리 중 신고의 피신고자 여부만 확인합니다. */
+    boolean existsActiveReportAgainst(
+            @Param("reportedUserSn") Long reportedUserSn,
+            @Param("receivedStatus") String receivedStatus,
+            @Param("processingStatus") String processingStatus);
 }

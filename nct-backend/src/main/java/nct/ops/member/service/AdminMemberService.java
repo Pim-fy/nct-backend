@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,8 +59,7 @@ public class AdminMemberService {
     private final MemberStatusCommandPort memberStatusCommandPort;
     private final AbuseReportMapper abuseReportMapper;
     private final ObjectProvider<AccountSanctionPort> accountSanctionPortProvider;
-    @Autowired(required = false)
-    private AccountRestrictionRecoveryPort recoveryPort;
+    private final ObjectProvider<AccountRestrictionRecoveryPort> recoveryPortProvider;
     private final MemberTradeRestrictionPort memberTradeRestrictionPort;
     private final AuditLogPort auditLogPort;
     private final NotificationService notificationService;
@@ -169,6 +167,7 @@ public class AdminMemberService {
                 return new AdminMemberStatusChangeResponse(
                         userSn, SUSPENDED, SUSPENDED, false, 0, 0);
             }
+            AccountRestrictionRecoveryPort recoveryPort = recoveryPortProvider.getIfAvailable();
             if (recoveryPort != null) {
                 recoveryPort.restorePending(userSn, adminUserSn, normalizedReason);
             }

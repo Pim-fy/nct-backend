@@ -3,7 +3,6 @@ package nct.trade.controller;
 import java.util.List;
 
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,9 +43,7 @@ import nct.trade.service.TradeOfflineScheduleProposalService;
 public class TradeController {
 
     private final TradeService tradeService;
-    // 기존 컨트롤러 단위 테스트의 생성자 시그니처를 유지한다.
-    @Autowired
-    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
+    private final TradeOfflineScheduleProposalService offlineScheduleProposalService;
 
     /** 구매·판매 역할을 함께 포함한 내 물건 거래 목록을 조회한다. */
     @GetMapping

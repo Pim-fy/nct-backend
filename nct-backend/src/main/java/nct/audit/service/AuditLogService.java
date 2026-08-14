@@ -132,50 +132,6 @@ public class AuditLogService {
     }
 
     /**
-     * 민감정보(채팅 메시지) 원문 제한 조회 (F-OPS-014)
-     *
-     * 거래 신고 건에 한해 사유 입력과 감사로그 기록 후에만 원문을 반환합니다.
-     * 순서가 중요하다 — 감사로그 INSERT가 먼저이고 원문 반환이 나중이라, 로그 없이 원문만
-     * 새어 나가는 경로가 코드상 존재하지 않는다 (같은 트랜잭션이므로 로그 실패 시 조회도 실패).
-     *
-     * @param adminUsrSn 조회하는 관리자
-     * @param chMsgSn    조회 대상 채팅 메시지
-     * @param reportSn   연결된 거래 신고 일련번호
-     * @param reason     조회 사유 (필수)
-     * @param ipAddr     관리자 IP
-     */
-    @Transactional
-    public ChatMessageView viewChatMessage(long adminUsrSn, long chMsgSn, long reportSn,
-                                           String reason, String ipAddr) {
-        // 사유 없는 조회 요청은 실패한다 (F-OPS-014 예외 규칙).
-        // 컨트롤러 @Valid와 별개로 서비스에서도 지키는 이유: 이 계약을 다른 코드가 직접 호출해도 뚫리지 않게
-        if (reason == null || reason.isBlank()) {
-            throw new CustomException(ErrorCode.MISSING_REQUIRED_FIELD, "민감정보 제한 조회 사유를 입력해야 합니다.");
-        }
-
-        if (reason.trim().length() > 400) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "민감정보 제한 조회 사유는 400자 이하여야 합니다.");
-        }
-
-        if (chMsgSn <= 0 || reportSn <= 0
-                || auditLogMapper.countDisputeChatMessageLink(chMsgSn, reportSn) == 0) {
-            throw new CustomException(ErrorCode.CHAT_MESSAGE_NOT_FOUND,
-                    "해당 거래 신고에 연결된 채팅 메시지를 찾을 수 없습니다.");
-        }
-
-        // 원문조회 감사로그는 상위 신고를 주 참조로 남깁니다.
-        record(adminUsrSn, AuditLogType.SENSITIVE_VIEW, RefType.ABUSE_REPORT, reportSn,
-                String.format("채팅 메시지 %d번 원문 조회 — 사유: %s", chMsgSn, reason.trim()), ipAddr);
-
-        ChatMessageView message = auditLogMapper.selectChatMessageView(chMsgSn);
-        if (message == null) {
-            throw new CustomException(ErrorCode.CHAT_MESSAGE_NOT_FOUND);
-        }
-        return message;
-    }
-
-    /**
      * 담당자 7 · F-OPS-005/014: 거래 신고에 연결된 채팅만 사유ㆍ감사기록 후 제한 조회합니다.
      * 메시지 원문은 감사 INSERT가 성공한 뒤에만 읽으며, 페이지 크기를 제한해 무제한 조회를 막습니다.
      */

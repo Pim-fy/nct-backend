@@ -336,7 +336,9 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
         boolean owner = viewerUsrSn != null && existing.getUsrSn().equals(viewerUsrSn);
         if (owner && !providerViewer) {
-            return buildOwnerResponse(existing);
+            return Character.valueOf('N').equals(existing.getSvcReqUseYn())
+                    ? buildOwnerHistoryResponse(existing)
+                    : buildOwnerResponse(existing);
         }
 
         // 담당자 7 통합: 일반회원은 URL을 직접 입력해도 다른 회원의 요청을 볼 수 없다.
@@ -346,7 +348,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
 
         // 담당자 7: 정본 F-SVC-003에 따라 임시저장은 존재 여부까지 외부에 노출하지 않는다.
         ServiceRequestResponse response = serviceRequestMapper.findPublicServiceRequestById(svcReqSn)
-                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+                .orElseGet(() -> findProviderQuoteHistory(svcReqSn, viewerUsrSn));
         response.setItems(svcReqItemMapper.findPublicItemContentsBySvcReqSn(svcReqSn));
         response.setImageList(svcReqImageMapper.findImagesBySvcReqSn(svcReqSn));
         return response;
@@ -438,14 +440,11 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
 
         ServiceRequest existing = serviceRequestMapper.findServiceRequestEntityById(svcReqSn)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
-        if (!Character.valueOf('Y').equals(existing.getSvcReqUseYn())) {
-            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
-        }
-
         boolean owner = existing.getUsrSn().equals(viewerUsrSn);
         if (providerViewer) {
-            serviceRequestMapper.findPublicServiceRequestById(svcReqSn)
-                    .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+            if (serviceRequestMapper.findPublicServiceRequestById(svcReqSn).isEmpty()) {
+                requireProviderQuoteHistory(svcReqSn, viewerUsrSn);
+            }
         } else if (!owner) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
@@ -478,6 +477,33 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
             response.setAddressList(serviceRequestFormService.getOwnerAddresses(svcReqSn));
         }
         return response;
+    }
+
+    private ServiceRequestResponse buildOwnerHistoryResponse(ServiceRequest existing) {
+        Long svcReqSn = existing.getSvcReqSn();
+        ServiceRequestResponse response = serviceRequestMapper.findServiceRequestHistoryById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+        response.setItems(svcReqItemMapper.findAllItemContentsBySvcReqSn(svcReqSn));
+        response.setImageList(svcReqImageMapper.findImagesBySvcReqSn(svcReqSn));
+        if (existing.getFormTemplateSn() != null) {
+            response.setStructuredAnswers(serviceRequestFormService.getOwnerAnswers(svcReqSn));
+            response.setAddressList(serviceRequestFormService.getOwnerAddresses(svcReqSn));
+        }
+        return response;
+    }
+
+    private ServiceRequestResponse findProviderQuoteHistory(Long svcReqSn, Long viewerUsrSn) {
+        requireProviderQuoteHistory(svcReqSn, viewerUsrSn);
+        return serviceRequestMapper.findServiceRequestHistoryById(svcReqSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
+    }
+
+    private void requireProviderQuoteHistory(Long svcReqSn, Long viewerUsrSn) {
+        if (viewerUsrSn == null
+                || viewerUsrSn <= 0
+                || quoteMapper.countQuotesByRequestAndProvider(svcReqSn, viewerUsrSn) == 0) {
+            throw new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND);
+        }
     }
 
     @Transactional(readOnly = true)

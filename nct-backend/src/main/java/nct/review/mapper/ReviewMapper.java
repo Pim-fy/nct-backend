@@ -12,7 +12,7 @@ import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.ReviewRatingTarget;
-import nct.review.dto.ServiceReviewRatingSummary;
+import nct.review.dto.ReviewRatingSummary;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 
@@ -20,8 +20,8 @@ import nct.review.dto.WritableTradeItem;
  * [리뷰 - MyBatis 매퍼]
  * - SQL 본문은 resources/mapper/review/ReviewMapper.xml 에 있다.
  * - insertReview 만 REVIEW 테이블에 쓰고, 나머지(selectWritableTrade*)는 TRADE/PRODUCT/
- *   SERVICE_REQUEST/USERS 를 전부 읽기 전용으로만 조회한다. 이 읽기 전용 조회는 TRADE 모듈이
- *   아직 없어서 임시로 직접 SQL을 짠 것이다 - 자세한 사유는 constant/TempTradeCode.java 참고.
+ *   SERVICE_REQUEST/USERS 를 전부 읽기 전용으로만 조회한다. 리뷰 가능 거래 전용 조회 계약이
+ *   아직 제공되지 않아 직접 조회하며, 계약 제공 시 교체한다. 자세한 사유는 XML 상단을 참고한다.
  */
 @Mapper
 public interface ReviewMapper {
@@ -85,9 +85,9 @@ public interface ReviewMapper {
             @Param("dealType") String dealType,
             @Param("role") String role);
 
-    /** 신뢰지표 집계 (F-COM-009~010, 담당자4 정민재 소비) */
+    /** 통합 평점 집계 (F-COM-009, 담당자4 정민재 소비) */
     TrustScoreResponse selectTrustScore(@Param("usrSn") long usrSn);
 
-    /** 제공자로서 받은 활성 서비스 리뷰의 평균 별점과 리뷰 수를 계산한다. */
-    ServiceReviewRatingSummary selectServiceReviewRatingSummary(@Param("usrSn") long usrSn);
+    /** 회원이 받은 활성 리뷰 전체의 평균 별점과 리뷰 수를 계산한다. */
+    ReviewRatingSummary selectReviewRatingSummary(@Param("usrSn") long usrSn);
 }

@@ -27,6 +27,11 @@ public interface QuoteMapper {
             @Param("svcReqSn") Long svcReqSn,
             @Param("usrSn") Long usrSn);
 
+    /** 담당자 7 · F-SVC-006: 종료·보류된 원본 요청의 견적 이력 조회 권한 확인용입니다. */
+    int countQuotesByRequestAndProvider(
+            @Param("svcReqSn") Long svcReqSn,
+            @Param("usrSn") Long usrSn);
+
     int countActiveQuotesByServiceRequestId(@Param("svcReqSn") Long svcReqSn);
 
     int countTradeLinksByQuoteId(@Param("qutSn") Long qutSn);

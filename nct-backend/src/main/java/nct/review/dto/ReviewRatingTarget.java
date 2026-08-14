@@ -10,6 +10,4 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ReviewRatingTarget {
     private Long receiverUserSn;
-    private String domainCode;
-    private boolean receivedAsServiceProvider;
 }

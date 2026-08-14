@@ -53,6 +53,9 @@ public class ProductResponse {
     @Setter private String aucStatusCd;
     // F-AUC-005 경매 상태 라벨 연계 — AuctionService 일괄 조회 결과로 세팅
     @Setter private String aucStatusNm;
+    // @ai_generated 판매 목록의 상태별 가격 표시용 경매 요약값입니다.
+    @Setter private BigDecimal currentPrice;
+    @Setter private Long bidCount;
 
     // F-AUC-005 거래 상태 연계 — 정민재(4) TradeService 일괄 조회로 세팅
     @Setter private Long tradeSn;

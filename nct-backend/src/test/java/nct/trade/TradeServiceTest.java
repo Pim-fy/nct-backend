@@ -23,7 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import nct.auction.service.AuctionService;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
@@ -92,6 +91,7 @@ class TradeServiceTest {
     private BuyerDeliveryAddressReader buyerDeliveryAddressReader;
     private SettlementService settlementService;
     private ChatService chatService;
+    private TradeOfflineScheduleProposalService offlineScheduleProposalService;
     private PointService pointService;
     private ReferenceDataService referenceDataService;
     private ActiveAbuseReportReferenceReader activeAbuseReportReferenceReader;
@@ -125,6 +125,10 @@ class TradeServiceTest {
         auctionService = mock(AuctionService.class);
         auctionServiceProvider = mock(ObjectProvider.class);
         when(auctionServiceProvider.getObject()).thenReturn(auctionService);
+        offlineScheduleProposalService = new TradeOfflineScheduleProposalService(
+                tradeMapper,
+                tradeOfflineProposalMapper,
+                fieldCryptoService);
         tradeService = new TradeService(
                 tradeMapper,
                 notificationService,
@@ -133,25 +137,13 @@ class TradeServiceTest {
                 buyerDeliveryAddressReader,
                 settlementService,
                 chatService,
+                offlineScheduleProposalService,
                 pointService,
                 referenceDataService,
+                activeAbuseReportReferenceReader,
+                tradeIncidentReportPort,
                 fieldCryptoService,
                 auctionServiceProvider);
-        ReflectionTestUtils.setField(
-                tradeService,
-                "offlineScheduleProposalService",
-                new TradeOfflineScheduleProposalService(
-                        tradeMapper,
-                        tradeOfflineProposalMapper,
-                        fieldCryptoService));
-        ReflectionTestUtils.setField(
-                tradeService,
-                "activeReportReferenceReader",
-                activeAbuseReportReferenceReader);
-        ReflectionTestUtils.setField(
-                tradeService,
-                "tradeIncidentReportPort",
-                tradeIncidentReportPort);
     }
 
     @Test

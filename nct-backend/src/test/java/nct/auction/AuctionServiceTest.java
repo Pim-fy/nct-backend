@@ -11,6 +11,7 @@ import javax.sql.DataSource;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,10 +32,12 @@ import nct.global.security.crypto.FieldCryptoService;
 import nct.point.domain.PointBalance;
 import nct.point.exception.PointException;
 import nct.point.service.PointService;
+import nct.support.ApprovedDatabaseWriteCondition;
+import nct.support.SafeSpringBootIntegrationTest;
 
 @SpringBootTest
 @Transactional
-class AuctionServiceTest {
+class AuctionServiceTest extends SafeSpringBootIntegrationTest {
 
     @Autowired AuctionService auctionService;
     @Autowired PointService pointService;
@@ -284,6 +287,7 @@ class AuctionServiceTest {
     }
 
     @Test
+    @ExtendWith(ApprovedDatabaseWriteCondition.class)
     @DisplayName("즉시구매 성공 시 구매자 홀딩을 보관금으로 전환한다")
     void buyNowConvertsHoldToEscrow() {
         long sellerSn = insertUser("t_auc_seller");
@@ -341,6 +345,7 @@ class AuctionServiceTest {
     }
 
     @Test
+    @ExtendWith(ApprovedDatabaseWriteCondition.class)
     @DisplayName("최고입찰이 있는 만료 경매는 종료되고 홀딩이 보관금으로 전환된다")
     void finalizeExpiredAuctionEndsWithWinningBid() {
         long sellerSn = insertUser("t_auc_seller");

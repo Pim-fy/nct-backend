@@ -35,6 +35,7 @@
             L.PT_LDG_REF_TYPE_CD AS ptLdgRefTypeCd,
             R.CMM_NM            AS refTypeNm,
             L.PT_LDG_REF_SN     AS ptLdgRefSn,
+            TR.TRD_TYPE_CD      AS tradeTypeCode,
             L.PT_LDG_PT_TYPE_CD AS ptLdgPtTypeCd,
             P.CMM_NM            AS ptTypeNm,
             L.PT_LDG_TYPE_CD    AS ptLdgTypeCd,
@@ -47,6 +48,9 @@
         JOIN CMM_CODE T ON T.CMM_CD = L.PT_LDG_TYPE_CD
         JOIN CMM_CODE P ON P.CMM_CD = L.PT_LDG_PT_TYPE_CD
         LEFT JOIN CMM_CODE R ON R.CMM_CD = L.PT_LDG_REF_TYPE_CD
+        LEFT JOIN TRADE TR
+          ON L.PT_LDG_REF_TYPE_CD = 'REFC0005'
+         AND TR.TRD_SN = L.PT_LDG_REF_SN
         WHERE L.USR_SN = #{usrSn}
         ORDER BY L.PT_LDG_SN DESC
         LIMIT 100

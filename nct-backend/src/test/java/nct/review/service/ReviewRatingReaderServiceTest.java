@@ -12,22 +12,22 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import nct.review.dto.ServiceReviewRatingSummary;
+import nct.review.dto.ReviewRatingSummary;
 import nct.review.mapper.ReviewMapper;
 
-/** F-COM-009: 제공자 프로필 생성 시 사용하는 리뷰 읽기 포트를 검증한다. */
+/** F-COM-009: 제공자 프로필 캐시에 사용하는 통합 평점 읽기 포트를 검증한다. */
 @ExtendWith(MockitoExtension.class)
-class ServiceReviewRatingReaderServiceTest {
+class ReviewRatingReaderServiceTest {
 
     @Mock private ReviewMapper reviewMapper;
-    @InjectMocks private ServiceReviewRatingReaderService service;
+    @InjectMocks private ReviewRatingReaderService service;
 
     @Test
-    void readsTheReviewOwnedServiceSummary() {
-        ServiceReviewRatingSummary expected = new ServiceReviewRatingSummary(new BigDecimal("4.5"), 2L);
-        when(reviewMapper.selectServiceReviewRatingSummary(101L)).thenReturn(expected);
+    void readsTheOverallReviewSummary() {
+        ReviewRatingSummary expected = new ReviewRatingSummary(new BigDecimal("4.5"), 2L);
+        when(reviewMapper.selectReviewRatingSummary(101L)).thenReturn(expected);
 
         assertThat(service.read(101L)).isSameAs(expected);
-        verify(reviewMapper).selectServiceReviewRatingSummary(101L);
+        verify(reviewMapper).selectReviewRatingSummary(101L);
     }
 }

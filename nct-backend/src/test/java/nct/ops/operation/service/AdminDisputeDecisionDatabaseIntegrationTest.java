@@ -1,8 +1,10 @@
 package nct.ops.operation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,7 @@ class AdminDisputeDecisionDatabaseIntegrationTest extends ApprovedDatabaseWriteI
     @DisplayName("관리자 정산 보류 판정은 거래·정산 보류를 유지하고 같은 판정은 중복 처리하지 않는다")
     void holdsServiceTradeReportAndPreventsDuplicateDecision() {
         ReportFixture fixture = createOpenServiceReport();
+        long auditCountBeforeDecision = reportAuditCount(fixture.reportSn());
 
         reportOperationService.decide(
                 fixture.reportSn(), AdminReportDecision.PROCESSING, AdminDisputeDecision.HOLD,
@@ -81,10 +84,14 @@ class AdminDisputeDecisionDatabaseIntegrationTest extends ApprovedDatabaseWriteI
         assertThat(reportStatus(fixture.reportSn())).isEqualTo("ABSC0002");
         assertThat(reportResult(fixture.reportSn())).isEqualTo("TRDC0013");
         assertThat(settlementStatus(fixture.tradeSn())).isEqualTo("STLC0002");
+        long auditCountAfterFirstDecision = reportAuditCount(fixture.reportSn());
+        assertThat(auditCountAfterFirstDecision).isGreaterThan(auditCountBeforeDecision);
 
         reportOperationService.decide(
                 fixture.reportSn(), AdminReportDecision.PROCESSING, AdminDisputeDecision.HOLD,
                 ReportEnforcementAction.NONE, "추가 확인이 필요합니다", fixture.adminSn());
+
+        assertThat(reportAuditCount(fixture.reportSn())).isEqualTo(auditCountAfterFirstDecision);
     }
 
     @Test
@@ -115,10 +122,30 @@ class AdminDisputeDecisionDatabaseIntegrationTest extends ApprovedDatabaseWriteI
         assertThat(settlementStatus(rejectFixture.tradeSn())).isEqualTo("STLC0001");
     }
 
+    @Test
+    @DisplayName("진행 중 거래 신고가 실제 연결돼 있으면 서비스 자동완료를 차단한다")
+    void openTradeReportBlocksServiceAutoCompletionAgainstActualMapper() {
+        ReportFixture fixture = createOpenServiceReport();
+        jdbc.update("""
+                UPDATE TRADE
+                SET TRD_STATUS_CD = 'TRDC0005',
+                    TRD_AUTO_CMPL_DT = DATE_SUB(NOW(), INTERVAL 1 MINUTE)
+                WHERE TRD_SN = ?
+                """, fixture.tradeSn());
+
+        assertThatThrownBy(() -> tradeService.completeExpiredServiceConfirmation(
+                fixture.tradeSn(), LocalDateTime.now()))
+                .hasMessageContaining("처리 중인 거래 문제");
+
+        assertThat(tradeStatus(fixture.tradeSn())).isEqualTo("TRDC0005");
+        assertThat(reportStatus(fixture.reportSn())).isEqualTo("ABSC0001");
+        assertThat(settlementStatus(fixture.tradeSn())).isEqualTo("STLC0002");
+    }
+
     private ReportFixture createOpenServiceReport() {
         long requesterSn = insertUser("t_dispute_requester");
         long providerSn = insertUser("t_dispute_provider");
-        long adminSn = insertUser("t_dispute_admin");
+        long adminSn = insertUser("t_dispute_admin", "ROLE_ADMIN");
         long tradeSn = insertServiceTrade(requesterSn, providerSn);
 
         pointService.creditCharge(requesterSn, TRADE_AMOUNT * 2, "거래 신고 E2E 테스트 충전");
@@ -167,14 +194,19 @@ class AdminDisputeDecisionDatabaseIntegrationTest extends ApprovedDatabaseWriteI
     }
 
     private long insertUser(String prefix) {
+        return insertUser(prefix, "ROLE_USER");
+    }
+
+    private long insertUser(String prefix, String roleCode) {
         String loginId = prefix + '_' + System.nanoTime();
         String email = loginId + "@test.local";
         return TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO USERS (
                     USR_LOGIN_ID, USR_PSWD_HASH, USR_NM,
                     USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD
-                ) VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
+                ) VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', ?)
+                """, loginId, loginId, fieldCryptoService.encrypt(email),
+                fieldCryptoService.emailHmac(email), roleCode);
     }
 
     private String activeChildCode(String parentCode) {
@@ -230,6 +262,16 @@ class AdminDisputeDecisionDatabaseIntegrationTest extends ApprovedDatabaseWriteI
                   AND PT_LDG_REF_SN = ?
                   AND PT_LDG_TYPE_CD = 'PTLC0013'
                 """, Long.class, requesterSn, tradeSn);
+        return count == null ? 0L : count;
+    }
+
+    private long reportAuditCount(long reportSn) {
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM AUDIT_LOG
+                WHERE AUD_LOG_REF_TYPE_CD = 'REFC0018'
+                  AND AUD_LOG_REF_SN = ?
+                """, Long.class, reportSn);
         return count == null ? 0L : count;
     }
 

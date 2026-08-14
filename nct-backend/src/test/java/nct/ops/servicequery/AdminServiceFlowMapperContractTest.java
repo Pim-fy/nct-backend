@@ -34,6 +34,21 @@ class AdminServiceFlowMapperContractTest {
                 .contains("AS settledAmount");
     }
 
+    /** 담당자 7 · F-OPS-005: 관리자 거래 상세 SQL도 레코드 생성자 계약을 빠짐없이 제공합니다. */
+    @Test
+    void adminServiceTradeDetailProvidesChatStatusContract() throws IOException {
+        String trade = resource("/mapper/trade/TradeMapper.xml");
+        int queryStart = trade.indexOf("<select id=\"findAdminServiceTradeDetail\"");
+        int queryEnd = trade.indexOf("</select>", queryStart);
+
+        assertThat(queryStart).isGreaterThanOrEqualTo(0);
+        assertThat(queryEnd).isGreaterThan(queryStart);
+        assertThat(trade.substring(queryStart, queryEnd))
+                .contains("END AS chatRoomStatus")
+                .contains("FALSE AS chatAvailable")
+                .contains("FALSE AS cancellationDecisionAvailable");
+    }
+
     private String resource(String path) throws IOException {
         return new String(
                 getClass().getResourceAsStream(path).readAllBytes(),

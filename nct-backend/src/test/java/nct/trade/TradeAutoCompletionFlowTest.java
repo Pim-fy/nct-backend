@@ -3,6 +3,7 @@ package nct.trade;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,6 +14,8 @@ import nct.global.security.crypto.FieldCryptoService;
 import nct.notification.service.NotificationService;
 import nct.point.service.PointService;
 import nct.setting.mapper.SystemSettingAdminMapper;
+import nct.support.ApprovedDatabaseWriteCondition;
+import nct.support.SafeSpringBootIntegrationTest;
 import nct.trade.mapper.TradeMapper;
 import nct.trade.scheduler.TradeAutoCompletionScheduler;
 import nct.trade.service.TradeService;
@@ -24,7 +27,7 @@ import nct.trade.service.TradeService;
  */
 @SpringBootTest
 @Transactional
-class TradeAutoCompletionFlowTest {
+class TradeAutoCompletionFlowTest extends SafeSpringBootIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -48,6 +51,7 @@ class TradeAutoCompletionFlowTest {
     private PointService pointService;
 
     @Test
+    @ExtendWith(ApprovedDatabaseWriteCondition.class)
     void schedulerCompletesExpiredTradeAndCreatesSinglePendingSettlement() {
         long sellerUserId = insertUser("auto_seller");
         long buyerUserId = insertUser("auto_buyer");

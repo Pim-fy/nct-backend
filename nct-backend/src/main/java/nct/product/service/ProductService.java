@@ -366,6 +366,9 @@ public class ProductService {
                 p.setAucSn(s.getAucSn());
                 p.setAucStatusCd(s.getAucStatusCd());
                 p.setAucStatusNm(s.getAucStatusNm());
+                // @ai_generated 판매 목록이 시작가를 확정가로 오인하지 않도록 경매 가격 요약을 병합합니다.
+                p.setCurrentPrice(s.getCurrentPrice());
+                p.setBidCount(s.getBidCount());
             }
 
             SellerTradeStatusItem tradeStatus = tradeStatusMap.get(p.getPrdSn());

@@ -36,6 +36,9 @@ public interface ServiceRequestMapper {
 
     Optional<ServiceRequestResponse> findServiceRequestById(@Param("svcReqSn") Long svcReqSn);
 
+    Optional<ServiceRequestResponse> findServiceRequestHistoryById(
+            @Param("svcReqSn") Long svcReqSn);
+
     Optional<ServiceRequestResponse> findPublicServiceRequestById(@Param("svcReqSn") Long svcReqSn);
 
     List<ServiceRequestResponse> findServiceRequestTitles(@Param("svcReqSnList") List<Long> svcReqSnList);

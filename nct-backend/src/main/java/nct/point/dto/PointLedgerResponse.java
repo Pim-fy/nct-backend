@@ -39,6 +39,7 @@ public class PointLedgerResponse {
     private final String ref;
     private final String refTypeCd;
     private final Long refSn;
+    private final String tradeTypeCode;
 
     private final String reason;
 
@@ -58,6 +59,7 @@ public class PointLedgerResponse {
                         ? l.getRefTypeNm() + "-" + l.getPtLdgRefSn() : null)
                 .refTypeCd(l.getPtLdgRefTypeCd())
                 .refSn(l.getPtLdgRefSn())
+                .tradeTypeCode(l.getTradeTypeCode())
                 .reason(l.getPtLdgRsnCn())
                 .build();
     }

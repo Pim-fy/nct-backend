@@ -381,10 +381,19 @@
             a.PRD_SN AS prdSn,
             a.AUC_SN AS aucSn,
             a.AUC_STATUS_CD AS aucStatusCd,
-            aucStatus.CMM_NM AS aucStatusNm
+            aucStatus.CMM_NM AS aucStatusNm,
+            a.AUC_CUR_AMT AS currentPrice,
+            COALESCE(bid.BID_COUNT, 0) AS bidCount
         FROM AUCTION a
         LEFT JOIN CMM_CODE aucStatus
           ON aucStatus.CMM_CD = a.AUC_STATUS_CD
+        <!-- @ai_generated 판매 목록의 현재가·입찰 유무 표시용 집계이며 기존 상태 조회 범위는 바꾸지 않는다. -->
+        LEFT JOIN (
+            SELECT AUC_SN, COUNT(*) AS BID_COUNT
+            FROM BID
+            GROUP BY AUC_SN
+        ) bid
+          ON bid.AUC_SN = a.AUC_SN
         WHERE a.PRD_SN IN
         <foreach collection="prdSns" item="prdSn" open="(" separator="," close=")">
             #{prdSn}
@@ -497,6 +506,7 @@
             a.AUC_STATUS_CD AS auctionStatusCode,
             a.AUC_START_DT AS startAt,
             a.AUC_END_DT AS endAt,
+            a.AUC_UPDT_DT AS updatedAt,
             NOW() AS databaseNow,
             trade.TRD_SN AS tradeSn,
             trade.TRD_STATUS_CD AS tradeStatusCode
@@ -745,7 +755,7 @@
                AUC_UPDT_DT = NOW()
          WHERE AUC_SN = #{auctionId}
            AND AUC_STATUS_CD = #{expectedStatusCode}
-           AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006')
+           AND AUC_STATUS_CD IN ('AUCC0001', 'AUCC0002', 'AUCC0006', 'AUCC9001')
     </update>
 
     <update id="pauseAuctionForAdmin">
@@ -786,6 +796,8 @@
                END,
                AUC_END_DT = CASE
                    WHEN #{statusCode} IN ('AUCC0001', 'AUCC0002')
+                       THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
+                   WHEN #{statusCode} = 'AUCC9001'
                        THEN DATE_ADD(NOW(), INTERVAL GREATEST(COALESCE(#{remainingSeconds}, 0), 1) SECOND)
                    ELSE AUC_END_DT
                END,

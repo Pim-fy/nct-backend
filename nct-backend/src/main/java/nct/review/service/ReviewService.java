@@ -38,7 +38,7 @@ import nct.review.dto.ReviewCreateResult;
 import nct.review.dto.ReviewRouteContext;
 import nct.review.dto.ReviewRatingTarget;
 import nct.review.dto.ReviewUpdateResult;
-import nct.review.dto.ServiceReviewRatingSummary;
+import nct.review.dto.ReviewRatingSummary;
 import nct.review.dto.TradeReviewStateSource;
 import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.UserReviewItem;
@@ -53,8 +53,8 @@ import nct.review.mapper.ReviewMapper;
 /**
  * [리뷰 - 서비스]
  * - "작성 가능한 리뷰" 조회, "내가 쓴 리뷰" 조회, 리뷰 등록(+사진 첨부)을 담당한다.
- * - TRADE 관련 검증은 ReviewMapper의 임시 조회에 의존한다 (자세한 사유는
- * nct.review.constant.TempTradeCode, ReviewMapper.xml 상단 주석 참고).
+ * - TRADE 관련 검증은 ReviewMapper의 읽기 전용 조회에 의존한다. 담당자4가 리뷰 가능 거래
+ * 조회 계약을 제공하면 해당 계약으로 전환한다 (ReviewMapper.xml 상단 주석 참고).
  */
 @Service
 @RequiredArgsConstructor
@@ -241,10 +241,7 @@ public class ReviewService {
             photoCount = storeReviewImages(photos, review.getRvwSn(), usrSn);
         }
 
-        synchronizeProviderRating(
-                domainCd,
-                trade.getCounterpartUsrSn(),
-                trade.isCounterpartServiceProvider());
+        synchronizeProviderRating(trade.getCounterpartUsrSn());
 
         notificationService.notify(
                 trade.getCounterpartUsrSn(),
@@ -290,10 +287,7 @@ public class ReviewService {
             addedPhotoCount = storeReviewImages(photos, rvwSn, usrSn);
         }
 
-        synchronizeProviderRating(
-                ratingTarget.getDomainCode(),
-                ratingTarget.getReceiverUserSn(),
-                ratingTarget.isReceivedAsServiceProvider());
+        synchronizeProviderRating(ratingTarget.getReceiverUserSn());
 
         return ReviewUpdateResult.builder()
                 .id(rvwSn)
@@ -311,10 +305,7 @@ public class ReviewService {
         if (deleted == 0) {
             throw new ReviewNotFoundException(rvwSn);
         }
-        synchronizeProviderRating(
-                ratingTarget.getDomainCode(),
-                ratingTarget.getReceiverUserSn(),
-                ratingTarget.isReceivedAsServiceProvider());
+        synchronizeProviderRating(ratingTarget.getReceiverUserSn());
     }
 
     /**
@@ -353,7 +344,7 @@ public class ReviewService {
     }
 
     /**
-     * 특정 회원의 신뢰지표 (F-COM-009~010, 담당자4 정민재 소비).
+     * 특정 회원의 통합 평점 (F-COM-009, 담당자4 정민재 소비).
      * 리뷰가 없으면 totalCount=0, 점수는 null, hasReviews=false.
      */
     public TrustScoreResponse getTrustScore(long usrSn) {
@@ -384,18 +375,12 @@ public class ReviewService {
         return normalizedRole;
     }
 
-    /** 서비스 제공자로서 받은 활성 리뷰만 제공자 검색·프로필용 캐시에 반영한다. */
-    private void synchronizeProviderRating(
-            String domainCode,
-            long receiverUserSn,
-            boolean receivedAsServiceProvider) {
-        if (!ReviewDomainCode.SERVICE.equals(domainCode) || !receivedAsServiceProvider) {
-            return;
-        }
+    /** 제공자 프로필이 있는 회원은 받은 활성 리뷰 전체의 통합 평점을 검색용 캐시에 반영한다. */
+    private void synchronizeProviderRating(long receiverUserSn) {
         if (!providerReviewRatingPort.lockReviewRating(receiverUserSn)) {
             return;
         }
-        ServiceReviewRatingSummary summary = reviewMapper.selectServiceReviewRatingSummary(receiverUserSn);
+        ReviewRatingSummary summary = reviewMapper.selectReviewRatingSummary(receiverUserSn);
         providerReviewRatingPort.updateReviewRating(
                 receiverUserSn,
                 summary.getAverageScore(),

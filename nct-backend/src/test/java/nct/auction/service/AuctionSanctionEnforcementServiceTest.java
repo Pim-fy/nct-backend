@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -119,10 +120,11 @@ class AuctionSanctionEnforcementServiceTest {
     }
 
     @Test
-    void temporarySuspensionCancelsOnlyBidWhenMemberIsNotSeller() {
+    void temporarySuspensionPausesAuctionWithoutCancelingBidOrReleasingHold() {
         AuctionSanctionTarget target = target(101L, 20L, 701L, 11L, AuctionStatusCode.ACTIVE);
         when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
-        when(auctionMapper.exceptionCancelHighestBid(101L, 701L, "99")).thenReturn(1);
+        when(auctionMapper.pauseAuctionForSanction(101L, AuctionStatusCode.ACTIVE, "99"))
+                .thenReturn(1);
 
         List<AuctionEnforcementImpact> impacts = service.pause(
                 new MemberAuctionEnforcementCommand(
@@ -133,22 +135,31 @@ class AuctionSanctionEnforcementServiceTest {
                         java.time.LocalDateTime.now().plusDays(7),
                         501L));
 
-        assertThat(impacts).singleElement().satisfies(impact ->
-                assertThat(impact.actionCode()).isEqualTo("BID_CANCELED"));
-        verify(auctionMapper, never()).pauseAuctionForSanction(anyLong(), any(), any());
-        verify(pointService).releaseHold(eq(11L), eq(RefType.BID), eq(701L), any());
+        assertThat(impacts).singleElement().satisfies(impact -> {
+            assertThat(impact.roleCode()).isEqualTo("HIGHEST_BIDDER");
+            assertThat(impact.actionCode()).isEqualTo("PAUSED");
+            assertThat(impact.previousStatusCode()).isEqualTo(AuctionStatusCode.ACTIVE);
+        });
+        verify(auctionMapper).pauseAuctionForSanction(101L, AuctionStatusCode.ACTIVE, "99");
+        verify(auctionMapper, never()).exceptionCancelHighestBid(anyLong(), anyLong(), any());
+        verify(pointService, never()).releaseHold(anyLong(), any(), anyLong(), any());
     }
 
     @Test
-    void temporarySuspensionCancelsHighestBidWhileAuctionIsAdminPaused() {
+    void temporarySuspensionPreservesAdminPauseAsRestorableState() {
         AuctionSanctionTarget target = target(
                 101L,
                 20L,
                 701L,
                 11L,
                 AuctionStatusCode.ADMIN_PAUSED);
+        LocalDateTime pausedAt = LocalDateTime.of(2026, 8, 13, 10, 0);
+        target.setUpdatedAt(pausedAt);
+        target.setEndAt(pausedAt.plusMinutes(30));
+        target.setDatabaseNow(pausedAt.plusMinutes(10));
         when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
-        when(auctionMapper.exceptionCancelHighestBid(101L, 701L, "99")).thenReturn(1);
+        when(auctionMapper.pauseAuctionForSanction(101L, AuctionStatusCode.ADMIN_PAUSED, "99"))
+                .thenReturn(1);
 
         List<AuctionEnforcementImpact> impacts = service.pause(
                 new MemberAuctionEnforcementCommand(
@@ -159,10 +170,15 @@ class AuctionSanctionEnforcementServiceTest {
                         java.time.LocalDateTime.now().plusDays(7),
                         501L));
 
-        assertThat(impacts).singleElement().satisfies(impact ->
-                assertThat(impact.actionCode()).isEqualTo("BID_CANCELED"));
-        verify(auctionMapper, never()).pauseAuctionForSanction(anyLong(), any(), any());
-        verify(pointService).releaseHold(eq(11L), eq(RefType.BID), eq(701L), any());
+        assertThat(impacts).singleElement().satisfies(impact -> {
+            assertThat(impact.actionCode()).isEqualTo("PAUSED");
+            assertThat(impact.previousStatusCode()).isEqualTo(AuctionStatusCode.ADMIN_PAUSED);
+            assertThat(impact.remainingSeconds()).isEqualTo(1800L);
+        });
+        verify(auctionMapper).pauseAuctionForSanction(
+                101L, AuctionStatusCode.ADMIN_PAUSED, "99");
+        verify(auctionMapper, never()).exceptionCancelHighestBid(anyLong(), anyLong(), any());
+        verify(pointService, never()).releaseHold(anyLong(), any(), anyLong(), any());
     }
 
     @Test

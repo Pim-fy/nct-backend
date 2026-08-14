@@ -60,6 +60,9 @@ public interface AuctionMapper {
 
     List<AuctionSanctionTarget> findSanctionTargetsByMemberForUpdate(@Param("userSn") Long userSn);
 
+    /** 담당자 7 · F-OPS-007: 신고된 경매 한 건의 상태와 남은 시간을 잠금 조회합니다. */
+    AuctionSanctionTarget findReportHoldTargetForUpdate(@Param("auctionId") Long auctionId);
+
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 
     List<Long> findReadyAuctionIds(@Param("limit") int limit);

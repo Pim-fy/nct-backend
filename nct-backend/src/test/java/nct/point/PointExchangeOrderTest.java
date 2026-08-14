@@ -223,20 +223,23 @@ class PointExchangeOrderTest {
     }
 
     @Test
-    @DisplayName("사용가능만으로 충분한 신청은 거래 문제가 있어도 차단되지 않는다")
-    void applyNotBlockedByDisputeWhenAvailableSuffices() {
+    @DisplayName("피신고자의 환전 신청은 사용가능 잔액만 사용해도 차단된다")
+    void applyBlockedByActiveReportEvenWhenAvailableSuffices() {
         pointService.creditSettleable(usrSn, 50_000, RefType.TRADE, 1L, "테스트 정산");
         jdbc.update("""
                 INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)
                 VALUES (?, 'PTLC0001', 'PTLC0004', 100000, 100000, '테스트 충전')
                 """, usrSn);
-        insertTradeReport("ABSC0001"); // 정산가능 포인트를 사용하지 않으므로 차단 대상이 아니다.
+        insertTradeReport("ABSC0001");
 
-        pointExchangeService.apply(usrSn, 30_000);
+        assertThatThrownBy(() -> pointExchangeService.apply(usrSn, 30_000))
+                .isInstanceOf(PointException.class)
+                .hasMessageContaining("신고");
 
         var bal = pointService.getBalance(usrSn);
-        assertThat(bal.getSettleableAmt()).isEqualTo(50_000); // 정산가능은 손대지 않음
-        assertThat(bal.getAvailableAmt()).isEqualTo(70_000);
+        assertThat(bal.getSettleableAmt()).isEqualTo(50_000);
+        assertThat(bal.getAvailableAmt()).isEqualTo(100_000);
+        assertThat(pointExchangeService.getOrderList(usrSn)).isEmpty();
     }
 
     @Test

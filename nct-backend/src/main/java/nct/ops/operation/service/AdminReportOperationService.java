@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.service.AbuseReportService;
+import nct.abuse.service.ReportTargetHoldService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
@@ -42,6 +43,7 @@ public class AdminReportOperationService {
     private final AdminDisputeDecisionService tradeReportDecisionService;
     private final ReportSanctionService reportSanctionService;
     private final SanctionImpactMapper sanctionImpactMapper;
+    private final ReportTargetHoldService reportTargetHoldService;
 
     @Transactional(readOnly = true)
     public List<AdminAbuseReportResponse> getPendingReports() {
@@ -171,6 +173,11 @@ public class AdminReportOperationService {
         if (tradeReport) {
             tradeReportDecisionService.decide(
                     reportSn, tradeDecision, normalizedReason, adminUserId);
+        }
+        if (!tradeReport
+                && (decision == AdminReportDecision.PROCESSED
+                        || decision == AdminReportDecision.REJECTED)) {
+            reportTargetHoldService.release(reportSn, String.valueOf(adminUserId));
         }
         reportEnforcementService.decide(
                 reportSn,

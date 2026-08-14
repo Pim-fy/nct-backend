@@ -38,6 +38,7 @@ import org.springframework.dao.DuplicateKeyException;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.dto.CustomerAbuseReportRequest;
+import nct.abuse.dto.CustomerSupportReportRequest;
 import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
@@ -50,6 +51,7 @@ import nct.global.response.PageResponse;
 import nct.global.security.port.AuthMember;
 import nct.global.security.port.AuthMemberPort;
 import nct.file.service.FileStorageService;
+import nct.member.port.MemberOperationLockPort;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
@@ -78,8 +80,10 @@ class AbuseReportServiceTest {
     private ProductService productService;
     private ObjectProvider<ProductService> productServiceProvider;
     private AuthMemberPort authMemberPort;
+    private MemberOperationLockPort memberOperationLockPort;
     private FileStorageService fileStorageService;
     private RiskEventService riskEventService;
+    private ReportTargetHoldService reportTargetHoldService;
     private AbuseReportService service;
 
     @BeforeEach
@@ -100,8 +104,10 @@ class AbuseReportServiceTest {
             }
         };
         authMemberPort = mock(AuthMemberPort.class);
+        memberOperationLockPort = mock(MemberOperationLockPort.class);
         fileStorageService = mock(FileStorageService.class);
         riskEventService = mock(RiskEventService.class);
+        reportTargetHoldService = mock(ReportTargetHoldService.class);
         when(referenceValidationService.requireValid(any(), any(), any(), any()))
                 .thenAnswer(invocation -> {
                     Long reportedUserSn = invocation.getArgument(1);
@@ -123,8 +129,10 @@ class AbuseReportServiceTest {
                 notificationService,
                 productServiceProvider,
                 authMemberPort,
+                memberOperationLockPort,
                 fileStorageService,
-                riskEventService);
+                riskEventService,
+                reportTargetHoldService);
     }
 
     @Test
@@ -154,7 +162,10 @@ class AbuseReportServiceTest {
         ManualAbuseReportResponse result = service.submitCustomerReport(10L, customerReportRequest(20L));
 
         assertThat(result.reportSn()).isEqualTo(501L);
-        verify(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
+        InOrder order = inOrder(memberOperationLockPort, abuseReportMapper);
+        order.verify(memberOperationLockPort).lock(20L);
+        order.verify(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
+        verify(reportTargetHoldService).pause(501L, "REFC0001", 20L, "10");
     }
 
     @Test
@@ -182,6 +193,9 @@ class AbuseReportServiceTest {
                 true));
 
         assertThat(reportSn).isEqualTo(601L);
+        InOrder order = inOrder(memberOperationLockPort, abuseReportMapper);
+        order.verify(memberOperationLockPort).lock(22L);
+        order.verify(abuseReportMapper).insertCustomerReport(any(AbuseReport.class));
         ArgumentCaptor<AbuseReport> captor = ArgumentCaptor.forClass(AbuseReport.class);
         verify(abuseReportMapper).insertCustomerReport(captor.capture());
         assertThat(captor.getValue().getReportTypeCode()).isEqualTo("ABRC0011");
@@ -383,6 +397,9 @@ class AbuseReportServiceTest {
                         "  부적절한 문의입니다.  "));
 
         assertThat(result.reportSn()).isEqualTo(501L);
+        InOrder order = inOrder(memberOperationLockPort, abuseReportMapper);
+        order.verify(memberOperationLockPort).lock(20L);
+        order.verify(abuseReportMapper).insertManualReport(any(AbuseReport.class));
         ArgumentCaptor<AbuseReport> reportCaptor = ArgumentCaptor.forClass(AbuseReport.class);
         verify(abuseReportMapper).insertManualReport(reportCaptor.capture());
         AbuseReport report = reportCaptor.getValue();
@@ -400,6 +417,25 @@ class AbuseReportServiceTest {
         verify(referenceDataService).requireActiveCode("ABRG01", "ABRC0007");
         verify(referenceDataService).requireActiveCode("ABRG02", "ABSC0001");
         verify(referenceDataService).requireActiveCode("REFG01", "REFC0012");
+    }
+
+    @Test
+    void locksReportedInquiryWriterBeforeCustomerSupportReportInsert() {
+        InquiryReportTarget target = inquiryTarget(55L, 20L, 10L, "PRDC0006");
+        when(productService.getInquiryReportTarget(55L)).thenReturn(target);
+        doAnswer(invocation -> {
+            AbuseReport report = invocation.getArgument(0);
+            report.setReportSn(502L);
+            return 1;
+        }).when(abuseReportMapper).insertManualReport(any(AbuseReport.class));
+
+        service.submitCustomerSupportReport(
+                10L,
+                new CustomerSupportReportRequest("INQUIRY", 55L, "부적절한 문의입니다."));
+
+        InOrder order = inOrder(memberOperationLockPort, abuseReportMapper);
+        order.verify(memberOperationLockPort).lock(20L);
+        order.verify(abuseReportMapper).insertManualReport(any(AbuseReport.class));
     }
 
     @Test
@@ -630,6 +666,9 @@ class AbuseReportServiceTest {
 
         assertThat(result.status()).isEqualTo(SensitiveDetectionReportResult.Status.CREATED);
         assertThat(result.reportSn()).isEqualTo(101L);
+        InOrder order = inOrder(memberOperationLockPort, abuseReportMapper);
+        order.verify(memberOperationLockPort).lock(20L);
+        order.verify(abuseReportMapper).insertAutomaticReport(any(AbuseReport.class));
         ArgumentCaptor<AbuseReport> reportCaptor = ArgumentCaptor.forClass(AbuseReport.class);
         verify(abuseReportMapper).insertAutomaticReport(reportCaptor.capture());
         AbuseReport report = reportCaptor.getValue();

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.abuse.port.ActiveReportedUserReader;
 import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
@@ -46,6 +47,7 @@ public class PointService {
     private final PointMapper pointMapper;
     private final NotificationService notificationService;
     private final SystemSettingMapper systemSettingMapper;
+    private final ActiveReportedUserReader activeReportedUserReader;
 
     // ---------- 조회 (F-PAY-038, F-PAY-039) ----------
 
@@ -217,6 +219,7 @@ public class PointService {
     public long debitExchange(long usrSn, long amt, String reason) {
         requirePositive(amt);
         lockUser(usrSn);
+        requireNoActiveReportAgainst(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
         long total = bal.getAvailableAmt() + bal.getSettleableAmt();
@@ -279,6 +282,7 @@ public class PointService {
     public void convertSettleableToAvailable(long usrSn, long amt) {
         requirePositive(amt);
         lockUser(usrSn);
+        requireNoActiveReportAgainst(usrSn);
 
         // 분쟁 없음 확인 — 진행 중(접수·처리중) 거래 문제가 하나라도 있으면 전환 자체를 차단
         int activeDisputes = pointMapper.countActiveDisputes(usrSn);
@@ -302,6 +306,14 @@ public class PointService {
 
         // 같은 트랜잭션 안에서 알림까지 기록 (원장만 남고 알림이 누락되는 일이 없도록)
         notificationService.notifyPointConvert(usrSn, amt);
+    }
+
+    /** 담당자 7 · F-PAY-010/F-PAY-012: 활성 신고의 피신고자는 자발적 전환·환전만 제한합니다. */
+    private void requireNoActiveReportAgainst(long usrSn) {
+        if (activeReportedUserReader.hasActiveReportAgainst(usrSn)) {
+            throw new PointException(ErrorCode.POINT_CONVERT_EXCHANGE_BLOCKED_BY_ACTIVE_REPORT,
+                    "접수 또는 처리 중인 신고의 대상 회원은 포인트 전환과 환전을 신청할 수 없습니다.");
+        }
     }
 
     /**

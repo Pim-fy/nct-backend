@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -31,12 +33,14 @@ import nct.global.security.port.AuthMemberPort;
 import nct.global.response.PageResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
+import nct.abuse.port.ActiveReportedUserReader;
 import nct.abuse.port.TradeIncidentReportCommand;
 import nct.abuse.port.TradeIncidentReportPort;
 import nct.auction.port.AuctionReferenceTitleReader;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.member.port.MemberOperationLockPort;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
@@ -59,6 +63,7 @@ public class AbuseReportService implements
         SensitiveDetectionReportPort,
         AdminReportDecisionPort,
         ActiveAbuseReportReferenceReader,
+        ActiveReportedUserReader,
         TradeIncidentReportPort {
 
     static final String FALSE_INFORMATION_FRAUD_REPORT_TYPE = "ABRC0001";
@@ -126,8 +131,10 @@ public class AbuseReportService implements
     private final NotificationService notificationService;
     private final ObjectProvider<ProductService> productServiceProvider;
     private final AuthMemberPort authMemberPort;
+    private final MemberOperationLockPort memberOperationLockPort;
     private final FileStorageService fileStorageService;
     private final RiskEventService riskEventService;
+    private final ReportTargetHoldService reportTargetHoldService;
     private final ConcurrentMap<CustomerReportKey, LockEntry> customerReportLocks = new ConcurrentHashMap<>();
 
     /** 거래 도메인이 당사자·거래·첨부를 검증한 뒤 생성하는 신고 상위 사건입니다. */
@@ -162,6 +169,7 @@ public class AbuseReportService implements
         referenceDataService.requireActiveCode(REPORT_TYPE_GROUP, reportTypeCode);
         referenceDataService.requireActiveCode(REPORT_STATUS_GROUP, RECEIVED_STATUS);
         referenceDataService.requireActiveCode(REFERENCE_TYPE_GROUP, TRADE_REFERENCE_TYPE);
+        memberOperationLockPort.lock(command.reportedUserSn());
 
         String actorId = String.valueOf(command.reporterUserSn());
         AbuseReport report = AbuseReport.builder()
@@ -245,6 +253,7 @@ public class AbuseReportService implements
         boolean releaseInFinally = registerCustomerReportLockRelease(key, lockEntry);
 
         try {
+            memberOperationLockPort.lock(request.reportedUserSn());
             Long existingReportSn = abuseReportMapper.findActiveCustomerReportId(
                     reporterUserSn,
                     request.reportedUserSn(),
@@ -288,6 +297,13 @@ public class AbuseReportService implements
                         report.getReportSn(), fileSns.get(index), index, actorId) != 1) {
                     throw new CustomException(ErrorCode.DATABASE_ERROR);
                 }
+            }
+            if (referenceTypeCode != null && request.referenceSn() != null) {
+                reportTargetHoldService.pause(
+                        report.getReportSn(),
+                        referenceTypeCode,
+                        request.referenceSn(),
+                        actorId);
             }
             return new ManualAbuseReportResponse(report.getReportSn());
         } finally {
@@ -368,13 +384,13 @@ public class AbuseReportService implements
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
+        validateReferenceCodes(OTHER_REPORT_TYPE, PRODUCT_COMMENT_REFERENCE_TYPE);
+        memberOperationLockPort.lock(target.getWriterUsrSn());
         Long existingReport = abuseReportMapper.findManualReportId(
                 reporterUserSn, PRODUCT_COMMENT_REFERENCE_TYPE, request.targetSn());
         if (existingReport != null) {
             throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
         }
-
-        validateReferenceCodes(OTHER_REPORT_TYPE, PRODUCT_COMMENT_REFERENCE_TYPE);
         String actorId = String.valueOf(reporterUserSn);
         AbuseReport report = AbuseReport.builder()
                 .riskEventSn(null)
@@ -402,6 +418,7 @@ public class AbuseReportService implements
             ManualAbuseReportRequest request) {
         ManualReportValues values = validateManualReport(reporterUserSn, request);
         validateReferenceCodes(OTHER_REPORT_TYPE, values.referenceTypeCode());
+        memberOperationLockPort.lock(values.reportedUserSn());
         rejectDuplicateManualReport(values);
 
         String actorId = String.valueOf(values.reporterUserSn());
@@ -478,6 +495,7 @@ public class AbuseReportService implements
     public SensitiveDetectionReportResult requestReport(SensitiveDetectionReportCommand command) {
         validateAutomaticReport(command);
         validateReferenceCodes(PRIVACY_REPORT_TYPE, command.referenceTypeCode());
+        memberOperationLockPort.lock(command.reportedUserSn());
 
         AbuseReport report = AbuseReport.builder()
                 .riskEventSn(command.riskEventSn())
@@ -946,6 +964,26 @@ public class AbuseReportService implements
         return abuseReportMapper.existsOtherActiveReportLinkedToAuction(
                 auctionSn,
                 excludedReportSn,
+                RECEIVED_STATUS,
+                PROCESSING_STATUS);
+    }
+
+    /**
+     * 담당자 7 · F-OPS-007/F-PAY-010/F-PAY-012: 활성 신고의 피신고자만 제한 대상으로 반환합니다.
+     * 상위 환전 트랜잭션이 계좌 조회로 이미 스냅샷을 만들었더라도 최신 커밋 상태를 읽도록
+     * 별도 READ_COMMITTED 읽기 트랜잭션을 사용합니다.
+     */
+    @Override
+    @Transactional(
+            readOnly = true,
+            propagation = Propagation.REQUIRES_NEW,
+            isolation = Isolation.READ_COMMITTED)
+    public boolean hasActiveReportAgainst(Long reportedUserSn) {
+        if (reportedUserSn == null || reportedUserSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return abuseReportMapper.existsActiveReportAgainst(
+                reportedUserSn,
                 RECEIVED_STATUS,
                 PROCESSING_STATUS);
     }

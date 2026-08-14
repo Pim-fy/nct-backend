@@ -20,6 +20,7 @@ import nct.ops.operation.port.AdminReportDecision;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.service.AbuseReportService;
+import nct.abuse.service.ReportTargetHoldService;
 import nct.global.exception.CustomException;
 import nct.global.response.PageResponse;
 import nct.member.dto.AdminMemberIdentityResponse;
@@ -40,6 +41,7 @@ class AdminReportOperationServiceTest {
     private AdminDisputeDecisionService tradeReportDecisionService;
     private ReportSanctionService reportSanctionService;
     private SanctionImpactMapper sanctionImpactMapper;
+    private ReportTargetHoldService reportTargetHoldService;
     private AdminReportOperationService service;
 
     @BeforeEach
@@ -50,6 +52,7 @@ class AdminReportOperationServiceTest {
         tradeReportDecisionService = mock(AdminDisputeDecisionService.class);
         reportSanctionService = mock(ReportSanctionService.class);
         sanctionImpactMapper = mock(SanctionImpactMapper.class);
+        reportTargetHoldService = mock(ReportTargetHoldService.class);
         when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
         service = new AdminReportOperationService(
@@ -58,7 +61,8 @@ class AdminReportOperationServiceTest {
                 reportEnforcementService,
                 tradeReportDecisionService,
                 reportSanctionService,
-                sanctionImpactMapper);
+                sanctionImpactMapper,
+                reportTargetHoldService);
     }
 
     @Test
@@ -84,6 +88,7 @@ class AdminReportOperationServiceTest {
                 org.mockito.ArgumentMatchers.eq(7L),
                 requestIdCaptor.capture());
         assertThat(requestIdCaptor.getValue()).startsWith("admin-report:");
+        verify(reportTargetHoldService).release(91L, "7");
         verifyNoInteractions(tradeReportDecisionService);
     }
 
@@ -110,6 +115,7 @@ class AdminReportOperationServiceTest {
                 anyString());
         verify(tradeReportDecisionService).decide(
                 91L, AdminDisputeDecision.REFUND, "full refund", 7L);
+        verifyNoInteractions(reportTargetHoldService);
         verify(reportEnforcementService).decide(
                 eq(91L),
                 eq(AdminReportDecision.PROCESSED),

@@ -125,6 +125,12 @@ public interface AuctionMapper {
             @Param("newStatusCode") String newStatusCode,
             @Param("actor") String actor);
 
+    /** 취소 요청 반려 시점에 이미 종료시각이 지났으면 새 종료시각으로 덮어쓴다 — 검토 지연 보상용 */
+    void extendAuctionEndDateTime(
+            @Param("auctionId") Long auctionId,
+            @Param("newEndDateTime") LocalDateTime newEndDateTime,
+            @Param("actor") String actor);
+
     int pauseAuctionForSanction(
             @Param("auctionId") Long auctionId,
             @Param("expectedStatusCode") String expectedStatusCode,

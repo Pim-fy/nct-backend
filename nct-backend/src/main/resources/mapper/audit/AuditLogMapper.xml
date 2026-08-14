@@ -107,32 +107,6 @@
         LIMIT #{limit}
     </select>
 
-    <!-- 민감정보 제한 조회 (F-OPS-014).
-         ⚠️ CHAT_MESSAGE는 담당자4 소유 테이블 — 감사 목적의 읽기 전용 SELECT만 허용, 변경 금지.
-         반드시 AuditLogService.viewChatMessage()를 통해서만 호출된다 (사유+감사로그 없이 직접 호출 금지) -->
-    <select id="selectChatMessageView" resultType="nct.audit.mapper.ChatMessageView">
-        /* 감사: 채팅 메시지 원문 제한 조회 (읽기 전용) */
-        SELECT M.CH_MSG_SN     AS chMsgSn,
-               M.CH_RM_SN      AS chRmSn,
-               M.USR_SN        AS usrSn,
-               U.USR_NM        AS usrNm,
-               M.CH_MSG_CN     AS chMsgCn,
-               M.CH_MSG_REG_DT AS chMsgRegDt
-        FROM CHAT_MESSAGE M
-        LEFT JOIN USERS U ON U.USR_SN = M.USR_SN
-        WHERE M.CH_MSG_SN = #{chMsgSn}
-    </select>
-
-    <!-- 담당자 7 · F-OPS-005/014: 신고 번호와 거래 채팅의 실제 연결을 검증합니다. -->
-    <select id="countDisputeChatMessageLink" resultType="int">
-        SELECT COUNT(*)
-        FROM ABUSE_REPORT_TRADE RT
-        JOIN CHAT_ROOM R ON R.TRD_SN = RT.TRD_SN
-        JOIN CHAT_MESSAGE M ON M.CH_RM_SN = R.CH_RM_SN
-        WHERE RT.ABR_SN = #{reportSn}
-          AND M.CH_MSG_SN = #{chMsgSn}
-    </select>
-
     <!-- 메시지 원문을 읽기 전 거래 신고와 채팅방 연결 및 행 수만 확인합니다. -->
     <select id="selectDisputeChatTarget" resultType="nct.audit.mapper.DisputeChatTarget">
         SELECT RT.ABR_SN AS reportSn,

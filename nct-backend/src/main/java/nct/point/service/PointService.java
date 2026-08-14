@@ -202,11 +202,11 @@ public class PointService {
     }
 
     /**
-     * 환전 신청 차감 (F-PAY-012 — 신청 즉시 차감 정책, 대상 버킷은 2026-07-22 사용자 결정).
-     * 사용가능 + 정산가능 합산 잔액을 검증하고, **사용가능 버킷을 먼저 소진한 뒤** 부족분만
-     * 정산가능에서 사용가능으로 전환(F-PAY-010과 같은 복식 기록)해서 채운다 — 분쟁 게이트가
-     * 걸리는 정산가능 버킷은 꼭 필요할 때만 건드린다. 신청 금액 전체는 항상 사용가능 버킷에서
-     * 마지막 1행으로 차감되므로, 환전 주문에는 그 1행만 연결하면 되고 스키마 변경이 필요 없다.
+     * 환전 신청 차감 (F-PAY-012 — 신청 즉시 차감 정책).
+     * 사용가능 버킷만 대상이다 — 정산가능(판매대금) 포인트는 분쟁 조정 재원으로 남아 있어야
+     * 하므로 환전으로 빠져나갈 수 없다(원래 설계, 2026-08-14 재확인). 정산가능 포인트를 쓰려면
+     * 반드시 전환 기능(F-PAY-010, convertSettleableToAvailable)의 분쟁 게이트를 먼저 통과해
+     * 사용가능으로 옮겨야 한다.
      *
      * 잔액 검증→차감이 회원 행 잠금 안에서 직렬화되므로, 동시에 두 번 신청해도 같은 돈이
      * 두 번 빠져나갈 수 없다.
@@ -219,33 +219,13 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        long total = bal.getAvailableAmt() + bal.getSettleableAmt();
-        if (total < amt) {
+        if (bal.getAvailableAmt() < amt) {
             throw new PointException(ErrorCode.POINT_INSUFFICIENT,
-                    "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + total + "P");
-        }
-
-        long fromAvailable = Math.min(amt, bal.getAvailableAmt());
-        long fromSettleable = amt - fromAvailable;
-        long availableAmt = bal.getAvailableAmt();
-        if (fromSettleable > 0) {
-            // 정산가능 포인트는 분쟁 조정 재원이 될 수 있어, 전환 기능(F-PAY-010)과 같은
-            // 게이트를 통과해야 한다. 사용가능만으로 충분한 신청(fromSettleable == 0)은 이
-            // 검사 자체를 타지 않는다 — 분쟁 있어도 사용가능 포인트만의 환전은 막을 이유가 없다.
-            int activeDisputes = pointMapper.countActiveDisputes(usrSn);
-            if (activeDisputes > 0) {
-                throw new PointException(ErrorCode.POINT_CONVERT_BLOCKED_BY_DISPUTE,
-                        "진행 중인 거래 문제가 " + activeDisputes + "건 있어 정산가능 포인트를 환전할 수 없습니다.");
-            }
-            insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.CONVERT, -fromSettleable,
-                    bal.getSettleableAmt() - fromSettleable, null, null, "환전 신청을 위한 정산가능→사용가능 전환");
-            availableAmt += fromSettleable;
-            insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CONVERT, fromSettleable,
-                    availableAmt, null, null, "환전 신청을 위한 정산가능→사용가능 전환");
+                    "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + bal.getAvailableAmt() + "P");
         }
 
         return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_OUT, -amt,
-                availableAmt - amt, null, null, reason);
+                bal.getAvailableAmt() - amt, null, null, reason);
     }
 
     /**

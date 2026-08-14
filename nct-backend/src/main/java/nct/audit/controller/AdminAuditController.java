@@ -26,8 +26,6 @@ import nct.audit.dto.AuditLogResponse;
 import nct.audit.dto.DisputeChatMessageResponse;
 import nct.audit.dto.DisputeChatViewRequest;
 import nct.audit.dto.DisputeChatViewResponse;
-import nct.audit.dto.SensitiveViewRequest;
-import nct.audit.dto.SensitiveViewResponse;
 import nct.audit.mapper.ChatMessageView;
 import nct.audit.service.AuditLogService;
 import nct.audit.service.DisputeChatViewResult;
@@ -46,7 +44,6 @@ import nct.member.port.AdminMemberIdentityReader;
  *
  * 엔드포인트 (전부 관리자 전용 — /api/admin/**는 SecurityConfig에서 ROLE_ADMIN만 통과):
  *   GET  /api/admin/audit/logs            감사로그 조건별 조회 (행위자·유형·기간)
- *   POST /api/admin/audit/sensitive-view  민감정보(채팅) 원문 제한 조회 — 사유 필수, 감사로그 자동 기록
  */
 @RestController
 @RequestMapping("/api/admin/audit")
@@ -113,20 +110,6 @@ public class AdminAuditController {
             }
         }
         throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-    }
-
-    /** 민감정보 원문 제한 조회 (F-OPS-014) — 사유ㆍ거래 신고 필수, 조회 즉시 감사로그가 남는다. */
-    @PostMapping("/sensitive-view")
-    public ResponseEntity<ApiResponse<SensitiveViewResponse>> sensitiveView(
-            @Valid @RequestBody SensitiveViewRequest request,
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            HttpServletRequest httpRequest) {
-
-        long adminUsrSn = userDetails.getMember().getId();
-        ChatMessageView message = auditLogService.viewChatMessage(
-                adminUsrSn, request.getChMsgSn(), request.getReportSn(),
-                request.getReason(), httpRequest.getRemoteAddr());
-        return ResponseEntity.ok(ApiResponse.success(SensitiveViewResponse.from(message)));
     }
 
     /** 담당자 7 · F-OPS-005/014: 거래 신고 채팅을 사유ㆍ감사기록 후 읽기 전용으로 조회합니다. */

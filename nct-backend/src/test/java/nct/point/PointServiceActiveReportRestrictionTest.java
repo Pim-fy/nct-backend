@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import nct.abuse.port.ActiveReportedUserReader;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.PointBalance;
 import nct.point.domain.PointLedger;
 import nct.point.exception.PointException;
@@ -47,6 +48,9 @@ class PointServiceActiveReportRestrictionTest {
 
     @Mock
     private ActiveReportedUserReader activeReportedUserReader;
+
+    @Mock
+    private AuditLogPort auditLogPort;
 
     @Test
     @DisplayName("활성 신고의 피신고자는 정산가능 포인트 전환 전에 차단된다")

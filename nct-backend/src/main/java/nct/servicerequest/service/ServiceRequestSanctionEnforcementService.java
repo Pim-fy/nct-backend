@@ -21,7 +21,7 @@ import nct.servicerequest.port.ServiceRequestEnforcementImpact;
 import nct.servicerequest.port.ServiceRequestEnforcementRestoreCommand;
 
 /**
- * 담당자 7 · 신고 처리 제재: 서비스 요청서를 운영보류하고 남은 기간으로 복구하거나 영구정지 시 종료합니다.
+ * 담당자 7 · 신고 처리 제재: 서비스 요청서를 운영보류하고 남은 기간으로 복구하거나 영구정지 시 취소합니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,8 +32,8 @@ public class ServiceRequestSanctionEnforcementService
     private static final String DRAFT = "SVCC0001";
     private static final String OPEN = "SVCC0002";
     private static final String MATCHED = "SVCC0003";
-    private static final String CLOSED = "SVCC0004";
     private static final String OPERATION_HOLD = "SVCC0005";
+    private static final String CANCELED = "SVCC0006";
     private static final String TRADE_CANCELED = "TRDC0008";
     private static final Set<String> RESTORABLE = Set.of(DRAFT, OPEN, MATCHED);
 
@@ -72,7 +72,7 @@ public class ServiceRequestSanctionEnforcementService
     public List<ServiceRequestEnforcementImpact> cancelOwnedForPermanentSuspension(
             MemberServiceRequestEnforcementCommand command) {
         MemberServiceRequestEnforcementCommand valid = validate(command, false);
-        referenceDataService.requireActiveCode(STATUS_GROUP, CLOSED);
+        referenceDataService.requireActiveCode(STATUS_GROUP, CANCELED);
 
         List<ServiceRequestEnforcementImpact> impacts = new ArrayList<>();
         for (ServiceRequestSanctionTarget target :
@@ -81,11 +81,11 @@ public class ServiceRequestSanctionEnforcementService
             if (DRAFT.equals(previous)) {
                 requireChanged(serviceRequestMapper.closeDraftServiceRequestForSanction(
                         target.getServiceRequestId(), String.valueOf(valid.adminUserSn())));
-                impacts.add(impact(target, "CANCELED", previous, "영구 이용정지로 임시 요청서를 종료했습니다."));
+                impacts.add(impact(target, "CANCELED", previous, "영구 이용정지로 임시 요청서를 취소했습니다."));
             } else if (OPEN.equals(previous)) {
                 requireChanged(serviceRequestMapper.adminCancelOpenServiceRequest(
                         target.getServiceRequestId(), String.valueOf(valid.adminUserSn())));
-                impacts.add(impact(target, "CANCELED", previous, "영구 이용정지로 공개 요청서를 종료했습니다."));
+                impacts.add(impact(target, "CANCELED", previous, "영구 이용정지로 공개 요청서를 취소했습니다."));
             } else if (MATCHED.equals(previous) || OPERATION_HOLD.equals(previous)) {
                 boolean linkedTradeCanceled = target.getLinkedTradeSn() != null
                         && TRADE_CANCELED.equals(target.getLinkedTradeStatusCode());
@@ -98,13 +98,13 @@ public class ServiceRequestSanctionEnforcementService
                             target,
                             "CANCELED",
                             previous,
-                            "연결 거래 취소를 확인하고 매칭 요청서를 종료했습니다."));
+                            "연결 거래 취소를 확인하고 매칭 요청서를 취소했습니다."));
                 } else {
                     impacts.add(impact(
                             target,
                             "HELD_FOR_REVIEW",
                             previous,
-                            "연결 거래의 분쟁 또는 진행 상태를 확인해야 해 요청서를 자동 종료하지 않았습니다."));
+                            "연결 거래의 분쟁 또는 진행 상태를 확인해야 해 요청서를 자동 취소하지 않았습니다."));
                 }
             }
         }

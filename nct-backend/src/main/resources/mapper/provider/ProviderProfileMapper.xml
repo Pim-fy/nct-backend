@@ -13,19 +13,6 @@
     <collection property="categories" ofType="java.lang.String"
                 select="findActiveCategoryNames" column="USR_SN"/>
   </resultMap>
-  <resultMap id="profileSearchItem" type="nct.provider.dto.ProviderProfileSearchItem">
-    <result column="USR_SN" property="providerUserSn"/>
-    <result column="USR_NM" property="providerName"/>
-    <result column="PRV_PRF_AREA_NM" property="availableArea"/>
-    <result column="PRV_PRF_INTRO_CN" property="introduction"/>
-    <result column="PRV_PRF_RVW_AVG_SCR" property="reviewAverageScore"/>
-    <result column="PRV_PRF_RVW_CNT" property="reviewCount"/>
-  </resultMap>
-  <resultMap id="categorySearchRow" type="nct.provider.dto.ProviderCategorySearchRow">
-    <result column="USR_SN" property="providerUserSn"/>
-    <result column="CAT_SN" property="categorySn"/>
-    <result column="CAT_NM" property="categoryName"/>
-  </resultMap>
   <select id="findActiveByUserSn" resultMap="profile">
     SELECT p.USR_SN,
            u.USR_NM,
@@ -51,81 +38,6 @@
        AND permission.PRV_CAT_PRM_USE_YN = 'Y'
        AND c.CAT_USE_YN = 'Y'
      ORDER BY c.CAT_SORT_NO, c.CAT_SN
-  </select>
-  <sql id="approvedProviderSearchWhere">
-    p.PRV_PRF_USE_YN = 'Y'
-    AND u.USR_USE_YN = 'Y'
-    AND u.USR_STATUS_CD = 'USRC0001'
-    AND EXISTS (
-      SELECT 1
-        FROM PROVIDER_CATEGORY_PERMISSION permission
-        JOIN CATEGORY category
-          ON category.CAT_SN = permission.CAT_SN
-         AND category.CAT_DOMAIN_CD = 'CATC0002'
-         AND category.CAT_USE_YN = 'Y'
-       WHERE permission.USR_SN = p.USR_SN
-         AND permission.PRV_CAT_PRM_STATUS_CD = 'PRVC0006'
-         AND permission.PRV_CAT_PRM_USE_YN = 'Y'
-         <if test="categorySn != null">
-           AND category.CAT_SN = #{categorySn}
-         </if>
-    )
-    <if test="keyword != null">
-      AND (
-        u.USR_NM LIKE CONCAT('%', #{keyword}, '%') ESCAPE '!'
-        OR p.PRV_PRF_INTRO_CN LIKE CONCAT('%', #{keyword}, '%') ESCAPE '!'
-      )
-    </if>
-    <if test="region != null">
-      AND p.PRV_PRF_AREA_NM LIKE CONCAT('%', #{region}, '%') ESCAPE '!'
-    </if>
-  </sql>
-  <select id="searchApprovedProfiles" resultMap="profileSearchItem">
-    SELECT p.USR_SN,
-           u.USR_NM,
-           p.PRV_PRF_AREA_NM,
-           p.PRV_PRF_INTRO_CN,
-           p.PRV_PRF_RVW_AVG_SCR,
-           p.PRV_PRF_RVW_CNT
-      FROM PROVIDER_PROFILE p
-      JOIN USERS u ON u.USR_SN = p.USR_SN
-     WHERE <include refid="approvedProviderSearchWhere"/>
-     <choose>
-       <when test="sort == 'reviews'">
-         ORDER BY p.PRV_PRF_RVW_CNT DESC,
-                  p.PRV_PRF_RVW_AVG_SCR DESC,
-                  p.USR_SN DESC
-       </when>
-       <otherwise>
-         ORDER BY p.PRV_PRF_RVW_AVG_SCR DESC,
-                  p.PRV_PRF_RVW_CNT DESC,
-                  p.USR_SN DESC
-       </otherwise>
-     </choose>
-     LIMIT #{offset}, #{size}
-  </select>
-  <select id="countApprovedProfiles" resultType="long">
-    SELECT COUNT(*)
-      FROM PROVIDER_PROFILE p
-      JOIN USERS u ON u.USR_SN = p.USR_SN
-     WHERE <include refid="approvedProviderSearchWhere"/>
-  </select>
-  <select id="findApprovedCategoriesByProviderUserSns" resultMap="categorySearchRow">
-    SELECT permission.USR_SN,
-           category.CAT_SN,
-           category.CAT_NM
-      FROM PROVIDER_CATEGORY_PERMISSION permission
-      JOIN CATEGORY category
-        ON category.CAT_SN = permission.CAT_SN
-       AND category.CAT_DOMAIN_CD = 'CATC0002'
-       AND category.CAT_USE_YN = 'Y'
-     WHERE permission.PRV_CAT_PRM_STATUS_CD = 'PRVC0006'
-       AND permission.PRV_CAT_PRM_USE_YN = 'Y'
-       AND permission.USR_SN IN
-       <foreach collection="providerUserSns" item="providerUserSn" open="(" separator="," close=")">
-         #{providerUserSn}
-       </foreach>
-     ORDER BY permission.USR_SN, category.CAT_SORT_NO, category.CAT_SN
   </select>
   <insert id="upsert">
     INSERT INTO PROVIDER_PROFILE (USR_SN, PRV_PRF_INTRO_CN, PRV_PRF_AREA_NM, PRV_PRF_FL_SN, PRV_PRF_REG_ID, PRV_PRF_UPDT_ID)

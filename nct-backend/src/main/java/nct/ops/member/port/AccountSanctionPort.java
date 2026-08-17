@@ -10,7 +10,8 @@ public interface AccountSanctionPort {
 
     void restrict(AccountSanctionCommand command);
 
-    void release(AccountSanctionCommand command);
+    /** 담당자 7 · F-OPS-002: 이 호출에서 수동 계정 제재가 실제 해제됐는지 반환합니다. */
+    boolean release(AccountSanctionCommand command);
 
     boolean hasActiveReportSanction(Long userSn);
 

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -507,8 +508,29 @@ class ServiceRequestServiceTest {
 
         assertThat(result.changed()).isTrue();
         assertThat(result.previousStatusCode()).isEqualTo("SVCC0002");
-        assertThat(result.statusCode()).isEqualTo("SVCC0004");
+        assertThat(result.statusCode()).isEqualTo("SVCC0006");
         verify(serviceRequestMapper).adminCancelOpenServiceRequest(1256L, "99");
+    }
+
+    /** 담당자 7 · F-OPS-021: 이미 취소된 요청은 상태를 다시 쓰지 않고 멱등 반환합니다. */
+    @Test
+    void returnsExistingCancellationWithoutUpdatingAgain() {
+        ServiceRequest canceledRequest = ServiceRequest.builder()
+                .svcReqSn(1256L)
+                .usrSn(7L)
+                .catSn(3L)
+                .svcReqStatusCd("SVCC0006")
+                .svcReqUseYn('Y')
+                .build();
+        when(serviceRequestMapper.findServiceRequestEntityByIdForUpdate(1256L))
+                .thenReturn(Optional.of(canceledRequest));
+
+        var result = service.cancelOpen(1256L, 99L);
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.previousStatusCode()).isEqualTo("SVCC0006");
+        assertThat(result.statusCode()).isEqualTo("SVCC0006");
+        verify(serviceRequestMapper, never()).adminCancelOpenServiceRequest(anyLong(), anyString());
     }
 
     @Test

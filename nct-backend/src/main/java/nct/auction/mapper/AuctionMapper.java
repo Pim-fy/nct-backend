@@ -17,6 +17,7 @@ import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionImageItem;
 import nct.auction.dto.AuctionReferenceTitle;
+import nct.auction.dto.AuctionReportReference;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.dto.AuctionSanctionTarget;
@@ -41,6 +42,9 @@ public interface AuctionMapper {
 
     List<AuctionReferenceTitle> findAuctionReferenceTitles(
             @Param("auctionIds") List<Long> auctionIds);
+
+    /** 담당자 7 · F-OPS-007: 종료·숨김 여부와 무관한 신고 검증용 최소 경매 정보입니다. */
+    AuctionReportReference findAuctionReportReference(@Param("auctionId") Long auctionId);
 
     AuctionDetailResponse findAuctionDetail(
             @Param("auctionId") Long auctionId,

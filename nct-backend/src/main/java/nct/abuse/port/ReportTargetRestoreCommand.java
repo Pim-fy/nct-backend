@@ -6,5 +6,6 @@ public record ReportTargetRestoreCommand(
         String previousStatusCode,
         Long remainingStartSeconds,
         Long remainingSeconds,
+        boolean settlementHoldApplied,
         String actorId) {
 }

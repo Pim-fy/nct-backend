@@ -118,9 +118,6 @@ public class SecurityConfig {
                 // F-COM-003: 가입 전 서비스 탐색에서도 활성 카테고리 목록은 조회할 수 있다.
                 .requestMatchers(HttpMethod.GET, "/api/categories")
                     .permitAll()
-                // 담당자 5 · F-COM-002: 가입 전에도 승인 제공자를 탐색할 수 있다.
-                .requestMatchers(HttpMethod.GET, "/api/service-discovery/providers")
-                    .permitAll()
                 // 담당자 7 · F-COM-003/F-OPS-007: 화면 공통코드 선택지는 읽기 전용으로 공개한다.
                 .requestMatchers(HttpMethod.GET, "/api/reference/codes")
                     .permitAll()
@@ -129,12 +126,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/**")
                     .permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/guides", "/api/guides/**")
-                    .permitAll()
-                // 담당자 7 · F-PROV-004~005: 공개 제공자 프로필과 공개 포트폴리오 목록.
-                // /api/providers/me/** 쓰기 경로는 포함하지 않아 기존 인증·ROLE_SERVICE 검증을 유지한다.
-                .requestMatchers(HttpMethod.GET,
-                        "/api/providers/*/profile",
-                        "/api/providers/*/portfolios")
                     .permitAll()
                 // F-COM-009: 공개 프로필·경매 상세에서 사용하는 통합 평점·리뷰 건수 집계.
                 // 리뷰 작성·내 리뷰 등 다른 /api/reviews/** 경로는 기존 인증을 유지한다.

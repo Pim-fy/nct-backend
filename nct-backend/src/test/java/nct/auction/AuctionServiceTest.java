@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -18,7 +19,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.ConnectionHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.test.context.transaction.TestTransaction;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import nct.abuse.service.AbuseReportService;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
@@ -44,6 +48,8 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired FieldCryptoService fieldCryptoService;
     @Autowired DataSource dataSource;
+
+    @MockitoBean AbuseReportService abuseReportService;
 
     @Test
     @DisplayName("경매 상세 조회는 상품 조회수를 증가시키지 않는다")
@@ -170,6 +176,91 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         assertThat(balance.getAvailableAmt()).isEqualTo(38000);
         assertThat(balance.getHoldAmt()).isEqualTo(12000);
         assertThat(activeHoldAmount(bidderSn, bidSn)).isEqualTo(12000);
+    }
+
+    /** 담당자 7 · F-OPS-015: 입찰 성공과 포인트 원장 변동을 공통 감사 계약으로 기록합니다. */
+    @Test
+    @DisplayName("입찰 성공은 포인트 변동 2건과 입찰 1건의 감사로그를 남긴다")
+    void placeBidRecordsPointAndBidAuditLogs() {
+        long sellerSn = insertUser("t_audit_seller");
+        long bidderSn = insertUser("t_audit_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(bidderSn, 50000);
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        auctionService.placeBid(aucSn, bidderSn, request);
+
+        long bidSn = latestBidSn(aucSn);
+        List<Map<String, Object>> pointAudits = pointAuditLogs(bidderSn, bidSn);
+        assertThat(pointAudits).hasSize(2).allSatisfy(row -> {
+            assertThat(row.get("USR_SN")).isEqualTo(bidderSn);
+            assertThat(row.get("AUD_LOG_TYPE_CD")).isEqualTo("AUDC0001");
+            assertThat(row.get("AUD_LOG_REF_TYPE_CD")).isEqualTo(RefType.POINT_LEDGER.getCode());
+            assertThat(row.get("AUD_LOG_RSON_CN")).isEqualTo("포인트 원장 변동");
+            assertThat(row.get("AUD_LOG_BEFORE_CN")).asString().doesNotContain("입찰 포인트 홀딩");
+            assertThat(row.get("AUD_LOG_AFTER_CN")).asString().contains("변동=");
+            assertThat(row.get("AUD_LOG_REQ_ID")).asString().startsWith("point-ledger:");
+            assertThat(row.get("AUD_LOG_REL_REF_TYPE_CD")).isEqualTo(RefType.BID.getCode());
+            assertThat(row.get("AUD_LOG_REL_REF_SN")).isEqualTo(bidSn);
+            assertThat(row.get("AUD_LOG_REG_DT")).isNotNull();
+        });
+
+        Map<String, Object> bidAudit = bidAuditLog(bidderSn, bidSn);
+        assertThat(bidAudit.get("AUD_LOG_TYPE_CD")).isEqualTo("AUDC0001");
+        assertThat(bidAudit.get("AUD_LOG_RSON_CN")).isEqualTo("입찰 성공");
+        assertThat(bidAudit.get("AUD_LOG_AFTER_CN")).isEqualTo("bidAmount=12000P");
+        assertThat(bidAudit.get("AUD_LOG_REQ_ID")).isEqualTo("bid:" + bidSn);
+        assertThat(bidAudit.get("AUD_LOG_REL_REF_TYPE_CD")).isEqualTo(RefType.AUCTION.getCode());
+        assertThat(bidAudit.get("AUD_LOG_REL_REF_SN")).isEqualTo(aucSn);
+        assertThat(bidAudit.get("AUD_LOG_REG_DT")).isNotNull();
+    }
+
+    /** 담당자 7 · F-OPS-015: 동일 입찰 재요청이 감사로그를 추가하지 않음을 검증합니다. */
+    @Test
+    @DisplayName("동일 입찰 재요청은 포인트와 입찰 감사로그를 중복 생성하지 않는다")
+    void repeatedPlaceBidDoesNotDuplicateAuditLogs() {
+        long sellerSn = insertUser("t_audit_dup_seller");
+        long bidderSn = insertUser("t_audit_dup_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(bidderSn, 50000);
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        auctionService.placeBid(aucSn, bidderSn, request);
+        long bidSn = latestBidSn(aucSn);
+        int auditCount = bidTransactionAuditCount(bidderSn, bidSn);
+
+        assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        assertThat(bidTransactionAuditCount(bidderSn, bidSn)).isEqualTo(auditCount);
+    }
+
+    /** 담당자 7 · F-OPS-015: 상위 업무 롤백 시 감사로그도 단독으로 남지 않습니다. */
+    @Test
+    @DisplayName("입찰 성공 뒤 상위 트랜잭션이 롤백되면 감사로그도 함께 롤백된다")
+    void bidAuditLogsRollbackWithOuterTransaction() {
+        long sellerSn = insertUser("t_audit_rollback_seller");
+        long bidderSn = insertUser("t_audit_rollback_bidder");
+        long prdSn = insertProduct(sellerSn);
+        long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
+        creditAvailable(bidderSn, 50000);
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(12000));
+
+        auctionService.placeBid(aucSn, bidderSn, request);
+        long bidSn = latestBidSn(aucSn);
+        assertThat(bidTransactionAuditCount(bidderSn, bidSn)).isEqualTo(3);
+
+        TestTransaction.flagForRollback();
+        TestTransaction.end();
+
+        assertThat(auditCountByActor(bidderSn)).isZero();
     }
 
     @Test
@@ -599,6 +690,62 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
                   AND PT_LDG_REF_SN = ?
                 """, Long.class, usrSn, RefType.BID.getCode(), bidSn);
         return amount == null ? 0 : amount;
+    }
+
+    private List<Map<String, Object>> pointAuditLogs(long actorSn, long bidSn) {
+        return jdbc.queryForList("""
+                SELECT USR_SN,
+                       AUD_LOG_TYPE_CD,
+                       AUD_LOG_REF_TYPE_CD,
+                       AUD_LOG_REF_SN,
+                       AUD_LOG_RSON_CN,
+                       AUD_LOG_BEFORE_CN,
+                       AUD_LOG_AFTER_CN,
+                       AUD_LOG_REQ_ID,
+                       AUD_LOG_REL_REF_TYPE_CD,
+                       AUD_LOG_REL_REF_SN,
+                       AUD_LOG_REG_DT
+                FROM AUDIT_LOG
+                WHERE USR_SN = ?
+                  AND AUD_LOG_REF_TYPE_CD = ?
+                  AND AUD_LOG_REL_REF_TYPE_CD = ?
+                  AND AUD_LOG_REL_REF_SN = ?
+                ORDER BY AUD_LOG_SN
+                """, actorSn, RefType.POINT_LEDGER.getCode(), RefType.BID.getCode(), bidSn);
+    }
+
+    private Map<String, Object> bidAuditLog(long actorSn, long bidSn) {
+        return jdbc.queryForMap("""
+                SELECT AUD_LOG_TYPE_CD,
+                       AUD_LOG_RSON_CN,
+                       AUD_LOG_AFTER_CN,
+                       AUD_LOG_REQ_ID,
+                       AUD_LOG_REL_REF_TYPE_CD,
+                       AUD_LOG_REL_REF_SN,
+                       AUD_LOG_REG_DT
+                FROM AUDIT_LOG
+                WHERE USR_SN = ?
+                  AND AUD_LOG_REF_TYPE_CD = ?
+                  AND AUD_LOG_REF_SN = ?
+                """, actorSn, RefType.BID.getCode(), bidSn);
+    }
+
+    private int bidTransactionAuditCount(long actorSn, long bidSn) {
+        return pointAuditLogs(actorSn, bidSn).size()
+                + jdbc.queryForObject("""
+                        SELECT COUNT(*)
+                        FROM AUDIT_LOG
+                        WHERE USR_SN = ?
+                          AND AUD_LOG_REF_TYPE_CD = ?
+                          AND AUD_LOG_REF_SN = ?
+                        """, Integer.class, actorSn, RefType.BID.getCode(), bidSn);
+    }
+
+    private int auditCountByActor(long actorSn) {
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) FROM AUDIT_LOG WHERE USR_SN = ?",
+                Integer.class,
+                actorSn);
     }
 
     private int escrowLedgerCount(long usrSn, long bidSn) {

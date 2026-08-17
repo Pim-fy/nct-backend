@@ -3,6 +3,7 @@ package nct.auction.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
@@ -56,7 +57,7 @@ class AuctionReportTargetHoldServiceTest {
     @Test
     void restoresAuctionWithPreservedRemainingTime() {
         ReportTargetRestoreCommand command = new ReportTargetRestoreCommand(
-                81L, AuctionStatusCode.ACTIVE, null, 7200L, "10");
+                81L, AuctionStatusCode.ACTIVE, null, 7200L, false, "10");
         when(auctionMapper.restoreAuctionAfterSanction(
                 81L, AuctionStatusCode.ACTIVE, null, 7200L, "10"))
                 .thenReturn(1);
@@ -66,5 +67,23 @@ class AuctionReportTargetHoldServiceTest {
         verify(referenceDataService).requireActiveCode("AUCG01", AuctionStatusCode.ACTIVE);
         verify(auctionMapper).restoreAuctionAfterSanction(
                 81L, AuctionStatusCode.ACTIVE, null, 7200L, "10");
+    }
+
+    @Test
+    void skipsEndedAuctionWithoutChangingItsStatus() {
+        AuctionSanctionTarget target = new AuctionSanctionTarget();
+        target.setAuctionId(81L);
+        target.setAuctionStatusCode(AuctionStatusCode.ENDED);
+        when(auctionMapper.findReportHoldTargetForUpdate(81L)).thenReturn(target);
+
+        ReportTargetHoldResult result = service.pause(81L, "10");
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.alreadyOnReportHold()).isFalse();
+        assertThat(result.previousStatusCode()).isEqualTo(AuctionStatusCode.ENDED);
+        verify(auctionMapper, never()).pauseAuctionForSanction(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
     }
 }

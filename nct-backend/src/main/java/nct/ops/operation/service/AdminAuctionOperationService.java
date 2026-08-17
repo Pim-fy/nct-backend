@@ -73,7 +73,7 @@ public class AdminAuctionOperationService {
                     NotificationType.AUCTION,
                     NotificationDomain.AUCTION,
                     "관리자에 의해 경매가 취소되었습니다",
-                    "경매 #" + auctionSn + "이(가) 취소되었습니다. 사유: " + normalizedReason,
+                    auctionNotificationContent(overview, auctionSn, normalizedReason),
                     RefType.AUCTION,
                     auctionSn);
         }
@@ -154,6 +154,7 @@ public class AdminAuctionOperationService {
             String requestId,
             Long adminUserSn) {
         String normalizedReason = validate(auctionSn, reason, requestId, adminUserSn);
+        AdminAuctionOverviewResponse overview = queryService.getAuctionOverview(auctionSn);
         AdminAuctionPauseResult result = pause
                 ? pausePort.pause(new AdminAuctionPauseCommand(auctionSn, adminUserSn))
                 : pausePort.resume(new AdminAuctionPauseCommand(auctionSn, adminUserSn));
@@ -176,13 +177,30 @@ public class AdminAuctionOperationService {
                     NotificationType.AUCTION,
                     NotificationDomain.AUCTION,
                     pause ? "경매가 일시중지되었습니다." : "경매가 다시 시작되었습니다.",
-                    "경매 #" + auctionSn + (pause
-                            ? "이(가) 관리자에 의해 일시중지되었습니다. 사유: "
-                            : "이(가) 관리자에 의해 재개되었습니다. 사유: ") + normalizedReason,
+                    auctionNotificationContent(overview, auctionSn, normalizedReason),
                     RefType.AUCTION,
                     auctionSn);
         }
         return result;
+    }
+
+    /** 담당자 7 · ISSUE-T7-009: 알림에는 상품명과 경매 번호를 함께 표시합니다. */
+    private String auctionNotificationContent(
+            AdminAuctionOverviewResponse overview,
+            Long auctionSn,
+            String reason) {
+        String displayName = null;
+        if (overview != null && overview.getProduct() != null) {
+            displayName = overview.getProduct().getPrdNm();
+        }
+        if ((displayName == null || displayName.isBlank())
+                && overview != null && overview.getAuction() != null) {
+            displayName = overview.getAuction().getTitle();
+        }
+        String normalizedName = displayName == null || displayName.isBlank()
+                ? "해당 경매"
+                : displayName.trim();
+        return normalizedName + " · 경매 #" + auctionSn + " · 사유: " + reason;
     }
 
     private String validate(

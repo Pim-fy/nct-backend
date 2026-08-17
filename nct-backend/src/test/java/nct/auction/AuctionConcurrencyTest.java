@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import nct.auction.dto.AuctionBidRequest;
 import nct.auction.dto.AuctionBuyNowRequest;
@@ -32,6 +33,7 @@ import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.security.crypto.FieldCryptoService;
+import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.PointBalance;
 import nct.point.service.PointService;
 import nct.support.ApprovedDatabaseWriteIntegrationTest;
@@ -44,6 +46,7 @@ class AuctionConcurrencyTest extends ApprovedDatabaseWriteIntegrationTest {
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
     @Autowired FieldCryptoService fieldCryptoService;
+    @MockitoBean AuditLogPort auditLogPort;
 
     private final List<Long> auctionIds = new ArrayList<>();
     private final List<Long> productIds = new ArrayList<>();

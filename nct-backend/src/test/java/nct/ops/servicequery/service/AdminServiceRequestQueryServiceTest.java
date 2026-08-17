@@ -223,6 +223,48 @@ class AdminServiceRequestQueryServiceTest {
         assertThat(result.selectedProviderMember()).isSameAs(selectedProvider);
     }
 
+    /** 담당자 7 · ISSUE-T7-006: 운영보류 요청도 관리자 상세에서 선택 견적·거래를 정상 조립합니다. */
+    @Test
+    void returnsHeldRequestDetailWithSelectedTrade() {
+        AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
+                .serviceRequestId(1_947L)
+                .requesterUserId(101L)
+                .title("운영보류 요청")
+                .statusCode("SVCC0005")
+                .build();
+        when(reader.readDetail(1_947L)).thenReturn(detail);
+        AdminQuoteSummary summary = quoteSummary(1_947L, 1, 0, 502L);
+        when(quoteSummaryReader.findSummaries(List.of(1_947L)))
+                .thenReturn(Map.of(1_947L, summary));
+        when(quoteListReader.findByServiceRequestId(1_947L)).thenReturn(List.of(
+                quoteListItem(1_947L, 502L, 900L, 30_000L, "QUTC0004")));
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(1_947L);
+        trade.setTradeId(7_001L);
+        trade.setQuoteId(502L);
+        trade.setTradeStatusCode("TRDC0007");
+        when(tradeSummaryReader.findSummaries(List.of(1_947L)))
+                .thenReturn(Map.of(1_947L, trade));
+        AdminEscrowSummary escrow = new AdminEscrowSummary();
+        escrow.setTradeId(7_001L);
+        escrow.setEscrowDebitedAmount(30_000L);
+        escrow.setEscrowLedgerAmount(-30_000L);
+        when(escrowSummaryReader.findSummaries(List.of(7_001L)))
+                .thenReturn(Map.of(7_001L, escrow));
+        AdminMemberIdentityResponse requester = memberIdentity(101L, "requester");
+        AdminMemberIdentityResponse provider = memberIdentity(900L, "provider");
+        when(memberIdentityReader.findByUserSns(List.of(101L, 900L)))
+                .thenReturn(Map.of(101L, requester, 900L, provider));
+
+        var result = service.getDetail(1_947L);
+
+        assertThat(result.integratedStatusCode()).isEqualTo("IN_PROGRESS");
+        assertThat(result.integratedStatusName()).isEqualTo("운영보류");
+        assertThat(result.selectedQuoteId()).isEqualTo(502L);
+        assertThat(result.tradeId()).isEqualTo(7_001L);
+        assertThat(result.activeEscrowAmount()).isEqualTo(30_000L);
+    }
+
     @Test
     void rejectsDetailWhenProviderIdentityBatchOmitsAQuoteProvider() {
         AdminServiceRequestDetail detail = AdminServiceRequestDetail.builder()
@@ -335,6 +377,127 @@ class AdminServiceRequestQueryServiceTest {
         assertThat(result.items().get(0).integratedStatusName()).isEqualTo("종료");
     }
 
+    /** 담당자 7 · F-OPS-021: 거래 전 취소 요청은 종료와 구분해 표시합니다. */
+    @Test
+    void labelsCanceledRequestWithoutTradeAsCanceled() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(43L)
+                .title("관리자 취소")
+                .statusCode("SVCC0006")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(43L)))
+                .thenReturn(Map.of(43L, quoteSummary(43L, 1, 0, null)));
+
+        var result = service.getPage(new AdminServiceRequestListRequest());
+
+        assertThat(result.items().get(0).integratedStatusCode()).isEqualTo("COMPLETED");
+        assertThat(result.items().get(0).integratedStatusName()).isEqualTo("취소");
+    }
+
+    @Test
+    void rejectsCanceledRequestWhoseLinkedTradeIsStillActive() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(44L)
+                .title("취소 상태 불일치")
+                .statusCode("SVCC0006")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(44L)))
+                .thenReturn(Map.of(44L, quoteSummary(44L, 1, 0, 440L)));
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(44L);
+        trade.setTradeId(4_400L);
+        trade.setQuoteId(440L);
+        trade.setTradeStatusCode("TRDC0003");
+        when(tradeSummaryReader.findSummaries(List.of(44L))).thenReturn(Map.of(44L, trade));
+
+        assertThatThrownBy(() -> service.getPage(new AdminServiceRequestListRequest()))
+                .isInstanceOf(CustomException.class);
+    }
+
+    /** 담당자 7 · F-OPS-021: 영구제재 취소 뒤 선택 견적이 철회돼도 취소 거래를 정상 조회합니다. */
+    @Test
+    void acceptsCanceledRequestAfterSelectedQuoteWasWithdrawn() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(45L)
+                .title("영구제재 취소")
+                .statusCode("SVCC0006")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(45L)))
+                .thenReturn(Map.of(45L, quoteSummary(45L, 1, 0, null)));
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(45L);
+        trade.setTradeId(4_500L);
+        trade.setQuoteId(450L);
+        trade.setQuoteAmount(30_000L);
+        trade.setQuoteStatusCode("QUTC0005");
+        trade.setTradeStatusCode("TRDC0008");
+        when(tradeSummaryReader.findSummaries(List.of(45L))).thenReturn(Map.of(45L, trade));
+        AdminEscrowSummary escrow = new AdminEscrowSummary();
+        escrow.setTradeId(4_500L);
+        escrow.setEscrowDebitedAmount(30_000L);
+        escrow.setRefundedAmount(30_000L);
+        when(escrowSummaryReader.findSummaries(List.of(4_500L)))
+                .thenReturn(Map.of(4_500L, escrow));
+
+        var result = service.getPage(new AdminServiceRequestListRequest());
+
+        assertThat(result.items().get(0).integratedStatusCode()).isEqualTo("COMPLETED");
+        assertThat(result.items().get(0).integratedStatusName()).isEqualTo("취소");
+        assertThat(result.items().get(0).tradeStatusCode()).isEqualTo("TRDC0008");
+        assertThat(result.items().get(0).activeEscrowAmount()).isZero();
+    }
+
+    /** 담당자 7 · F-OPS-021: 취소 거래의 원래 견적이 철회 상태가 아니면 연결 불일치로 거부합니다. */
+    @Test
+    void rejectsCanceledRequestWhenTradeQuoteWasNotWithdrawn() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(46L)
+                .title("견적 상태 불일치")
+                .statusCode("SVCC0006")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(46L)))
+                .thenReturn(Map.of(46L, quoteSummary(46L, 1, 0, null)));
+        AdminServiceTradeSummary trade = canceledTradeSummary(46L, 4_600L, 460L, 30_000L);
+        trade.setQuoteStatusCode("QUTC0002");
+        when(tradeSummaryReader.findSummaries(List.of(46L))).thenReturn(Map.of(46L, trade));
+
+        assertThatThrownBy(() -> service.getPage(new AdminServiceRequestListRequest()))
+                .isInstanceOf(CustomException.class);
+    }
+
+    /** 담당자 7 · F-OPS-021: 취소 거래도 원래 견적 금액과 보관금 차감액이 다르면 거부합니다. */
+    @Test
+    void rejectsCanceledRequestWhenEscrowAmountDiffersFromTradeQuote() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(47L)
+                .title("보관금 금액 불일치")
+                .statusCode("SVCC0006")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(47L)))
+                .thenReturn(Map.of(47L, quoteSummary(47L, 1, 0, null)));
+        AdminServiceTradeSummary trade = canceledTradeSummary(47L, 4_700L, 470L, 30_000L);
+        when(tradeSummaryReader.findSummaries(List.of(47L))).thenReturn(Map.of(47L, trade));
+        AdminEscrowSummary escrow = new AdminEscrowSummary();
+        escrow.setTradeId(4_700L);
+        escrow.setEscrowDebitedAmount(25_000L);
+        escrow.setRefundedAmount(25_000L);
+        when(escrowSummaryReader.findSummaries(List.of(4_700L)))
+                .thenReturn(Map.of(4_700L, escrow));
+
+        assertThatThrownBy(() -> service.getPage(new AdminServiceRequestListRequest()))
+                .isInstanceOf(CustomException.class);
+    }
+
     @Test
     void joinsTradeSettlementDisputeAndEscrowInBatch() {
         AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
@@ -401,6 +564,84 @@ class AdminServiceRequestQueryServiceTest {
         trade.setQuoteId(61L);
         trade.setTradeStatusCode("TRDC0003");
         when(tradeSummaryReader.findSummaries(List.of(6L))).thenReturn(Map.of(6L, trade));
+
+        assertThatThrownBy(() -> service.getPage(new AdminServiceRequestListRequest()))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void acceptsHeldRequestWithSelectedTradeOnSingleItemLastPage() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(11L)
+                .title("거래 중 운영보류")
+                .statusCode("SVCC0005")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(39).size(20).totalItems(761).totalPages(39).build());
+        when(quoteSummaryReader.findSummaries(List.of(11L)))
+                .thenReturn(Map.of(11L, quoteSummary(11L, 1, 0, 110L)));
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(11L);
+        trade.setTradeId(1_100L);
+        trade.setQuoteId(110L);
+        trade.setTradeStatusCode("TRDC0007");
+        when(tradeSummaryReader.findSummaries(List.of(11L))).thenReturn(Map.of(11L, trade));
+        AdminEscrowSummary escrow = new AdminEscrowSummary();
+        escrow.setTradeId(1_100L);
+        escrow.setEscrowDebitedAmount(30_000L);
+        escrow.setEscrowLedgerAmount(-30_000L);
+        when(escrowSummaryReader.findSummaries(List.of(1_100L)))
+                .thenReturn(Map.of(1_100L, escrow));
+
+        AdminServiceRequestListRequest request = new AdminServiceRequestListRequest();
+        request.setPage(39);
+
+        var result = service.getPage(request);
+
+        assertThat(result.page()).isEqualTo(39);
+        assertThat(result.totalPages()).isEqualTo(39);
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).integratedStatusCode()).isEqualTo("IN_PROGRESS");
+        assertThat(result.items().get(0).integratedStatusName()).isEqualTo("운영보류");
+        assertThat(result.items().get(0).tradeId()).isEqualTo(1_100L);
+    }
+
+    @Test
+    void acceptsHeldRequestBeforeTradeCreation() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(12L)
+                .title("매칭 전 운영보류")
+                .statusCode("SVCC0005")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(12L)))
+                .thenReturn(Map.of(12L, quoteSummary(12L, 0, 0, null)));
+
+        var result = service.getPage(new AdminServiceRequestListRequest());
+
+        assertThat(result.items().get(0).integratedStatusCode()).isEqualTo("IN_PROGRESS");
+        assertThat(result.items().get(0).integratedStatusName()).isEqualTo("운영보류");
+        assertThat(result.items().get(0).tradeId()).isNull();
+    }
+
+    @Test
+    void rejectsHeldRequestWithSelectedQuoteAndTradeMismatch() {
+        AdminServiceRequestListItem item = AdminServiceRequestListItem.builder()
+                .serviceRequestId(13L)
+                .title("운영보류 연결 불일치")
+                .statusCode("SVCC0005")
+                .build();
+        when(reader.readPage(any())).thenReturn(AdminServiceRequestPage.builder()
+                .items(List.of(item)).page(1).size(20).totalItems(1).totalPages(1).build());
+        when(quoteSummaryReader.findSummaries(List.of(13L)))
+                .thenReturn(Map.of(13L, quoteSummary(13L, 1, 0, 130L)));
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(13L);
+        trade.setTradeId(1_300L);
+        trade.setQuoteId(131L);
+        trade.setTradeStatusCode("TRDC0007");
+        when(tradeSummaryReader.findSummaries(List.of(13L))).thenReturn(Map.of(13L, trade));
 
         assertThatThrownBy(() -> service.getPage(new AdminServiceRequestListRequest()))
                 .isInstanceOf(CustomException.class);
@@ -530,6 +771,21 @@ class AdminServiceRequestQueryServiceTest {
             summary.setSelectedQuoteStatusCode("QUTC0004");
         }
         return summary;
+    }
+
+    private AdminServiceTradeSummary canceledTradeSummary(
+            Long serviceRequestId,
+            Long tradeId,
+            Long quoteId,
+            Long quoteAmount) {
+        AdminServiceTradeSummary trade = new AdminServiceTradeSummary();
+        trade.setServiceRequestId(serviceRequestId);
+        trade.setTradeId(tradeId);
+        trade.setQuoteId(quoteId);
+        trade.setQuoteAmount(quoteAmount);
+        trade.setQuoteStatusCode("QUTC0005");
+        trade.setTradeStatusCode("TRDC0008");
+        return trade;
     }
 
     private AdminQuoteListItem quoteListItem(

@@ -239,6 +239,17 @@
         </foreach>
     </select>
 
+    <!-- 담당자 7 · F-OPS-007: 공개 상세의 노출 조건을 거치지 않는 신고 검증용 최소 조회입니다. -->
+    <select id="findAuctionReportReference" resultType="nct.auction.dto.AuctionReportReference">
+        SELECT a.AUC_SN AS auctionId,
+               p.USR_SN AS sellerUserSn,
+               p.PRD_NM AS title,
+               a.AUC_STATUS_CD AS statusCode
+          FROM AUCTION a
+          JOIN PRODUCT p ON p.PRD_SN = a.PRD_SN
+         WHERE a.AUC_SN = #{auctionId}
+    </select>
+
     <select id="findAuctionDetail" resultType="nct.auction.dto.AuctionDetailResponse">
         SELECT
             a.AUC_SN AS auctionId,

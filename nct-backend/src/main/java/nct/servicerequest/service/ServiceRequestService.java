@@ -70,7 +70,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
     // 클라이언트가 직접 지정할 수 있는 요청서 상태 — 그 외 내부 전이 상태는 서버만 부여
     private static final Set<String> CLIENT_ALLOWED_STATUS_CD = Set.of("SVCC0001", "SVCC0002");
     private static final Set<String> SERVICE_REQUEST_STATUS_CD =
-            Set.of("SVCC0001", "SVCC0002", "SVCC0003", "SVCC0004", "SVCC0005");
+            Set.of("SVCC0001", "SVCC0002", "SVCC0003", "SVCC0004", "SVCC0005", "SVCC0006");
 
     private void validateClientStatusCd(String statusCd) {
         if (!CLIENT_ALLOWED_STATUS_CD.contains(statusCd)) {
@@ -140,12 +140,12 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
         ServiceRequest request = serviceRequestMapper.findServiceRequestEntityByIdForUpdate(serviceRequestId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SERVICE_REQUEST_NOT_FOUND));
-        if ("SVCC0004".equals(request.getSvcReqStatusCd())) {
+        if ("SVCC0006".equals(request.getSvcReqStatusCd())) {
             return new AdminServiceRequestCommandResult(
                     serviceRequestId,
                     request.getUsrSn(),
-                    "SVCC0004",
-                    "SVCC0004",
+                    "SVCC0006",
+                    "SVCC0006",
                     false);
         }
         if (!"SVCC0002".equals(request.getSvcReqStatusCd())) {
@@ -161,7 +161,7 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
                 serviceRequestId,
                 request.getUsrSn(),
                 request.getSvcReqStatusCd(),
-                "SVCC0004",
+                "SVCC0006",
                 true);
     }
 
@@ -559,7 +559,8 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         }
     }
 
-    // 마감(SVCC0004)된 요청서 재등록 — 원본은 이력으로 그대로 남기고, 내용을 복사한 새 요청서(임시저장)를
+    // 종료(SVCC0004)·취소(SVCC0006)된 요청서 재등록 — 원본은 이력으로 그대로 남기고,
+    // 내용을 복사한 새 요청서(임시저장)를
     // 별도 svcReqSn으로 만든다. 같은 번호를 재사용하면 옛 견적·변경사항 기록이 새 라운드와 뒤섞이게 된다.
     @Transactional
     public ServiceRequestResponse reregisterServiceRequest(Long svcReqSn, Long usrSn) {
@@ -569,8 +570,8 @@ public class ServiceRequestService implements ServiceRequestQuoteReader, AdminSe
         if (!original.getUsrSn().equals(usrSn)) {
             throw new CustomException(ErrorCode.NOT_RESOURCE_OWNER);
         }
-        if (!"SVCC0004".equals(original.getSvcReqStatusCd())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "마감된 요청서만 재등록할 수 있습니다.");
+        if (!Set.of("SVCC0004", "SVCC0006").contains(original.getSvcReqStatusCd())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "종료 또는 취소된 요청서만 재등록할 수 있습니다.");
         }
 
         ServiceRequest copy = ServiceRequest.builder()

@@ -24,11 +24,12 @@ import nct.settlement.dto.AdminSettlementPageResponse;
 import nct.settlement.dto.AdminSettlementRecord;
 import nct.settlement.exception.SettlementException;
 import nct.settlement.mapper.SettlementMapper;
+import nct.settlement.port.AdminIncompleteSettlementCountReader;
 
 /** F-OPS-009 관리자 정산 조회와 보류·해제를 조립합니다. */
 @Service
 @RequiredArgsConstructor
-public class AdminSettlementService {
+public class AdminSettlementService implements AdminIncompleteSettlementCountReader {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final Set<String> SUPPORTED_STATUSES = Set.of(
@@ -58,6 +59,14 @@ public class AdminSettlementService {
                 .totalItems(totalItems)
                 .totalPages(totalItems == 0 ? 0 : (int) Math.ceil((double) totalItems / query.size()))
                 .build();
+    }
+
+    /** 담당자 7 · F-OPS-010: 완료·환불 전인 대기·보류 정산 합계를 제공합니다. */
+    @Override
+    @Transactional(readOnly = true)
+    public long countIncompleteSettlementsForAdmin() {
+        return settlementMapper.countAdminPage(SettlementStatus.PENDING.getCode(), null)
+                + settlementMapper.countAdminPage(SettlementStatus.ON_HOLD.getCode(), null);
     }
 
     @Transactional(readOnly = true)

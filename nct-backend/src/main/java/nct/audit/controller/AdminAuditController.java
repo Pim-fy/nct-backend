@@ -26,6 +26,7 @@ import nct.audit.dto.AuditLogResponse;
 import nct.audit.dto.DisputeChatMessageResponse;
 import nct.audit.dto.DisputeChatViewRequest;
 import nct.audit.dto.DisputeChatViewResponse;
+import nct.audit.domain.AuditLogType;
 import nct.audit.mapper.ChatMessageView;
 import nct.audit.service.AuditLogService;
 import nct.audit.service.DisputeChatViewResult;
@@ -72,17 +73,47 @@ public class AdminAuditController {
             @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(name = "limit", required = false) Integer limit) {
 
+        validateLogSearchFilters(usrSn, from, to);
+        String normalizedTypeCd = normalizeAuditLogTypeCode(typeCd);
         LocalDateTime fromDt = from == null ? null : from.atStartOfDay();
         LocalDateTime toDt = to == null ? null : to.plusDays(1).atStartOfDay().minusNanos(1);
         int rows = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(limit, 1), MAX_LIMIT);
 
-        var logs = auditLogService.search(usrSn, typeCd, fromDt, toDt, rows);
+        var logs = auditLogService.search(usrSn, normalizedTypeCd, fromDt, toDt, rows);
         Map<Long, AdminMemberIdentityResponse> identities = memberIdentityReader.findByUserSns(
                 logs.stream().map(log -> log.getUsrSn()).toList());
         List<AuditLogResponse> body = logs.stream()
                 .map(log -> AuditLogResponse.from(log, identities.get(log.getUsrSn())))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(body));
+    }
+
+    /** 담당자 7 · F-OPS-015/016: 잘못된 조회 조건이 Mapper까지 전달되지 않도록 차단합니다. */
+    private void validateLogSearchFilters(Long usrSn, LocalDate from, LocalDate to) {
+        if (usrSn != null && usrSn <= 0) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "행위자 회원번호는 1 이상이어야 합니다.");
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "시작일은 종료일보다 늦을 수 없습니다.");
+        }
+    }
+
+    private String normalizeAuditLogTypeCode(String value) {
+        if (value == null || value.isBlank()) return null;
+
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        for (AuditLogType type : AuditLogType.values()) {
+            if (type.getCode().equals(normalized)) {
+                return normalized;
+            }
+        }
+        throw new CustomException(
+                ErrorCode.INVALID_INPUT_VALUE,
+                "허용되지 않은 감사 행위 유형입니다.");
     }
 
     /** 담당자 7 · F-OPS-016: 관리자 상세 화면에서 대상별 처리 이력을 공통 조회합니다. */

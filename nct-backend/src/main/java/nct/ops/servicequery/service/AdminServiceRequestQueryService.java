@@ -235,18 +235,33 @@ public class AdminServiceRequestQueryService {
         Long selectedQuoteId = quote == null ? null : quote.getSelectedQuoteId();
         boolean hasSelectedQuote = selectedQuoteId != null;
         boolean hasTrade = trade != null;
-        if (hasSelectedQuote != hasTrade
-                || hasTrade && !selectedQuoteId.equals(trade.getQuoteId())
-                || "SVCC0003".equals(sourceStatusCode) && !hasTrade
-                || !"SVCC0003".equals(sourceStatusCode) && hasTrade) {
+        boolean requiresTrade = "SVCC0003".equals(sourceStatusCode);
+        boolean canceledRequest = "SVCC0006".equals(sourceStatusCode);
+        boolean allowsTrade = requiresTrade || "SVCC0005".equals(sourceStatusCode) || canceledRequest;
+        boolean canceledTradeAfterQuoteWithdrawal = canceledRequest
+                && hasTrade
+                && !hasSelectedQuote
+                && trade.getQuoteId() != null
+                && trade.getQuoteAmount() != null
+                && trade.getQuoteAmount() > 0
+                && "QUTC0005".equals(trade.getQuoteStatusCode())
+                && "TRDC0008".equals(trade.getTradeStatusCode());
+        if ((hasSelectedQuote != hasTrade && !canceledTradeAfterQuoteWithdrawal)
+                || hasTrade && hasSelectedQuote && !selectedQuoteId.equals(trade.getQuoteId())
+                || requiresTrade && !hasTrade
+                || !allowsTrade && hasTrade
+                || canceledRequest && hasTrade && !"TRDC0008".equals(trade.getTradeStatusCode())) {
             throw inconsistent("서비스 요청·선택 견적·거래 연결이 일관되지 않습니다.");
         }
         if (!hasTrade) {
             return;
         }
+        Long expectedEscrowAmount = canceledTradeAfterQuoteWithdrawal
+                ? trade.getQuoteAmount()
+                : quote.getSelectedAmount();
         if (escrow == null
-                || quote.getSelectedAmount() == null
-                || escrow.getEscrowDebitedAmount() != quote.getSelectedAmount()) {
+                || expectedEscrowAmount == null
+                || escrow.getEscrowDebitedAmount() != expectedEscrowAmount) {
             throw inconsistent("서비스 거래의 보관금 원장이 선택 견적 금액과 일치하지 않습니다.");
         }
         validateSettlementLedger(trade, settlement, escrow);
@@ -324,6 +339,10 @@ public class AdminServiceRequestQueryService {
             case "SVCC0004" -> activeQuoteCount > 0
                     ? new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "정리 필요")
                     : new AdminServiceRequestIntegratedStatus("COMPLETED", "종료");
+            case "SVCC0005" -> new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "운영보류");
+            case "SVCC0006" -> activeQuoteCount > 0
+                    ? new AdminServiceRequestIntegratedStatus("IN_PROGRESS", "정리 필요")
+                    : new AdminServiceRequestIntegratedStatus("COMPLETED", "취소");
             default -> throw new CustomException(
                     ErrorCode.INTERNAL_SERVER_ERROR,
                     "알 수 없는 서비스 요청 상태입니다: " + sourceStatusCode);

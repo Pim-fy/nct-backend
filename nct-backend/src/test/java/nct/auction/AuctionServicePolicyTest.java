@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +43,8 @@ import nct.global.exception.ErrorCode;
 import nct.member.dto.BuyerDeliveryAddressSnapshot;
 import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.AuctionPolicy;
 import nct.point.exception.PointException;
 import nct.point.service.PointService;
@@ -77,6 +80,9 @@ class AuctionServicePolicyTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private AuditLogPort auditLogPort;
 
     @InjectMocks
     private AuctionService auctionService;
@@ -170,8 +176,46 @@ class AuctionServicePolicyTest {
         verify(buyerDeliveryAddressReader).getOwnedActiveAddressSnapshot(40L, 70L);
         verify(auctionMapper).extendAuctionTime(10L, 3, 2, "40");
         verify(notificationService).notifyBidUpdated(35L, 10L, 12000L);
+        ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogPort).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().actionCode()).isEqualTo("CREATE");
+        assertThat(auditCaptor.getValue().actorId()).isEqualTo("40");
+        assertThat(auditCaptor.getValue().referenceTypeCode()).isEqualTo(RefType.BID.getCode());
+        assertThat(auditCaptor.getValue().referenceSn()).isEqualTo(50L);
+        assertThat(auditCaptor.getValue().reason()).isEqualTo("입찰 성공");
+        assertThat(auditCaptor.getValue().beforeSummary()).isEqualTo("auctionAmount=10000P");
+        assertThat(auditCaptor.getValue().afterSummary()).isEqualTo("bidAmount=12000P");
+        assertThat(auditCaptor.getValue().requestId()).isEqualTo("bid:50");
+        assertThat(auditCaptor.getValue().relatedReferenceTypeCode()).isEqualTo(RefType.AUCTION.getCode());
+        assertThat(auditCaptor.getValue().relatedReferenceSn()).isEqualTo(10L);
         verifyRealtimeEvent("BID_PLACED");
         assertThat(response.isFavorite()).isTrue();
+    }
+
+    /** 담당자 7 · F-OPS-015: 기존 성공 입찰의 재요청은 감사 기록을 추가하지 않습니다. */
+    @Test
+    void repeatedPlaceBidDoesNotRecordAnotherAudit() {
+        target.setTradeMethodCode("TRDC0009");
+        when(pointService.getAuctionPolicy()).thenReturn(auctionPolicy(3, 2));
+        when(auctionMapper.updateAuctionCurrentPrice(10L, BigDecimal.valueOf(12000), "40")).thenReturn(1);
+        when(auctionMapper.insertBid(any(AuctionBidCreateCommand.class))).thenAnswer(invocation -> {
+            AuctionBidCreateCommand command = invocation.getArgument(0);
+            ReflectionTestUtils.setField(command, "bidId", 50L);
+            return 1;
+        });
+        stubAuctionDetail();
+
+        AuctionBidRequest request = bidRequest(12000);
+        auctionService.placeBid(10L, 40L, request);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestBidId(50L);
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(auditLogPort, times(1)).record(any(AuditLogCommand.class));
     }
 
     @Test

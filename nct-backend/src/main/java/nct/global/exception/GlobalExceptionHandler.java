@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,9 +28,10 @@ import nct.ops.security.service.SensitiveDataMasker;
  * - 처리 우선순위
  *   1) MethodArgumentNotValidException : @Valid 검증 실패 -> 필드별 오류 목록
  *   2) MethodArgumentTypeMismatchException : 숫자·열거형 등의 요청 타입 변환 실패
- *   3) AuthenticationException / AccessDeniedException : 보안 예외
- *   4) CustomException : 비즈니스 예외 (ErrorCode 기반)
- *   5) Exception : 그 외 전부 500 (내부 메시지는 로그에만, 응답에는 노출 안 함)
+ *   3) HttpMessageNotReadableException : 요청 본문 역직렬화 실패(형식 자체가 다름)
+ *   4) AuthenticationException / AccessDeniedException : 보안 예외
+ *   5) CustomException : 비즈니스 예외 (ErrorCode 기반)
+ *   6) Exception : 그 외 전부 500 (내부 메시지는 로그에만, 응답에는 노출 안 함)
  */
 @RestControllerAdvice
 @Slf4j
@@ -66,6 +68,18 @@ public class GlobalExceptionHandler {
 
         logException(ex);
         ErrorCode errorCode = ErrorCode.INVALID_TYPE_VALUE;
+        return ResponseEntity.badRequest()
+                             .body(ApiResponse.error(errorCode.code(), errorCode.message(),
+                                                     safePath(request)));
+    }
+
+    /** 요청 본문을 객체로 역직렬화할 수 없음(형식이 아예 다름·문자열/배열 등) -> 400 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMessageNotReadable(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+
+        logException(ex);
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
         return ResponseEntity.badRequest()
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
                                                      safePath(request)));

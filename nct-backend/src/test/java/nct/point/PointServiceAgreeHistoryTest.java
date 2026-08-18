@@ -17,12 +17,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import nct.abuse.port.ActiveReportedUserReader;
 import nct.agree.domain.AgreeActType;
 import nct.agree.domain.AgreeRef;
 import nct.agree.domain.AgreeType;
 import nct.agree.service.AgreeHistoryService;
 import nct.common.domain.RefType;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.PointBalance;
 import nct.point.domain.PointLedger;
 import nct.point.mapper.PointMapper;
@@ -44,6 +46,8 @@ class PointServiceAgreeHistoryTest {
     @Mock NotificationService notificationService;
     @Mock SystemSettingMapper systemSettingMapper;
     @Mock AgreeHistoryService agreeHistoryService;
+    @Mock ActiveReportedUserReader activeReportedUserReader;
+    @Mock AuditLogPort auditLogPort;
 
     /** insertLedger 호출 시 실제 DB의 useGeneratedKeys처럼 ptLdgSn을 채워 돌려준다 */
     private void stubGeneratedLedgerSn(long sn) {

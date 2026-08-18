@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import nct.abuse.port.ActiveReportedUserReader;
+import nct.agree.service.AgreeHistoryService;
 import nct.common.domain.RefType;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
@@ -42,6 +43,7 @@ class PointServiceAuditTest {
     @Mock private SystemSettingMapper systemSettingMapper;
     @Mock private ActiveReportedUserReader activeReportedUserReader;
     @Mock private AuditLogPort auditLogPort;
+    @Mock private AgreeHistoryService agreeHistoryService;
 
     @Test
     @DisplayName("포인트 홀딩은 원장 행별 감사로그를 남기되 원래 사유 원문을 전달하지 않는다")

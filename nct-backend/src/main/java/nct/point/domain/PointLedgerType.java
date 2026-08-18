@@ -31,9 +31,11 @@ public enum PointLedgerType {
      */
     REFUND("PTLC0013"),
     /**
-     * 거래 수수료 차감 (팀 합의 2026-08-13 — 공통코드 PTLC0014 신설, 정본 반영 요청 별도).
+     * 수수료 차감 (팀 합의 2026-08-13 — 공통코드 PTLC0014 신설, 정본 반영 요청 별도).
      * 정산 적립(SETTLE +전액) 직후 정산가능 버킷에서 −수수료 행을 짝으로 기록한다 —
-     * 요율은 거래유형별 단일 고정(경매 5%, 서비스 10%)이며 SettlementService가 결정한다
+     * 요율은 거래유형별 단일 고정(경매 5%, 서비스 10%)이며 SettlementService가 결정한다.
+     * REQ-PAY-009: 충전/환전 수수료 확장 지점(PointService.deductChargeFee/deductExchangeFee)도
+     * 같은 코드를 재사용한다 — 사용가능 버킷에서 빠진다는 점만 다르고 "수수료 원장" 의미는 같다.
      */
     FEE("PTLC0014");
 

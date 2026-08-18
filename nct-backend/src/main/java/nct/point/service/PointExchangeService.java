@@ -89,6 +89,10 @@ public class PointExchangeService {
         order.setPtExcOrdAcntNo(fieldCryptoService.encrypt(account.getAcntNo()));
         exchangeMapper.insert(order);
 
+        // REQ-PAY-009: 환전 수수료 정책은 아직 없다(정률/정액 여부도 미정) — 결정되면
+        // 여기서 금액을 계산해 deductExchangeFee에 넘기면 된다. 지금은 0원 고정.
+        pointService.deductExchangeFee(usrSn, 0L, order.getPtExcOrdSn(), "환전 수수료");
+
         // 같은 트랜잭션 안에서 접수 알림까지 기록 (충전 완료 알림과 같은 방침)
         notificationService.notifyExchangeRequest(usrSn, amt);
         return order.getPtExcOrdSn();

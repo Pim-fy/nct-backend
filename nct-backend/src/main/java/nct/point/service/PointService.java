@@ -6,6 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.agree.domain.AgreeActType;
+import nct.agree.domain.AgreeRef;
+import nct.agree.domain.AgreeType;
+import nct.agree.service.AgreeHistoryService;
 import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
@@ -46,6 +50,7 @@ public class PointService {
     private final PointMapper pointMapper;
     private final NotificationService notificationService;
     private final SystemSettingMapper systemSettingMapper;
+    private final AgreeHistoryService agreeHistoryService;
 
     // ---------- 조회 (F-PAY-038, F-PAY-039) ----------
 
@@ -104,8 +109,15 @@ public class PointService {
         // 복식 기록: 사용가능에서 빠져나가고(−) 홀딩으로 들어온다(+) — 합계 0, 총 보유 불변
         insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.HOLD, -amt,
                 bal.getAvailableAmt() - amt, refType, refSn, reason);
-        insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.HOLD, amt,
+        long holdLedgerSn = insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.HOLD, amt,
                 bal.getHoldAmt() + amt, refType, refSn, reason);
+
+        // 홀딩 시점 동의 이력 기록 (F-OPS-017, REQ-OPS-016) — 홀딩 원장 행을 참조로 남긴다.
+        // AgreeType에 경매/거래 조건 전용 항목이 없어, 이용약관을 "서비스 이용 조건 전반"으로
+        // 넓게 해석해 사용한다(전용 공통코드 신설 없이 가기로 확정, 2026-08-18).
+        // agreed는 항상 true — 이 메서드 자체가 홀딩이 실제로 진행될 때만 호출돼 거부 경로가 없다(확정, 2026-08-18).
+        agreeHistoryService.record(usrSn, AgreeType.TERMS_OF_SERVICE, AgreeActType.POINT_HOLD,
+                true, AgreeRef.pointLedger(holdLedgerSn));
     }
 
     /**
@@ -155,8 +167,15 @@ public class PointService {
         }
         PointBalance bal = pointMapper.selectBalance(usrSn);
 
-        insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.ESCROW, -holdAmt,
+        long escrowLedgerSn = insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.ESCROW, -holdAmt,
                 bal.getHoldAmt() - holdAmt, refType, refSn, reason);
+
+        // 홀딩 시점 동의 이력 기록 (F-OPS-017, REQ-OPS-016) — POINT_HOLD 행위 유형은 보관금 전환도 포함.
+        // AgreeType은 hold()와 동일하게 이용약관을 서비스 이용 조건 전반으로 넓게 해석해 사용하고,
+        // agreed도 항상 true(거부 경로 없음) — hold()와 동일한 확정 사항(2026-08-18).
+        agreeHistoryService.record(usrSn, AgreeType.TERMS_OF_SERVICE, AgreeActType.POINT_HOLD,
+                true, AgreeRef.pointLedger(escrowLedgerSn));
+
         return holdAmt;
     }
 

@@ -123,9 +123,11 @@ public class SecurityConfig {
                     .permitAll()
                 // 담당자 7 · F-COM-013: 방문자도 게시 중인 공지 목록·상세를 조회할 수 있다.
                 // 쓰기 API는 /api/admin/** 아래에 분리되어 있어 이 규칙으로 공개되지 않는다.
-                .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/**")
+                // 공개 쓰기 API는 존재하지 않으므로 경로는 DispatcherServlet까지 통과시킨다.
+                // 그래야 잘못된 POST도 인증 401로 가려지지 않고 표준 405로 응답한다.
+                .requestMatchers("/api/notices", "/api/notices/**")
                     .permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/guides", "/api/guides/**")
+                .requestMatchers("/api/guides", "/api/guides/**")
                     .permitAll()
                 // F-COM-009: 공개 프로필·경매 상세에서 사용하는 통합 평점·리뷰 건수 집계.
                 // 리뷰 작성·내 리뷰 등 다른 /api/reviews/** 경로는 기존 인증을 유지한다.

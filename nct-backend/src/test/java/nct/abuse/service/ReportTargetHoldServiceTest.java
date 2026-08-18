@@ -108,6 +108,22 @@ class ReportTargetHoldServiceTest {
     }
 
     @Test
+    void doesNotCreateImpactWhenEndedTargetCannotBePaused() {
+        when(port.pause(81L, "10")).thenReturn(new ReportTargetHoldResult(
+                81L, false, false, "AUCC0003", null, null,
+                0L, 0L, false, "현재 경매 상태는 신고 접수 보류 대상이 아닙니다."));
+
+        service.pause(501L, "REFC0003", 81L, "10");
+
+        verify(mapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        verify(mapper, never()).findActiveBaselineForUpdate(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void restoresTargetWhenLastActiveReportIsResolved() {
         ReportImpactRecord impact = impact(701L, 501L, 81L);
         when(mapper.findByReportForUpdate(501L)).thenReturn(impact);

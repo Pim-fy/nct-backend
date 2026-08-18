@@ -1,0 +1,114 @@
+{
+  "properties": [
+    {
+      "name": "jwt.secret",
+      "type": "java.lang.String",
+      "description": "JWT 서명에 사용하는 비밀 키"
+    },
+    {
+      "name": "jwt.access-token-expiry",
+      "type": "java.lang.Long",
+      "description": "Access Token 유효 시간(밀리초)"
+    },
+    {
+      "name": "jwt.refresh-token-expiry",
+      "type": "java.lang.Long",
+      "description": "Refresh Token 유효 시간(밀리초)"
+    },
+    {
+      "name": "cookie.secure",
+      "type": "java.lang.Boolean",
+      "description": "인증 쿠키의 Secure 속성 사용 여부"
+    },
+    {
+      "name": "cookie.access-token-max-age",
+      "type": "java.lang.Integer",
+      "description": "Access Token 쿠키 유효 시간(초)"
+    },
+    {
+      "name": "cookie.refresh-token-max-age",
+      "type": "java.lang.Long",
+      "description": "Refresh Token 쿠키 유효 시간(초)"
+    },
+    {
+      "name": "cors.allowed-origins",
+      "type": "java.util.List<java.lang.String>",
+      "description": "자격 증명 요청을 허용할 프론트엔드 출처 목록"
+    },
+    {
+      "name": "app.security.permit-all-paths",
+      "type": "java.util.List<java.lang.String>",
+      "description": "인증 없이 접근할 수 있는 URL 패턴 목록"
+    },
+    {
+      "name": "app.oauth2.redirect-url",
+      "type": "java.lang.String",
+      "description": "OAuth2 로그인 처리 후 이동할 프론트엔드 URL"
+    },
+    {
+      "name": "toss.payments.widget.client-key",
+      "type": "java.lang.String",
+      "description": "토스페이먼츠 결제 위젯 클라이언트 키"
+    },
+    {
+      "name": "toss.payments.widget.secret-key",
+      "type": "java.lang.String",
+      "description": "토스페이먼츠 결제 승인용 비밀 키"
+    },
+    {
+      "name": "toss.payments.confirm-url",
+      "type": "java.lang.String",
+      "description": "토스페이먼츠 결제 승인 API URL"
+    },
+    {
+      "name": "nct.mail.enabled",
+      "type": "java.lang.Boolean",
+      "description": "NCT 메일 발송 기능 사용 여부"
+    },
+    {
+      "name": "nct.mail.from",
+      "type": "java.lang.String",
+      "description": "메일 발신 주소"
+    },
+    {
+      "name": "nct.mail.from-name",
+      "type": "java.lang.String",
+      "description": "메일 발신자 표시 이름"
+    },
+    {
+      "name": "app.crypto.aes-key-base64",
+      "type": "java.lang.String",
+      "description": "개인정보 필드 암호화용 Base64 AES 키"
+    },
+    {
+      "name": "app.crypto.hmac-key-base64",
+      "type": "java.lang.String",
+      "description": "개인정보 검색 해시용 Base64 HMAC 키"
+    },
+    {
+      "name": "auction.finalization.scheduler-enabled",
+      "type": "java.lang.Boolean",
+      "description": "경매 자동 시작·마감 스케줄러 사용 여부"
+    },
+    {
+      "name": "product.cancelled-auto-delete.enabled",
+      "type": "java.lang.Boolean",
+      "description": "취소 상품 자동 삭제 스케줄러 설정(현재 운영 코드 미사용)"
+    },
+    {
+      "name": "app.upload.dir",
+      "type": "java.lang.String",
+      "description": "첨부 파일을 저장할 서버 디렉터리"
+    },
+    {
+      "name": "service-request.closed-auto-delete.enabled",
+      "type": "java.lang.Boolean",
+      "description": "마감 서비스 요청 자동 삭제 스케줄러 설정(현재 운영 코드 미사용)"
+    },
+    {
+      "name": "trade.auto-completion.enabled",
+      "type": "java.lang.Boolean",
+      "description": "거래 자동 완료 스케줄러 사용 여부"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package nct.auction.service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -65,6 +66,9 @@ public class AuctionService {
     private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
     private static final String BOTH_TRADE_METHOD_CODE = "TRDC0015";
+    // 프론트(ProductRegisterPage.jsx hasMinimumSameDayDuration)와 동일한 규칙 — 같은 날 종료하는
+    // 경매만 최소 1시간을 요구한다. API 직접 호출로 이 검증을 우회할 수 있어 서버에도 동일하게 적용한다.
+    private static final Duration MIN_SAME_DAY_AUCTION_DURATION = Duration.ofHours(1);
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -819,6 +823,10 @@ public class AuctionService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         if (!endDateTime.isAfter(now) || !endDateTime.isAfter(startDateTime)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (startDateTime.toLocalDate().equals(endDateTime.toLocalDate())
+                && Duration.between(startDateTime, endDateTime).compareTo(MIN_SAME_DAY_AUCTION_DURATION) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
     }

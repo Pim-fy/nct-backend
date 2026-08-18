@@ -420,8 +420,8 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
     }
 
     @Test
-    @DisplayName("직거래 즉시구매는 거래만 생성하고 일정 저장 전에는 채팅방을 생성하지 않는다")
-    void buyNowCreatesOfflineTradeWithoutChatRoom() {
+    @DisplayName("직거래 즉시구매는 거래와 당사자 채팅방을 함께 생성한다")
+    void buyNowCreatesOfflineTradeWithChatRoom() {
         long sellerSn = insertUser("t_auc_seller");
         long buyerSn = insertUser("t_auc_buyer");
         long prdSn = insertProduct(sellerSn, BigDecimal.valueOf(30000), "TRDC0010");
@@ -431,7 +431,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest());
 
         assertThat(materialTradeCount(prdSn)).isEqualTo(1);
-        assertThat(chatRoomCount(prdSn)).isZero();
+        assertThat(chatRoomCount(prdSn)).isEqualTo(1);
         assertThat(deliverySnapshotCount(prdSn)).isZero();
     }
 

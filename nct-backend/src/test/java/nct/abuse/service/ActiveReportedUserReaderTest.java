@@ -21,6 +21,7 @@ import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.service.RiskEventService;
+import nct.ops.risk.service.RiskSignalPublisher;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.trade.port.AdminReportTradeReferenceReader;
 
@@ -48,6 +49,7 @@ class ActiveReportedUserReaderTest {
                 mock(MemberOperationLockPort.class),
                 mock(FileStorageService.class),
                 mock(RiskEventService.class),
+                mock(RiskSignalPublisher.class),
                 mock(ReportTargetHoldService.class));
     }
 

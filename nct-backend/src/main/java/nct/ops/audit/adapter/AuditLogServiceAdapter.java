@@ -11,6 +11,7 @@ import nct.audit.service.AuditLogService;
 import nct.common.domain.RefType;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
+import nct.ops.audit.port.AuditLogRequestSnapshot;
 import nct.ops.security.service.SensitiveDataMasker;
 
 /**
@@ -45,6 +46,24 @@ public class AuditLogServiceAdapter implements AuditLogPort {
                 refType(command.relatedReferenceTypeCode()),
                 command.relatedReferenceSn(),
                 null);
+    }
+
+    @Override
+    public AuditLogRequestSnapshot findByRequestId(String requestId) {
+        String normalized = requestId == null ? null : requestId.trim();
+        if (normalized == null || normalized.isBlank() || normalized.length() > MAX_REQUEST_ID_LENGTH) {
+            return null;
+        }
+        var log = auditLogService.findByRequestId(normalized);
+        if (log == null) {
+            return null;
+        }
+        return new AuditLogRequestSnapshot(
+                log.getUsrSn(),
+                log.getAudLogRefTypeCd(),
+                log.getAudLogRefSn(),
+                log.getAudLogBeforeCn(),
+                log.getAudLogAfterCn());
     }
 
     private AuditLogType auditType(String actionCode) {

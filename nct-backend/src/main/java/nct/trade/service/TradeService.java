@@ -13,10 +13,15 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.agree.domain.AgreeActType;
+import nct.agree.domain.AgreeRef;
+import nct.agree.domain.AgreeType;
+import nct.agree.service.AgreeHistoryService;
 import nct.auction.service.AuctionService;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.abuse.port.TradeIncidentReportCommand;
@@ -131,6 +136,7 @@ public class TradeService implements
     private final ReferenceDataService referenceDataService;
     private final ActiveAbuseReportReferenceReader activeReportReferenceReader;
     private final TradeIncidentReportPort tradeIncidentReportPort;
+    private final AgreeHistoryService agreeHistoryService;
     // @ai_generated: 배송·직거래 주소 스냅샷의 암복호화 경계.
     private final FieldCryptoService fieldCryptoService;
     // @ai_generated (담당자1 황희준, 2026-08-07, 조율 대기): AuctionService가 이미 TradeService를
@@ -212,17 +218,23 @@ public class TradeService implements
         boolean chatClosed = closeTradeChatForReport(target);
         tradeMapper.insertStatusHistory(tradeId, ON_HOLD, "거래 문제가 신고되었습니다.");
         Long counterpartUserId = tradeCounterpartUserId(target, userId);
-        Long reportSn = tradeIncidentReportPort.create(new TradeIncidentReportCommand(
-                tradeId,
-                userId,
-                counterpartUserId,
-                reportTypeCode,
-                request.getContent().trim(),
-                evidenceFileSns,
-                target.getTradeStatusCode(),
-                remainingSeconds,
-                settlementHoldApplied,
-                chatClosed));
+        Long reportSn;
+        try {
+            reportSn = tradeIncidentReportPort.create(new TradeIncidentReportCommand(
+                    tradeId,
+                    userId,
+                    counterpartUserId,
+                    reportTypeCode,
+                    request.getContent().trim(),
+                    evidenceFileSns,
+                    target.getTradeStatusCode(),
+                    remainingSeconds,
+                    settlementHoldApplied,
+                    chatClosed));
+        } catch (DuplicateKeyException exception) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS,
+                    "이미 접수된 거래 문제입니다.");
+        }
         notificationService.notifyTradeReportReceived(counterpartUserId, reportSn);
     }
 
@@ -354,6 +366,7 @@ public class TradeService implements
         rejectOpenServiceDispute(tradeId);
         completeServiceTradeAndSettle(target, String.valueOf(requesterUserId),
                 "서비스 의뢰자가 완료를 확인했습니다.", false);
+        recordTradeCompletionAgreement(requesterUserId, tradeId, true);
     }
 
     /** F-SVC-016: 진행 중인 서비스 거래의 일정 변경 요청을 상태 이력으로 기록한다. */
@@ -625,10 +638,22 @@ public class TradeService implements
                 command.getSelectedTradeMethodCode(),
                 command.getSelectedDeliveryAddressId());
 
+        if (result.isCreated() && isOfflineAuctionTrade(command)) {
+            chatService.createOrGetOfflineTradeChatRoom(result.getTradeId());
+        }
+
         return new AuctionTradeCreateResult(
                 result.getTradeId(),
                 result.getTradeStatusCode(),
                 result.isCreated());
+    }
+
+    private boolean isOfflineAuctionTrade(AuctionTradeCreateCommand command) {
+        if (OFFLINE_METHOD.equals(command.getSelectedTradeMethodCode())) {
+            return true;
+        }
+        return command.getSelectedTradeMethodCode() == null
+                && OFFLINE_METHOD.equals(tradeMapper.findProductTradeMethod(command.getProductId()));
     }
 
     /**
@@ -1090,6 +1115,7 @@ public class TradeService implements
                 getCounterpartUserId(target, userId),
                 tradeId,
                 confirmDays);
+        recordTradeCompletionAgreement(userId, tradeId, true);
 
         return getMyMaterialTradeDetail(tradeId, userId);
     }
@@ -1122,6 +1148,7 @@ public class TradeService implements
                     tradeId,
                     DELIVERING,
                     "OFFLINE_COMPLETION_REJECTED|" + requesterId + "|" + userId);
+            recordTradeCompletionAgreement(userId, tradeId, false);
         }
 
         return getMyMaterialTradeDetail(tradeId, userId);
@@ -1156,8 +1183,19 @@ public class TradeService implements
                 target.getTradeId(),
                 COMPLETED,
                 "구매자와 판매자가 모두 거래 완료를 확인했습니다.");
+        recordTradeCompletionAgreement(userId, target.getTradeId(), true);
         notificationService.notifyTradeComplete(target.getBuyerUserId(), target.getTradeId(), false);
         notificationService.notifyTradeComplete(target.getSellerUserId(), target.getTradeId(), false);
+    }
+
+    // @ai_generated (담당자4 정민재, 2026-08-18): 완료 확인·거절 행위를 거래 단위 증적으로 남기고 자동 완료와 구분한다.
+    private void recordTradeCompletionAgreement(long userId, long tradeId, boolean agreed) {
+        agreeHistoryService.record(
+                userId,
+                AgreeType.TERMS_OF_SERVICE,
+                AgreeActType.TRADE_COMPLETE_CONFIRM,
+                agreed,
+                AgreeRef.trade(tradeId));
     }
 
     private void ensureOfflineCompletionRequestLimit(long tradeId, long userId) {

@@ -48,6 +48,7 @@ import nct.review.dto.ReviewRatingTarget;
 import nct.review.dto.ReviewUpdateResult;
 import nct.review.dto.ReviewRatingSummary;
 import nct.review.dto.TradeReviewStateSource;
+import nct.review.dto.TrustScoreResponse;
 import nct.review.dto.UserReviewItem;
 import nct.review.dto.WritableTradeItem;
 import nct.review.exception.InvalidRatingException;
@@ -107,12 +108,12 @@ class ReviewServiceTest {
     private void allowReviewMutation(long reviewId) {
         when(reviewMapper.selectOwnedActiveReviewRatingTarget(reviewId, USR_SN))
                 .thenReturn(Optional.of(
-                        new ReviewRatingTarget(COUNTERPART_USR_SN)));
+                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.SERVICE)));
     }
 
     private void reviewRatingSummary(String averageScore, long reviewCount) {
         when(providerReviewRatingPort.lockReviewRating(COUNTERPART_USR_SN)).thenReturn(true);
-        when(reviewMapper.selectReviewRatingSummary(COUNTERPART_USR_SN))
+        when(reviewMapper.selectServiceReviewRatingSummary(COUNTERPART_USR_SN))
                 .thenReturn(new ReviewRatingSummary(new BigDecimal(averageScore), reviewCount));
     }
 
@@ -313,7 +314,7 @@ class ReviewServiceTest {
                 1L);
         InOrder refreshOrder = inOrder(providerReviewRatingPort, reviewMapper);
         refreshOrder.verify(providerReviewRatingPort).lockReviewRating(COUNTERPART_USR_SN);
-        refreshOrder.verify(reviewMapper).selectReviewRatingSummary(COUNTERPART_USR_SN);
+        refreshOrder.verify(reviewMapper).selectServiceReviewRatingSummary(COUNTERPART_USR_SN);
         refreshOrder.verify(providerReviewRatingPort).updateReviewRating(
                 COUNTERPART_USR_SN,
                 new BigDecimal("4.0"),
@@ -328,12 +329,12 @@ class ReviewServiceTest {
 
         reviewService.createReview(USR_SN, TRADE_ID, 4, "좋아요", null, REVIEWER_NICKNAME);
 
-        verify(reviewMapper, never()).selectReviewRatingSummary(anyLong());
+        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
         verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test
-    void 서비스_요청자가_제공자_프로필도_가지면_받은_리뷰를_통합_평점에_반영한다() {
+    void 서비스_요청자가_제공자_프로필도_가지면_받은_서비스_리뷰를_대표_평점에_반영한다() {
         setUp();
         WritableTradeItem requesterTarget = healthyTrade("service");
         when(reviewMapper.selectWritableTrade(TRADE_ID, USR_SN)).thenReturn(Optional.of(requesterTarget));
@@ -451,6 +452,43 @@ class ReviewServiceTest {
     }
 
     @Test
+    void 물품_신뢰점수는_물품_리뷰_도메인만_조회한다() {
+        setUp();
+        when(reviewMapper.selectTrustScore(USR_SN, ReviewDomainCode.GOODS))
+                .thenReturn(TrustScoreResponse.builder().totalScore(4.2).totalCount(3).build());
+
+        TrustScoreResponse result = reviewService.getTrustScore(USR_SN, "goods");
+
+        assertThat(result.getUsrSn()).isEqualTo(USR_SN);
+        assertThat(result.isHasReviews()).isTrue();
+        verify(reviewMapper).selectTrustScore(USR_SN, ReviewDomainCode.GOODS);
+    }
+
+    @Test
+    void 서비스_신뢰점수는_서비스_리뷰_도메인만_조회한다() {
+        setUp();
+        when(reviewMapper.selectTrustScore(USR_SN, ReviewDomainCode.SERVICE))
+                .thenReturn(TrustScoreResponse.builder().totalCount(0).build());
+
+        TrustScoreResponse result = reviewService.getTrustScore(USR_SN, "service");
+
+        assertThat(result.isHasReviews()).isFalse();
+        verify(reviewMapper).selectTrustScore(USR_SN, ReviewDomainCode.SERVICE);
+    }
+
+    @Test
+    void 신뢰점수_거래유형이_없거나_지원하지_않으면_실패한다() {
+        setUp();
+
+        assertThatThrownBy(() -> reviewService.getTrustScore(USR_SN, null))
+                .isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> reviewService.getTrustScore(USR_SN, "all"))
+                .isInstanceOf(CustomException.class);
+
+        verify(reviewMapper, never()).selectTrustScore(anyLong(), any());
+    }
+
+    @Test
     void 리뷰_수정시_평점이_범위를_벗어나면_매퍼_호출_없이_바로_실패한다() {
         setUp();
 
@@ -493,11 +531,11 @@ class ReviewServiceTest {
     }
 
     @Test
-    void 리뷰를_수정하면_도메인과_관계없이_통합_평점_캐시를_갱신한다() {
+    void 서비스_리뷰를_수정하면_제공자_서비스_평점_캐시를_갱신한다() {
         setUp();
         when(reviewMapper.selectOwnedActiveReviewRatingTarget(900L, USR_SN))
                 .thenReturn(Optional.of(
-                        new ReviewRatingTarget(COUNTERPART_USR_SN)));
+                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.SERVICE)));
         when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
         reviewRatingSummary("4.2", 4L);
 
@@ -507,6 +545,21 @@ class ReviewServiceTest {
                 COUNTERPART_USR_SN,
                 new BigDecimal("4.2"),
                 4L);
+    }
+
+    @Test
+    void 물건_리뷰를_수정해도_제공자_서비스_평점_캐시는_갱신하지_않는다() {
+        setUp();
+        when(reviewMapper.selectOwnedActiveReviewRatingTarget(900L, USR_SN))
+                .thenReturn(Optional.of(
+                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.GOODS)));
+        when(reviewMapper.updateReview(900L, USR_SN, 4, "수정된 내용")).thenReturn(1);
+
+        reviewService.updateReview(USR_SN, 900L, 4, "수정된 내용", null);
+
+        verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
+        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
+        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test
@@ -583,6 +636,21 @@ class ReviewServiceTest {
                 COUNTERPART_USR_SN,
                 new BigDecimal("0.0"),
                 0L);
+    }
+
+    @Test
+    void 물건_리뷰를_삭제해도_제공자_서비스_평점_캐시는_갱신하지_않는다() {
+        setUp();
+        when(reviewMapper.selectOwnedActiveReviewRatingTarget(900L, USR_SN))
+                .thenReturn(Optional.of(
+                        new ReviewRatingTarget(COUNTERPART_USR_SN, ReviewDomainCode.GOODS)));
+        when(reviewMapper.deleteReview(900L, USR_SN)).thenReturn(1);
+
+        reviewService.deleteReview(USR_SN, 900L);
+
+        verify(providerReviewRatingPort, never()).lockReviewRating(anyLong());
+        verify(reviewMapper, never()).selectServiceReviewRatingSummary(anyLong());
+        verify(providerReviewRatingPort, never()).updateReviewRating(anyLong(), any(), anyLong());
     }
 
     @Test

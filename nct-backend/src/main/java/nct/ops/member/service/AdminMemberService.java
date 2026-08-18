@@ -156,7 +156,14 @@ public class AdminMemberService {
                         0,
                         0);
             }
-            sanctionPort.restrict(sanctionCommand);
+            boolean sanctionCreated = sanctionPort.restrict(sanctionCommand);
+            if (!sanctionCreated) {
+                // 담당자 7 · REQ-OPS-002: 해제 뒤 늦게 도착한 과거 정지 요청은
+                // 앞선 회원 상태 변경까지 롤백해 상태와 활성 제재가 어긋나지 않게 합니다.
+                throw new CustomException(
+                        ErrorCode.CONFLICT,
+                        "이미 처리된 계정 제한 요청이거나 활성 제재가 존재합니다.");
+            }
             tradeResult = memberTradeRestrictionPort.restrictActiveTrades(
                     new MemberTradeRestrictionCommand(userSn, adminUserSn, normalizedReason));
         } else {

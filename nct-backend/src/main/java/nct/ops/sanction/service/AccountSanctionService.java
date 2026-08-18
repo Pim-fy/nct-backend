@@ -26,19 +26,19 @@ public class AccountSanctionService implements AccountSanctionPort {
 
     @Override
     @Transactional
-    public void restrict(AccountSanctionCommand command) {
+    public boolean restrict(AccountSanctionCommand command) {
         AccountSanctionCommand valid = validate(command);
         lockUser(valid.userSn());
 
         SanctionRecord retried = sanctionMapper.findByRestrictRequestId(valid.requestId());
         if (retried != null) {
             requireSameUser(retried, valid.userSn());
-            return;
+            return false;
         }
 
         if (sanctionMapper.findActiveAccountSuspensionsForUpdate(valid.userSn()).stream()
                 .anyMatch(sanction -> sanction.getSourceReportSn() == null)) {
-            return;
+            return false;
         }
 
         try {
@@ -51,12 +51,14 @@ public class AccountSanctionService implements AccountSanctionPort {
             if (inserted != 1) {
                 throw new CustomException(ErrorCode.CONFLICT, "계정 제재를 생성하지 못했습니다.");
             }
+            return true;
         } catch (DuplicateKeyException exception) {
             SanctionRecord concurrentRetry = sanctionMapper.findByRestrictRequestId(valid.requestId());
             if (concurrentRetry == null) {
                 throw new CustomException(ErrorCode.CONFLICT, "이미 사용된 제재 요청 식별자입니다.");
             }
             requireSameUser(concurrentRetry, valid.userSn());
+            return false;
         }
     }
 

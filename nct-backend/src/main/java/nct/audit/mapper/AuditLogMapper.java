@@ -34,6 +34,15 @@ public interface AuditLogMapper {
     AuditLog selectLatestByReference(@Param("refTypeCd") String refTypeCd,
                                      @Param("refSn") Long refSn);
 
+    /** 담당자 7 · REQ-OPS-003: 요청 ID로 이전 운영 처리 결과를 조회합니다. */
+    AuditLog selectByRequestId(@Param("requestId") String requestId);
+
+    /** 담당자 7 · REQ-OPS-011: 지정 구간의 관리자 로그인 실패 토큰별 횟수입니다. */
+    long countAdminLoginFailuresByTokenSince(
+            @Param("tokenField") String tokenField,
+            @Param("tokenValue") String tokenValue,
+            @Param("since") LocalDateTime since);
+
     /** 담당자 7 · F-OPS-016: 주 대상 또는 연관 대상의 전체 처리 이력을 조회합니다. */
     List<AuditLog> selectHistory(@Param("refTypeCd") String refTypeCd,
                                  @Param("refSn") Long refSn,

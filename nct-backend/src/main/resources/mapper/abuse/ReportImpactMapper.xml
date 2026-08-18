@@ -42,6 +42,12 @@
          FOR UPDATE
     </select>
 
+    <select id="findByReport" resultType="nct.abuse.domain.ReportImpactRecord">
+        SELECT <include refid="impactColumns"/>
+          FROM ABUSE_REPORT_IMPACT i
+         WHERE i.ABR_SN = #{reportSn}
+    </select>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="impactSn" keyColumn="ABR_IMP_SN">
         INSERT INTO ABUSE_REPORT_IMPACT (
             ABR_SN,

@@ -70,6 +70,13 @@ public class SystemSettingAdminService {
         requireYn(s.getAutoCmplYn(), "자동완료 처리 여부");
         requireYn(s.getMntncYn(), "점검 모드 여부");
         requireYn(s.getEmailYn(), "이메일 발송 여부");
+        requirePositive(s.getRiskTradeReportCount(), "거래 신고 급증 기준 건수");
+        requirePositive(s.getRiskTradeReportWindowMinutes(), "거래 신고 집계 기간 분");
+        requirePositive(s.getRiskSettlementHoldDays(), "정산 보류 장기화 기준 일수");
+        requirePositive(s.getRiskRepeatReportCount(), "반복 신고 기준 건수");
+        requirePositive(s.getRiskRepeatReportWindowDays(), "반복 신고 집계 기간 일수");
+        requirePositive(s.getRiskAdminLoginFailCount(), "관리자 로그인 실패 기준 횟수");
+        requirePositive(s.getRiskAdminLoginFailWindowMinutes(), "관리자 로그인 실패 집계 기간 분");
 
         requirePositive(s.getMinChrgAmt(), "최소 충전금액");
         requirePositive(s.getMaxChrgAmt(), "최대 충전금액");
@@ -130,6 +137,20 @@ public class SystemSettingAdminService {
         appendIfChanged(sb, "견적유효기간일수", before.getQutExpDays(), after.getQutExpDays());
         appendIfChanged(sb, "점검모드", before.getMntncYn(), after.getMntncYn());
         appendIfChanged(sb, "이메일발송", before.getEmailYn(), after.getEmailYn());
+        appendIfChanged(sb, "거래신고급증건수",
+                before.getRiskTradeReportCount(), after.getRiskTradeReportCount());
+        appendIfChanged(sb, "거래신고집계분",
+                before.getRiskTradeReportWindowMinutes(), after.getRiskTradeReportWindowMinutes());
+        appendIfChanged(sb, "정산보류장기화일수",
+                before.getRiskSettlementHoldDays(), after.getRiskSettlementHoldDays());
+        appendIfChanged(sb, "반복신고건수",
+                before.getRiskRepeatReportCount(), after.getRiskRepeatReportCount());
+        appendIfChanged(sb, "반복신고집계일수",
+                before.getRiskRepeatReportWindowDays(), after.getRiskRepeatReportWindowDays());
+        appendIfChanged(sb, "관리자로그인실패횟수",
+                before.getRiskAdminLoginFailCount(), after.getRiskAdminLoginFailCount());
+        appendIfChanged(sb, "관리자로그인실패집계분",
+                before.getRiskAdminLoginFailWindowMinutes(), after.getRiskAdminLoginFailWindowMinutes());
         if (sb.charAt(sb.length() - 1) == ':') {
             sb.append(" 변경 값 없음");
         }

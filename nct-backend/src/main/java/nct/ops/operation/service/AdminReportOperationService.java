@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -140,7 +141,7 @@ public class AdminReportOperationService {
         }
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void decide(
             Long reportSn,
             AdminReportDecision decision,
@@ -154,6 +155,8 @@ public class AdminReportOperationService {
         String requestId = requestId(
                 adminUserId, reportSn, decision, tradeDecision,
                 enforcementAction, normalizedReason);
+        AbuseReport preview = abuseReportService.findForAdminDecision(reportSn);
+        lockReferencedTarget(preview);
         AbuseReport report = abuseReportService.lockForAdminDecision(reportSn);
         boolean tradeReport = abuseReportService.hasTradeContext(reportSn);
         validateDecisionShape(
@@ -257,6 +260,18 @@ public class AdminReportOperationService {
                 report.getReferenceTypeCode(),
                 report.getReferenceSn(),
                 String.valueOf(adminUserId));
+    }
+
+    private void lockReferencedTarget(AbuseReport report) {
+        if (report.getReferenceTypeCode() == null
+                || report.getReferenceTypeCode().isBlank()
+                || report.getReferenceSn() == null
+                || report.getReferenceSn() <= 0) {
+            return;
+        }
+        reportTargetHoldService.lockTarget(
+                report.getReferenceTypeCode(),
+                report.getReferenceSn());
     }
 
     private AdminReportDecision expectedReportDecision(AdminDisputeDecision tradeDecision) {

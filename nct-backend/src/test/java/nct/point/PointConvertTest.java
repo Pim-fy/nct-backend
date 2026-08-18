@@ -85,7 +85,7 @@ class PointConvertTest {
 
         assertThatThrownBy(() -> pointService.convertSettleableToAvailable(sellerSn, 10000))
                 .isInstanceOf(PointException.class)
-                .hasMessageContaining("신고");
+                .hasMessageContaining("거래 문제");
 
         // 잔액·원장 모두 그대로
         PointBalance bal = pointService.getBalance(sellerSn);

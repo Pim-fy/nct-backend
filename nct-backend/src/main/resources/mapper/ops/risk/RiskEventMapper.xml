@@ -19,6 +19,18 @@
          LIMIT 1
     </select>
 
+    <select id="findDuplicateIdSince" resultType="long">
+        SELECT RSK_EVT_SN
+          FROM RISK_EVENT
+         WHERE RSK_EVT_TYPE_CD = #{typeCode}
+           AND RSK_EVT_REF_TYPE_CD &lt;=&gt; #{referenceTypeCode}
+           AND RSK_EVT_REF_SN &lt;=&gt; #{referenceSn}
+           AND RSK_EVT_CN = #{content}
+           AND RSK_EVT_REG_DT &gt;= #{dedupeSince}
+         ORDER BY RSK_EVT_SN DESC
+         LIMIT 1
+    </select>
+
     <!-- 신규 위험 이벤트를 미처리(N) 상태로 저장하고 생성된 PK를 RiskEvent에 돌려준다. -->
     <insert id="insertRiskEvent" parameterType="nct.ops.risk.domain.RiskEvent"
             useGeneratedKeys="true" keyProperty="riskEventSn" keyColumn="RSK_EVT_SN">

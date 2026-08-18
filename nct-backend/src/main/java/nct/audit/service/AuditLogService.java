@@ -122,6 +122,15 @@ public class AuditLogService {
         return auditLogMapper.selectLatestByReference(refType.getCode(), refSn);
     }
 
+    /** 담당자 7 · REQ-OPS-003: 요청 ID가 이미 처리됐는지 영속 감사기록에서 확인합니다. */
+    @Transactional(readOnly = true)
+    public AuditLog findByRequestId(String requestId) {
+        if (requestId == null || requestId.isBlank() || requestId.trim().length() > 100) {
+            return null;
+        }
+        return auditLogMapper.selectByRequestId(requestId.trim());
+    }
+
     /** 담당자 7 · F-OPS-016: 주 대상 또는 연관 대상으로 연결된 관리자 이력을 최신순 조회합니다. */
     @Transactional(readOnly = true)
     public List<AuditLog> findHistory(RefType refType, Long refSn, int limit) {

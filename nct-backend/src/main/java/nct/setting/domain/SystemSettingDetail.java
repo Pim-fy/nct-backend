@@ -49,6 +49,15 @@ public class SystemSettingDetail {
     /** 이메일 발송 활성화 여부 Y/N */
     private String emailYn;
 
+    /** 담당자 7 · REQ-OPS-011: 자동 리스크 판정 기준입니다. */
+    private Integer riskTradeReportCount;
+    private Integer riskTradeReportWindowMinutes;
+    private Integer riskSettlementHoldDays;
+    private Integer riskRepeatReportCount;
+    private Integer riskRepeatReportWindowDays;
+    private Integer riskAdminLoginFailCount;
+    private Integer riskAdminLoginFailWindowMinutes;
+
     private LocalDateTime sysSetUpdtDt;
     @JsonIgnore
     private String sysSetUpdtId;

@@ -5,6 +5,8 @@ public interface ReportTargetHoldPort {
 
     String referenceTypeCode();
 
+    boolean lock(Long referenceSn);
+
     ReportTargetHoldResult pause(Long referenceSn, String actorId);
 
     boolean restore(ReportTargetRestoreCommand command);

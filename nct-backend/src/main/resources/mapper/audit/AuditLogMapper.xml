@@ -77,6 +77,30 @@
          LIMIT 1
     </select>
 
+    <select id="selectByRequestId" resultType="nct.audit.domain.AuditLog">
+        /* 담당자 7 · REQ-OPS-003: 관리자 운영 요청의 영속 멱등성 확인 */
+        SELECT A.AUD_LOG_SN          AS audLogSn,
+               A.USR_SN              AS usrSn,
+               A.AUD_LOG_REF_TYPE_CD AS audLogRefTypeCd,
+               A.AUD_LOG_REF_SN      AS audLogRefSn,
+               A.AUD_LOG_BEFORE_CN   AS audLogBeforeCn,
+               A.AUD_LOG_AFTER_CN    AS audLogAfterCn,
+               A.AUD_LOG_REQ_ID      AS audLogReqId
+          FROM AUDIT_LOG A
+         WHERE A.AUD_LOG_REQ_ID = #{requestId}
+         ORDER BY A.AUD_LOG_SN DESC
+         LIMIT 1
+    </select>
+
+    <select id="countAdminLoginFailuresByTokenSince" resultType="long">
+        /* 담당자 7 · REQ-OPS-011: 원문 아이디·IP 없이 HMAC 토큰으로 반복 실패 집계 */
+        SELECT COUNT(*)
+          FROM AUDIT_LOG
+         WHERE AUD_LOG_TYPE_CD = 'AUDC0008'
+           AND AUD_LOG_REG_DT &gt;= #{since}
+           AND AUD_LOG_AFTER_CN LIKE CONCAT('%', #{tokenField}, '=', #{tokenValue}, '%')
+    </select>
+
     <select id="selectHistory" resultType="nct.audit.domain.AuditLog">
         /* 담당자 7 · F-OPS-016: 상세 화면의 주 대상·연관 대상 통합 이력 */
         SELECT A.AUD_LOG_SN              AS audLogSn,

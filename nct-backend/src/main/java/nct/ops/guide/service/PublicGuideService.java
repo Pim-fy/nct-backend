@@ -121,17 +121,42 @@ public class PublicGuideService {
                     List.of("/user/mypage/services/trades", "/user/mypage/services/reviews/received"),
                     100),
             new PublicGuideDetailResponse(
-                    "point-exchange",
-                    "환전",
-                    "정산 가능 포인트를 환전 신청하고 승인/반려 결과를 확인하는 흐름입니다.",
-                    "/customersupport/guide?flow=point-exchange",
+                    "point-exchange-balance",
+                    "환전 가능 금액 확인",
+                    "포인트 지갑에서 현재 환전할 수 있는 금액을 먼저 확인합니다.",
+                    "/customersupport/guide?flow=point-exchange-balance",
                     List.of(
-                            "지갑 화면에서 정산 가능 포인트와 등록된 환전 계좌를 확인합니다.",
-                            "환전할 금액을 입력하고 신청하면 대기 상태로 접수됩니다.",
-                            "관리자가 신청 내용을 검토한 뒤 지급 완료 또는 반려 처리합니다.",
-                            "반려된 경우 사유를 확인하고 계좌나 신청 정보를 보완해 다시 신청합니다."),
+                            "사용 중이거나 보관 중인 포인트를 제외한 환전 가능 금액을 확인합니다."),
                     List.of("/user/mypage/wallet"),
-                    110));
+                    110),
+            new PublicGuideDetailResponse(
+                    "point-exchange-account",
+                    "환전 계좌 확인",
+                    "등록된 본인 명의 환전 계좌가 맞는지 확인합니다.",
+                    "/customersupport/guide?flow=point-exchange-account",
+                    List.of(
+                            "은행과 마스킹된 계좌번호를 확인하고 필요한 경우 프로필에서 수정합니다."),
+                    List.of("/user/mypage/wallet", "/user/mypage/profile"),
+                    120),
+            new PublicGuideDetailResponse(
+                    "point-exchange-request",
+                    "환전 신청",
+                    "환전 금액을 입력해 신청하면 해당 포인트가 즉시 차감됩니다.",
+                    "/customersupport/guide?flow=point-exchange-request",
+                    List.of(
+                            "신청 금액과 지급 계좌를 확인한 뒤 환전을 신청합니다.",
+                            "반려되면 차감된 포인트가 다시 복원됩니다."),
+                    List.of("/user/mypage/wallet"),
+                    130),
+            new PublicGuideDetailResponse(
+                    "point-exchange-result",
+                    "처리 결과 확인",
+                    "환전 내역에서 대기, 완료, 반려 상태와 처리 결과를 확인합니다.",
+                    "/customersupport/guide?flow=point-exchange-result",
+                    List.of(
+                            "완료된 신청은 지급 결과를, 반려된 신청은 사유와 포인트 복원 여부를 확인합니다."),
+                    List.of("/user/mypage/wallet"),
+                    140));
 
     public List<PublicGuideListItemResponse> getGuides() {
         return GUIDES.stream()
@@ -146,7 +171,10 @@ public class PublicGuideService {
     }
 
     public PublicGuideDetailResponse getGuide(String guideId) {
-        String normalized = normalizeGuideId(guideId);
+        String requestedId = normalizeGuideId(guideId);
+        String normalized = "point-exchange".equals(requestedId)
+                ? "point-exchange-balance"
+                : requestedId;
         return GUIDES.stream()
                 .filter(guide -> guide.guideId().equals(normalized))
                 .findFirst()

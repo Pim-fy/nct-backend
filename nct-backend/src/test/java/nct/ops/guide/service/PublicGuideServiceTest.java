@@ -31,7 +31,10 @@ class PublicGuideServiceTest {
                         "quote-selection",
                         "service-progress",
                         "service-review",
-                        "point-exchange");
+                        "point-exchange-balance",
+                        "point-exchange-account",
+                        "point-exchange-request",
+                        "point-exchange-result");
         assertThat(guides)
                 .allSatisfy(guide -> assertThat(guide.routePath()).startsWith("/customersupport/guide?flow="));
     }
@@ -75,6 +78,32 @@ class PublicGuideServiceTest {
         assertThat(detail.relatedRoutes())
                 .contains("/services/requests/new")
                 .doesNotContain("/service-requests/new");
+    }
+
+    @Test
+    void providesFourPointExchangeStepsWithCanonicalWalletRoute() {
+        var pointGuides = service.getGuides().subList(10, 14);
+
+        assertThat(pointGuides)
+                .extracting("guideId")
+                .containsExactly(
+                        "point-exchange-balance",
+                        "point-exchange-account",
+                        "point-exchange-request",
+                        "point-exchange-result");
+        pointGuides.forEach(guide ->
+                assertThat(service.getGuide(guide.guideId()).relatedRoutes())
+                        .contains("/user/mypage/wallet"));
+        assertThat(service.getGuide("point-exchange-request").summary()).contains("즉시 차감");
+        assertThat(service.getGuide("point-exchange-request").steps()).anySatisfy(step ->
+                assertThat(step).contains("복원"));
+    }
+
+    @Test
+    void keepsLegacyPointExchangeDetailIdAsBalanceStepAlias() {
+        var detail = service.getGuide("point-exchange");
+
+        assertThat(detail.guideId()).isEqualTo("point-exchange-balance");
     }
 
     @Test

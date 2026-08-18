@@ -22,7 +22,7 @@ import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
 import nct.provider.service.ProviderProfileService;
 
-/** 담당자 7, F-PROV-004: 본인 프로필 관리와 공개 프로필 조회 API다. */
+/** 담당자 7, F-PROV-004/F-PROV-016: 본인 관리와 로그인 회원의 제공자 프로필 조회 API다. */
 @RestController
 @RequestMapping("/api/providers")
 @RequiredArgsConstructor
@@ -57,6 +57,7 @@ public class ProviderProfileController {
     }
 
     @GetMapping("/{providerUserSn}/profile")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<ProviderProfileResponse>> publicProfile(
             @PathVariable(name = "providerUserSn") Long providerUserSn) {
         return ResponseEntity.ok(ApiResponse.success(service.getPublic(providerUserSn)));

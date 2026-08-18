@@ -1,0 +1,226 @@
+package nct.abuse.service;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import nct.abuse.domain.ReportImpactRecord;
+import nct.abuse.mapper.ReportImpactMapper;
+import nct.abuse.port.ReportTargetHoldPort;
+import nct.abuse.port.ReportTargetHoldResult;
+import nct.abuse.port.ReportTargetRestoreCommand;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
+
+/** 담당자 7 · F-OPS-007: 신고 대상 단건 보류의 기준 상태와 마지막 신고 해소 시 복구를 조정합니다. */
+@Service
+public class ReportTargetHoldService {
+
+    private static final String RECEIVED_STATUS = "ABSC0001";
+    private static final String PROCESSING_STATUS = "ABSC0002";
+    private static final String APPLIED = "APPLIED";
+    private static final String SKIPPED = "SKIPPED";
+    private static final String RESTORED = "RESTORED";
+    private static final String RETAINED = "RETAINED";
+
+    private final ReportImpactMapper reportImpactMapper;
+    private final Map<String, ReportTargetHoldPort> ports;
+
+    public ReportTargetHoldService(
+            ReportImpactMapper reportImpactMapper,
+            List<ReportTargetHoldPort> ports) {
+        this.reportImpactMapper = reportImpactMapper;
+        this.ports = ports.stream().collect(Collectors.toUnmodifiableMap(
+                ReportTargetHoldPort::referenceTypeCode,
+                Function.identity()));
+    }
+
+    @Transactional
+    public void pause(Long reportSn, String referenceTypeCode, Long referenceSn, String actorId) {
+        if (reportSn == null || reportSn <= 0
+                || referenceTypeCode == null || referenceTypeCode.isBlank()
+                || referenceSn == null || referenceSn <= 0
+                || actorId == null || actorId.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ReportTargetHoldPort port = ports.get(referenceTypeCode);
+        if (port == null) {
+            return;
+        }
+
+        // ABUSE_REPORT_IMPACT.ABR_SN은 신고당 1건입니다. 재시도는 대상 상태를 다시 건드리지 않습니다.
+        if (reportImpactMapper.findByReportForUpdate(reportSn) != null) {
+            return;
+        }
+
+        ReportTargetHoldResult hold = port.pause(referenceSn, actorId);
+        if (hold == null) {
+            return;
+        }
+
+        // 담당자 7 · F-OPS-007: 종료·취소처럼 보류할 수 없는 대상은 신고만 접수합니다.
+        // 복구할 상태가 없으므로 영향 행도 만들지 않아 신고 생성 전체가 불필요하게 실패하지 않게 합니다.
+        if (!hold.changed() && !hold.alreadyOnReportHold()) {
+            return;
+        }
+
+        ReportImpactRecord baseline = hold.alreadyOnReportHold()
+                ? reportImpactMapper.findActiveBaselineForUpdate(
+                        referenceTypeCode,
+                        referenceSn,
+                        RECEIVED_STATUS,
+                        PROCESSING_STATUS)
+                : null;
+        boolean restorable = hold.changed() || baseline != null;
+        ReportImpactRecord impact = restorable
+                ? appliedImpact(reportSn, referenceTypeCode, hold, baseline, actorId)
+                : skippedImpact(reportSn, referenceTypeCode, hold, actorId);
+        if (reportImpactMapper.insert(impact) != 1) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+    }
+
+    /** 담당자 7 · REQ-OPS-007: 신고 행보다 먼저 실제 참조 대상을 잠가 잠금 순서를 통일합니다. */
+    @Transactional
+    public boolean lockTarget(String referenceTypeCode, Long referenceSn) {
+        if (referenceTypeCode == null || referenceTypeCode.isBlank()
+                || referenceSn == null || referenceSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ReportTargetHoldPort port = ports.get(referenceTypeCode);
+        return port == null || port.lock(referenceSn);
+    }
+
+    @Transactional
+    public void release(Long reportSn, String actorId) {
+        if (reportSn == null || reportSn <= 0 || actorId == null || actorId.isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ReportImpactRecord reference = reportImpactMapper.findByReport(reportSn);
+        if (reference == null || !APPLIED.equals(reference.getStatusCode())) {
+            return;
+        }
+
+        ReportTargetHoldPort port = ports.get(reference.getReferenceTypeCode());
+        if (port == null) {
+            skipAfterLock(reportSn, "복구 계약을 찾을 수 없어 현재 상태를 유지했습니다.", actorId);
+            return;
+        }
+
+        // 담당자 7 · REQ-OPS-007: pause와 같은 순서로 실제 업무 대상을 먼저 잠급니다.
+        // READ COMMITTED에서 이 잠금 뒤 활성 신고를 다시 확인해야 마지막 종결만 복구합니다.
+        if (!port.lock(reference.getReferenceSn())) {
+            skipAfterLock(reportSn, "대상을 찾을 수 없어 현재 상태를 유지했습니다.", actorId);
+            return;
+        }
+
+        ReportImpactRecord impact = reportImpactMapper.findByReportForUpdate(reportSn);
+        if (impact == null || !APPLIED.equals(impact.getStatusCode())) {
+            return;
+        }
+        if (reportImpactMapper.existsOtherActiveImpact(
+                impact.getReferenceTypeCode(),
+                impact.getReferenceSn(),
+                reportSn,
+                RECEIVED_STATUS,
+                PROCESSING_STATUS)) {
+            update(impact, RETAINED, "같은 대상의 다른 신고가 처리 중이어서 운영 보류를 유지했습니다.", actorId);
+            return;
+        }
+        boolean restored = port.restore(new ReportTargetRestoreCommand(
+                impact.getReferenceSn(),
+                impact.getPreviousStatusCode(),
+                impact.getRemainingStartSeconds(),
+                impact.getRemainingSeconds(),
+                impact.isSettlementHoldApplied(),
+                actorId));
+        update(
+                impact,
+                restored ? RESTORED : SKIPPED,
+                restored
+                        ? "마지막 활성 신고가 해소되어 보류 전 상태와 남은 시간을 복구했습니다."
+                        : "대상 상태가 이미 변경되어 신고 보류 복구를 적용하지 않았습니다.",
+                actorId);
+    }
+
+    private void skipAfterLock(Long reportSn, String result, String actorId) {
+        ReportImpactRecord impact = reportImpactMapper.findByReportForUpdate(reportSn);
+        if (impact != null && APPLIED.equals(impact.getStatusCode())) {
+            update(impact, SKIPPED, result, actorId);
+        }
+    }
+
+    private ReportImpactRecord appliedImpact(
+            Long reportSn,
+            String referenceTypeCode,
+            ReportTargetHoldResult hold,
+            ReportImpactRecord baseline,
+            String actorId) {
+        return ReportImpactRecord.builder()
+                .reportSn(reportSn)
+                .referenceTypeCode(referenceTypeCode)
+                .referenceSn(hold.referenceSn())
+                .actionCode("PAUSED")
+                .statusCode(APPLIED)
+                .previousStatusCode(baseline == null
+                        ? hold.previousStatusCode()
+                        : baseline.getPreviousStatusCode())
+                .previousStartAt(baseline == null
+                        ? hold.previousStartAt()
+                        : baseline.getPreviousStartAt())
+                .previousDeadlineAt(baseline == null
+                        ? hold.previousDeadlineAt()
+                        : baseline.getPreviousDeadlineAt())
+                .remainingStartSeconds(baseline == null
+                        ? hold.remainingStartSeconds()
+                        : baseline.getRemainingStartSeconds())
+                .remainingSeconds(baseline == null
+                        ? hold.remainingSeconds()
+                        : baseline.getRemainingSeconds())
+                .settlementHoldApplied(baseline == null
+                        ? hold.settlementHoldApplied()
+                        : baseline.isSettlementHoldApplied())
+                .result(hold.result())
+                .registeredBy(actorId)
+                .updatedBy(actorId)
+                .build();
+    }
+
+    private ReportImpactRecord skippedImpact(
+            Long reportSn,
+            String referenceTypeCode,
+            ReportTargetHoldResult hold,
+            String actorId) {
+        return ReportImpactRecord.builder()
+                .reportSn(reportSn)
+                .referenceTypeCode(referenceTypeCode)
+                .referenceSn(hold.referenceSn())
+                .actionCode("NONE")
+                .statusCode(SKIPPED)
+                .previousStatusCode(hold.previousStatusCode())
+                .previousStartAt(hold.previousStartAt())
+                .previousDeadlineAt(hold.previousDeadlineAt())
+                .remainingStartSeconds(hold.remainingStartSeconds())
+                .remainingSeconds(hold.remainingSeconds())
+                .settlementHoldApplied(hold.settlementHoldApplied())
+                .result(hold.result())
+                .registeredBy(actorId)
+                .updatedBy(actorId)
+                .build();
+    }
+
+    private void update(
+            ReportImpactRecord impact,
+            String statusCode,
+            String result,
+            String actorId) {
+        if (reportImpactMapper.updateResult(
+                impact.getImpactSn(), APPLIED, statusCode, result, actorId) != 1) {
+            throw new CustomException(ErrorCode.CONFLICT);
+        }
+    }
+}

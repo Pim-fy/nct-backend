@@ -91,10 +91,11 @@ class AuctionCancellationServiceTest {
         assertThat(response.getPrevAucStatusCd()).isEqualTo(AuctionStatusCode.READY);
         assertThat(response.getAucStatusCd()).isEqualTo(AuctionStatusCode.CANCELED);
         assertThat(auctionStatus(aucSn)).isEqualTo(AuctionStatusCode.CANCELED);
-
-        Map<String, Object> request = processedRequest(response.getAucCnlReqSn());
-        assertThat(request.get("AUC_CNL_REQ_APRV_YN")).isEqualTo("Y");
-        assertThat(((Number) request.get("PROC_USR_SN")).longValue()).isEqualTo(sellerSn);
+        assertThat(response.getAucCnlReqSn()).isNull();
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM AUCTION_CANCEL_REQUEST WHERE AUC_SN = ?",
+                Integer.class,
+                aucSn)).isZero();
     }
 
     @Test

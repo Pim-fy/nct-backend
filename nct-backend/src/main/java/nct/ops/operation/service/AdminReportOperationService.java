@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.service.AbuseReportService;
+import nct.abuse.service.ReportTargetHoldService;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.global.response.PageResponse;
@@ -42,6 +44,7 @@ public class AdminReportOperationService {
     private final AdminDisputeDecisionService tradeReportDecisionService;
     private final ReportSanctionService reportSanctionService;
     private final SanctionImpactMapper sanctionImpactMapper;
+    private final ReportTargetHoldService reportTargetHoldService;
 
     @Transactional(readOnly = true)
     public List<AdminAbuseReportResponse> getPendingReports() {
@@ -138,7 +141,7 @@ public class AdminReportOperationService {
         }
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void decide(
             Long reportSn,
             AdminReportDecision decision,
@@ -152,10 +155,25 @@ public class AdminReportOperationService {
         String requestId = requestId(
                 adminUserId, reportSn, decision, tradeDecision,
                 enforcementAction, normalizedReason);
+        AbuseReport preview = abuseReportService.findForAdminDecision(reportSn);
+        lockReferencedTarget(preview);
         AbuseReport report = abuseReportService.lockForAdminDecision(reportSn);
         boolean tradeReport = abuseReportService.hasTradeContext(reportSn);
         validateDecisionShape(
                 tradeReport, decision, tradeDecision, enforcementAction);
+
+        if (decision == AdminReportDecision.PROCESSING) {
+            // 담당자 7 · F-OPS-007: 접수 당시 누락된 과거 신고도 처리 시작 전에 단건 보류를 보정합니다.
+            pauseReferencedTarget(report, adminUserId);
+            reportEnforcementService.decide(
+                    reportSn,
+                    decision,
+                    enforcementAction,
+                    normalizedReason,
+                    adminUserId,
+                    requestId);
+            return;
+        }
 
         if ((decision == AdminReportDecision.PROCESSED
                 || decision == AdminReportDecision.REJECTED)
@@ -172,6 +190,11 @@ public class AdminReportOperationService {
             tradeReportDecisionService.decide(
                     reportSn, tradeDecision, normalizedReason, adminUserId);
         }
+        if (!tradeReport
+                && (decision == AdminReportDecision.PROCESSED
+                        || decision == AdminReportDecision.REJECTED)) {
+            reportTargetHoldService.release(reportSn, String.valueOf(adminUserId));
+        }
         reportEnforcementService.decide(
                 reportSn,
                 decision,
@@ -186,17 +209,26 @@ public class AdminReportOperationService {
             AdminReportDecision decision,
             AdminDisputeDecision tradeDecision,
             ReportEnforcementAction enforcementAction) {
+        if (decision == AdminReportDecision.PROCESSING && tradeDecision != null) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "처리 시작 단계에는 최종 거래 판정을 지정할 수 없습니다.");
+        }
         if (!tradeReport && tradeDecision != null) {
             throw new CustomException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "일반 신고에는 거래 판정을 지정할 수 없습니다.");
         }
-        if (tradeReport && tradeDecision == null) {
+        if (tradeReport
+                && decision != AdminReportDecision.PROCESSING
+                && tradeDecision == null) {
             throw new CustomException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "거래 신고에는 거래 판정이 필요합니다.");
         }
-        if (tradeReport && expectedReportDecision(tradeDecision) != decision) {
+        if (tradeReport
+                && tradeDecision != null
+                && expectedReportDecision(tradeDecision) != decision) {
             throw new CustomException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "신고 처리 상태와 거래 판정이 일치하지 않습니다.");
@@ -214,6 +246,32 @@ public class AdminReportOperationService {
                     ErrorCode.INVALID_INPUT_VALUE,
                     "영구 이용정지는 해당 거래 전액 환불 판정과 함께 처리해야 합니다.");
         }
+    }
+
+    private void pauseReferencedTarget(AbuseReport report, Long adminUserId) {
+        if (report.getReferenceTypeCode() == null
+                || report.getReferenceTypeCode().isBlank()
+                || report.getReferenceSn() == null
+                || report.getReferenceSn() <= 0) {
+            return;
+        }
+        reportTargetHoldService.pause(
+                report.getReportSn(),
+                report.getReferenceTypeCode(),
+                report.getReferenceSn(),
+                String.valueOf(adminUserId));
+    }
+
+    private void lockReferencedTarget(AbuseReport report) {
+        if (report.getReferenceTypeCode() == null
+                || report.getReferenceTypeCode().isBlank()
+                || report.getReferenceSn() == null
+                || report.getReferenceSn() <= 0) {
+            return;
+        }
+        reportTargetHoldService.lockTarget(
+                report.getReferenceTypeCode(),
+                report.getReferenceSn());
     }
 
     private AdminReportDecision expectedReportDecision(AdminDisputeDecision tradeDecision) {

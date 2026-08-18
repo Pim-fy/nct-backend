@@ -26,16 +26,17 @@ public class SensitiveDataMasker {
             "(?i)(?<![a-z0-9._%+-])[a-z0-9._%+-]{1,64}@[a-z0-9.-]+\\.[a-z]{2,}(?![a-z0-9._%+-])");
 
     private static final Pattern PHONE = Pattern.compile(
-            "(?<!\\d)(?:(?:\\+?82)[- .]?)?0?(?:1[016789]|2|[3-6][1-5]|70|80|50\\d)[- .]?\\d{3,4}[- .]?\\d{4}(?!\\d)");
+            "(?<![A-Za-z0-9])(?:(?:\\+?82)[- .]?)?0?(?:1[016789]|2|[3-6][1-5]|70|80|50\\d)"
+                    + "[- .]?\\d{3,4}[- .]?\\d{4}(?![A-Za-z0-9])");
 
     private static final Pattern REPRESENTATIVE_PHONE = Pattern.compile(
-            "(?<!\\d)(?:15|16|18)\\d{2}[- .]?\\d{4}(?!\\d)");
+            "(?<![A-Za-z0-9])(?:15|16|18)\\d{2}[- .]?\\d{4}(?![A-Za-z0-9])");
 
     private static final Pattern ACCOUNT_WITH_SEPARATOR = Pattern.compile(
-            "(?<!\\d)(?:\\d{2,6}[- ]+){1,3}\\d{2,6}(?!\\d)");
+            "(?<![A-Za-z0-9])(?:\\d{2,6}[- ]+){1,3}\\d{2,6}(?![A-Za-z0-9])");
 
     private static final Pattern LONG_ACCOUNT_NUMBER = Pattern.compile(
-            "(?<!\\d)\\d{10,16}(?!\\d)");
+            "(?<![A-Za-z0-9])\\d{10,16}(?![A-Za-z0-9])");
 
     /** 문자열을 검사해 개인정보 부분을 안내 문구로 교체하고 탐지 종류도 함께 반환한다. */
     public MaskingResult mask(String text) {

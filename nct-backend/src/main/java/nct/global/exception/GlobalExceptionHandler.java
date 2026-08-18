@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import nct.global.response.ApiResponse;
@@ -28,10 +29,11 @@ import nct.ops.security.service.SensitiveDataMasker;
  * - 처리 우선순위
  *   1) MethodArgumentNotValidException : @Valid 검증 실패 -> 필드별 오류 목록
  *   2) MethodArgumentTypeMismatchException : 숫자·열거형 등의 요청 타입 변환 실패
- *   3) HttpMessageNotReadableException : 요청 본문 역직렬화 실패(형식 자체가 다름)
- *   4) AuthenticationException / AccessDeniedException : 보안 예외
+ *   3) AuthenticationException / AccessDeniedException : 보안 예외
+ *   4) HttpRequestMethodNotSupportedException : 지원하지 않는 HTTP 메서드
  *   5) CustomException : 비즈니스 예외 (ErrorCode 기반)
  *   6) Exception : 그 외 전부 500 (내부 메시지는 로그에만, 응답에는 노출 안 함)
+ *   7) HttpMessageNotReadableException : 요청 본문 역직렬화 실패(형식 자체가 다름)
  */
 @RestControllerAdvice
 @Slf4j
@@ -130,6 +132,18 @@ public class GlobalExceptionHandler {
 
         logException(ex);
         ErrorCode errorCode = ErrorCode.NOT_FOUND;
+        return ResponseEntity.status(errorCode.status())
+                             .body(ApiResponse.error(errorCode.code(), errorCode.message(),
+                                                     safePath(request), errorCode.name()));
+    }
+
+    /** 담당자 7 · ISSUE-T7-005: 라우트는 존재하지만 HTTP 메서드가 다르면 표준 405를 반환합니다. */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotAllowed(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+
+        logException(ex);
+        ErrorCode errorCode = ErrorCode.METHOD_NOT_ALLOWED;
         return ResponseEntity.status(errorCode.status())
                              .body(ApiResponse.error(errorCode.code(), errorCode.message(),
                                                      safePath(request), errorCode.name()));

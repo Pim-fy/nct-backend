@@ -1,5 +1,6 @@
 package nct.ops.risk.service;
 
+import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -16,14 +17,13 @@ import nct.global.exception.ErrorCode;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.domain.RiskEvent;
 import nct.ops.risk.mapper.RiskEventMapper;
-import nct.ops.security.service.SensitiveDataMasker;
 
 /**
  * F-OPS-013 위험 이벤트를 안전하게 한 번만 기록하는 담당자 7의 제공 창구다.
  *
  * <p>민감정보 탐지 서비스나 향후 반복 신고·로그인 실패 감지 기능이 이 Service를
- * 호출한다. 입력 코드가 정본의 활성 공통코드인지 확인하고, 내용에서 개인정보를
- * 한 번 더 마스킹한 뒤 RISK_EVENT에 저장한다.</p>
+ * 호출한다. 입력 코드가 정본의 활성 공통코드인지 확인하고, 호출자가 민감정보 입력
+ * 경계에서 안전하게 만든 운영 설명을 RISK_EVENT에 저장한다.</p>
  *
  * <p>같은 요청이 짧은 시간에 여러 번 들어와도 단일 서버에서는 하나만 생성한다.
  * 여러 서버를 동시에 운영할 때의 완전한 중복 방지는 향후 DB 멱등성 정책이 필요하다.</p>
@@ -37,7 +37,6 @@ public class RiskEventService {
 
     private final RiskEventMapper riskEventMapper;
     private final ReferenceDataService referenceDataService;
-    private final SensitiveDataMasker sensitiveDataMasker;
     private final ConcurrentMap<RiskEventKey, LockEntry> locks = new ConcurrentHashMap<>();
 
     /**
@@ -47,10 +46,25 @@ public class RiskEventService {
      */
     @Transactional
     public RiskEventResult recordOnce(RiskEventCommand command) {
+        return record(command, null);
+    }
+
+    /** 담당자 7 · REQ-OPS-011: 같은 판정 구간에는 처리 완료 후에도 다시 만들지 않습니다. */
+    @Transactional
+    public RiskEventResult recordOnceSince(RiskEventCommand command, LocalDateTime dedupeSince) {
+        if (dedupeSince == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return record(command, dedupeSince);
+    }
+
+    private RiskEventResult record(RiskEventCommand command, LocalDateTime dedupeSince) {
         validate(command);
         String typeCode = command.typeCode().trim();
         String referenceTypeCode = trimToNull(command.referenceTypeCode());
-        String content = sensitiveDataMasker.maskText(command.content().trim());
+        // 담당자 7 · ISSUE-T7-013: 해시·요청 ID·포인트 금액이 포함될 수 있는 안전한
+        // 운영 설명 전체를 다시 마스킹하지 않는다. 원문 마스킹은 입력 검사 경계가 담당한다.
+        String content = command.content().trim();
 
         // 같은 이벤트 후보끼리만 동일한 잠금을 사용한다.
         RiskEventKey key = new RiskEventKey(typeCode, referenceTypeCode, command.referenceSn(), content);
@@ -83,8 +97,11 @@ public class RiskEventService {
             }
 
             // 같은 미처리 이벤트가 이미 있으면 새 행을 만들지 않고 기존 번호를 돌려준다.
-            Long existingId = riskEventMapper.findUnprocessedDuplicateId(
-                    typeCode, referenceTypeCode, command.referenceSn(), content);
+            Long existingId = dedupeSince == null
+                    ? riskEventMapper.findUnprocessedDuplicateId(
+                            typeCode, referenceTypeCode, command.referenceSn(), content)
+                    : riskEventMapper.findDuplicateIdSince(
+                            typeCode, referenceTypeCode, command.referenceSn(), content, dedupeSince);
             if (existingId != null) {
                 return new RiskEventResult(existingId, false);
             }

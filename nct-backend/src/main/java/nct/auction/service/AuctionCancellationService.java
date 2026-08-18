@@ -197,12 +197,28 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
         }
         // 예약(AUCC0001)은 아직 입찰이 없어 정리할 자금·거래가 없으므로, 관리자 승인 절차 없이 즉시 취소한다.
         boolean instantCancel = AuctionStatusCode.READY.equals(target.getAucStatusCd());
-        if (!instantCancel && !REQUESTABLE_STATUSES.contains(target.getAucStatusCd())) {
+        if (instantCancel) {
+            referenceDataService.requireActiveCode(
+                    AUCTION_STATUS_GROUP_CODE,
+                    AuctionStatusCode.CANCELED);
+            updateAuctionStatus(
+                    aucSn,
+                    AuctionStatusCode.READY,
+                    AuctionStatusCode.CANCELED,
+                    requesterUsrSn);
+            return AuctionCancelRequestResponse.builder()
+                    .aucSn(aucSn)
+                    .prevAucStatusCd(AuctionStatusCode.READY)
+                    .aucStatusCd(AuctionStatusCode.CANCELED)
+                    .build();
+        }
+        if (!REQUESTABLE_STATUSES.contains(target.getAucStatusCd())) {
             throw new CustomException(ErrorCode.PRODUCT_CANCEL_INVALID_STATUS);
         }
 
-        String newStatusCd = instantCancel ? AuctionStatusCode.CANCELED : AuctionStatusCode.CANCEL_REQUESTED;
-        referenceDataService.requireActiveCode(AUCTION_STATUS_GROUP_CODE, newStatusCd);
+        referenceDataService.requireActiveCode(
+                AUCTION_STATUS_GROUP_CODE,
+                AuctionStatusCode.CANCEL_REQUESTED);
 
         AuctionCancelRequestCreateCommand command = new AuctionCancelRequestCreateCommand(
                 aucSn,
@@ -215,20 +231,16 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
         int updated = auctionMapper.updateAuctionStatusForCancellation(
                 aucSn,
                 target.getAucStatusCd(),
-                newStatusCd,
+                AuctionStatusCode.CANCEL_REQUESTED,
                 requesterUsrSn.toString());
         if (updated != 1) {
             throw new CustomException(ErrorCode.CONFLICT, "경매 상태가 이미 변경되었습니다.");
         }
-        if (instantCancel) {
-            processRequest(command.getAucCnlReqSn(), "Y", requesterUsrSn, normalizedReason);
-        }
-
         return AuctionCancelRequestResponse.builder()
                 .aucCnlReqSn(command.getAucCnlReqSn())
                 .aucSn(aucSn)
                 .prevAucStatusCd(target.getAucStatusCd())
-                .aucStatusCd(newStatusCd)
+                .aucStatusCd(AuctionStatusCode.CANCEL_REQUESTED)
                 .build();
     }
 

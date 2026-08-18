@@ -25,7 +25,7 @@ import nct.provider.dto.PortfolioRequest;
 import nct.provider.dto.PortfolioResponse;
 import nct.provider.service.PortfolioService;
 
-/** 담당자 7, F-PROV-005: 본인 포트폴리오 관리와 공개 목록 조회 API다. */
+/** 담당자 7, F-PROV-005/F-PROV-016: 본인 관리와 로그인 회원의 제공자 포트폴리오 조회 API다. */
 @RestController
 @RequestMapping("/api/providers")
 @RequiredArgsConstructor
@@ -68,6 +68,7 @@ public class PortfolioController {
     }
 
     @GetMapping("/{providerUserSn}/portfolios")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<PortfolioResponse>>> publicList(
             @PathVariable(name = "providerUserSn") Long providerUserSn) {
         return ResponseEntity.ok(ApiResponse.success(service.getPublic(providerUserSn)));

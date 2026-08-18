@@ -15,7 +15,7 @@ import nct.ops.member.port.AccountSanctionPort;
 import nct.ops.sanction.domain.SanctionRecord;
 import nct.ops.sanction.mapper.SanctionMapper;
 
-/** F-OPS-002/019 회원 제한·해제를 SANCTION 소유 경계에서 처리하는 구현체입니다. */
+/** 담당자 7 · F-OPS-002/019: 회원 제한·해제를 SANCTION 소유 경계에서 처리합니다. */
 @Service
 @RequiredArgsConstructor
 public class AccountSanctionService implements AccountSanctionPort {
@@ -26,19 +26,19 @@ public class AccountSanctionService implements AccountSanctionPort {
 
     @Override
     @Transactional
-    public void restrict(AccountSanctionCommand command) {
+    public boolean restrict(AccountSanctionCommand command) {
         AccountSanctionCommand valid = validate(command);
         lockUser(valid.userSn());
 
         SanctionRecord retried = sanctionMapper.findByRestrictRequestId(valid.requestId());
         if (retried != null) {
             requireSameUser(retried, valid.userSn());
-            return;
+            return false;
         }
 
         if (sanctionMapper.findActiveAccountSuspensionsForUpdate(valid.userSn()).stream()
                 .anyMatch(sanction -> sanction.getSourceReportSn() == null)) {
-            return;
+            return false;
         }
 
         try {
@@ -51,35 +51,37 @@ public class AccountSanctionService implements AccountSanctionPort {
             if (inserted != 1) {
                 throw new CustomException(ErrorCode.CONFLICT, "계정 제재를 생성하지 못했습니다.");
             }
+            return true;
         } catch (DuplicateKeyException exception) {
             SanctionRecord concurrentRetry = sanctionMapper.findByRestrictRequestId(valid.requestId());
             if (concurrentRetry == null) {
                 throw new CustomException(ErrorCode.CONFLICT, "이미 사용된 제재 요청 식별자입니다.");
             }
             requireSameUser(concurrentRetry, valid.userSn());
+            return false;
         }
     }
 
     @Override
     @Transactional
-    public void release(AccountSanctionCommand command) {
+    public boolean release(AccountSanctionCommand command) {
         AccountSanctionCommand valid = validate(command);
         lockUser(valid.userSn());
 
         SanctionRecord retried = sanctionMapper.findByReleaseRequestId(valid.requestId());
         if (retried != null) {
             requireSameUser(retried, valid.userSn());
-            return;
+            return false;
         }
 
         List<SanctionRecord> active = sanctionMapper.findActiveAccountSuspensionsForUpdate(valid.userSn());
         if (active.isEmpty()) {
-            return;
+            return false;
         }
         active = active.stream()
                 .filter(sanction -> sanction.getSourceReportSn() == null)
                 .toList();
-        if (active.isEmpty()) return;
+        if (active.isEmpty()) return false;
 
         for (int index = 0; index < active.size(); index++) {
             SanctionRecord sanction = active.get(index);
@@ -96,9 +98,10 @@ public class AccountSanctionService implements AccountSanctionPort {
                     throw new CustomException(ErrorCode.CONFLICT, "이미 사용된 제재 해제 요청 식별자입니다.");
                 }
                 requireSameUser(concurrentRetry, valid.userSn());
-                return;
+                return false;
             }
         }
+        return true;
     }
 
     @Override

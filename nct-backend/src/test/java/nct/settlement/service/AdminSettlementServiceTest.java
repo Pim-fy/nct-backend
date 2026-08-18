@@ -71,6 +71,15 @@ class AdminSettlementServiceTest {
         assertThat(page.getTotalPages()).isEqualTo(2);
     }
 
+    /** 담당자 7 · ISSUE-T7-004: 미완료 정산은 관리자 목록의 대기·보류 합계입니다. */
+    @Test
+    void countsPendingAndHeldSettlementsAsIncomplete() {
+        when(settlementMapper.countAdminPage("STLC0001", null)).thenReturn(8L);
+        when(settlementMapper.countAdminPage("STLC0002", null)).thenReturn(3L);
+
+        assertThat(service.countIncompleteSettlementsForAdmin()).isEqualTo(11L);
+    }
+
     @Test
     void holdRecordsHistoryAuditAndNotification() {
         when(settlementMapper.selectForUpdate(501L))

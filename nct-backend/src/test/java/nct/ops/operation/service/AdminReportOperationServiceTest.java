@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -15,11 +16,13 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import nct.ops.operation.port.AdminReportDecision;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.domain.AbuseReport;
 import nct.abuse.service.AbuseReportService;
+import nct.abuse.service.ReportTargetHoldService;
 import nct.global.exception.CustomException;
 import nct.global.response.PageResponse;
 import nct.member.dto.AdminMemberIdentityResponse;
@@ -40,6 +43,7 @@ class AdminReportOperationServiceTest {
     private AdminDisputeDecisionService tradeReportDecisionService;
     private ReportSanctionService reportSanctionService;
     private SanctionImpactMapper sanctionImpactMapper;
+    private ReportTargetHoldService reportTargetHoldService;
     private AdminReportOperationService service;
 
     @BeforeEach
@@ -50,21 +54,40 @@ class AdminReportOperationServiceTest {
         tradeReportDecisionService = mock(AdminDisputeDecisionService.class);
         reportSanctionService = mock(ReportSanctionService.class);
         sanctionImpactMapper = mock(SanctionImpactMapper.class);
+        reportTargetHoldService = mock(ReportTargetHoldService.class);
         when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
+        when(abuseReportService.findForAdminDecision(
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> AbuseReport.builder()
+                        .reportSn(invocation.getArgument(0))
+                        .build());
         service = new AdminReportOperationService(
                 abuseReportService,
                 memberIdentityReader,
                 reportEnforcementService,
                 tradeReportDecisionService,
                 reportSanctionService,
-                sanctionImpactMapper);
+                sanctionImpactMapper,
+                reportTargetHoldService);
     }
 
     @Test
     void forwardsProcessedDecisionWithNormalizedReason() {
+        when(abuseReportService.findForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder()
+                        .reportSn(91L)
+                        .referenceTypeCode("REFC0003")
+                        .referenceSn(301L)
+                        .build());
         when(abuseReportService.lockForAdminDecision(91L))
-                .thenReturn(AbuseReport.builder().statusCode("ABSC0002").build());
+                .thenReturn(AbuseReport.builder()
+                        .reportSn(91L)
+                        .statusCode("ABSC0002")
+                        .referenceTypeCode("REFC0003")
+                        .referenceSn(301L)
+                        .reportedUserSn(20L)
+                        .build());
         when(abuseReportService.hasTradeContext(91L)).thenReturn(false);
 
         service.decide(
@@ -84,6 +107,16 @@ class AdminReportOperationServiceTest {
                 org.mockito.ArgumentMatchers.eq(7L),
                 requestIdCaptor.capture());
         assertThat(requestIdCaptor.getValue()).startsWith("admin-report:");
+        verify(reportTargetHoldService, never()).pause(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString());
+        verify(reportTargetHoldService).release(91L, "7");
+        InOrder lockOrder = org.mockito.Mockito.inOrder(
+                reportTargetHoldService, abuseReportService);
+        lockOrder.verify(reportTargetHoldService).lockTarget("REFC0003", 301L);
+        lockOrder.verify(abuseReportService).lockForAdminDecision(91L);
         verifyNoInteractions(tradeReportDecisionService);
     }
 
@@ -110,6 +143,7 @@ class AdminReportOperationServiceTest {
                 anyString());
         verify(tradeReportDecisionService).decide(
                 91L, AdminDisputeDecision.REFUND, "full refund", 7L);
+        verifyNoInteractions(reportTargetHoldService);
         verify(reportEnforcementService).decide(
                 eq(91L),
                 eq(AdminReportDecision.PROCESSED),
@@ -150,7 +184,59 @@ class AdminReportOperationServiceTest {
                 "still reviewing",
                 7L))
                 .isInstanceOf(CustomException.class)
-                .hasMessageContaining("일치하지 않습니다");
+                .hasMessageContaining("처리 시작 단계");
+    }
+
+    @Test
+    void startsGeneralAuctionReportAfterApplyingSingleTargetHold() {
+        AbuseReport report = AbuseReport.builder()
+                .reportSn(91L)
+                .statusCode("ABSC0001")
+                .referenceTypeCode("REFC0003")
+                .referenceSn(301L)
+                .build();
+        when(abuseReportService.lockForAdminDecision(91L)).thenReturn(report);
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(false);
+
+        service.decide(
+                91L,
+                AdminReportDecision.PROCESSING,
+                null,
+                ReportEnforcementAction.NONE,
+                "확인 시작",
+                7L);
+
+        verify(reportTargetHoldService).pause(91L, "REFC0003", 301L, "7");
+        verify(reportEnforcementService).decide(
+                eq(91L), eq(AdminReportDecision.PROCESSING),
+                eq(ReportEnforcementAction.NONE), eq("확인 시작"), eq(7L), anyString());
+        verifyNoInteractions(tradeReportDecisionService);
+    }
+
+    @Test
+    void startsTradeReportWithoutFinalTradeDecision() {
+        AbuseReport report = AbuseReport.builder()
+                .reportSn(91L)
+                .statusCode("ABSC0001")
+                .referenceTypeCode("REFC0005")
+                .referenceSn(401L)
+                .build();
+        when(abuseReportService.lockForAdminDecision(91L)).thenReturn(report);
+        when(abuseReportService.hasTradeContext(91L)).thenReturn(true);
+
+        service.decide(
+                91L,
+                AdminReportDecision.PROCESSING,
+                null,
+                ReportEnforcementAction.NONE,
+                "거래 확인 시작",
+                7L);
+
+        verify(reportTargetHoldService).pause(91L, "REFC0005", 401L, "7");
+        verify(reportEnforcementService).decide(
+                eq(91L), eq(AdminReportDecision.PROCESSING),
+                eq(ReportEnforcementAction.NONE), eq("거래 확인 시작"), eq(7L), anyString());
+        verifyNoInteractions(tradeReportDecisionService);
     }
 
     @Test

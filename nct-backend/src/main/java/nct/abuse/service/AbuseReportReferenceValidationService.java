@@ -6,8 +6,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
-import nct.auction.dto.AuctionDetailResponse;
-import nct.auction.service.AuctionService;
+import nct.auction.dto.AuctionReportReference;
+import nct.auction.port.AuctionReportReferenceReader;
 import nct.chat.dto.ChatRoomResponse;
 import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
@@ -28,7 +28,7 @@ public class AbuseReportReferenceValidationService {
     static final String TRADE_REFERENCE = "REFC0005";
     static final String SERVICE_REQUEST_REFERENCE = "REFC0007";
 
-    private final ObjectProvider<AuctionService> auctionServiceProvider;
+    private final ObjectProvider<AuctionReportReferenceReader> auctionReferenceReaderProvider;
     private final ObjectProvider<ChatService> chatServiceProvider;
     private final ObjectProvider<ServiceRequestQuoteReader> serviceRequestReaderProvider;
     private final ObjectProvider<ServiceRequestQuoteProviderReader> quoteProviderReaderProvider;
@@ -72,9 +72,9 @@ public class AbuseReportReferenceValidationService {
             Long reporterUserSn,
             Long reportedUserSn,
             Long referenceSn) {
-        AuctionDetailResponse auction = auctionServiceProvider.getObject()
-                .findAuctionDetail(referenceSn, reporterUserSn, false);
-        if (auction == null || !reportedUserSn.equals(auction.getSellerId())) {
+        AuctionReportReference auction = auctionReferenceReaderProvider.getObject()
+                .findByAuctionId(referenceSn);
+        if (auction == null || !reportedUserSn.equals(auction.getSellerUserSn())) {
             throw invalidReference();
         }
         return auction.getTitle() == null || auction.getTitle().isBlank()

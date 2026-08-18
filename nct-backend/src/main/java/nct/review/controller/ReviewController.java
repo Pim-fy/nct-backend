@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.global.response.ApiResponse;
 import nct.global.response.PageResponse;
 import nct.global.security.domain.CustomUserDetails;
@@ -33,7 +35,7 @@ import nct.review.service.ReviewService;
  *  GET    /api/reviews/writable          작성 가능한 리뷰 목록 (완료 거래 중 미작성) (authenticated)
  *  GET    /api/reviews/me               내가 작성한 리뷰 목록                      (authenticated)
  *  GET    /api/reviews/user/{usrSn}     특정 회원이 받은 리뷰 목록 (F-COM-008)     (authenticated)
- *  GET    /api/reviews/trust/{usrSn}    특정 회원의 통합 평점 (F-COM-009)          (permit-all)
+ *  GET    /api/reviews/trust/{usrSn}    특정 회원의 도메인별 평점 (F-COM-009)      (permit-all)
  *  POST   /api/reviews                  리뷰 등록 (multipart/form-data)            (authenticated)
  *  PUT    /api/reviews/{id}             리뷰 수정 (multipart/form-data, 본인 소유만)(authenticated)
  *  DELETE /api/reviews/{id}             리뷰 삭제 (소프트 삭제, 본인 소유만)        (authenticated)
@@ -99,12 +101,20 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
-    /** 특정 회원의 공개 통합 평점 (F-COM-009, 담당자4 정민재 소비). */
+    /** 담당자 7 · F-COM-009: 물품·서비스를 섞지 않은 공개 평점을 반환한다. */
     @GetMapping("/trust/{usrSn}")
     public ResponseEntity<ApiResponse<TrustScoreResponse>> getTrustScore(
-            @PathVariable("usrSn") long usrSn) {
+            @PathVariable("usrSn") long usrSn,
+            @RequestParam(name = "dealType", required = false) String dealType) {
 
-        TrustScoreResponse result = reviewService.getTrustScore(usrSn);
+        if (dealType == null
+                || !("goods".equalsIgnoreCase(dealType)
+                        || "service".equalsIgnoreCase(dealType))) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "평점 거래 유형은 goods 또는 service여야 합니다.");
+        }
+        TrustScoreResponse result = reviewService.getTrustScore(usrSn, dealType);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

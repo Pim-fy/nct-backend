@@ -269,6 +269,7 @@
         )
     </insert>
 
+    <!-- 담당자 7 | F-OPS-023: 같은 초의 수정도 리비전이 반드시 전진하도록 갱신시각을 명시적으로 증가시킨다. -->
     <update id="updateAdminNotice" parameterType="nct.ops.notice.domain.AdminNoticeWriteCommand">
         UPDATE NOTICE
            SET NTC_TYPE_CD = #{typeCode},
@@ -278,7 +279,11 @@
                NTC_PSTG_BGNG_DT = #{postingStartAt},
                NTC_PSTG_END_DT = #{postingEndAt},
                NTC_PIN_YN = #{pinnedYn},
-               NTC_UPDT_ID = #{actorId}
+               NTC_UPDT_ID = #{actorId},
+               NTC_UPDT_DT = GREATEST(
+                   CURRENT_TIMESTAMP,
+                   DATE_ADD(#{expectedUpdatedAt}, INTERVAL 1 SECOND)
+               )
          WHERE NTC_SN = #{noticeSn}
            AND NTC_USE_YN = 'Y'
            AND NTC_UPDT_DT = #{expectedUpdatedAt}

@@ -297,6 +297,8 @@
         SELECT t.SVC_REQ_SN AS serviceRequestId,
                t.TRD_SN AS tradeId,
                t.QUT_SN AS quoteId,
+               q.QUT_AMT AS quoteAmount,
+               q.QUT_STATUS_CD AS quoteStatusCode,
                t.TRD_STATUS_CD AS tradeStatusCode,
                tradeStatus.CMM_NM AS tradeStatusName,
                SUM(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002') THEN 1 ELSE 0 END)
@@ -311,6 +313,8 @@
                MAX(CASE WHEN report.ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
                    THEN reportStatus.CMM_NM END) AS activeDisputeStatusName
           FROM TRADE t
+          JOIN QUOTE q
+            ON q.QUT_SN = t.QUT_SN
           LEFT JOIN CMM_CODE tradeStatus
             ON tradeStatus.CMM_CD = t.TRD_STATUS_CD
           LEFT JOIN ABUSE_REPORT_TRADE reportTrade
@@ -324,7 +328,8 @@
         <foreach collection="serviceRequestIds" item="serviceRequestId" open="(" separator="," close=")">
             #{serviceRequestId}
         </foreach>
-         GROUP BY t.SVC_REQ_SN, t.TRD_SN, t.QUT_SN, t.TRD_STATUS_CD, tradeStatus.CMM_NM
+         GROUP BY t.SVC_REQ_SN, t.TRD_SN, t.QUT_SN, q.QUT_AMT, q.QUT_STATUS_CD,
+                  t.TRD_STATUS_CD, tradeStatus.CMM_NM
     </select>
 
     <!-- 담당자 7 · F-OPS-007: 자동 신고도 거래 번호만으로 원본 상품·서비스 요청을 찾습니다. -->
@@ -959,7 +964,7 @@
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0006' THEN 'SETTLEMENT_COMPLETED'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008' THEN 'ESCROW_REFUNDED'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
-                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.' THEN 'DISPUTE_REPORTED'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.' THEN 'DISPUTE_REPORTED'
                 ELSE 'CANCEL'
             END AS eventType,
             h.TRD_STS_HST_REG_DT AS occurredAt,
@@ -991,7 +996,7 @@
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
                     THEN '거래가 취소되어 보관금이 환불되었습니다.'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
-                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.'
                     THEN '거래 문제가 접수되어 거래와 정산이 보류되었습니다.'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
                     THEN SUBSTRING(

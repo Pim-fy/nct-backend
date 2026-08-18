@@ -1,6 +1,7 @@
 package nct.auction.service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +37,8 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.AuctionBidUnitPolicyService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
@@ -63,6 +66,9 @@ public class AuctionService {
     private static final String DELIVERY_TRADE_METHOD_CODE = "TRDC0009";
     private static final String OFFLINE_TRADE_METHOD_CODE = "TRDC0010";
     private static final String BOTH_TRADE_METHOD_CODE = "TRDC0015";
+    // 프론트(ProductRegisterPage.jsx hasMinimumSameDayDuration)와 동일한 규칙 — 같은 날 종료하는
+    // 경매만 최소 1시간을 요구한다. API 직접 호출로 이 검증을 우회할 수 있어 서버에도 동일하게 적용한다.
+    private static final Duration MIN_SAME_DAY_AUCTION_DURATION = Duration.ofHours(1);
 
     private final AuctionMapper auctionMapper;
     private final ProductFavoriteMapper productFavoriteMapper;
@@ -75,6 +81,7 @@ public class AuctionService {
     private final ReviewService reviewService;
     private final AuctionBidUnitPolicyService bidUnitPolicyService;
     private final AuctionBidTradeReader auctionBidTradeReader;
+    private final AuditLogPort auditLogPort;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -408,7 +415,7 @@ public class AuctionService {
             return;
         }
 
-        TrustScoreResponse trustScore = reviewService.getTrustScore(detail.getSellerId());
+        TrustScoreResponse trustScore = reviewService.getTrustScore(detail.getSellerId(), "goods");
         if (trustScore == null) {
             return;
         }
@@ -485,8 +492,29 @@ public class AuctionService {
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, bidAmount);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        recordSuccessfulBid(userId, auctionId, bid.getBidId(), target.getCurrentPrice(), bidAmount);
         publishAuctionChanged(auctionId, "BID_PLACED");
         return detail;
+    }
+
+    /** 담당자 7 · F-OPS-015: 입찰 전체 처리가 성공한 경우에만 공통 감사 계약으로 기록합니다. */
+    private void recordSuccessfulBid(
+            Long userId,
+            Long auctionId,
+            Long bidId,
+            BigDecimal previousAmount,
+            BigDecimal bidAmount) {
+        auditLogPort.record(new AuditLogCommand(
+                "CREATE",
+                String.valueOf(userId),
+                RefType.BID.getCode(),
+                bidId,
+                "입찰 성공",
+                "auctionAmount=" + toPointAmount(previousAmount) + "P",
+                "bidAmount=" + toPointAmount(bidAmount) + "P",
+                "bid:" + bidId,
+                RefType.AUCTION.getCode(),
+                auctionId));
     }
 
     @Transactional
@@ -795,6 +823,10 @@ public class AuctionService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         if (!endDateTime.isAfter(now) || !endDateTime.isAfter(startDateTime)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (startDateTime.toLocalDate().equals(endDateTime.toLocalDate())
+                && Duration.between(startDateTime, endDateTime).compareTo(MIN_SAME_DAY_AUCTION_DURATION) < 0) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
     }

@@ -71,6 +71,26 @@
         </foreach>
     </select>
 
+    <select id="selectLongHeldSettlements" resultType="nct.ops.risk.port.SettlementRiskCandidate">
+        /* 담당자 7 연계 · REQ-OPS-011: 장기 보류 정산 위험 후보 */
+        SELECT STLM_SN AS settlementSn,
+               TRD_SN AS tradeSn,
+               STLM_UPDT_DT AS holdStartedAt
+         FROM SETTLEMENT
+         WHERE STLM_STATUS_CD = 'STLC0002'
+           AND STLM_UPDT_DT &lt; #{cutoff}
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM RISK_EVENT risk
+                WHERE risk.RSK_EVT_TYPE_CD = 'RSKC0006'
+                  AND risk.RSK_EVT_REF_TYPE_CD = 'REFC0017'
+                  AND risk.RSK_EVT_REF_SN = SETTLEMENT.STLM_SN
+                  AND risk.RSK_EVT_REG_DT &gt;= SETTLEMENT.STLM_UPDT_DT
+           )
+         ORDER BY STLM_UPDT_DT ASC, STLM_SN ASC
+         LIMIT #{limit}
+    </select>
+
     <update id="updateStatus">
         /* 정산: 상태코드 갱신 */
         UPDATE SETTLEMENT

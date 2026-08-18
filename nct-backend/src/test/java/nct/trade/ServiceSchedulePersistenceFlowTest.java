@@ -86,7 +86,7 @@ class ServiceSchedulePersistenceFlowTest {
 
     @Test
     void returnsDisputeReceiptWithoutExposingReportedContent() {
-        tradeMapper.insertStatusHistory(tradeId, "TRDC0007", "거래 문제가 접수되었습니다.");
+        tradeMapper.insertStatusHistory(tradeId, "TRDC0007", "거래 문제가 신고되었습니다.");
 
         ServiceTradeDetailResponse detail = tradeService.getMyServiceTradeDetail(tradeId, providerUserId);
 

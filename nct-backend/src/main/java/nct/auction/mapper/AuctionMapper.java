@@ -17,6 +17,7 @@ import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionDetailResponse;
 import nct.auction.dto.AuctionImageItem;
 import nct.auction.dto.AuctionReferenceTitle;
+import nct.auction.dto.AuctionReportReference;
 import nct.auction.dto.AuctionStatusResponse;
 import nct.auction.dto.AuctionStatusSummaryResponse;
 import nct.auction.dto.AuctionSanctionTarget;
@@ -42,6 +43,9 @@ public interface AuctionMapper {
     List<AuctionReferenceTitle> findAuctionReferenceTitles(
             @Param("auctionIds") List<Long> auctionIds);
 
+    /** 담당자 7 · F-OPS-007: 종료·숨김 여부와 무관한 신고 검증용 최소 경매 정보입니다. */
+    AuctionReportReference findAuctionReportReference(@Param("auctionId") Long auctionId);
+
     AuctionDetailResponse findAuctionDetail(
             @Param("auctionId") Long auctionId,
             @Param("userId") Long userId);
@@ -59,6 +63,9 @@ public interface AuctionMapper {
     AuctionCancellationTarget findAuctionCancellationTargetForUpdate(@Param("auctionId") Long auctionId);
 
     List<AuctionSanctionTarget> findSanctionTargetsByMemberForUpdate(@Param("userSn") Long userSn);
+
+    /** 담당자 7 · F-OPS-007: 신고된 경매 한 건의 상태와 남은 시간을 잠금 조회합니다. */
+    AuctionSanctionTarget findReportHoldTargetForUpdate(@Param("auctionId") Long auctionId);
 
     List<Long> findExpiredActiveAuctionIds(@Param("limit") int limit);
 

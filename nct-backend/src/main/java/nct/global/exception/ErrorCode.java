@@ -101,6 +101,7 @@ public enum ErrorCode {
     POINT_INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "포인트 금액은 0보다 커야 합니다."),
     POINT_INSUFFICIENT(HttpStatus.CONFLICT, "사용 가능 포인트가 부족합니다."),
     POINT_CONVERT_BLOCKED_BY_DISPUTE(HttpStatus.CONFLICT, "진행 중인 거래 문제가 있어 포인트 전환을 할 수 없습니다. 거래 문제 처리 완료 후 다시 시도해 주세요."),
+    POINT_CONVERT_EXCHANGE_BLOCKED_BY_ACTIVE_REPORT(HttpStatus.CONFLICT, "접수 또는 처리 중인 신고가 있어 포인트 전환 또는 환전을 신청할 수 없습니다. 신고 처리 완료 후 다시 시도해 주세요."),
     POINT_DUPLICATE_HOLD(HttpStatus.CONFLICT, "이미 홀딩된 건입니다."),
     POINT_HOLD_NOT_FOUND(HttpStatus.CONFLICT, "해당 건의 유효한 홀딩이 없습니다."),
 

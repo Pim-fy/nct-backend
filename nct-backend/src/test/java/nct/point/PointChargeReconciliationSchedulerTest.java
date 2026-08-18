@@ -3,6 +3,7 @@ package nct.point;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,6 +29,7 @@ import nct.point.client.TossPaymentsClient;
 import nct.point.domain.PointChargeOrderStatus;
 import nct.point.scheduler.PointChargeReconciliationScheduler;
 import nct.point.service.PointChargeService;
+import nct.support.TestGeneratedKeys;
 
 /**
  * Claude Code 작성 (BJN, 2026-07-21)
@@ -69,11 +71,10 @@ class PointChargeReconciliationSchedulerTest {
     void setUpUser() {
         String loginId = "t_recon_" + System.nanoTime();
         String email = loginId + "@test.local";
-        jdbc.update("""
+        usrSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
                 """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
-        usrSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
         validChargeAmount = pointChargeService.getChargeLimits().getMinChrgAmt();
 
         // 공유 DB에 이 테스트가 만들지 않은 다른 오래된 PENDING 주문이 이미 있을 수 있다 —
@@ -114,7 +115,8 @@ class PointChargeReconciliationSchedulerTest {
         Long ledgerCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM POINT_LEDGER WHERE USR_SN = ?", Long.class, usrSn);
         assertThat(ledgerCount).isEqualTo(1);
-        verify(riskEventService).recordOnce(any(RiskEventCommand.class));
+        verify(riskEventService).recordOnce(argThat(command ->
+                command.content().contains("충전 주문 " + orderNo)));
     }
 
     @Test

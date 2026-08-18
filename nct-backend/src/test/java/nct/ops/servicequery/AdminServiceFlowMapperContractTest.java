@@ -19,6 +19,8 @@ class AdminServiceFlowMapperContractTest {
         assertThat(trade)
                 .contains("<select id=\"findAdminServiceTradeSummaries\"")
                 .contains("collection=\"serviceRequestIds\"")
+                .contains("AS quoteAmount")
+                .contains("AS quoteStatusCode")
                 .contains("AS activeDisputeCount")
                 .contains("AS unsupportedDisputeCount");
         assertThat(settlement)

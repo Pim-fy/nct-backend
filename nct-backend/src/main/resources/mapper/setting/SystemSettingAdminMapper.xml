@@ -19,6 +19,13 @@
                SYS_SET_MNTNC_BGNG_DT   AS mntncBgngDt,
                SYS_SET_MNTNC_END_DT    AS mntncEndDt,
                SYS_SET_EMAIL_YN        AS emailYn,
+               SYS_SET_RSK_TRD_RPT_CNT AS riskTradeReportCount,
+               SYS_SET_RSK_TRD_RPT_WIN_MIN AS riskTradeReportWindowMinutes,
+               SYS_SET_RSK_STLM_HOLD_DAYS AS riskSettlementHoldDays,
+               SYS_SET_RSK_REPEAT_RPT_CNT AS riskRepeatReportCount,
+               SYS_SET_RSK_REPEAT_RPT_WIN_DAYS AS riskRepeatReportWindowDays,
+               SYS_SET_RSK_ADM_LOGIN_FAIL_CNT AS riskAdminLoginFailCount,
+               SYS_SET_RSK_ADM_LOGIN_FAIL_WIN_MIN AS riskAdminLoginFailWindowMinutes,
                SYS_SET_UPDT_DT         AS sysSetUpdtDt,
                SYS_SET_UPDT_ID         AS sysSetUpdtId
         FROM SYSTEM_SETTING
@@ -54,6 +61,13 @@
             SYS_SET_MNTNC_BGNG_DT   = #{mntncBgngDt},
             SYS_SET_MNTNC_END_DT    = #{mntncEndDt},
             SYS_SET_EMAIL_YN        = #{emailYn},
+            SYS_SET_RSK_TRD_RPT_CNT = #{riskTradeReportCount},
+            SYS_SET_RSK_TRD_RPT_WIN_MIN = #{riskTradeReportWindowMinutes},
+            SYS_SET_RSK_STLM_HOLD_DAYS = #{riskSettlementHoldDays},
+            SYS_SET_RSK_REPEAT_RPT_CNT = #{riskRepeatReportCount},
+            SYS_SET_RSK_REPEAT_RPT_WIN_DAYS = #{riskRepeatReportWindowDays},
+            SYS_SET_RSK_ADM_LOGIN_FAIL_CNT = #{riskAdminLoginFailCount},
+            SYS_SET_RSK_ADM_LOGIN_FAIL_WIN_MIN = #{riskAdminLoginFailWindowMinutes},
             SYS_SET_UPDT_ID         = #{sysSetUpdtId},
             SYS_SET_UPDT_DT         = CURRENT_TIMESTAMP
         WHERE SYS_SET_SN = #{sysSetSn}

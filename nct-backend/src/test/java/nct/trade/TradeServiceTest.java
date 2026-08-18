@@ -23,7 +23,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DuplicateKeyException;
 
+import nct.agree.domain.AgreeActType;
+import nct.agree.domain.AgreeRef;
+import nct.agree.domain.AgreeType;
+import nct.agree.service.AgreeHistoryService;
 import nct.auction.service.AuctionService;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.abuse.port.TradeIncidentReportCommand;
@@ -96,6 +101,7 @@ class TradeServiceTest {
     private ReferenceDataService referenceDataService;
     private ActiveAbuseReportReferenceReader activeAbuseReportReferenceReader;
     private TradeIncidentReportPort tradeIncidentReportPort;
+    private AgreeHistoryService agreeHistoryService;
     private FieldCryptoService fieldCryptoService;
     // @ai_generated (담당자1, 2026-08-07): AUCTION 직접 JOIN 제거에 따라 추가된 지연 주입 의존성.
     private AuctionService auctionService;
@@ -119,6 +125,7 @@ class TradeServiceTest {
         tradeIncidentReportPort = mock(TradeIncidentReportPort.class);
         when(tradeIncidentReportPort.create(any(TradeIncidentReportCommand.class)))
                 .thenReturn(9001L);
+        agreeHistoryService = mock(AgreeHistoryService.class);
         fieldCryptoService = mock(FieldCryptoService.class);
         when(fieldCryptoService.encrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(fieldCryptoService.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -142,6 +149,7 @@ class TradeServiceTest {
                 referenceDataService,
                 activeAbuseReportReferenceReader,
                 tradeIncidentReportPort,
+                agreeHistoryService,
                 fieldCryptoService,
                 auctionServiceProvider);
     }
@@ -504,6 +512,30 @@ class TradeServiceTest {
     }
 
     @Test
+    void mapsConcurrentDuplicateTradeReportToAlreadyExists() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setReportTypeCode("ABRC0008");
+        request.setContent("동일 거래 문제를 동시에 접수합니다.");
+        when(tradeMapper.findTradeReportTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.holdTradeForReport(81L, "11")).thenReturn(1);
+        when(tradeIncidentReportPort.create(any(TradeIncidentReportCommand.class)))
+                .thenThrow(new DuplicateKeyException("UK_ABUSE_REPORT_MANUAL_REFERENCE"));
+
+        assertThatThrownBy(() -> tradeService.registerTradeReport(81L, 11L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
+
+        verify(notificationService, never()).notifyTradeReportReceived(anyLong(), anyLong());
+    }
+
+    @Test
     void permanentSuspensionCancellationExcludesCurrentReportAndRefundsServiceEscrow() {
         ServiceTradeCompletionTarget target = new ServiceTradeCompletionTarget();
         target.setTradeId(81L);
@@ -726,6 +758,7 @@ class TradeServiceTest {
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0006", "서비스 의뢰자가 완료를 확인했습니다.");
         verify(notificationService).notifyTradeComplete(11L, 81L, false, true);
         verify(notificationService).notifyTradeComplete(22L, 81L, false, true);
+        verifyTradeCompletionAgreement(11L, 81L, true);
     }
 
     @Test
@@ -741,6 +774,7 @@ class TradeServiceTest {
         verify(chatService, never()).closeServiceTradeChatRoom(81L);
         verify(notificationService).notifyTradeComplete(11L, 81L, true, true);
         verify(notificationService).notifyTradeComplete(22L, 81L, true, true);
+        verifyNoInteractions(agreeHistoryService);
     }
 
     @Test
@@ -803,6 +837,26 @@ class TradeServiceTest {
                 91L,
                 "TRDC0003",
                 "즉시구매로 거래가 생성되었습니다.");
+        verify(chatService).createOrGetOfflineTradeChatRoom(91L);
+    }
+
+    @Test
+    void doesNotCreateOfflineChatRoomWhenAuctionTradeAlreadyExists() {
+        AuctionTradeCreateCommand command = new AuctionTradeCreateCommand(
+                40L,
+                30L,
+                50L,
+                10L,
+                20L,
+                BigDecimal.valueOf(128000),
+                AuctionTradeSource.BUY_NOW);
+        when(tradeMapper.findOwnedProductIdForUpdate(30L, 10L)).thenReturn(30L);
+        when(tradeMapper.findMaterialTradeIdByProductId(30L)).thenReturn(91L);
+
+        AuctionTradeCreateResult result = tradeService.createAuctionTrade(command);
+
+        assertThat(result.isCreated()).isFalse();
+        verify(chatService, never()).createOrGetOfflineTradeChatRoom(anyLong());
     }
 
     @Test
@@ -1347,6 +1401,7 @@ class TradeServiceTest {
         assertThat(result).isSameAs(detail);
         verify(tradeMapper).insertStatusHistory(
                 91L, "TRDC0004", "OFFLINE_COMPLETION_REJECTED|10|20");
+        verifyTradeCompletionAgreement(20L, 91L, false);
     }
 
     @Test
@@ -1373,6 +1428,7 @@ class TradeServiceTest {
         verify(settlementService).completeAutomatically(501L);
         verify(tradeMapper).insertStatusHistory(
                 91L, "TRDC0006", "구매자와 판매자가 모두 거래 완료를 확인했습니다.");
+        verifyTradeCompletionAgreement(20L, 91L, true);
     }
 
     @Test
@@ -1466,6 +1522,7 @@ class TradeServiceTest {
                 "TRDC0005",
                 "구매자가 거래 완료 확인을 요청했습니다.");
         verify(notificationService).notifyTradeConfirmRequest(10L, 91L, 5);
+        verifyTradeCompletionAgreement(20L, 91L, true);
         assertThat(result).isSameAs(detail);
     }
 
@@ -1841,6 +1898,17 @@ class TradeServiceTest {
         target.setBuyerUserId(20L);
         target.setTradeStatus(tradeStatus);
         return target;
+    }
+
+    private void verifyTradeCompletionAgreement(long userId, long tradeId, boolean agreed) {
+        ArgumentCaptor<AgreeRef> referenceCaptor = ArgumentCaptor.forClass(AgreeRef.class);
+        verify(agreeHistoryService).record(
+                eq(userId),
+                eq(AgreeType.TERMS_OF_SERVICE),
+                eq(AgreeActType.TRADE_COMPLETE_CONFIRM),
+                eq(agreed),
+                referenceCaptor.capture());
+        assertThat(referenceCaptor.getValue().getTrdSn()).isEqualTo(tradeId);
     }
 
     private TradeDeliveryProofSubmitRequest deliveryProofRequest(List<Long> fileIds) {

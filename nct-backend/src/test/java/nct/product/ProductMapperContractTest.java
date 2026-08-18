@@ -23,27 +23,24 @@ class ProductMapperContractTest {
     }
 
     @Test
-    @DisplayName("내 판매 목록은 예약 조건을 draft 보존 컬럼과 미래 시작시각으로 판정한다")
-    void reservedFilterUsesDraftReservationFields() throws IOException {
+    @DisplayName("내 판매 목록은 예약 조건을 실제 등록된 AUCTION의 READY 상태로만 판정한다")
+    void reservedFilterUsesOnlyRegisteredAuctionReadyStatus() throws IOException {
         String findMyProducts = loadFindMyProductsSql();
 
         assertThat(findMyProducts)
                 .contains("<when test=\"filterType == 'RESERVED'\">")
-                .contains("p.PRD_STATUS_CD = 'PRDC0001'")
-                .contains("p.PRD_DRAFT_START_NOW_YN = 'N'")
-                .contains("p.PRD_DRAFT_START_DT > NOW()");
+                .contains("p.PRD_STATUS_CD = 'PRDC0002'")
+                .contains("a.AUC_STATUS_CD = 'AUCC0001'");
     }
 
     @Test
-    @DisplayName("임시저장 필터는 예약 부분집합을 NULL 안전하게 제외한다")
-    void draftFilterExcludesReservedSubsetNullSafely() throws IOException {
+    @DisplayName("임시저장 필터는 예약 시작시각 설정 여부와 무관하게 PRDC0001 전부를 포함한다")
+    void draftFilterIncludesAllDraftsRegardlessOfReservation() throws IOException {
         String findMyProducts = loadFindMyProductsSql();
 
         assertThat(findMyProducts)
                 .contains("<when test=\"filterType == 'DRAFT'\">")
-                .contains("COALESCE(p.PRD_DRAFT_START_NOW_YN, '') != 'N'")
-                .contains("p.PRD_DRAFT_START_DT IS NULL")
-                .contains("p.PRD_DRAFT_START_DT &lt;= NOW()");
+                .contains("AND p.PRD_STATUS_CD = 'PRDC0001'");
     }
 
     @Test
@@ -63,12 +60,9 @@ class ProductMapperContractTest {
         String summary = loadNormalizedSelect("countMyProductsSummary");
 
         assertThat(summary)
-                .contains("COALESCE(p.PRD_DRAFT_START_NOW_YN, '') != 'N'")
-                .contains("p.PRD_DRAFT_START_DT IS NULL")
-                .contains("p.PRD_DRAFT_START_DT &lt;= NOW()")
-                .contains("p.PRD_DRAFT_START_NOW_YN = 'N'")
-                .contains("p.PRD_DRAFT_START_DT > NOW()")
-                .contains("AS reserved")
+                .contains("WHEN p.PRD_STATUS_CD = 'PRDC0001' THEN 1 ELSE 0 END), 0) AS draft")
+                .contains("WHEN p.PRD_STATUS_CD = 'PRDC0002'")
+                .contains("AND a.AUC_STATUS_CD = 'AUCC0001' THEN 1 ELSE 0 END), 0) AS reserved")
                 .contains("t.TRD_STATUS_CD IN ('TRDC0003', 'TRDC0004', 'TRDC0005')")
                 .contains("a.AUC_STATUS_CD = 'AUCC0003' AND t.TRD_SN IS NULL")
                 .doesNotContain("AS won");

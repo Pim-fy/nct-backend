@@ -28,7 +28,9 @@ public enum AuditLogType {
     /** 관리자반려 */
     ADMIN_REJECT("AUDC0006"),
     /** 상태변경 */
-    STATUS_CHANGE("AUDC0007");
+    STATUS_CHANGE("AUDC0007"),
+    /** 담당자 7 · REQ-OPS-011: 관리자 로그인 실패 자동 감지용 기록 */
+    LOGIN_FAILURE("AUDC0008");
 
     /** DB에 저장되는 공통코드 값 */
     private final String code;

@@ -4,11 +4,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.abuse.port.AdminActiveDisputeCountReader;
 import nct.member.port.AdminMemberSummaryReader;
 import nct.ops.dashboard.dto.AdminDashboardSummaryResponse;
 import nct.ops.dashboard.mapper.AdminDashboardMapper;
 import nct.ops.risk.mapper.RiskEventMapper;
 import nct.point.service.PointExchangeService;
+import nct.settlement.port.AdminIncompleteSettlementCountReader;
 import nct.trade.port.AdminTradeSummaryReader;
 
 /**
@@ -20,6 +22,8 @@ public class AdminDashboardService {
 
     private final AdminMemberSummaryReader memberSummaryReader;
     private final AdminTradeSummaryReader tradeSummaryReader;
+    private final AdminActiveDisputeCountReader activeDisputeCountReader;
+    private final AdminIncompleteSettlementCountReader incompleteSettlementCountReader;
     private final AdminDashboardMapper adminDashboardMapper;
     private final RiskEventMapper riskEventMapper;
     private final PointExchangeService pointExchangeService;
@@ -29,6 +33,9 @@ public class AdminDashboardService {
         AdminDashboardSummaryResponse response = new AdminDashboardSummaryResponse();
         response.setActiveUserCount(memberSummaryReader.countActiveUsers());
         response.setTotalTradeCount(tradeSummaryReader.countAllTrades());
+        response.setActiveDisputeCount(activeDisputeCountReader.countActiveDisputesForAdmin());
+        response.setIncompleteSettlementCount(
+                incompleteSettlementCountReader.countIncompleteSettlementsForAdmin());
         response.setPendingProviderApplicationCount(
                 adminDashboardMapper.countPendingProviderApplications());
         response.setPendingReportCount(

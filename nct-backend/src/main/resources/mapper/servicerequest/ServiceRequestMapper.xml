@@ -116,8 +116,10 @@
                    WHEN 'SVCC0002' THEN 0
                    WHEN 'SVCC0001' THEN 1
                    WHEN 'SVCC0003' THEN 2
-                   WHEN 'SVCC0004' THEN 3
-                   ELSE 4
+                   WHEN 'SVCC0005' THEN 3
+                   WHEN 'SVCC0004' THEN 4
+                   WHEN 'SVCC0006' THEN 5
+                   ELSE 6
                END ASC,
                s.SVC_REQ_REG_DT DESC,
                s.SVC_REQ_SN DESC
@@ -236,7 +238,7 @@
     </select>
 
     <!-- ── 내 요청 목록 (최신순) ─────────────────────────── -->
-    <!-- filterType: DRAFT(임시저장) | OPEN(공개) | MATCHED(매칭완료) | CLOSED(종료) | null(전체) -->
+    <!-- filterType: DRAFT(임시저장) | OPEN(공개) | MATCHED(매칭완료) | CLOSED(종료) | CANCELED(취소) | null(전체) -->
     <select id="findMyServiceRequests" resultMap="ServiceRequestResponseMap">
         /* ServiceRequestMapper.findMyServiceRequests */
         SELECT s.SVC_REQ_SN, s.USR_SN, s.CAT_SN, s.SVC_REQ_FORM_TMPL_SN, c.CAT_NM,
@@ -270,6 +272,9 @@
                </when>
                <when test="filterType == 'CLOSED'">
                    AND s.SVC_REQ_STATUS_CD = 'SVCC0004'
+               </when>
+               <when test="filterType == 'CANCELED'">
+                   AND s.SVC_REQ_STATUS_CD = 'SVCC0006'
                </when>
            </choose>
          ORDER BY s.SVC_REQ_REG_DT DESC
@@ -319,7 +324,7 @@
     <!-- 담당자 7 · F-OPS-021: 노출 여부와 무관하게 매칭 전 공개 요청을 취소하며 신청 이력은 보존한다. -->
     <update id="adminCancelOpenServiceRequest">
         UPDATE SERVICE_REQUEST
-           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+           SET SVC_REQ_STATUS_CD = 'SVCC0006',
                SVC_REQ_UPDT_ID = #{updtId}
          WHERE SVC_REQ_SN = #{svcReqSn}
            AND SVC_REQ_STATUS_CD = 'SVCC0002'
@@ -386,7 +391,43 @@
                'SVCC0001', 'SVCC0002', 'SVCC0003', 'SVCC0005'
            )
          ORDER BY s.SVC_REQ_SN
-         FOR UPDATE
+        FOR UPDATE
+    </select>
+
+    <!-- 담당자 7 · F-OPS-007: 신고된 견적 요청 한 건만 보류하기 위한 잠금 조회입니다. -->
+    <select id="findReportHoldTargetForUpdate"
+            resultType="nct.servicerequest.dto.ServiceRequestSanctionTarget">
+        SELECT
+            s.SVC_REQ_SN AS serviceRequestId,
+            s.USR_SN AS ownerUserSn,
+            s.SVC_REQ_STATUS_CD AS statusCode,
+            CASE
+                WHEN s.SVC_REQ_STATUS_CD = 'SVCC0002' THEN COALESCE(
+                    s.SVC_REQ_DEADLINE_DT,
+                    LEAST(
+                        DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY),
+                        COALESCE(
+                            (
+                                SELECT MIN(DATE_ADD(
+                                    STR_TO_DATE(i.SVC_REQ_ITM_VAL_CN, '%Y-%m-%d'),
+                                    INTERVAL 1 DAY))
+                                  FROM SVC_REQ_ITEM i
+                                  JOIN SVC_REQ_FIELD_DEF f
+                                    ON f.SVC_REQ_FIELD_SN = i.SVC_REQ_FIELD_SN
+                                 WHERE i.SVC_REQ_SN = s.SVC_REQ_SN
+                                   AND f.SVC_REQ_FIELD_TYPE_CD = 'CALENDAR'
+                            ),
+                            DATE_ADD(s.SVC_REQ_UPDT_DT, INTERVAL 5 DAY)
+                        )
+                    )
+                )
+                ELSE NULL
+            END AS effectiveDeadlineAt,
+            CURRENT_TIMESTAMP AS databaseNow
+        FROM SERVICE_REQUEST s
+        WHERE s.SVC_REQ_SN = #{serviceRequestId}
+          AND s.SVC_REQ_USE_YN = 'Y'
+        FOR UPDATE
     </select>
 
     <update id="pauseServiceRequestForSanction">
@@ -417,7 +458,7 @@
 
     <update id="closeDraftServiceRequestForSanction">
         UPDATE SERVICE_REQUEST
-           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+           SET SVC_REQ_STATUS_CD = 'SVCC0006',
                SVC_REQ_UPDT_ID = #{actorId},
                SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
          WHERE SVC_REQ_SN = #{serviceRequestId}
@@ -427,7 +468,7 @@
 
     <update id="closeMatchedOrHeldServiceRequestForSanction">
         UPDATE SERVICE_REQUEST s
-           SET SVC_REQ_STATUS_CD = 'SVCC0004',
+           SET SVC_REQ_STATUS_CD = 'SVCC0006',
                SVC_REQ_UPDT_ID = #{actorId},
                SVC_REQ_UPDT_DT = CURRENT_TIMESTAMP
          WHERE s.SVC_REQ_SN = #{serviceRequestId}

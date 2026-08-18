@@ -4,6 +4,44 @@
 
 <mapper namespace="nct.abuse.mapper.AbuseReportMapper">
 
+    <!-- 담당자 7 · REQ-OPS-011: 시스템 자동 신고는 운영 급증 판정에서 제외합니다. -->
+    <select id="countTradeReportsSince" resultType="long">
+        SELECT COUNT(*)
+          FROM ABUSE_REPORT
+         WHERE RPRT_USR_SN IS NOT NULL
+           AND ABR_REF_TYPE_CD = 'REFC0005'
+           AND ABR_REG_DT &gt;= #{since}
+    </select>
+
+    <select id="countDistinctReportersForTargetSince" resultType="long">
+        SELECT COUNT(DISTINCT RPRT_USR_SN)
+          FROM ABUSE_REPORT
+         WHERE RPRT_USR_SN IS NOT NULL
+           AND RPTD_USR_SN = #{reportedUserSn}
+           AND ABR_REG_DT &gt;= #{since}
+    </select>
+
+    <select id="findRepeatedReportedUserIdsSince" resultType="long">
+        /* 담당자 7 · REQ-OPS-011: 커밋 후 판정 실패를 주기 재집계로 복구합니다. */
+        SELECT report.RPTD_USR_SN
+          FROM ABUSE_REPORT report
+         WHERE report.RPRT_USR_SN IS NOT NULL
+           AND report.RPTD_USR_SN IS NOT NULL
+           AND report.ABR_REG_DT &gt;= #{since}
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM RISK_EVENT risk
+                WHERE risk.RSK_EVT_TYPE_CD = 'RSKC0007'
+                  AND risk.RSK_EVT_REF_TYPE_CD = 'REFC0001'
+                  AND risk.RSK_EVT_REF_SN = report.RPTD_USR_SN
+                  AND risk.RSK_EVT_REG_DT &gt;= #{since}
+           )
+         GROUP BY report.RPTD_USR_SN
+        HAVING COUNT(DISTINCT report.RPRT_USR_SN) &gt;= #{minimumReporterCount}
+         ORDER BY MIN(report.ABR_REG_DT), report.RPTD_USR_SN
+         LIMIT #{limit}
+    </select>
+
     <sql id="myReportColumns">
         ar.ABR_SN          AS reportSn,
         ar.ABR_TYPE_CD     AS reportTypeCode,
@@ -379,6 +417,24 @@
          FOR UPDATE
     </select>
 
+    <select id="findReportById" resultType="nct.abuse.domain.AbuseReport">
+        SELECT ABR_SN AS reportSn,
+               RSK_EVT_SN AS riskEventSn,
+               RPRT_USR_SN AS reporterUserSn,
+               RPTD_USR_SN AS reportedUserSn,
+               ABR_TYPE_CD AS reportTypeCode,
+               ABR_STATUS_CD AS statusCode,
+               ABR_REF_TYPE_CD AS referenceTypeCode,
+               ABR_REF_SN AS referenceSn,
+               ABR_CN AS content,
+               ABR_PROC_RSN_CN AS processReason,
+               ABR_PROC_REQ_ID AS processRequestId,
+               ABR_REG_ID AS registeredBy,
+               ABR_UPDT_ID AS updatedBy
+          FROM ABUSE_REPORT
+         WHERE ABR_SN = #{reportSn}
+    </select>
+
     <select id="existsOtherActiveReportLinkedToTrade" resultType="boolean">
         SELECT EXISTS (
             SELECT 1
@@ -482,6 +538,16 @@
         FROM ABUSE_REPORT
         WHERE (RPRT_USR_SN = #{userSn} OR RPTD_USR_SN = #{userSn})
           AND ABR_STATUS_CD IN ('ABSC0001', 'ABSC0002')
+    </select>
+
+    <!-- 담당자 7 · F-OPS-007/F-PAY-010/F-PAY-012: 신고자는 제외하고 피신고자의 활성 신고만 확인 -->
+    <select id="existsActiveReportAgainst" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM ABUSE_REPORT
+            WHERE RPTD_USR_SN = #{reportedUserSn}
+              AND ABR_STATUS_CD IN (#{receivedStatus}, #{processingStatus})
+        )
     </select>
 
 </mapper>

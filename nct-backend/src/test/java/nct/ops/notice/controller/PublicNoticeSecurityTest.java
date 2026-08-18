@@ -40,9 +40,10 @@ class PublicNoticeSecurityTest {
     }
 
     @Test
-    void doesNotOpenNoticeWriteRequests() throws Exception {
+    void rejectsUnsupportedNoticeWriteMethodWithStructuredResponse() throws Exception {
         mockMvc.perform(post("/api/notices").contentType("application/json").content("{}"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.httpCode").value(401));
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.httpCode").value(405))
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
     }
 }

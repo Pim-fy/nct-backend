@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.abuse.mapper.ReportImpactMapper">
+
+    <sql id="impactColumns">
+        i.ABR_IMP_SN AS impactSn,
+        i.ABR_SN AS reportSn,
+        i.ABR_IMP_REF_TYPE_CD AS referenceTypeCode,
+        i.ABR_IMP_REF_SN AS referenceSn,
+        i.ABR_IMP_ACTION_CD AS actionCode,
+        i.ABR_IMP_STATUS_CD AS statusCode,
+        i.ABR_IMP_PREV_STATUS_CD AS previousStatusCode,
+        i.ABR_IMP_PREV_START_DT AS previousStartAt,
+        i.ABR_IMP_PREV_DDLN_DT AS previousDeadlineAt,
+        i.ABR_IMP_REMAIN_START_SEC AS remainingStartSeconds,
+        i.ABR_IMP_REMAIN_SEC AS remainingSeconds,
+        CASE WHEN i.ABR_IMP_STLM_HOLD_YN = 'Y' THEN TRUE ELSE FALSE END AS settlementHoldApplied,
+        i.ABR_IMP_RSLT_CN AS result,
+        i.ABR_IMP_REG_ID AS registeredBy,
+        i.ABR_IMP_UPDT_ID AS updatedBy
+    </sql>
+
+    <select id="findActiveBaselineForUpdate" resultType="nct.abuse.domain.ReportImpactRecord">
+        SELECT <include refid="impactColumns"/>
+          FROM ABUSE_REPORT_IMPACT i
+          JOIN ABUSE_REPORT r ON r.ABR_SN = i.ABR_SN
+         WHERE i.ABR_IMP_REF_TYPE_CD = #{referenceTypeCode}
+           AND i.ABR_IMP_REF_SN = #{referenceSn}
+           AND i.ABR_IMP_STATUS_CD = 'APPLIED'
+           AND r.ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+         ORDER BY i.ABR_IMP_SN
+         LIMIT 1
+         FOR UPDATE
+    </select>
+
+    <select id="findByReportForUpdate" resultType="nct.abuse.domain.ReportImpactRecord">
+        SELECT <include refid="impactColumns"/>
+          FROM ABUSE_REPORT_IMPACT i
+         WHERE i.ABR_SN = #{reportSn}
+         FOR UPDATE
+    </select>
+
+    <select id="findByReport" resultType="nct.abuse.domain.ReportImpactRecord">
+        SELECT <include refid="impactColumns"/>
+          FROM ABUSE_REPORT_IMPACT i
+         WHERE i.ABR_SN = #{reportSn}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="impactSn" keyColumn="ABR_IMP_SN">
+        INSERT INTO ABUSE_REPORT_IMPACT (
+            ABR_SN,
+            ABR_IMP_REF_TYPE_CD,
+            ABR_IMP_REF_SN,
+            ABR_IMP_ACTION_CD,
+            ABR_IMP_STATUS_CD,
+            ABR_IMP_PREV_STATUS_CD,
+            ABR_IMP_PREV_START_DT,
+            ABR_IMP_PREV_DDLN_DT,
+            ABR_IMP_REMAIN_START_SEC,
+            ABR_IMP_REMAIN_SEC,
+            ABR_IMP_STLM_HOLD_YN,
+            ABR_IMP_RSLT_CN,
+            ABR_IMP_REG_ID,
+            ABR_IMP_UPDT_ID
+        ) VALUES (
+            #{reportSn},
+            #{referenceTypeCode},
+            #{referenceSn},
+            #{actionCode},
+            #{statusCode},
+            #{previousStatusCode},
+            #{previousStartAt},
+            #{previousDeadlineAt},
+            #{remainingStartSeconds},
+            #{remainingSeconds},
+            CASE WHEN #{settlementHoldApplied} THEN 'Y' ELSE 'N' END,
+            #{result},
+            #{registeredBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <select id="existsOtherActiveImpact" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM ABUSE_REPORT_IMPACT i
+              JOIN ABUSE_REPORT r ON r.ABR_SN = i.ABR_SN
+             WHERE i.ABR_IMP_REF_TYPE_CD = #{referenceTypeCode}
+               AND i.ABR_IMP_REF_SN = #{referenceSn}
+               AND i.ABR_SN != #{excludedReportSn}
+               AND i.ABR_IMP_STATUS_CD = 'APPLIED'
+               AND r.ABR_STATUS_CD IN (#{receivedStatusCode}, #{processingStatusCode})
+        )
+    </select>
+
+    <update id="updateResult">
+        UPDATE ABUSE_REPORT_IMPACT
+           SET ABR_IMP_STATUS_CD = #{statusCode},
+               ABR_IMP_RSLT_CN = #{result},
+               ABR_IMP_UPDT_ID = #{actorId},
+               ABR_IMP_UPDT_DT = CURRENT_TIMESTAMP
+         WHERE ABR_IMP_SN = #{impactSn}
+           AND ABR_IMP_STATUS_CD = #{expectedStatusCode}
+    </update>
+
+</mapper>

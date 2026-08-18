@@ -21,10 +21,12 @@ import nct.auction.port.AuctionReferenceTitleReader;
 import nct.file.service.FileStorageService;
 import nct.global.response.PageResponse;
 import nct.global.security.port.AuthMemberPort;
+import nct.member.port.MemberOperationLockPort;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.service.RiskEventService;
+import nct.ops.risk.service.RiskSignalPublisher;
 import nct.servicerequest.port.ServiceRequestQuoteReader;
 import nct.trade.dto.AdminReportTradeReference;
 import nct.trade.port.AdminReportTradeReferenceReader;
@@ -55,8 +57,11 @@ class AbuseReportTargetNameEnrichmentTest {
                 mock(NotificationService.class),
                 mock(ObjectProvider.class),
                 mock(AuthMemberPort.class),
+                mock(MemberOperationLockPort.class),
                 mock(FileStorageService.class),
-                mock(RiskEventService.class));
+                mock(RiskEventService.class),
+                mock(RiskSignalPublisher.class),
+                mock(ReportTargetHoldService.class));
     }
 
     @Test

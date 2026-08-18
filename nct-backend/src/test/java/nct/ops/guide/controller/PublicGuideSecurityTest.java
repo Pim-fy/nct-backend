@@ -41,9 +41,10 @@ class PublicGuideSecurityTest {
     }
 
     @Test
-    void doesNotOpenGuideWriteRequests() throws Exception {
+    void rejectsUnsupportedGuideWriteMethodWithStructuredResponse() throws Exception {
         mockMvc.perform(post("/api/guides").contentType("application/json").content("{}"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.httpCode").value(401));
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.httpCode").value(405))
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
     }
 }

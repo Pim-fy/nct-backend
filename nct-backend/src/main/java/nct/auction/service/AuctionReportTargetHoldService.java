@@ -103,6 +103,7 @@ public class AuctionReportTargetHoldService implements ReportTargetHoldPort {
                 target.getEndAt(),
                 remaining(now, target.getStartAt()),
                 remaining(remainingBase, target.getEndAt()),
+                false,
                 message);
     }
 

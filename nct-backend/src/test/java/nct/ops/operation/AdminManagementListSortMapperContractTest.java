@@ -58,7 +58,7 @@ class AdminManagementListSortMapperContractTest {
     }
 
     @Test
-    @DisplayName("서비스 요청은 공개, 임시저장, 매칭완료, 종료 순이며 같은 상태는 최신 등록순이다")
+    @DisplayName("서비스 요청은 공개, 임시저장, 매칭완료, 운영보류, 종료, 취소 순이며 같은 상태는 최신 등록순이다")
     void serviceRequestsUseOperationalPriorityAndLatestOrder() throws IOException {
         String select = loadNormalizedSelect(
                 "mapper/servicerequest/ServiceRequestMapper.xml",
@@ -67,7 +67,8 @@ class AdminManagementListSortMapperContractTest {
         assertThat(select)
                 .contains("CASE s.SVC_REQ_STATUS_CD WHEN 'SVCC0002' THEN 0 "
                         + "WHEN 'SVCC0001' THEN 1 WHEN 'SVCC0003' THEN 2 "
-                        + "WHEN 'SVCC0004' THEN 3 ELSE 4 END ASC, "
+                        + "WHEN 'SVCC0005' THEN 3 WHEN 'SVCC0004' THEN 4 "
+                        + "WHEN 'SVCC0006' THEN 5 ELSE 6 END ASC, "
                         + "s.SVC_REQ_REG_DT DESC, s.SVC_REQ_SN DESC");
         assertOrderBeforeLimit(select);
     }

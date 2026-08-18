@@ -16,9 +16,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import nct.common.domain.RefType;
 import nct.global.security.crypto.FieldCryptoService;
+import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.PointBalance;
 import nct.point.exception.InsufficientPointException;
 import nct.point.service.PointService;
@@ -37,6 +39,7 @@ class PointConcurrencyTest {
     @Autowired PointService pointService;
     @Autowired JdbcTemplate jdbc;
     @Autowired FieldCryptoService fieldCryptoService;
+    @MockitoBean AuditLogPort auditLogPort;
 
     long buyerSn;
 

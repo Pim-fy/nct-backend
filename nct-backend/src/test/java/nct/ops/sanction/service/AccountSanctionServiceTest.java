@@ -74,8 +74,9 @@ class AccountSanctionServiceTest {
         when(sanctionMapper.releaseAccountSuspension(2L, "req-release", "99")).thenReturn(1);
         when(sanctionMapper.releaseAccountSuspension(1L, null, "99")).thenReturn(1);
 
-        service.release(command("req-release"));
+        boolean changed = service.release(command("req-release"));
 
+        assertThat(changed).isTrue();
         verify(sanctionMapper).releaseAccountSuspension(2L, "req-release", "99");
         verify(sanctionMapper).releaseAccountSuspension(1L, null, "99");
     }
@@ -86,9 +87,38 @@ class AccountSanctionServiceTest {
         when(sanctionMapper.lockUser(10L)).thenReturn(10L);
         when(sanctionMapper.findByReleaseRequestId("req-release")).thenReturn(record(1L, 10L));
 
-        service.release(command("req-release"));
+        boolean changed = service.release(command("req-release"));
 
+        assertThat(changed).isFalse();
         verify(sanctionMapper, never()).findActiveAccountSuspensionsForUpdate(any());
+        verify(sanctionMapper, never()).releaseAccountSuspension(any(), any(), any());
+    }
+
+    @Test
+    void releaseWithoutActiveManualSanctionReportsNoChange() {
+        AccountSanctionService service = new AccountSanctionService(sanctionMapper);
+        when(sanctionMapper.lockUser(10L)).thenReturn(10L);
+        when(sanctionMapper.findActiveAccountSuspensionsForUpdate(10L)).thenReturn(List.of());
+
+        boolean changed = service.release(command("req-release-empty"));
+
+        assertThat(changed).isFalse();
+        verify(sanctionMapper, never()).releaseAccountSuspension(any(), any(), any());
+    }
+
+    /** 담당자 7 · ISSUE-T7-008: 신고 기반 제재만 있으면 수동 제재 해제로 계산하지 않습니다. */
+    @Test
+    void releaseWithOnlyReportSanctionReportsNoChange() {
+        AccountSanctionService service = new AccountSanctionService(sanctionMapper);
+        SanctionRecord reportSanction = record(1L, 10L);
+        reportSanction.setSourceReportSn(501L);
+        when(sanctionMapper.lockUser(10L)).thenReturn(10L);
+        when(sanctionMapper.findActiveAccountSuspensionsForUpdate(10L))
+                .thenReturn(List.of(reportSanction));
+
+        boolean changed = service.release(command("req-release-report-only"));
+
+        assertThat(changed).isFalse();
         verify(sanctionMapper, never()).releaseAccountSuspension(any(), any(), any());
     }
 

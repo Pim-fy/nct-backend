@@ -12,8 +12,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
-import nct.auction.dto.AuctionDetailResponse;
-import nct.auction.service.AuctionService;
+import nct.auction.constant.AuctionStatusCode;
+import nct.auction.dto.AuctionReportReference;
+import nct.auction.port.AuctionReportReferenceReader;
 import nct.chat.dto.ChatRoomResponse;
 import nct.chat.service.ChatService;
 import nct.global.exception.CustomException;
@@ -23,7 +24,7 @@ import nct.servicerequest.port.ServiceRequestQuoteReader;
 
 class AbuseReportReferenceValidationServiceTest {
 
-    private AuctionService auctionService;
+    private AuctionReportReferenceReader auctionReferenceReader;
     private ChatService chatService;
     private ServiceRequestQuoteReader serviceRequestReader;
     private ServiceRequestQuoteProviderReader quoteProviderReader;
@@ -32,22 +33,23 @@ class AbuseReportReferenceValidationServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        ObjectProvider<AuctionService> auctionServiceProvider = mock(ObjectProvider.class);
+        ObjectProvider<AuctionReportReferenceReader> auctionReferenceReaderProvider =
+                mock(ObjectProvider.class);
         ObjectProvider<ChatService> chatServiceProvider = mock(ObjectProvider.class);
         ObjectProvider<ServiceRequestQuoteReader> serviceRequestReaderProvider = mock(ObjectProvider.class);
         ObjectProvider<ServiceRequestQuoteProviderReader> quoteProviderReaderProvider = mock(ObjectProvider.class);
 
-        auctionService = mock(AuctionService.class);
+        auctionReferenceReader = mock(AuctionReportReferenceReader.class);
         chatService = mock(ChatService.class);
         serviceRequestReader = mock(ServiceRequestQuoteReader.class);
         quoteProviderReader = mock(ServiceRequestQuoteProviderReader.class);
-        when(auctionServiceProvider.getObject()).thenReturn(auctionService);
+        when(auctionReferenceReaderProvider.getObject()).thenReturn(auctionReferenceReader);
         when(chatServiceProvider.getObject()).thenReturn(chatService);
         when(serviceRequestReaderProvider.getObject()).thenReturn(serviceRequestReader);
         when(quoteProviderReaderProvider.getObject()).thenReturn(quoteProviderReader);
 
         service = new AbuseReportReferenceValidationService(
-                auctionServiceProvider,
+                auctionReferenceReaderProvider,
                 chatServiceProvider,
                 serviceRequestReaderProvider,
                 quoteProviderReaderProvider);
@@ -65,10 +67,9 @@ class AbuseReportReferenceValidationServiceTest {
 
     @Test
     void returnsVerifiedAuctionTitleAfterValidatingSeller() {
-        AuctionDetailResponse auction = new AuctionDetailResponse();
-        auction.setSellerId(20L);
-        auction.setTitle("  검증된 경매 제목  ");
-        when(auctionService.findAuctionDetail(301L, 10L, false)).thenReturn(auction);
+        AuctionReportReference auction = auctionReference(301L, 20L, "  검증된 경매 제목  ",
+                AuctionStatusCode.ACTIVE);
+        when(auctionReferenceReader.findByAuctionId(301L)).thenReturn(auction);
 
         assertThat(service.requireValid(10L, 20L, "REFC0003", 301L))
                 .isEqualTo("검증된 경매 제목");
@@ -77,13 +78,22 @@ class AbuseReportReferenceValidationServiceTest {
 
     @Test
     void fallsBackToAuctionNumberWhenVerifiedTitleIsBlank() {
-        AuctionDetailResponse auction = new AuctionDetailResponse();
-        auction.setSellerId(20L);
-        auction.setTitle("   ");
-        when(auctionService.findAuctionDetail(302L, 10L, false)).thenReturn(auction);
+        AuctionReportReference auction = auctionReference(
+                302L, 20L, "   ", AuctionStatusCode.ENDED);
+        when(auctionReferenceReader.findByAuctionId(302L)).thenReturn(auction);
 
         assertThat(service.requireValid(10L, 20L, "REFC0003", 302L))
                 .isEqualTo("경매 #302");
+    }
+
+    @Test
+    void acceptsEndedAuctionWithoutCallingPublicAuctionDetail() {
+        AuctionReportReference auction = auctionReference(
+                303L, 20L, "종료 경매", AuctionStatusCode.ENDED);
+        when(auctionReferenceReader.findByAuctionId(303L)).thenReturn(auction);
+
+        assertThat(service.requireValid(10L, 20L, "REFC0003", 303L))
+                .isEqualTo("종료 경매");
     }
 
     @Test
@@ -119,5 +129,18 @@ class AbuseReportReferenceValidationServiceTest {
                 .isInstanceOfSatisfying(CustomException.class, exception ->
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+    }
+
+    private AuctionReportReference auctionReference(
+            Long auctionId,
+            Long sellerUserSn,
+            String title,
+            String statusCode) {
+        AuctionReportReference reference = new AuctionReportReference();
+        reference.setAuctionId(auctionId);
+        reference.setSellerUserSn(sellerUserSn);
+        reference.setTitle(title);
+        reference.setStatusCode(statusCode);
+        return reference;
     }
 }

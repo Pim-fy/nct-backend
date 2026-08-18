@@ -34,6 +34,7 @@ import nct.global.response.PageResponse;
 import nct.abuse.mapper.AbuseReportMapper;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.abuse.port.ActiveReportedUserReader;
+import nct.abuse.port.AdminActiveDisputeCountReader;
 import nct.abuse.port.TradeIncidentReportCommand;
 import nct.abuse.port.TradeIncidentReportPort;
 import nct.auction.port.AuctionReferenceTitleReader;
@@ -64,6 +65,7 @@ public class AbuseReportService implements
         AdminReportDecisionPort,
         ActiveAbuseReportReferenceReader,
         ActiveReportedUserReader,
+        AdminActiveDisputeCountReader,
         TradeIncidentReportPort {
 
     static final String FALSE_INFORMATION_FRAUD_REPORT_TYPE = "ABRC0001";
@@ -596,6 +598,14 @@ public class AbuseReportService implements
                 abuseReportMapper.findPendingReports(RECEIVED_STATUS, PROCESSING_STATUS);
         enrichAdminReferenceSummaries(reports);
         return reports;
+    }
+
+    /** 담당자 7 · F-OPS-010: 거래 분쟁 목록의 접수·처리중 합계를 그대로 대시보드에 제공합니다. */
+    @Override
+    @Transactional(readOnly = true)
+    public long countActiveDisputesForAdmin() {
+        return abuseReportMapper.countAdminReports(RECEIVED_STATUS, null, "TRADE_ISSUE")
+                + abuseReportMapper.countAdminReports(PROCESSING_STATUS, null, "TRADE_ISSUE");
     }
 
     /** 담당자 7 · F-OPS-007: 처리 전후 신고를 상태·검색 조건으로 페이지 조회한다. */

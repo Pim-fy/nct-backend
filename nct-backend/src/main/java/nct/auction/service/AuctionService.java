@@ -36,6 +36,8 @@ import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
 import nct.member.port.BuyerDeliveryAddressReader;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.ops.reference.service.AuctionBidUnitPolicyService;
 import nct.point.domain.AuctionPolicy;
 import nct.point.service.PointService;
@@ -75,6 +77,7 @@ public class AuctionService {
     private final ReviewService reviewService;
     private final AuctionBidUnitPolicyService bidUnitPolicyService;
     private final AuctionBidTradeReader auctionBidTradeReader;
+    private final AuditLogPort auditLogPort;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -485,8 +488,29 @@ public class AuctionService {
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, bidAmount);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        recordSuccessfulBid(userId, auctionId, bid.getBidId(), target.getCurrentPrice(), bidAmount);
         publishAuctionChanged(auctionId, "BID_PLACED");
         return detail;
+    }
+
+    /** 담당자 7 · F-OPS-015: 입찰 전체 처리가 성공한 경우에만 공통 감사 계약으로 기록합니다. */
+    private void recordSuccessfulBid(
+            Long userId,
+            Long auctionId,
+            Long bidId,
+            BigDecimal previousAmount,
+            BigDecimal bidAmount) {
+        auditLogPort.record(new AuditLogCommand(
+                "CREATE",
+                String.valueOf(userId),
+                RefType.BID.getCode(),
+                bidId,
+                "입찰 성공",
+                "auctionAmount=" + toPointAmount(previousAmount) + "P",
+                "bidAmount=" + toPointAmount(bidAmount) + "P",
+                "bid:" + bidId,
+                RefType.AUCTION.getCode(),
+                auctionId));
     }
 
     @Transactional

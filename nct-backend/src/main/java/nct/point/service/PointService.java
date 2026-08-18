@@ -10,6 +10,8 @@ import nct.abuse.port.ActiveReportedUserReader;
 import nct.common.domain.RefType;
 import nct.global.exception.ErrorCode;
 import nct.notification.service.NotificationService;
+import nct.ops.audit.port.AuditLogCommand;
+import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.PointBalance;
 import nct.point.domain.PointCategory;
 import nct.point.domain.PointLedger;
@@ -38,7 +40,7 @@ import nct.point.mapper.SystemSettingMapper;
  * - 모든 명령은 시작 시 lockUser(회원 행 잠금)로 동시 요청을 직렬화 → 이중 차감 방지
  * - 호출하는 쪽 트랜잭션 안에서 부르면 같은 트랜잭션으로 묶인다 (실패 시 함께 롤백)
  *
- * 감사로그(AUDIT_LOG)는 담당자7 도메인 구현 후 연동한다.
+ * 원장 행 생성과 감사로그 기록은 같은 트랜잭션에 참여해 함께 확정되거나 롤백된다.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,6 +50,7 @@ public class PointService {
     private final NotificationService notificationService;
     private final SystemSettingMapper systemSettingMapper;
     private final ActiveReportedUserReader activeReportedUserReader;
+    private final AuditLogPort auditLogPort;
 
     // ---------- 조회 (F-PAY-038, F-PAY-039) ----------
 
@@ -104,9 +107,9 @@ public class PointService {
         }
 
         // 복식 기록: 사용가능에서 빠져나가고(−) 홀딩으로 들어온다(+) — 합계 0, 총 보유 불변
-        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.HOLD, -amt,
+        insertLedger(usrSn, usrSn, PointCategory.AVAILABLE, PointLedgerType.HOLD, -amt,
                 bal.getAvailableAmt() - amt, refType, refSn, reason);
-        insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.HOLD, amt,
+        insertLedger(usrSn, usrSn, PointCategory.HOLD, PointLedgerType.HOLD, amt,
                 bal.getHoldAmt() + amt, refType, refSn, reason);
     }
 
@@ -128,9 +131,9 @@ public class PointService {
         PointBalance bal = pointMapper.selectBalance(usrSn);
 
         // 복식 기록: 홀딩에서 빠져나가(−) 사용가능으로 복귀(+)
-        insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.RELEASE, -holdAmt,
+        insertLedger(usrSn, null, PointCategory.HOLD, PointLedgerType.RELEASE, -holdAmt,
                 bal.getHoldAmt() - holdAmt, refType, refSn, reason);
-        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.RELEASE, holdAmt,
+        insertLedger(usrSn, null, PointCategory.AVAILABLE, PointLedgerType.RELEASE, holdAmt,
                 bal.getAvailableAmt() + holdAmt, refType, refSn, reason);
 
         // 같은 트랜잭션 안에서 알림까지 기록 — 원장만 남고 알림이 누락되는 일이 없도록
@@ -157,7 +160,7 @@ public class PointService {
         }
         PointBalance bal = pointMapper.selectBalance(usrSn);
 
-        insertLedger(usrSn, PointCategory.HOLD, PointLedgerType.ESCROW, -holdAmt,
+        insertLedger(usrSn, null, PointCategory.HOLD, PointLedgerType.ESCROW, -holdAmt,
                 bal.getHoldAmt() - holdAmt, refType, refSn, reason);
         return holdAmt;
     }
@@ -183,7 +186,7 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
+        insertLedger(usrSn, null, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
                 bal.getSettleableAmt() + amt, refType, refSn, reason + " (수수료 0원)");
     }
 
@@ -199,7 +202,7 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CHARGE, amt,
+        return insertLedger(usrSn, usrSn, PointCategory.AVAILABLE, PointLedgerType.CHARGE, amt,
                 bal.getAvailableAmt() + amt, null, null, reason);
     }
 
@@ -227,7 +230,7 @@ public class PointService {
                     "환전 가능 포인트가 부족합니다. 신청: " + amt + "P, 보유: " + bal.getAvailableAmt() + "P");
         }
 
-        return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_OUT, -amt,
+        return insertLedger(usrSn, usrSn, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_OUT, -amt,
                 bal.getAvailableAmt() - amt, null, null, reason);
     }
 
@@ -245,7 +248,7 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        return insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_RESTORE, amt,
+        return insertLedger(usrSn, null, PointCategory.AVAILABLE, PointLedgerType.EXCHANGE_RESTORE, amt,
                 bal.getAvailableAmt() + amt, null, null, reason);
     }
 
@@ -279,9 +282,9 @@ public class PointService {
 
         // 복식 기록: 정산가능에서 빠져나가(−) 사용가능으로 들어온다(+) — 합계 0, 총 보유 불변
         String reason = "정산가능→사용가능 전환";
-        insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.CONVERT, -amt,
+        insertLedger(usrSn, usrSn, PointCategory.SETTLEABLE, PointLedgerType.CONVERT, -amt,
                 bal.getSettleableAmt() - amt, null, null, reason);
-        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.CONVERT, amt,
+        insertLedger(usrSn, usrSn, PointCategory.AVAILABLE, PointLedgerType.CONVERT, amt,
                 bal.getAvailableAmt() + amt, null, null, reason);
 
         // 같은 트랜잭션 안에서 알림까지 기록 (원장만 남고 알림이 누락되는 일이 없도록)
@@ -308,7 +311,7 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.ADJUST, -amt,
+        insertLedger(usrSn, null, PointCategory.AVAILABLE, PointLedgerType.ADJUST, -amt,
                 bal.getAvailableAmt() - amt, null, null, reason);
     }
 
@@ -344,7 +347,7 @@ public class PointService {
         }
 
         // 단식 1행(−): 회원의 총 보유가 줄고 거래대금이 플랫폼 보관 상태가 된다 (경매 보관금전환과 동일 유형)
-        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.ESCROW, -amt,
+        insertLedger(usrSn, usrSn, PointCategory.AVAILABLE, PointLedgerType.ESCROW, -amt,
                 bal.getAvailableAmt() - amt, refType, refSn, reason);
         // 알림 없음 — 사용자 본인이 화면에서 직접 결제한 능동 행위 (홀딩과 동일 원칙)
     }
@@ -392,7 +395,7 @@ public class PointService {
         PointBalance bal = pointMapper.selectBalance(providerSn);
         // 적립은 전액(+) 기록 — 수수료는 호출자(SettlementService)가 요율을 정해 deductCommission으로
         // 별도 −행을 짝으로 남긴다 (팀 합의 2026-08-13: 경매 5% / 서비스 10% 단일 고정)
-        insertLedger(providerSn, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
+        insertLedger(providerSn, null, PointCategory.SETTLEABLE, PointLedgerType.SETTLE, amt,
                 bal.getSettleableAmt() + amt, refType, refSn, reason);
 
         // 알림은 여기서 발행하지 않는다 — 수수료(경매 5%/서비스 10%)를 아는 건 호출자
@@ -420,7 +423,7 @@ public class PointService {
         lockUser(usrSn);
 
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        insertLedger(usrSn, PointCategory.SETTLEABLE, PointLedgerType.FEE, -feeAmt,
+        insertLedger(usrSn, null, PointCategory.SETTLEABLE, PointLedgerType.FEE, -feeAmt,
                 bal.getSettleableAmt() - feeAmt, refType, refSn, reason);
     }
 
@@ -462,7 +465,7 @@ public class PointService {
 
         long amt = -escrowNet; // 보관금 잔존액 전액 환불
         PointBalance bal = pointMapper.selectBalance(usrSn);
-        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.REFUND, amt,
+        insertLedger(usrSn, null, PointCategory.AVAILABLE, PointLedgerType.REFUND, amt,
                 bal.getAvailableAmt() + amt, refType, refSn, reason);
 
         // 같은 트랜잭션 안에서 알림까지 기록. 판정 내용 이메일은 기존 notifyDisputeResolved
@@ -493,7 +496,7 @@ public class PointService {
      *
      * @return 생성된 포인트원장일련번호
      */
-    private long insertLedger(long usrSn, PointCategory category, PointLedgerType type,
+    private long insertLedger(long usrSn, Long auditActorSn, PointCategory category, PointLedgerType type,
                               long amt, long balAfter, RefType refType, Long refSn, String reason) {
         PointLedger row = new PointLedger();
         row.setUsrSn(usrSn);
@@ -506,6 +509,57 @@ public class PointService {
         row.setPtLdgBalAfterAmt(balAfter);
         row.setPtLdgRsnCn(reason);
         pointMapper.insertLedger(row);
+        recordPointChange(row, auditActorSn, category, type, amt, balAfter, refType, refSn);
         return row.getPtLdgSn();
+    }
+
+    /** 담당자 7 · F-OPS-015: 원장 행과 같은 트랜잭션에서 민감 원문 없는 감사 기록을 남깁니다. */
+    private void recordPointChange(
+            PointLedger row,
+            Long auditActorSn,
+            PointCategory category,
+            PointLedgerType type,
+            long amount,
+            long balanceAfter,
+            RefType relatedRefType,
+            Long relatedRefSn) {
+        long balanceBefore = balanceAfter - amount;
+        auditLogPort.record(new AuditLogCommand(
+                "CREATE",
+                auditActorSn == null ? "SYSTEM" : String.valueOf(auditActorSn),
+                RefType.POINT_LEDGER.getCode(),
+                row.getPtLdgSn(),
+                "포인트 원장 변동",
+                "포인트 분류=" + pointCategoryName(category) + ", 잔액=" + balanceBefore + "P",
+                "포인트 분류=" + pointCategoryName(category)
+                        + ", 원장 유형=" + pointLedgerTypeName(type)
+                        + ", 변동=" + amount + "P, 잔액=" + balanceAfter + "P",
+                "point-ledger:" + row.getPtLdgSn(),
+                relatedRefType == null ? null : relatedRefType.getCode(),
+                relatedRefSn));
+    }
+
+    private String pointCategoryName(PointCategory category) {
+        return switch (category) {
+            case AVAILABLE -> "사용 가능";
+            case HOLD -> "홀딩";
+            case SETTLEABLE -> "정산 가능";
+        };
+    }
+
+    private String pointLedgerTypeName(PointLedgerType type) {
+        return switch (type) {
+            case CHARGE -> "충전";
+            case HOLD -> "홀딩";
+            case RELEASE -> "반환";
+            case ESCROW -> "보관금 전환";
+            case SETTLE -> "정산";
+            case ADJUST -> "보정";
+            case EXCHANGE_OUT -> "환전 차감";
+            case EXCHANGE_RESTORE -> "환전 복원";
+            case CONVERT -> "포인트 전환";
+            case REFUND -> "보관금 환불";
+            case FEE -> "수수료 차감";
+        };
     }
 }

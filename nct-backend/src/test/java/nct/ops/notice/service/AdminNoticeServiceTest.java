@@ -5,12 +5,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -250,6 +260,130 @@ class AdminNoticeServiceTest {
         verifyNoInteractions(changeHistoryPort);
     }
 
+    /** 담당자 7 | ISSUE-T7-002: 같은 토큰을 순차 재사용하면 첫 수정만 반영되는지 확인한다. */
+    @Test
+    void acceptsFirstUpdateAndRejectsSequentialReuseOfSameRevision() {
+        LocalDateTime originalRevisionAt = LocalDateTime.of(2026, 8, 17, 18, 36, 32);
+        Notice original = notice(
+                15L, "NTCC0006", "Y", originalRevisionAt, "수정 전 제목", "수정 전 본문");
+        Notice updated = notice(15L, "NTCC0006", "Y", originalRevisionAt.plusSeconds(1));
+        when(noticeMapper.findAdminNoticeById(15L))
+                .thenReturn(Optional.of(original))
+                .thenReturn(Optional.of(updated));
+
+        AdminNoticeUpsertRequest request = validRequest();
+        request.setExpectedUpdatedAt(originalRevisionAt);
+        request.setExpectedRevision(service.getNotice(15L).getRevisionToken());
+        when(noticeMapper.findAdminNoticeByIdForUpdate(15L))
+                .thenReturn(Optional.of(original))
+                .thenReturn(Optional.of(updated));
+        when(noticeMapper.updateAdminNotice(any(AdminNoticeWriteCommand.class))).thenReturn(1);
+
+        assertThat(service.updateNotice(15L, request, 7L))
+                .satisfies(response -> {
+                    assertThat(response.getTitle()).isEqualTo(request.getTitle());
+                    assertThat(response.getContent()).isEqualTo(request.getContent());
+                    assertThat(response.getUpdatedAt()).isEqualTo(originalRevisionAt.plusSeconds(1));
+                    assertThat(response.getRevisionToken()).isNotEqualTo(request.getExpectedRevision());
+                });
+        assertThatThrownBy(() -> service.updateNotice(15L, request, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(noticeMapper, times(1)).updateAdminNotice(any(AdminNoticeWriteCommand.class));
+        verify(changeHistoryPort, times(1)).record(any(NoticeChangeHistoryCommand.class));
+    }
+
+    /** 담당자 7 | ISSUE-T7-002: UPDATE 영향 행이 없으면 감사 이력 없이 충돌로 끝낸다. */
+    @Test
+    void rejectsUpdateWhenAtomicRevisionConditionMatchesNoRow() {
+        LocalDateTime originalRevisionAt = LocalDateTime.of(2026, 8, 17, 18, 36, 32);
+        Notice original = notice(15L, "NTCC0006", "Y", originalRevisionAt);
+        when(noticeMapper.findAdminNoticeById(15L)).thenReturn(Optional.of(original));
+
+        AdminNoticeUpsertRequest request = validRequest();
+        request.setExpectedUpdatedAt(originalRevisionAt);
+        request.setExpectedRevision(service.getNotice(15L).getRevisionToken());
+        when(noticeMapper.findAdminNoticeByIdForUpdate(15L)).thenReturn(Optional.of(original));
+        when(noticeMapper.updateAdminNotice(any(AdminNoticeWriteCommand.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.updateNotice(15L, request, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verifyNoInteractions(changeHistoryPort);
+    }
+
+    /** 담당자 7 | ISSUE-T7-002: 동시 수정도 원자적 리비전 조건으로 한 건만 성공해야 한다. */
+    @Test
+    void concurrentUpdatesWithSameRevisionAllowOnlyOneSuccess() throws Exception {
+        LocalDateTime originalRevisionAt = LocalDateTime.of(2026, 8, 17, 18, 36, 32);
+        Notice original = notice(
+                15L, "NTCC0006", "Y", originalRevisionAt, "수정 전 제목", "수정 전 본문");
+        AtomicReference<Notice> storedNotice = new AtomicReference<>(original);
+        when(noticeMapper.findAdminNoticeById(15L))
+                .thenAnswer(invocation -> Optional.of(storedNotice.get()));
+
+        AdminNoticeUpsertRequest request = validRequest();
+        request.setExpectedUpdatedAt(originalRevisionAt);
+        request.setExpectedRevision(service.getNotice(15L).getRevisionToken());
+        when(noticeMapper.findAdminNoticeByIdForUpdate(15L))
+                .thenAnswer(invocation -> Optional.of(storedNotice.get()));
+        when(noticeMapper.updateAdminNotice(any(AdminNoticeWriteCommand.class)))
+                .thenAnswer(invocation -> {
+                    AdminNoticeWriteCommand command = invocation.getArgument(
+                            0, AdminNoticeWriteCommand.class);
+                    Notice current = storedNotice.get();
+                    if (!command.getExpectedUpdatedAt().equals(current.getUpdatedAt())) {
+                        return 0;
+                    }
+                    Notice next = noticeFromCommand(
+                            current, command, command.getExpectedUpdatedAt().plusSeconds(1));
+                    return storedNotice.compareAndSet(current, next) ? 1 : 0;
+                });
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<ErrorCode> first = executor.submit(() -> updateAfterSignal(start, request));
+            Future<ErrorCode> second = executor.submit(() -> updateAfterSignal(start, request));
+            start.countDown();
+
+            ErrorCode firstResult = first.get(5, TimeUnit.SECONDS);
+            ErrorCode secondResult = second.get(5, TimeUnit.SECONDS);
+            int successCount = (firstResult == null ? 1 : 0) + (secondResult == null ? 1 : 0);
+            int conflictCount = (firstResult == ErrorCode.CONFLICT ? 1 : 0)
+                    + (secondResult == ErrorCode.CONFLICT ? 1 : 0);
+
+            assertThat(successCount).isEqualTo(1);
+            assertThat(conflictCount).isEqualTo(1);
+            assertThat(storedNotice.get().getTitle()).isEqualTo(request.getTitle());
+            assertThat(storedNotice.get().getContent()).isEqualTo(request.getContent());
+            assertThat(storedNotice.get().getUpdatedAt())
+                    .isEqualTo(originalRevisionAt.plusSeconds(1));
+            verify(changeHistoryPort, times(1)).record(any(NoticeChangeHistoryCommand.class));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /** 담당자 7 | ISSUE-T7-002: Mapper가 같은 초에도 갱신시각을 전진시키는 계약을 고정한다. */
+    @Test
+    void mapperUpdateAdvancesTimestampAndKeepsExpectedTimestampCondition() throws IOException {
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(
+                "mapper/ops/notice/NoticeMapper.xml")) {
+            assertThat(input).isNotNull();
+            String mapperXml = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertThat(mapperXml)
+                    .contains("NTC_UPDT_DT = GREATEST(")
+                    .contains("DATE_ADD(#{expectedUpdatedAt}, INTERVAL 1 SECOND)")
+                    .contains("AND NTC_UPDT_DT = #{expectedUpdatedAt}");
+        }
+    }
+
     @Test
     void rejectsMissingActorBeforeReadingNotice() {
         assertThatThrownBy(() -> service.hideNotice(1L, null, null))
@@ -271,12 +405,30 @@ class AdminNoticeServiceTest {
         return request;
     }
 
+    private ErrorCode updateAfterSignal(CountDownLatch start,
+                                        AdminNoticeUpsertRequest request) throws InterruptedException {
+        start.await();
+        try {
+            service.updateNotice(15L, request, 7L);
+            return null;
+        } catch (CustomException exception) {
+            return exception.getErrorCode();
+        }
+    }
+
     private Notice notice(Long noticeId, String statusCode, String useYn) {
         return notice(noticeId, statusCode, useYn, LocalDateTime.now());
     }
 
     private Notice notice(Long noticeId, String statusCode, String useYn,
-                          LocalDateTime updatedAt) {
+                           LocalDateTime updatedAt) {
+        return notice(
+                noticeId, statusCode, useYn, updatedAt,
+                "서비스 점검 안내", "공지 본문입니다.");
+    }
+
+    private Notice notice(Long noticeId, String statusCode, String useYn,
+                          LocalDateTime updatedAt, String title, String content) {
         return Notice.builder()
                 .noticeSn(noticeId)
                 .writerUserSn(7L)
@@ -285,8 +437,8 @@ class AdminNoticeServiceTest {
                 .typeName("안내")
                 .statusCode(statusCode)
                 .statusName("NTCC0007".equals(statusCode) ? "숨김" : "게시")
-                .title("서비스 점검 안내")
-                .content("공지 본문입니다.")
+                .title(title)
+                .content(content)
                 .postingStartAt(LocalDateTime.now().minusDays(1))
                 .postingEndAt(LocalDateTime.now().plusDays(1))
                 .pinnedYn("Y")
@@ -294,6 +446,29 @@ class AdminNoticeServiceTest {
                 .useYn(useYn)
                 .registeredAt(LocalDateTime.now().minusDays(2))
                 .updatedAt(updatedAt)
+                .build();
+    }
+
+    private Notice noticeFromCommand(Notice current, AdminNoticeWriteCommand command,
+                                     LocalDateTime updatedAt) {
+        return Notice.builder()
+                .noticeSn(current.getNoticeSn())
+                .writerUserSn(current.getWriterUserSn())
+                .writerName(current.getWriterName())
+                .typeCode(command.getTypeCode())
+                .typeName(current.getTypeName())
+                .statusCode(command.getStatusCode())
+                .statusName(current.getStatusName())
+                .title(command.getTitle())
+                .content(command.getContent())
+                .postingStartAt(command.getPostingStartAt())
+                .postingEndAt(command.getPostingEndAt())
+                .pinnedYn(command.getPinnedYn())
+                .viewCount(current.getViewCount())
+                .useYn(current.getUseYn())
+                .registeredAt(current.getRegisteredAt())
+                .updatedAt(updatedAt)
+                .updaterActorId(command.getActorId())
                 .build();
     }
 }

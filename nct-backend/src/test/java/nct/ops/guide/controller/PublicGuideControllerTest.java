@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.lang.reflect.Method;
@@ -62,5 +64,16 @@ class PublicGuideControllerTest {
                 .andExpect(status().isOk());
 
         verify(publicGuideService).getGuide("bid");
+    }
+
+    /** 담당자 7 · ISSUE-T7-005: 공개 GET API도 잘못된 메서드를 표준 405로 반환합니다. */
+    @Test
+    void rejectsUnsupportedMethodWithStandardMethodNotAllowedResponse() throws Exception {
+        mockMvc.perform(post("/api/guides"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value("error"))
+                .andExpect(jsonPath("$.httpCode").value(405))
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.path").value("/api/guides"));
     }
 }

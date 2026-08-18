@@ -160,19 +160,45 @@ public class AdminMemberService {
             tradeResult = memberTradeRestrictionPort.restrictActiveTrades(
                     new MemberTradeRestrictionCommand(userSn, adminUserSn, normalizedReason));
         } else {
-            sanctionPort.release(sanctionCommand);
+            boolean sanctionChanged = sanctionPort.release(sanctionCommand);
             if (sanctionPort.hasActiveSuspension(userSn)) {
-                recordAudit(userSn, adminUserSn, normalizedReason, requestId.trim(),
-                        SUSPENDED, SUSPENDED, tradeResult);
+                if (sanctionChanged) {
+                    recordAudit(userSn, adminUserSn, normalizedReason, requestId.trim(),
+                            SUSPENDED, SUSPENDED, tradeResult);
+                }
                 return new AdminMemberStatusChangeResponse(
-                        userSn, SUSPENDED, SUSPENDED, false, 0, 0);
+                        userSn, SUSPENDED, SUSPENDED, sanctionChanged, 0, 0);
+            }
+            statusResult = memberStatusCommandPort.changeStatus(
+                    new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
+            boolean operationChanged = sanctionChanged || statusResult.changed();
+            if (!operationChanged) {
+                return new AdminMemberStatusChangeResponse(
+                        userSn,
+                        statusResult.previousStatusCode(),
+                        statusResult.currentStatusCode(),
+                        false,
+                        0,
+                        0);
             }
             AccountRestrictionRecoveryPort recoveryPort = recoveryPortProvider.getIfAvailable();
             if (recoveryPort != null) {
                 recoveryPort.restorePending(userSn, adminUserSn, normalizedReason);
             }
-            statusResult = memberStatusCommandPort.changeStatus(
-                    new MemberStatusChangeCommand(userSn, targetStatusCode, adminUserSn));
+
+            String previousStatus = statusResult.previousStatusCode();
+            recordAudit(userSn, adminUserSn, normalizedReason, requestId.trim(),
+                    previousStatus, statusResult.currentStatusCode(), tradeResult);
+            if (statusResult.changed()) {
+                notifyMembers(userSn, statusResult.currentStatusCode(), tradeResult);
+            }
+            return new AdminMemberStatusChangeResponse(
+                    userSn,
+                    previousStatus,
+                    statusResult.currentStatusCode(),
+                    true,
+                    0,
+                    0);
         }
 
         String previousStatus = statusResult.previousStatusCode();

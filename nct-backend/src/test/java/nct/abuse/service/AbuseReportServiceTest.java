@@ -606,6 +606,17 @@ class AbuseReportServiceTest {
                 20);
     }
 
+    /** 담당자 7 · ISSUE-T7-004: 대시보드 활성 분쟁은 거래 분쟁 목록의 접수·처리중 합계입니다. */
+    @Test
+    void countsActiveTradeDisputesUsingAdminListFilters() {
+        when(abuseReportMapper.countAdminReports(
+                AbuseReportService.RECEIVED_STATUS, null, "TRADE_ISSUE")).thenReturn(3L);
+        when(abuseReportMapper.countAdminReports(
+                AbuseReportService.PROCESSING_STATUS, null, "TRADE_ISSUE")).thenReturn(2L);
+
+        assertThat(service.countActiveDisputesForAdmin()).isEqualTo(5L);
+    }
+
     @Test
     void rejectsInvalidAdminReportPageRequest() {
         assertThatThrownBy(() -> service.getAdminReports(null, null, "ALL", 0, 20))

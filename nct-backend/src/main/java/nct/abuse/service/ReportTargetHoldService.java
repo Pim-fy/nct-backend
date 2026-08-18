@@ -52,6 +52,11 @@ public class ReportTargetHoldService {
             return;
         }
 
+        // ABUSE_REPORT_IMPACT.ABR_SN은 신고당 1건입니다. 재시도는 대상 상태를 다시 건드리지 않습니다.
+        if (reportImpactMapper.findByReportForUpdate(reportSn) != null) {
+            return;
+        }
+
         ReportTargetHoldResult hold = port.pause(referenceSn, actorId);
         if (hold == null) {
             return;
@@ -102,6 +107,7 @@ public class ReportTargetHoldService {
                 impact.getPreviousStatusCode(),
                 impact.getRemainingStartSeconds(),
                 impact.getRemainingSeconds(),
+                impact.isSettlementHoldApplied(),
                 actorId));
         update(
                 impact,
@@ -139,7 +145,9 @@ public class ReportTargetHoldService {
                 .remainingSeconds(baseline == null
                         ? hold.remainingSeconds()
                         : baseline.getRemainingSeconds())
-                .settlementHoldApplied(false)
+                .settlementHoldApplied(baseline == null
+                        ? hold.settlementHoldApplied()
+                        : baseline.isSettlementHoldApplied())
                 .result(hold.result())
                 .registeredBy(actorId)
                 .updatedBy(actorId)
@@ -162,7 +170,7 @@ public class ReportTargetHoldService {
                 .previousDeadlineAt(hold.previousDeadlineAt())
                 .remainingStartSeconds(hold.remainingStartSeconds())
                 .remainingSeconds(hold.remainingSeconds())
-                .settlementHoldApplied(false)
+                .settlementHoldApplied(hold.settlementHoldApplied())
                 .result(hold.result())
                 .registeredBy(actorId)
                 .updatedBy(actorId)

@@ -12,6 +12,8 @@ public class AdminServiceTradeSummary {
     private Long serviceRequestId;
     private Long tradeId;
     private Long quoteId;
+    private Long quoteAmount;
+    private String quoteStatusCode;
     private String tradeStatusCode;
     private String tradeStatusName;
     private int activeDisputeCount;

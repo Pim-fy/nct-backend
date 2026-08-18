@@ -37,7 +37,8 @@ class ReportTargetHoldServiceTest {
         LocalDateTime startAt = LocalDateTime.of(2026, 8, 15, 10, 0);
         LocalDateTime endAt = LocalDateTime.of(2026, 8, 16, 10, 0);
         when(port.pause(81L, "10")).thenReturn(new ReportTargetHoldResult(
-                81L, true, false, "AUCC0001", startAt, endAt, 3600L, 90000L, "paused"));
+                81L, true, false, "AUCC0001", startAt, endAt,
+                3600L, 90000L, false, "paused"));
         when(mapper.insert(org.mockito.ArgumentMatchers.any())).thenReturn(1);
 
         service.pause(501L, "REFC0003", 81L, "10");
@@ -54,7 +55,8 @@ class ReportTargetHoldServiceTest {
     @Test
     void copiesOriginalBaselineWhenAnotherReportAlreadyPausedTarget() {
         when(port.pause(81L, "10")).thenReturn(new ReportTargetHoldResult(
-                81L, false, true, "AUCC0013", null, null, null, null, "already held"));
+                81L, false, true, "AUCC0013", null, null,
+                null, null, false, "already held"));
         ReportImpactRecord baseline = ReportImpactRecord.builder()
                 .previousStatusCode("AUCC0002")
                 .remainingSeconds(1800L)
@@ -95,6 +97,17 @@ class ReportTargetHoldServiceTest {
     }
 
     @Test
+    void doesNotPauseOrInsertAgainWhenReportImpactAlreadyExists() {
+        when(mapper.findByReportForUpdate(501L)).thenReturn(impact(701L, 501L, 81L));
+
+        service.pause(501L, "REFC0003", 81L, "10");
+
+        verify(port, never()).pause(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(mapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void restoresTargetWhenLastActiveReportIsResolved() {
         ReportImpactRecord impact = impact(701L, 501L, 81L);
         when(mapper.findByReportForUpdate(501L)).thenReturn(impact);
@@ -102,7 +115,7 @@ class ReportTargetHoldServiceTest {
                 "REFC0003", 81L, 501L, "ABSC0001", "ABSC0002"))
                 .thenReturn(false);
         ReportTargetRestoreCommand command = new ReportTargetRestoreCommand(
-                81L, "AUCC0002", null, 1800L, "7");
+                81L, "AUCC0002", null, 1800L, false, "7");
         when(port.restore(command)).thenReturn(true);
         when(mapper.updateResult(
                 701L, "APPLIED", "RESTORED",

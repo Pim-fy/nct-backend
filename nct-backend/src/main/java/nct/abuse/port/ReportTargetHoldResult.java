@@ -12,5 +12,6 @@ public record ReportTargetHoldResult(
         LocalDateTime previousDeadlineAt,
         Long remainingStartSeconds,
         Long remainingSeconds,
+        boolean settlementHoldApplied,
         String result) {
 }

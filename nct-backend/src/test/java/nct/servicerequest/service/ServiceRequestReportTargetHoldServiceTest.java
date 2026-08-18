@@ -56,7 +56,7 @@ class ServiceRequestReportTargetHoldServiceTest {
     @Test
     void restoresRequestWithPreservedRemainingDeadline() {
         ReportTargetRestoreCommand command = new ReportTargetRestoreCommand(
-                91L, "SVCC0002", null, 10800L, "10");
+                91L, "SVCC0002", null, 10800L, false, "10");
         when(serviceRequestMapper.restoreServiceRequestAfterSanction(
                 91L, "SVCC0002", 10800L, "10"))
                 .thenReturn(1);

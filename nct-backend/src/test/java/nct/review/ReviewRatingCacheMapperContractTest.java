@@ -8,18 +8,18 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
-/** 담당자 7 · F-COM-009: 제공자 통합 평점 캐시 SQL의 권한 경계를 고정한다. */
+/** 담당자 7 · REQ-COM-012: 제공자 서비스 평점 캐시 SQL의 도메인 경계를 고정한다. */
 class ReviewRatingCacheMapperContractTest {
 
     @Test
-    void reviewRatingSummaryUsesAllActiveReviewsReceivedByTheMember() throws IOException {
+    void reviewRatingSummaryUsesOnlyActiveServiceReviewsReceivedByTheMember() throws IOException {
         String mapper = resource("mapper/review/ReviewMapper.xml");
 
         assertThat(mapper)
-                .contains("<select id=\"selectReviewRatingSummary\"")
+                .contains("<select id=\"selectServiceReviewRatingSummary\"")
                 .contains("R.RVW_USE_YN = 'Y'")
                 .contains("R.REVWD_USR_SN = #{usrSn}")
-                .doesNotContain("selectServiceReviewRatingSummary");
+                .contains("R.RVW_DOMAIN_CD = 'RVWC0002'");
     }
 
     @Test
@@ -31,7 +31,41 @@ class ReviewRatingCacheMapperContractTest {
                 .contains("R.RVW_SN = #{rvwSn}")
                 .contains("R.REVWR_USR_SN = #{usrSn}")
                 .contains("R.RVW_USE_YN = 'Y'")
-                .contains("R.REVWD_USR_SN AS receiverUserSn");
+                .contains("R.REVWD_USR_SN AS receiverUserSn")
+                .contains("R.RVW_DOMAIN_CD AS reviewDomainCode");
+    }
+
+    @Test
+    void publicTrustScoreIsRestrictedToTheRequestedReviewDomain() throws IOException {
+        String mapper = resource("mapper/review/ReviewMapper.xml");
+        String trustScoreQuery = mapper.substring(
+                mapper.indexOf("<select id=\"selectTrustScore\""),
+                mapper.indexOf("</select>", mapper.indexOf("<select id=\"selectTrustScore\"")));
+
+        assertThat(trustScoreQuery)
+                .contains("R.RVW_USE_YN = 'Y'")
+                .contains("R.RVW_DOMAIN_CD = #{reviewDomainCode}");
+
+        assertThat(mapper)
+                .doesNotContain("selectReviewRatingSummary");
+    }
+
+    @Test
+    void receivedReviewListUsesTheReviewDomainAsItsDealTypeSource() throws IOException {
+        String mapper = resource("mapper/review/ReviewMapper.xml");
+        String listQuery = mapper.substring(
+                mapper.indexOf("<select id=\"selectReviewsByReceiver\""),
+                mapper.indexOf("</select>", mapper.indexOf("<select id=\"selectReviewsByReceiver\"")));
+        String countQuery = mapper.substring(
+                mapper.indexOf("<select id=\"countReviewsByReceiver\""),
+                mapper.indexOf("</select>", mapper.indexOf("<select id=\"countReviewsByReceiver\"")));
+
+        assertThat(listQuery)
+                .contains("R.RVW_DOMAIN_CD = 'RVWC0001'")
+                .contains("R.RVW_DOMAIN_CD = 'RVWC0002'");
+        assertThat(countQuery)
+                .contains("R.RVW_DOMAIN_CD = 'RVWC0001'")
+                .contains("R.RVW_DOMAIN_CD = 'RVWC0002'");
     }
 
     @Test

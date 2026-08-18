@@ -1,7 +1,14 @@
 package nct.ops.operation.service;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import lombok.RequiredArgsConstructor;
 import nct.auction.dto.AuctionDetailResponse;
@@ -19,6 +26,7 @@ import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogCommand;
 import nct.ops.audit.port.AuditLogPort;
+import nct.ops.audit.port.AuditLogRequestSnapshot;
 import nct.ops.operation.dto.AdminAuctionOverviewResponse;
 import nct.ops.operation.dto.AdminProductVisibilityResult;
 import nct.product.dto.ProductResponse;
@@ -38,6 +46,7 @@ public class AdminAuctionOperationService {
     private final ProductService productService;
     private final AuditLogPort auditLogPort;
     private final NotificationService notificationService;
+    private final ConcurrentMap<String, RequestLockEntry> requestLocks = new ConcurrentHashMap<>();
 
     @Transactional
     public AdminAuctionCancellationResult forceCancel(
@@ -154,34 +163,109 @@ public class AdminAuctionOperationService {
             String requestId,
             Long adminUserSn) {
         String normalizedReason = validate(auctionSn, reason, requestId, adminUserSn);
-        AdminAuctionOverviewResponse overview = queryService.getAuctionOverview(auctionSn);
-        AdminAuctionPauseResult result = pause
-                ? pausePort.pause(new AdminAuctionPauseCommand(auctionSn, adminUserSn))
-                : pausePort.resume(new AdminAuctionPauseCommand(auctionSn, adminUserSn));
-        if (!result.changed()) {
-            return result;
-        }
+        String normalizedRequestId = requestId.trim();
+        String expectedStatus = pause ? "AUCC9001" : "AUCC0002";
+        RequestLockEntry lockEntry = acquireRequestLock(normalizedRequestId);
+        boolean releaseInFinally = true;
+        try {
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                releaseInFinally = false;
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        unlockRequest(normalizedRequestId, lockEntry);
+                    }
+                });
+            }
 
-        auditLogPort.record(new AuditLogCommand(
-                "STATUS_CHANGE",
-                String.valueOf(adminUserSn),
-                RefType.AUCTION.getCode(),
-                auctionSn,
-                normalizedReason,
-                "auctionStatus=" + result.previousStatusCode(),
-                "auctionStatus=" + result.statusCode(),
-                requestId.trim()));
-        if (result.sellerUserId() != null) {
-            notificationService.notify(
-                    result.sellerUserId(),
-                    NotificationType.AUCTION,
-                    NotificationDomain.AUCTION,
-                    pause ? "경매가 일시중지되었습니다." : "경매가 다시 시작되었습니다.",
-                    auctionNotificationContent(overview, auctionSn, normalizedReason),
-                    RefType.AUCTION,
-                    auctionSn);
+            AuditLogRequestSnapshot previousRequest = auditLogPort.findByRequestId(normalizedRequestId);
+            if (previousRequest != null) {
+                requireSamePauseRequest(previousRequest, auctionSn, adminUserSn, expectedStatus);
+                return new AdminAuctionPauseResult(
+                        auctionSn,
+                        null,
+                        statusValue(previousRequest.beforeSummary()),
+                        expectedStatus,
+                        false);
+            }
+            AdminAuctionOverviewResponse overview = queryService.getAuctionOverview(auctionSn);
+            AdminAuctionPauseResult result = pause
+                    ? pausePort.pause(new AdminAuctionPauseCommand(auctionSn, adminUserSn))
+                    : pausePort.resume(new AdminAuctionPauseCommand(auctionSn, adminUserSn));
+            if (!result.changed()) {
+                return result;
+            }
+
+            auditLogPort.record(new AuditLogCommand(
+                    "STATUS_CHANGE",
+                    String.valueOf(adminUserSn),
+                    RefType.AUCTION.getCode(),
+                    auctionSn,
+                    normalizedReason,
+                    "auctionStatus=" + result.previousStatusCode(),
+                    "auctionStatus=" + result.statusCode(),
+                    normalizedRequestId));
+            if (result.sellerUserId() != null) {
+                notificationService.notify(
+                        result.sellerUserId(),
+                        NotificationType.AUCTION,
+                        NotificationDomain.AUCTION,
+                        pause ? "경매가 일시중지되었습니다." : "경매가 다시 시작되었습니다.",
+                        auctionNotificationContent(overview, auctionSn, normalizedReason),
+                        RefType.AUCTION,
+                        auctionSn);
+            }
+            return result;
+        } finally {
+            if (releaseInFinally) {
+                unlockRequest(normalizedRequestId, lockEntry);
+            }
         }
-        return result;
+    }
+
+    /** 담당자 7 · REQ-OPS-003: 동일 요청 ID의 동시 처리를 커밋 완료까지 직렬화합니다. */
+    private RequestLockEntry acquireRequestLock(String requestId) {
+        RequestLockEntry entry = requestLocks.compute(requestId, (ignored, current) -> {
+            RequestLockEntry selected = current == null ? new RequestLockEntry() : current;
+            selected.users.incrementAndGet();
+            return selected;
+        });
+        entry.lock.lock();
+        return entry;
+    }
+
+    private void unlockRequest(String requestId, RequestLockEntry entry) {
+        try {
+            entry.lock.unlock();
+        } finally {
+            requestLocks.computeIfPresent(requestId, (ignored, current) -> {
+                if (current != entry) {
+                    return current;
+                }
+                return current.users.decrementAndGet() == 0 ? null : current;
+            });
+        }
+    }
+
+    private void requireSamePauseRequest(
+            AuditLogRequestSnapshot previousRequest,
+            Long auctionSn,
+            Long adminUserSn,
+            String expectedStatus) {
+        boolean sameRequest = adminUserSn.equals(previousRequest.actorUserSn())
+                && RefType.AUCTION.getCode().equals(previousRequest.referenceTypeCode())
+                && auctionSn.equals(previousRequest.referenceSn())
+                && ("auctionStatus=" + expectedStatus).equals(previousRequest.afterSummary());
+        if (!sameRequest) {
+            throw new CustomException(ErrorCode.CONFLICT, "이미 다른 운영 처리에 사용된 요청 ID입니다.");
+        }
+    }
+
+    private String statusValue(String summary) {
+        String prefix = "auctionStatus=";
+        return summary != null && summary.startsWith(prefix)
+                ? summary.substring(prefix.length())
+                : null;
     }
 
     /** 담당자 7 · ISSUE-T7-009: 알림에는 상품명과 경매 번호를 함께 표시합니다. */
@@ -215,5 +299,10 @@ public class AdminAuctionOperationService {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
         return reason.trim();
+    }
+
+    private static final class RequestLockEntry {
+        private final ReentrantLock lock = new ReentrantLock();
+        private final AtomicInteger users = new AtomicInteger();
     }
 }

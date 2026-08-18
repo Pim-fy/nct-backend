@@ -415,7 +415,7 @@ public class AuctionService {
             return;
         }
 
-        TrustScoreResponse trustScore = reviewService.getTrustScore(detail.getSellerId());
+        TrustScoreResponse trustScore = reviewService.getTrustScore(detail.getSellerId(), "goods");
         if (trustScore == null) {
             return;
         }

@@ -85,9 +85,11 @@ public interface ReviewMapper {
             @Param("dealType") String dealType,
             @Param("role") String role);
 
-    /** 통합 평점 집계 (F-COM-009, 담당자4 정민재 소비) */
-    TrustScoreResponse selectTrustScore(@Param("usrSn") long usrSn);
+    /** 담당자 7 · F-COM-009: 지정한 리뷰 도메인의 공개 평점만 집계한다. */
+    TrustScoreResponse selectTrustScore(
+            @Param("usrSn") long usrSn,
+            @Param("reviewDomainCode") String reviewDomainCode);
 
-    /** 회원이 받은 활성 리뷰 전체의 평균 별점과 리뷰 수를 계산한다. */
-    ReviewRatingSummary selectReviewRatingSummary(@Param("usrSn") long usrSn);
+    /** 제공자가 받은 활성 서비스 리뷰의 평균 별점과 리뷰 수를 계산한다. */
+    ReviewRatingSummary selectServiceReviewRatingSummary(@Param("usrSn") long usrSn);
 }

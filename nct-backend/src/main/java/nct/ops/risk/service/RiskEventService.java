@@ -1,5 +1,6 @@
 package nct.ops.risk.service;
 
+import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,6 +46,19 @@ public class RiskEventService {
      */
     @Transactional
     public RiskEventResult recordOnce(RiskEventCommand command) {
+        return record(command, null);
+    }
+
+    /** 담당자 7 · REQ-OPS-011: 같은 판정 구간에는 처리 완료 후에도 다시 만들지 않습니다. */
+    @Transactional
+    public RiskEventResult recordOnceSince(RiskEventCommand command, LocalDateTime dedupeSince) {
+        if (dedupeSince == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return record(command, dedupeSince);
+    }
+
+    private RiskEventResult record(RiskEventCommand command, LocalDateTime dedupeSince) {
         validate(command);
         String typeCode = command.typeCode().trim();
         String referenceTypeCode = trimToNull(command.referenceTypeCode());
@@ -83,8 +97,11 @@ public class RiskEventService {
             }
 
             // 같은 미처리 이벤트가 이미 있으면 새 행을 만들지 않고 기존 번호를 돌려준다.
-            Long existingId = riskEventMapper.findUnprocessedDuplicateId(
-                    typeCode, referenceTypeCode, command.referenceSn(), content);
+            Long existingId = dedupeSince == null
+                    ? riskEventMapper.findUnprocessedDuplicateId(
+                            typeCode, referenceTypeCode, command.referenceSn(), content)
+                    : riskEventMapper.findDuplicateIdSince(
+                            typeCode, referenceTypeCode, command.referenceSn(), content, dedupeSince);
             if (existingId != null) {
                 return new RiskEventResult(existingId, false);
             }

@@ -1,8 +1,12 @@
 package nct.ops.operation.service;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +21,8 @@ import nct.notification.domain.NotificationDomain;
 import nct.notification.domain.NotificationType;
 import nct.notification.service.NotificationService;
 import nct.ops.audit.port.AuditLogPort;
+import nct.ops.audit.port.AuditLogRequestSnapshot;
+import nct.global.exception.CustomException;
 import nct.ops.operation.dto.AdminAuctionOverviewResponse;
 import nct.product.dto.ProductResponse;
 import nct.product.service.ProductService;
@@ -28,6 +34,7 @@ class AdminAuctionOperationServiceTest {
     private AdminAuctionCancellationPort cancellationPort;
     private AdminAuctionPausePort pausePort;
     private NotificationService notificationService;
+    private AuditLogPort auditLogPort;
     private AdminAuctionOperationService service;
 
     @BeforeEach
@@ -36,12 +43,13 @@ class AdminAuctionOperationServiceTest {
         cancellationPort = mock(AdminAuctionCancellationPort.class);
         pausePort = mock(AdminAuctionPausePort.class);
         notificationService = mock(NotificationService.class);
+        auditLogPort = mock(AuditLogPort.class);
         service = new AdminAuctionOperationService(
                 queryService,
                 cancellationPort,
                 pausePort,
                 mock(ProductService.class),
-                mock(AuditLogPort.class),
+                auditLogPort,
                 notificationService);
     }
 
@@ -116,5 +124,45 @@ class AdminAuctionOperationServiceTest {
                 "대체 경매 제목 · 경매 #5415 · 사유: 일시 확인",
                 RefType.AUCTION,
                 5415L);
+    }
+
+    @Test
+    void samePauseRequestIdReturnsPreviousResultWithoutSideEffects() {
+        when(auditLogPort.findByRequestId("request-4")).thenReturn(
+                new AuditLogRequestSnapshot(
+                        7L, RefType.AUCTION.getCode(), 5415L,
+                        "auctionStatus=AUCC0002", "auctionStatus=AUCC9001"));
+
+        AdminAuctionPauseResult result = service.pause(
+                5415L, "같은 요청 재시도", "request-4", 7L);
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.previousStatusCode()).isEqualTo("AUCC0002");
+        assertThat(result.statusCode()).isEqualTo("AUCC9001");
+        verify(queryService, never()).getAuctionOverview(5415L);
+        verify(pausePort, never()).pause(org.mockito.ArgumentMatchers.any());
+        verify(notificationService, never()).notify(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void requestIdUsedForAnotherAuctionOperationIsRejected() {
+        when(auditLogPort.findByRequestId("request-5")).thenReturn(
+                new AuditLogRequestSnapshot(
+                        7L, RefType.AUCTION.getCode(), 5415L,
+                        "auctionStatus=AUCC0002", "auctionStatus=AUCC9001"));
+
+        assertThatThrownBy(() -> service.resume(
+                5415L, "반대 동작", "request-5", 7L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining("요청 ID");
+
+        verify(pausePort, never()).resume(org.mockito.ArgumentMatchers.any());
     }
 }

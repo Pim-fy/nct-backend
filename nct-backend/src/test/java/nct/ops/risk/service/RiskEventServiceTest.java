@@ -9,6 +9,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -60,6 +62,21 @@ class RiskEventServiceTest {
         RiskEventResult result = service.recordOnce(command);
 
         assertThat(result).isEqualTo(new RiskEventResult(31L, false));
+        verify(riskEventMapper, never()).insertRiskEvent(any());
+    }
+
+    @Test
+    void returnsEventCreatedInsideSameDetectionWindow() {
+        LocalDateTime since = LocalDateTime.of(2026, 8, 18, 10, 0);
+        RiskEventCommand command = new RiskEventCommand(
+                "RSKC0005", null, null, "최근 60분 거래 신고 10건 이상 감지", "SYSTEM");
+        when(riskEventMapper.findDuplicateIdSince(
+                "RSKC0005", null, null, "최근 60분 거래 신고 10건 이상 감지", since))
+                .thenReturn(41L);
+
+        RiskEventResult result = service.recordOnceSince(command, since);
+
+        assertThat(result).isEqualTo(new RiskEventResult(41L, false));
         verify(riskEventMapper, never()).insertRiskEvent(any());
     }
 

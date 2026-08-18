@@ -241,7 +241,7 @@ public class ReviewService {
             photoCount = storeReviewImages(photos, review.getRvwSn(), usrSn);
         }
 
-        synchronizeProviderRating(trade.getCounterpartUsrSn());
+        synchronizeProviderServiceRating(trade.getCounterpartUsrSn(), review.getRvwDomainCd());
 
         notificationService.notify(
                 trade.getCounterpartUsrSn(),
@@ -287,7 +287,9 @@ public class ReviewService {
             addedPhotoCount = storeReviewImages(photos, rvwSn, usrSn);
         }
 
-        synchronizeProviderRating(ratingTarget.getReceiverUserSn());
+        synchronizeProviderServiceRating(
+                ratingTarget.getReceiverUserSn(),
+                ratingTarget.getReviewDomainCode());
 
         return ReviewUpdateResult.builder()
                 .id(rvwSn)
@@ -305,7 +307,9 @@ public class ReviewService {
         if (deleted == 0) {
             throw new ReviewNotFoundException(rvwSn);
         }
-        synchronizeProviderRating(ratingTarget.getReceiverUserSn());
+        synchronizeProviderServiceRating(
+                ratingTarget.getReceiverUserSn(),
+                ratingTarget.getReviewDomainCode());
     }
 
     /**
@@ -343,16 +347,26 @@ public class ReviewService {
                 .build();
     }
 
-    /**
-     * 특정 회원의 통합 평점 (F-COM-009, 담당자4 정민재 소비).
-     * 리뷰가 없으면 totalCount=0, 점수는 null, hasReviews=false.
-     */
-    public TrustScoreResponse getTrustScore(long usrSn) {
-        TrustScoreResponse raw = reviewMapper.selectTrustScore(usrSn);
+    /** 담당자 7 · F-COM-009: 물품 또는 서비스 한 도메인의 공개 평점만 집계한다. */
+    public TrustScoreResponse getTrustScore(long usrSn, String dealType) {
+        String reviewDomainCode = toRequiredReviewDomainCode(dealType);
+        TrustScoreResponse raw = reviewMapper.selectTrustScore(usrSn, reviewDomainCode);
         return raw.toBuilder()
                 .usrSn(usrSn)
                 .hasReviews(raw.getTotalCount() > 0)
                 .build();
+    }
+
+    private String toRequiredReviewDomainCode(String dealType) {
+        if ("goods".equalsIgnoreCase(dealType)) {
+            return ReviewDomainCode.GOODS;
+        }
+        if ("service".equalsIgnoreCase(dealType)) {
+            return ReviewDomainCode.SERVICE;
+        }
+        throw new CustomException(
+                ErrorCode.INVALID_INPUT_VALUE,
+                "평점 거래 유형은 goods 또는 service여야 합니다.");
     }
 
     /** 담당자 7 · F-COM-008: 역할 필터는 물품 리뷰에서만 허용하고 ALL은 기존 전체 조회로 정규화한다. */
@@ -375,12 +389,15 @@ public class ReviewService {
         return normalizedRole;
     }
 
-    /** 제공자 프로필이 있는 회원은 받은 활성 리뷰 전체의 통합 평점을 검색용 캐시에 반영한다. */
-    private void synchronizeProviderRating(long receiverUserSn) {
+    /** 담당자 7 · REQ-COM-012: 서비스 리뷰 변경만 제공자 대표 평점 캐시에 반영한다. */
+    private void synchronizeProviderServiceRating(long receiverUserSn, String reviewDomainCode) {
+        if (!ReviewDomainCode.SERVICE.equals(reviewDomainCode)) {
+            return;
+        }
         if (!providerReviewRatingPort.lockReviewRating(receiverUserSn)) {
             return;
         }
-        ReviewRatingSummary summary = reviewMapper.selectReviewRatingSummary(receiverUserSn);
+        ReviewRatingSummary summary = reviewMapper.selectServiceReviewRatingSummary(receiverUserSn);
         providerReviewRatingPort.updateReviewRating(
                 receiverUserSn,
                 summary.getAverageScore(),

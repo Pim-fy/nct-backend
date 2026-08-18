@@ -2,6 +2,7 @@ package nct.abuse.service;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,6 +11,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import nct.abuse.domain.ReportImpactRecord;
 import nct.abuse.mapper.ReportImpactMapper;
@@ -79,7 +81,9 @@ class ReportTargetHoldServiceTest {
     @Test
     void keepsHoldWhileAnotherActiveReportRemains() {
         ReportImpactRecord impact = impact(701L, 501L, 81L);
+        when(mapper.findByReport(501L)).thenReturn(impact);
         when(mapper.findByReportForUpdate(501L)).thenReturn(impact);
+        when(port.lock(81L)).thenReturn(true);
         when(mapper.existsOtherActiveImpact(
                 "REFC0003", 81L, 501L, "ABSC0001", "ABSC0002"))
                 .thenReturn(true);
@@ -90,6 +94,10 @@ class ReportTargetHoldServiceTest {
 
         service.release(501L, "7");
 
+        InOrder order = inOrder(port, mapper);
+        order.verify(port).lock(81L);
+        order.verify(mapper).existsOtherActiveImpact(
+                "REFC0003", 81L, 501L, "ABSC0001", "ABSC0002");
         verify(port, never()).restore(org.mockito.ArgumentMatchers.any());
         verify(mapper).updateResult(
                 701L, "APPLIED", "RETAINED",
@@ -126,7 +134,9 @@ class ReportTargetHoldServiceTest {
     @Test
     void restoresTargetWhenLastActiveReportIsResolved() {
         ReportImpactRecord impact = impact(701L, 501L, 81L);
+        when(mapper.findByReport(501L)).thenReturn(impact);
         when(mapper.findByReportForUpdate(501L)).thenReturn(impact);
+        when(port.lock(81L)).thenReturn(true);
         when(mapper.existsOtherActiveImpact(
                 "REFC0003", 81L, 501L, "ABSC0001", "ABSC0002"))
                 .thenReturn(false);
@@ -140,7 +150,32 @@ class ReportTargetHoldServiceTest {
 
         service.release(501L, "7");
 
+        verify(port).lock(81L);
         verify(port).restore(command);
+    }
+
+    @Test
+    void marksImpactSkippedWhenReferencedTargetNoLongerExists() {
+        ReportImpactRecord impact = impact(701L, 501L, 81L);
+        when(mapper.findByReport(501L)).thenReturn(impact);
+        when(port.lock(81L)).thenReturn(false);
+        when(mapper.findByReportForUpdate(501L)).thenReturn(impact);
+        when(mapper.updateResult(
+                701L, "APPLIED", "SKIPPED",
+                "대상을 찾을 수 없어 현재 상태를 유지했습니다.", "7"))
+                .thenReturn(1);
+
+        service.release(501L, "7");
+
+        verify(mapper).updateResult(
+                701L, "APPLIED", "SKIPPED",
+                "대상을 찾을 수 없어 현재 상태를 유지했습니다.", "7");
+        verify(mapper, never()).existsOtherActiveImpact(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     private ReportImpactRecord impact(Long impactSn, Long reportSn, Long referenceSn) {

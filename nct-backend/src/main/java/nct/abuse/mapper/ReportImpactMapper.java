@@ -17,6 +17,8 @@ public interface ReportImpactMapper {
 
     ReportImpactRecord findByReportForUpdate(@Param("reportSn") Long reportSn);
 
+    ReportImpactRecord findByReport(@Param("reportSn") Long reportSn);
+
     int insert(ReportImpactRecord impact);
 
     boolean existsOtherActiveImpact(

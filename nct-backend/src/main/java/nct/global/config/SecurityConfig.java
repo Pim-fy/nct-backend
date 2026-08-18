@@ -129,7 +129,7 @@ public class SecurityConfig {
                     .permitAll()
                 .requestMatchers("/api/guides", "/api/guides/**")
                     .permitAll()
-                // F-COM-009: 공개 프로필·경매 상세에서 사용하는 통합 평점·리뷰 건수 집계.
+                // 담당자 7 · F-COM-009: 공개 프로필·경매 상세의 도메인별 평점·리뷰 건수 집계.
                 // 리뷰 작성·내 리뷰 등 다른 /api/reviews/** 경로는 기존 인증을 유지한다.
                 .requestMatchers(HttpMethod.GET, "/api/reviews/trust/*")
                     .permitAll()

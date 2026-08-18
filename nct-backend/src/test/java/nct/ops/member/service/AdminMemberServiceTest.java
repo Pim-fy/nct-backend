@@ -80,6 +80,7 @@ class AdminMemberServiceTest {
     @Test
     void restrictionRunsMemberThenSanctionThenTradesThenAudit() {
         when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
+        when(sanctionPort.restrict(any())).thenReturn(true);
         when(memberStatusCommandPort.changeStatus(any()))
                 .thenReturn(new MemberStatusChangeResult("USRC0001", "USRC0002", true));
         when(tradeRestrictionPort.restrictActiveTrades(any()))
@@ -160,6 +161,7 @@ class AdminMemberServiceTest {
     @Test
     void activeToSuspendedSameRequestIdIsAppliedOnce() {
         when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
+        when(sanctionPort.restrict(any())).thenReturn(true);
         when(memberStatusCommandPort.changeStatus(any()))
                 .thenReturn(
                         new MemberStatusChangeResult("USRC0001", "USRC0002", true),
@@ -237,6 +239,24 @@ class AdminMemberServiceTest {
                 10L, "USRC0002", "운영 제한", "request-rollback", 99L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("sanction insert failed");
+
+        verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
+        verify(auditLogPort, never()).record(any());
+        verify(notificationService, never())
+                .notify(any(Long.class), any(), any(), any(), any(), any(), any());
+    }
+
+    /** 담당자 7 · REQ-OPS-002: 해제 뒤 도착한 과거 정지 요청은 상태·제재 불일치를 남기지 않습니다. */
+    @Test
+    void staleRestrictReplayAfterReleaseRollsBackBeforeSideEffects() {
+        when(sanctionProvider.getIfAvailable()).thenReturn(sanctionPort);
+        when(memberStatusCommandPort.changeStatus(any()))
+                .thenReturn(new MemberStatusChangeResult("USRC0001", "USRC0002", true));
+        when(sanctionPort.restrict(any())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.changeStatus(
+                10L, "USRC0002", "과거 정지 재전송", "request-old-suspend", 99L))
+                .isInstanceOf(CustomException.class);
 
         verify(tradeRestrictionPort, never()).restrictActiveTrades(any());
         verify(auditLogPort, never()).record(any());

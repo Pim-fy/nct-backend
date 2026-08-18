@@ -9,4 +9,7 @@ package nct.ops.audit.port;
 public interface AuditLogPort {
 
     void record(AuditLogCommand command);
+
+    /** 요청 ID가 이미 처리됐는지 확인해 관리자 상태 변경의 재실행을 막습니다. */
+    AuditLogRequestSnapshot findByRequestId(String requestId);
 }

@@ -62,6 +62,12 @@ public class ReportTargetHoldService {
             return;
         }
 
+        // 담당자 7 · F-OPS-007: 종료·취소처럼 보류할 수 없는 대상은 신고만 접수합니다.
+        // 복구할 상태가 없으므로 영향 행도 만들지 않아 신고 생성 전체가 불필요하게 실패하지 않게 합니다.
+        if (!hold.changed() && !hold.alreadyOnReportHold()) {
+            return;
+        }
+
         ReportImpactRecord baseline = hold.alreadyOnReportHold()
                 ? reportImpactMapper.findActiveBaselineForUpdate(
                         referenceTypeCode,

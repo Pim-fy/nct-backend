@@ -77,6 +77,10 @@ class AdminNoticeServiceTest {
         verify(noticeMapper).insertAdminNotice(writeCaptor.capture());
         assertThat(writeCaptor.getValue().getWriterUserSn()).isEqualTo(7L);
         assertThat(writeCaptor.getValue().getActorId()).isEqualTo("USR:7");
+        assertThat(writeCaptor.getValue().getPostingStartAt())
+                .isEqualTo(request.getPostingStartAt());
+        assertThat(writeCaptor.getValue().getPostingEndAt())
+                .isEqualTo(request.getPostingEndAt());
 
         ArgumentCaptor<NoticeChangeHistoryCommand> auditCaptor =
                 ArgumentCaptor.forClass(NoticeChangeHistoryCommand.class);
@@ -105,6 +109,38 @@ class AdminNoticeServiceTest {
         verify(changeHistoryPort).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().getReason())
                 .isEqualTo("공지 등록: 정기 점검 메모");
+    }
+
+    @Test
+    void rollsBackCreateWhenStoredPostingPeriodDiffersFromRequest() {
+        AdminNoticeUpsertRequest request = validRequest();
+        Notice incorrectlyStored = Notice.builder()
+                .noticeSn(41L)
+                .writerUserSn(7L)
+                .typeCode("NTCC0003")
+                .statusCode("NTCC0006")
+                .title(request.getTitle())
+                .content(request.getContent())
+                .postingStartAt(LocalDateTime.of(2026, 7, 16, 10, 0))
+                .postingEndAt(null)
+                .pinnedYn("Y")
+                .viewCount(0L)
+                .useYn("Y")
+                .registeredAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        when(noticeMapper.insertAdminNotice(any(AdminNoticeWriteCommand.class)))
+                .thenAnswer(invocation -> {
+                    invocation.getArgument(0, AdminNoticeWriteCommand.class).setNoticeSn(41L);
+                    return 1;
+                });
+        when(noticeMapper.findAdminNoticeById(41L)).thenReturn(Optional.of(incorrectlyStored));
+
+        assertThatThrownBy(() -> service.createNotice(request, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DATABASE_ERROR);
+        verifyNoInteractions(changeHistoryPort);
     }
 
     @Test
@@ -439,8 +475,8 @@ class AdminNoticeServiceTest {
                 .statusName("NTCC0007".equals(statusCode) ? "숨김" : "게시")
                 .title(title)
                 .content(content)
-                .postingStartAt(LocalDateTime.now().minusDays(1))
-                .postingEndAt(LocalDateTime.now().plusDays(1))
+                .postingStartAt(LocalDateTime.of(2026, 7, 16, 9, 0))
+                .postingEndAt(LocalDateTime.of(2026, 7, 20, 9, 0))
                 .pinnedYn("Y")
                 .viewCount(3L)
                 .useYn(useYn)

@@ -65,6 +65,27 @@ class SensitiveDataInspectionServiceTest {
                 .isEqualTo(SensitiveDetectionReportResult.Status.CREATED);
     }
 
+    /** 담당자 7 · ISSUE-T7-013: 실제 연락처·계좌번호 원문은 저장 전에 계속 마스킹합니다. */
+    @Test
+    void masksPhoneAndAccountBeforeCreatingRiskEvent() {
+        when(riskEventService.recordOnce(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new RiskEventResult(11L, true));
+
+        SensitiveDataInspectionResult result = service.inspect(
+                "전화 010-1234-5678, 계좌 123-456-789012",
+                REQUEST_ID, "REFC0004", 7L, "9");
+
+        assertThat(result.maskedText())
+                .contains("[연락처 마스킹]", "[계좌번호 마스킹]")
+                .doesNotContain("010-1234-5678", "123-456-789012");
+
+        var commandCaptor = forClass(RiskEventCommand.class);
+        verify(riskEventService).recordOnce(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().content())
+                .startsWith("Sensitive data detected; request=")
+                .doesNotContain("010-1234-5678", "123-456-789012", REQUEST_ID);
+    }
+
     @Test
     void doesNotCreateRiskEventWhenNothingIsDetected() {
         SensitiveDataInspectionResult result = service.inspect(

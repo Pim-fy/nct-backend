@@ -11,12 +11,12 @@ import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import nct.global.exception.CustomException;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.domain.RiskEvent;
 import nct.ops.risk.mapper.RiskEventMapper;
-import nct.ops.security.service.SensitiveDataMasker;
 
 class RiskEventServiceTest {
 
@@ -28,8 +28,7 @@ class RiskEventServiceTest {
     void setUp() {
         riskEventMapper = mock(RiskEventMapper.class);
         referenceDataService = mock(ReferenceDataService.class);
-        service = new RiskEventService(riskEventMapper, referenceDataService,
-                new SensitiveDataMasker());
+        service = new RiskEventService(riskEventMapper, referenceDataService);
     }
 
     @Test
@@ -62,6 +61,27 @@ class RiskEventServiceTest {
 
         assertThat(result).isEqualTo(new RiskEventResult(31L, false));
         verify(riskEventMapper, never()).insertRiskEvent(any());
+    }
+
+    /** 담당자 7 · ISSUE-T7-013: 안전한 운영 식별자와 금액은 민감정보로 재해석하지 않습니다. */
+    @Test
+    void preservesSafeOperationalIdentifiersAndPointAmountsWithoutRemasking() {
+        String safeContent = "민감정보 탐지: requestHash=010-1234-5678, 전체 합계 123456789012P";
+        RiskEventCommand command = new RiskEventCommand(
+                "RSKC0001", "REFC0004", 10L, safeContent, "SYSTEM");
+        when(riskEventMapper.findUnprocessedDuplicateId(
+                "RSKC0001", "REFC0004", 10L, safeContent)).thenReturn(null);
+        doAnswer(invocation -> {
+            RiskEvent event = invocation.getArgument(0);
+            event.setRiskEventSn(78L);
+            return 1;
+        }).when(riskEventMapper).insertRiskEvent(any(RiskEvent.class));
+
+        service.recordOnce(command);
+
+        ArgumentCaptor<RiskEvent> eventCaptor = ArgumentCaptor.forClass(RiskEvent.class);
+        verify(riskEventMapper).insertRiskEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getContent()).isEqualTo(safeContent);
     }
 
     @Test

@@ -5,10 +5,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -125,6 +127,7 @@ public class AdminNoticeService {
         }
 
         Notice created = requireNotice(command.getNoticeSn());
+        requirePersistedPostingPeriod(command, created);
         recordChange("CREATE", actorUserId, created.getNoticeSn(), auditReason,
                 null, summary(created));
         return toDetail(created);
@@ -150,6 +153,7 @@ public class AdminNoticeService {
         }
 
         Notice updated = requireNotice(noticeId);
+        requirePersistedPostingPeriod(command, updated);
         recordChange("UPDATE", actorUserId, noticeId, auditReason,
                 summary(before), summary(updated));
         return toDetail(updated);
@@ -312,6 +316,24 @@ public class AdminNoticeService {
                 .pinnedYn(Boolean.TRUE.equals(request.getPinned()) ? "Y" : "N")
                 .actorId(actorId(actorUserId))
                 .build();
+    }
+
+    /** 담당자 7 · F-OPS-023: 게시기간이 실제 저장되지 않았는데 성공 응답과 감사를 남기지 않습니다. */
+    private void requirePersistedPostingPeriod(AdminNoticeWriteCommand command, Notice stored) {
+        if (!sameDatabaseDateTime(command.getPostingStartAt(), stored.getPostingStartAt())
+                || !sameDatabaseDateTime(command.getPostingEndAt(), stored.getPostingEndAt())) {
+            throw new CustomException(ErrorCode.DATABASE_ERROR);
+        }
+    }
+
+    private boolean sameDatabaseDateTime(LocalDateTime requested, LocalDateTime stored) {
+        LocalDateTime normalizedRequested = requested == null
+                ? null
+                : requested.truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime normalizedStored = stored == null
+                ? null
+                : stored.truncatedTo(ChronoUnit.SECONDS);
+        return Objects.equals(normalizedRequested, normalizedStored);
     }
 
     private List<AdminNoticeCodeResponse> toCodeResponses(List<CommonCode> codes) {

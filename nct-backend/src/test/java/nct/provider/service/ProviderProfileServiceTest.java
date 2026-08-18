@@ -60,6 +60,19 @@ class ProviderProfileServiceTest {
     }
 
     @Test
+    void getMineReturnsCurrentReviewRatingInsteadOfStaleProfileCache() {
+        ProviderProfileResponse saved = profile(101L);
+        when(mapper.findActiveByUserSn(101L)).thenReturn(Optional.of(saved));
+        when(reviewRatingReader.read(101L)).thenReturn(new ReviewRatingSummary(new BigDecimal("5.0"), 1L));
+
+        ProviderProfileResponse result = service.getMine(101L);
+
+        assertThat(result.getReviewAverageScore()).isEqualByComparingTo("5.0");
+        assertThat(result.getReviewCount()).isEqualTo(1L);
+        verify(reviewRatingReader).read(101L);
+    }
+
+    @Test
     void suspendedProviderCannotReadPublicProfile() {
         // 제재 판정은 가드가 담당(ActiveProviderGuardTest) — 여기선 가드 실패가 조회를 막는 것만 확인
         doThrow(new CustomException(ErrorCode.FORBIDDEN)).when(activeProviderGuard).requireActive(101L);

@@ -33,7 +33,7 @@ public class ProviderProfileService {
         if (profile.getCategories() == null || profile.getCategories().isEmpty()) {
             profile.setCategories(mapper.findActiveCategoryNames(userSn));
         }
-        return profile;
+        return applyCurrentReviewRating(userSn, profile);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -54,7 +54,9 @@ public class ProviderProfileService {
     @Transactional(readOnly = true)
     public ProviderProfileResponse getPublic(Long providerUserSn) {
         requireActiveProvider(providerUserSn);
-        return mapper.findActiveByUserSn(providerUserSn).orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+        ProviderProfileResponse profile = mapper.findActiveByUserSn(providerUserSn)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+        return applyCurrentReviewRating(providerUserSn, profile);
     }
 
     // 활성 제공자 검사는 포트폴리오 서비스와 공용 가드(ActiveProviderGuard)로 통합 (2026-08-05 중복 정리)
@@ -64,6 +66,13 @@ public class ProviderProfileService {
 
     private ProviderProfileResponse emptyProfile(Long userSn) {
         return ProviderProfileResponse.builder().userSn(userSn).reviewAverageScore(BigDecimal.ZERO).reviewCount(0L).build();
+    }
+
+    private ProviderProfileResponse applyCurrentReviewRating(Long userSn, ProviderProfileResponse profile) {
+        ReviewRatingSummary rating = reviewRatingReader.read(userSn);
+        profile.setReviewAverageScore(rating.getAverageScore());
+        profile.setReviewCount(rating.getReviewCount());
+        return profile;
     }
 
     private String trimToNull(String value) {

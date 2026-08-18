@@ -48,6 +48,7 @@ import nct.ops.operation.port.AdminReportDecisionCommand;
 import nct.ops.operation.port.AdminReportDecisionPort;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.ops.risk.service.RiskEventService;
+import nct.ops.risk.service.RiskSignalPublisher;
 import nct.ops.security.port.SensitiveDetectionReportCommand;
 import nct.ops.security.port.SensitiveDetectionReportPort;
 import nct.ops.security.port.SensitiveDetectionReportResult;
@@ -135,6 +136,7 @@ public class AbuseReportService implements
     private final MemberOperationLockPort memberOperationLockPort;
     private final FileStorageService fileStorageService;
     private final RiskEventService riskEventService;
+    private final RiskSignalPublisher riskSignalPublisher;
     private final ReportTargetHoldService reportTargetHoldService;
     private final ConcurrentMap<CustomerReportKey, LockEntry> customerReportLocks = new ConcurrentHashMap<>();
 
@@ -205,6 +207,7 @@ public class AbuseReportService implements
                 actorId) != 1) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
+        riskSignalPublisher.reportCreated(report.getReportSn(), command.reportedUserSn(), true);
         return report.getReportSn();
     }
 
@@ -306,6 +309,10 @@ public class AbuseReportService implements
                         request.referenceSn(),
                         actorId);
             }
+            riskSignalPublisher.reportCreated(
+                    report.getReportSn(),
+                    request.reportedUserSn(),
+                    TRADE_REFERENCE_TYPE.equals(referenceTypeCode));
             return new ManualAbuseReportResponse(report.getReportSn());
         } finally {
             if (releaseInFinally) {
@@ -410,6 +417,8 @@ public class AbuseReportService implements
         if (inserted != 1 || report.getReportSn() == null) {
             throw new CustomException(ErrorCode.DATABASE_ERROR);
         }
+        riskSignalPublisher.reportCreated(
+                report.getReportSn(), target.getWriterUsrSn(), false);
     }
 
 
@@ -885,6 +894,19 @@ public class AbuseReportService implements
         return report;
     }
 
+    /** 담당자 7 · REQ-OPS-007: 실제 대상 행을 먼저 잠그기 위한 신고 참조 메타데이터를 조회합니다. */
+    @Transactional(readOnly = true)
+    public AbuseReport findForAdminDecision(Long reportSn) {
+        if (reportSn == null || reportSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        AbuseReport report = abuseReportMapper.findReportById(reportSn);
+        if (report == null) {
+            throw new CustomException(ErrorCode.ABUSE_REPORT_NOT_FOUND);
+        }
+        return report;
+    }
+
     /** 담당자 7 · F-OPS-005/007: 관리자 신고 처리에서 거래 판정이 필요한 사건인지 확인합니다. */
     @Transactional(readOnly = true)
     public boolean hasTradeContext(Long reportSn) {
@@ -1048,9 +1070,9 @@ public class AbuseReportService implements
         if (reportedUserSn <= 0 || reporterUserSn.equals(reportedUserSn)) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        if (authMemberPort.findById(reportedUserSn).isEmpty()) {
-            throw new CustomException(ErrorCode.USER_NOT_FOUND);
-        }
+        // 담당자 7 · REQ-COM-020: 신고 대상 존재 여부는 접수 직전 USERS 행 잠금에서 확인합니다.
+        // 인증용 전체 회원 조회는 이메일 복호화까지 수행하므로, 다른 키로 만든 테스트 계정처럼
+        // 신고에 필요하지 않은 개인정보를 읽다가 접수 전체가 500으로 롤백될 수 있습니다.
     }
 
 

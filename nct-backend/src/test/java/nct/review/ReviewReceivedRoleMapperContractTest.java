@@ -35,7 +35,7 @@ class ReviewReceivedRoleMapperContractTest {
     }
 
     @Test
-    void combinedTrustScoreUsesOnlyTheOverallAverageAndRemainsIndependentFromRoleFilter() throws IOException {
+    void trustScoreRequiresAReviewDomainAndRemainsIndependentFromRoleFilter() throws IOException {
         String mapper = resource("mapper/review/ReviewMapper.xml");
         String trustScoreQuery = mapper.substring(
                 mapper.indexOf("<select id=\"selectTrustScore\""),
@@ -44,6 +44,7 @@ class ReviewReceivedRoleMapperContractTest {
         assertThat(trustScoreQuery)
                 .contains("AS totalCount")
                 .contains("AS totalScore")
+                .contains("R.RVW_DOMAIN_CD = #{reviewDomainCode}")
                 .doesNotContain("goodsScore")
                 .doesNotContain("serviceScore")
                 .doesNotContain("receivedGoodsRoleFilter");

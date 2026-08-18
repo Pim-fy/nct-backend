@@ -1,6 +1,7 @@
 package nct.auth.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -18,9 +19,12 @@ import nct.auth.service.AuthSessionResult;
 import nct.auth.service.EmailVerificationService;
 import nct.auth.service.OauthOnboardingService;
 import nct.auth.service.PasswordResetService;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
 import nct.global.utils.CookieUtil;
+import nct.ops.risk.service.AdminLoginFailureRiskService;
 import jakarta.servlet.http.HttpServletRequest;
 
 // @ai_generated CHG-032/F-PROV-015: controller가 갱신 access cookie와 현재 ROLE 응답을 함께 주는지 검증한다.
@@ -35,7 +39,8 @@ class AuthControllerTest {
                 mock(EmailVerificationService.class),
                 mock(PasswordResetService.class),
                 mock(OauthOnboardingService.class),
-                cookieUtil);
+                cookieUtil,
+                mock(AdminLoginFailureRiskService.class));
         LoginRequest request = new LoginRequest();
         request.setLoginId("admin01");
         request.setPassword("Password1!");
@@ -64,6 +69,34 @@ class AuthControllerTest {
     }
 
     @Test
+    void 관리자_자격증명_실패만_리스크_신호로_기록한다() {
+        AuthService authService = mock(AuthService.class);
+        AdminLoginFailureRiskService riskService = mock(AdminLoginFailureRiskService.class);
+        AuthController controller = new AuthController(
+                authService,
+                mock(EmailVerificationService.class),
+                mock(PasswordResetService.class),
+                mock(OauthOnboardingService.class),
+                mock(CookieUtil.class),
+                riskService);
+        LoginRequest request = new LoginRequest();
+        request.setLoginId("admin01");
+        request.setPassword("wrong-password");
+        HttpServletRequest servletRequest = mock(HttpServletRequest.class);
+        when(servletRequest.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(authService.adminLogin(request))
+                .thenThrow(new CustomException(ErrorCode.INVALID_CREDENTIALS));
+
+        assertThatThrownBy(() -> controller.adminLogin(
+                request,
+                new MockHttpServletResponse(),
+                servletRequest))
+                .isInstanceOf(CustomException.class);
+
+        verify(riskService).recordFailure("admin01", "127.0.0.1");
+    }
+
+    @Test
     void 모드전환_성공시_새_AccessCookie와_갱신된_ROLE을_반환한다() {
         AuthService authService = mock(AuthService.class);
         CookieUtil cookieUtil = mock(CookieUtil.class);
@@ -72,7 +105,8 @@ class AuthControllerTest {
                 mock(EmailVerificationService.class),
                 mock(PasswordResetService.class),
                 mock(OauthOnboardingService.class),
-                cookieUtil);
+                cookieUtil,
+                mock(AdminLoginFailureRiskService.class));
 
         AuthMember member = AuthMember.builder().id(101L).email("user@example.com").role("ROLE_USER").build();
         LoginResponse loginResponse = LoginResponse.builder().id(101L).role("ROLE_SERVICE").build();

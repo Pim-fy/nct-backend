@@ -37,6 +37,15 @@ public class ServiceRequestReportTargetHoldService implements ReportTargetHoldPo
 
     @Override
     @Transactional
+    public boolean lock(Long referenceSn) {
+        if (referenceSn == null || referenceSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return serviceRequestMapper.findReportHoldTargetForUpdate(referenceSn) != null;
+    }
+
+    @Override
+    @Transactional
     public ReportTargetHoldResult pause(Long referenceSn, String actorId) {
         validate(referenceSn, actorId);
         ServiceRequestSanctionTarget target =

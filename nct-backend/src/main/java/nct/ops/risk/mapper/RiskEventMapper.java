@@ -24,6 +24,13 @@ public interface RiskEventMapper {
                                     @Param("referenceSn") Long referenceSn,
                                     @Param("content") String content);
 
+    /** 같은 판정 구간에 이미 생성된 이벤트가 있으면 처리 여부와 무관하게 반환합니다. */
+    Long findDuplicateIdSince(@Param("typeCode") String typeCode,
+                              @Param("referenceTypeCode") String referenceTypeCode,
+                              @Param("referenceSn") Long referenceSn,
+                              @Param("content") String content,
+                              @Param("dedupeSince") LocalDateTime dedupeSince);
+
     /** 위험 이벤트 한 건을 등록하고, 성공하면 영향받은 행 수 1을 반환한다. */
     int insertRiskEvent(RiskEvent riskEvent);
 

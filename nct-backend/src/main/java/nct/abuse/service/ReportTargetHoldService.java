@@ -84,11 +84,40 @@ public class ReportTargetHoldService {
         }
     }
 
+    /** 담당자 7 · REQ-OPS-007: 신고 행보다 먼저 실제 참조 대상을 잠가 잠금 순서를 통일합니다. */
+    @Transactional
+    public boolean lockTarget(String referenceTypeCode, Long referenceSn) {
+        if (referenceTypeCode == null || referenceTypeCode.isBlank()
+                || referenceSn == null || referenceSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        ReportTargetHoldPort port = ports.get(referenceTypeCode);
+        return port == null || port.lock(referenceSn);
+    }
+
     @Transactional
     public void release(Long reportSn, String actorId) {
         if (reportSn == null || reportSn <= 0 || actorId == null || actorId.isBlank()) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        ReportImpactRecord reference = reportImpactMapper.findByReport(reportSn);
+        if (reference == null || !APPLIED.equals(reference.getStatusCode())) {
+            return;
+        }
+
+        ReportTargetHoldPort port = ports.get(reference.getReferenceTypeCode());
+        if (port == null) {
+            skipAfterLock(reportSn, "복구 계약을 찾을 수 없어 현재 상태를 유지했습니다.", actorId);
+            return;
+        }
+
+        // 담당자 7 · REQ-OPS-007: pause와 같은 순서로 실제 업무 대상을 먼저 잠급니다.
+        // READ COMMITTED에서 이 잠금 뒤 활성 신고를 다시 확인해야 마지막 종결만 복구합니다.
+        if (!port.lock(reference.getReferenceSn())) {
+            skipAfterLock(reportSn, "대상을 찾을 수 없어 현재 상태를 유지했습니다.", actorId);
+            return;
+        }
+
         ReportImpactRecord impact = reportImpactMapper.findByReportForUpdate(reportSn);
         if (impact == null || !APPLIED.equals(impact.getStatusCode())) {
             return;
@@ -100,12 +129,6 @@ public class ReportTargetHoldService {
                 RECEIVED_STATUS,
                 PROCESSING_STATUS)) {
             update(impact, RETAINED, "같은 대상의 다른 신고가 처리 중이어서 운영 보류를 유지했습니다.", actorId);
-            return;
-        }
-
-        ReportTargetHoldPort port = ports.get(impact.getReferenceTypeCode());
-        if (port == null) {
-            update(impact, SKIPPED, "복구 계약을 찾을 수 없어 현재 상태를 유지했습니다.", actorId);
             return;
         }
         boolean restored = port.restore(new ReportTargetRestoreCommand(
@@ -122,6 +145,13 @@ public class ReportTargetHoldService {
                         ? "마지막 활성 신고가 해소되어 보류 전 상태와 남은 시간을 복구했습니다."
                         : "대상 상태가 이미 변경되어 신고 보류 복구를 적용하지 않았습니다.",
                 actorId);
+    }
+
+    private void skipAfterLock(Long reportSn, String result, String actorId) {
+        ReportImpactRecord impact = reportImpactMapper.findByReportForUpdate(reportSn);
+        if (impact != null && APPLIED.equals(impact.getStatusCode())) {
+            update(impact, SKIPPED, result, actorId);
+        }
     }
 
     private ReportImpactRecord appliedImpact(

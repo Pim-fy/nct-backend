@@ -36,8 +36,9 @@ class AccountSanctionServiceTest {
         when(sanctionMapper.insertAccountSuspension(10L, 99L, "운영 제한", "req-1", "99"))
                 .thenReturn(1);
 
-        service.restrict(command("req-1"));
+        boolean changed = service.restrict(command("req-1"));
 
+        assertThat(changed).isTrue();
         verify(sanctionMapper).insertAccountSuspension(10L, 99L, "운영 제한", "req-1", "99");
     }
 
@@ -47,8 +48,9 @@ class AccountSanctionServiceTest {
         when(sanctionMapper.lockUser(10L)).thenReturn(10L);
         when(sanctionMapper.findByRestrictRequestId("req-1")).thenReturn(record(1L, 10L));
 
-        service.restrict(command("req-1"));
+        boolean changed = service.restrict(command("req-1"));
 
+        assertThat(changed).isFalse();
         verify(sanctionMapper, never()).findActiveAccountSuspensionsForUpdate(any());
         verify(sanctionMapper, never()).insertAccountSuspension(any(), any(), any(), any(), any());
     }
@@ -60,8 +62,9 @@ class AccountSanctionServiceTest {
         when(sanctionMapper.findActiveAccountSuspensionsForUpdate(10L))
                 .thenReturn(List.of(record(1L, 10L)));
 
-        service.restrict(command("req-2"));
+        boolean changed = service.restrict(command("req-2"));
 
+        assertThat(changed).isFalse();
         verify(sanctionMapper, never()).insertAccountSuspension(any(), any(), any(), any(), any());
     }
 

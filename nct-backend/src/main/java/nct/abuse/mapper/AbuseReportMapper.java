@@ -1,5 +1,6 @@
 package nct.abuse.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -13,6 +14,19 @@ import nct.abuse.dto.MyAbuseReportResponse;
 
 @Mapper
 public interface AbuseReportMapper {
+
+    /** 담당자 7 · REQ-OPS-011: 최근 거래 참조 신고 수입니다. */
+    long countTradeReportsSince(@Param("since") LocalDateTime since);
+
+    /** 담당자 7 · REQ-OPS-011: 동일 대상을 신고한 서로 다른 회원 수입니다. */
+    long countDistinctReportersForTargetSince(
+            @Param("reportedUserSn") long reportedUserSn,
+            @Param("since") LocalDateTime since);
+
+    List<Long> findRepeatedReportedUserIdsSince(
+            @Param("since") LocalDateTime since,
+            @Param("minimumReporterCount") int minimumReporterCount,
+            @Param("limit") int limit);
 
     int insertAutomaticReport(AbuseReport report);
 
@@ -36,6 +50,8 @@ public interface AbuseReportMapper {
     Long findReportIdByRiskEventIdForUpdate(@Param("riskEventSn") Long riskEventSn);
 
     AbuseReport findReportByIdForUpdate(@Param("reportSn") Long reportSn);
+
+    AbuseReport findReportById(@Param("reportSn") Long reportSn);
 
     boolean existsOtherActiveReportLinkedToTrade(
             @Param("tradeSn") Long tradeSn,

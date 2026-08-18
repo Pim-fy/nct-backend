@@ -3,6 +3,7 @@ package nct.auction;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -139,7 +140,7 @@ class AuctionServiceDetailTest {
         when(auctionMapper.findAuctionDetail(10L, null)).thenReturn(detail);
         when(auctionMapper.findAuctionImages(20L)).thenReturn(List.of());
         when(auctionMapper.findAuctionBids(10L)).thenReturn(List.of());
-        when(reviewService.getTrustScore(30L)).thenReturn(TrustScoreResponse.builder()
+        when(reviewService.getTrustScore(30L, "goods")).thenReturn(TrustScoreResponse.builder()
                 .usrSn(30L)
                 .totalScore(3.8)
                 .totalCount(20)
@@ -150,7 +151,7 @@ class AuctionServiceDetailTest {
 
         assertThat(response.getSellerRating()).isEqualTo(3.8);
         assertThat(response.getSellerReviewCount()).isEqualTo(20);
-        verify(reviewService).getTrustScore(30L);
+        verify(reviewService).getTrustScore(30L, "goods");
     }
 
     @Test
@@ -200,7 +201,7 @@ class AuctionServiceDetailTest {
         assertThat(response.getSellerRating()).isNull();
         assertThat(response.getSellerReviewCount()).isNull();
         assertThat(response.getProductUpdates()).isEmpty();
-        verify(reviewService, never()).getTrustScore(anyLong());
+        verify(reviewService, never()).getTrustScore(anyLong(), anyString());
         verify(productService, never()).getComments(anyLong());
     }
 }

@@ -23,7 +23,7 @@ import nct.provider.dto.ProviderProfileRequest;
 import nct.provider.dto.ProviderProfileResponse;
 import nct.provider.mapper.ProviderProfileMapper;
 import nct.review.dto.ReviewRatingSummary;
-import nct.review.port.ReviewRatingReader;
+import nct.review.port.ServiceReviewRatingReader;
 
 /** 담당자 7 · F-PROV-004/F-COM-009: 프로필 변경 전 제공자 검증과 리뷰 평균 동기화 회귀 테스트다.
  *  활성 제공자 판정 자체(회원 상태·권한·제재)는 ActiveProviderGuard로 통합돼 그쪽 테스트가
@@ -32,7 +32,7 @@ import nct.review.port.ReviewRatingReader;
 class ProviderProfileServiceTest {
     @Mock private ProviderProfileMapper mapper;
     @Mock private ActiveProviderGuard activeProviderGuard;
-    @Mock private ReviewRatingReader reviewRatingReader;
+    @Mock private ServiceReviewRatingReader serviceReviewRatingReader;
     @InjectMocks private ProviderProfileService service;
 
     @Test
@@ -43,7 +43,7 @@ class ProviderProfileServiceTest {
         request.setProfileFileSn(55L);
         ProviderProfileResponse saved = profile(101L);
         ReviewRatingSummary rating = new ReviewRatingSummary(new BigDecimal("4.5"), 2L);
-        when(reviewRatingReader.read(101L)).thenReturn(rating);
+        when(serviceReviewRatingReader.readServiceRating(101L)).thenReturn(rating);
         when(mapper.findActiveByUserSn(101L)).thenReturn(Optional.of(saved));
 
         ProviderProfileResponse result = service.updateMine(101L, request);
@@ -52,11 +52,40 @@ class ProviderProfileServiceTest {
         verify(activeProviderGuard).requireActive(101L);
         verify(mapper).upsert(101L, "소개", "서울", 55L, "101");
         verify(mapper).updateReviewRating(101L, new BigDecimal("4.5"), 2L, "101");
-        InOrder cacheRefreshOrder = inOrder(mapper, reviewRatingReader);
+        InOrder cacheRefreshOrder = inOrder(mapper, serviceReviewRatingReader);
         cacheRefreshOrder.verify(mapper).upsert(101L, "소개", "서울", 55L, "101");
-        cacheRefreshOrder.verify(reviewRatingReader).read(101L);
+        cacheRefreshOrder.verify(serviceReviewRatingReader).readServiceRating(101L);
         cacheRefreshOrder.verify(mapper).updateReviewRating(101L, new BigDecimal("4.5"), 2L, "101");
         cacheRefreshOrder.verify(mapper).findActiveByUserSn(101L);
+    }
+
+    @Test
+    void getMineDisplaysTheLiveServiceRatingInsteadOfAStaleCacheValue() {
+        ProviderProfileResponse cached = profile(101L);
+        cached.setReviewAverageScore(new BigDecimal("3.0"));
+        cached.setReviewCount(9L);
+        when(mapper.findActiveByUserSn(101L)).thenReturn(Optional.of(cached));
+        when(serviceReviewRatingReader.readServiceRating(101L))
+                .thenReturn(new ReviewRatingSummary(new BigDecimal("4.7"), 3L));
+
+        ProviderProfileResponse result = service.getMine(101L);
+
+        assertThat(result.getReviewAverageScore()).isEqualByComparingTo("4.7");
+        assertThat(result.getReviewCount()).isEqualTo(3L);
+        verify(serviceReviewRatingReader).readServiceRating(101L);
+    }
+
+    @Test
+    void getPublicDisplaysTheSameLiveServiceRatingContract() {
+        ProviderProfileResponse cached = profile(101L);
+        when(mapper.findActiveByUserSn(101L)).thenReturn(Optional.of(cached));
+        when(serviceReviewRatingReader.readServiceRating(101L))
+                .thenReturn(new ReviewRatingSummary(new BigDecimal("4.8"), 5L));
+
+        ProviderProfileResponse result = service.getPublic(101L);
+
+        assertThat(result.getReviewAverageScore()).isEqualByComparingTo("4.8");
+        assertThat(result.getReviewCount()).isEqualTo(5L);
     }
 
     @Test

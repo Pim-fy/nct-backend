@@ -16,6 +16,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import nct.ops.operation.port.AdminReportDecision;
 import nct.abuse.dto.AdminAbuseReportResponse;
@@ -56,6 +57,11 @@ class AdminReportOperationServiceTest {
         reportTargetHoldService = mock(ReportTargetHoldService.class);
         when(memberIdentityReader.findByUserSns(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
+        when(abuseReportService.findForAdminDecision(
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> AbuseReport.builder()
+                        .reportSn(invocation.getArgument(0))
+                        .build());
         service = new AdminReportOperationService(
                 abuseReportService,
                 memberIdentityReader,
@@ -68,12 +74,19 @@ class AdminReportOperationServiceTest {
 
     @Test
     void forwardsProcessedDecisionWithNormalizedReason() {
+        when(abuseReportService.findForAdminDecision(91L))
+                .thenReturn(AbuseReport.builder()
+                        .reportSn(91L)
+                        .referenceTypeCode("REFC0003")
+                        .referenceSn(301L)
+                        .build());
         when(abuseReportService.lockForAdminDecision(91L))
                 .thenReturn(AbuseReport.builder()
                         .reportSn(91L)
                         .statusCode("ABSC0002")
                         .referenceTypeCode("REFC0003")
                         .referenceSn(301L)
+                        .reportedUserSn(20L)
                         .build());
         when(abuseReportService.hasTradeContext(91L)).thenReturn(false);
 
@@ -100,6 +113,10 @@ class AdminReportOperationServiceTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyString());
         verify(reportTargetHoldService).release(91L, "7");
+        InOrder lockOrder = org.mockito.Mockito.inOrder(
+                reportTargetHoldService, abuseReportService);
+        lockOrder.verify(reportTargetHoldService).lockTarget("REFC0003", 301L);
+        lockOrder.verify(abuseReportService).lockForAdminDecision(91L);
         verifyNoInteractions(tradeReportDecisionService);
     }
 

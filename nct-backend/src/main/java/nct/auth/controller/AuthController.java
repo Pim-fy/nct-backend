@@ -32,16 +32,19 @@ import nct.auth.service.OauthOnboardingService;
 import nct.auth.service.PasswordResetService;
 import nct.auth.service.SuspendedAccountException;
 import nct.global.exception.ErrorCode;
+import nct.global.exception.CustomException;
 import nct.global.idempotency.SkipIdempotency;
 import nct.global.response.ApiResponse;
 import nct.global.security.domain.CustomUserDetails;
 import nct.global.security.port.AuthMember;
 import nct.global.utils.CookieUtil;
+import nct.ops.risk.service.AdminLoginFailureRiskService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * [인증 API 목록]
@@ -63,6 +66,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthController {
 
     private final AuthService authService;
@@ -70,6 +74,7 @@ public class AuthController {
     private final PasswordResetService passwordResetService;
     private final OauthOnboardingService oauthOnboardingService;
     private final CookieUtil cookieUtil;
+    private final AdminLoginFailureRiskService adminLoginFailureRiskService;
 
     /** 회원가입 */
     @PostMapping("/signup")
@@ -179,6 +184,15 @@ public class AuthController {
         }
     }
 
+    private void recordAdminLoginFailure(String loginId, String ipAddress) {
+        try {
+            adminLoginFailureRiskService.recordFailure(loginId, ipAddress);
+        } catch (RuntimeException ex) {
+            // 감지 보조 기능 장애가 원래의 인증 실패 응답을 500으로 바꾸지 않게 격리합니다.
+            log.warn("관리자 로그인 실패 위험 신호 기록에 실패했습니다.");
+        }
+    }
+
     /** 담당자 7 · F-OPS-001: 관리자 계정은 이 전용 경로에서만 신규 세션을 발급한다. */
     @SkipIdempotency
     @PostMapping("/admin/login")
@@ -191,6 +205,11 @@ public class AuthController {
             return ResponseEntity.ok(ApiResponse.success(session.getLoginResponse()));
         } catch (SuspendedAccountException ex) {
             return suspendedAccountResponse(ex, servletRequest);
+        } catch (CustomException ex) {
+            if (ex.getErrorCode() == ErrorCode.INVALID_CREDENTIALS) {
+                recordAdminLoginFailure(request.getLoginId(), servletRequest.getRemoteAddr());
+            }
+            throw ex;
         }
     }
 

@@ -41,6 +41,15 @@ public class AuctionReportTargetHoldService implements ReportTargetHoldPort {
 
     @Override
     @Transactional
+    public boolean lock(Long referenceSn) {
+        if (referenceSn == null || referenceSn <= 0) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return auctionMapper.findReportHoldTargetForUpdate(referenceSn) != null;
+    }
+
+    @Override
+    @Transactional
     public ReportTargetHoldResult pause(Long referenceSn, String actorId) {
         validate(referenceSn, actorId);
         AuctionSanctionTarget target = auctionMapper.findReportHoldTargetForUpdate(referenceSn);

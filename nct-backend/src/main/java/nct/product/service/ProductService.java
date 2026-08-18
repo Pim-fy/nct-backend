@@ -96,11 +96,14 @@ public class ProductService {
     private final ProductViewLogMapper productViewLogMapper;
     private final NotificationService notificationService;
 
+    private static final String PRODUCT_CATEGORY_DOMAIN_CODE = "CATC0001";
+
     @Transactional
     public ProductResponse registerProduct(Long usrSn, ProductRegisterRequest req) {
         if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        referenceDataService.requireActiveCategory(req.getCatSn(), PRODUCT_CATEGORY_DOMAIN_CODE);
         validateNoBannedKeyword(req.getPrdNm(), req.getPrdCn());
         validateInstantBuyAboveStartAmt(req.getPrdStartAmt(), req.getPrdIbyAmt());
         validatePriceUnderMax(req.getPrdStartAmt(), req.getPrdIbyAmt());
@@ -159,6 +162,7 @@ public class ProductService {
         if (!referenceDataService.isActiveCode("TRDG03", req.getPrdTrdMethodCd())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
         }
+        referenceDataService.requireActiveCategory(req.getCatSn(), PRODUCT_CATEGORY_DOMAIN_CODE);
         validateNoBannedKeyword(req.getPrdNm(), req.getPrdCn());
         validateInstantBuyAboveStartAmt(req.getPrdStartAmt(), req.getPrdIbyAmt());
         validatePriceUnderMax(req.getPrdStartAmt(), req.getPrdIbyAmt());
@@ -338,9 +342,15 @@ public class ProductService {
         return productMapper.countMyProductsSummary(usrSn);
     }
 
+    private static final int MY_PRODUCTS_DEFAULT_PAGE = 1;
+    private static final int MY_PRODUCTS_MAX_SIZE = 100;
+
     @Transactional(readOnly = true)
     public PagedResponse<ProductResponse> getMyProducts(Long usrSn, int page, int size, String filterType) {
-        PageHelper.startPage(page, size);
+        // page/size가 1 미만이거나 비정상적으로 크면(음수 등) 조용히 빈 목록을 주는 대신 안전한 값으로 보정한다.
+        int safePage = page < MY_PRODUCTS_DEFAULT_PAGE ? MY_PRODUCTS_DEFAULT_PAGE : page;
+        int safeSize = size < 1 ? 10 : Math.min(size, MY_PRODUCTS_MAX_SIZE);
+        PageHelper.startPage(safePage, safeSize);
         List<ProductResponse> list = productMapper.findMyProducts(usrSn, filterType);
         PagedResponse<ProductResponse> result = PagedResponse.of(new PageInfo<>(list));
 

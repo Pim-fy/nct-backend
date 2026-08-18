@@ -120,23 +120,17 @@
          WHERE p.USR_SN = #{usrSn}
            AND p.PRD_STATUS_CD != 'PRDC0004'
            <choose>
+               <!-- 임시저장은 예약/즉시시작 여부와 무관하게 전부 이 탭이다 — 아직 서버에
+                    AUCTION이 만들어지지 않아 실제로 확정된 게 없는 초안일 뿐이기 때문. -->
                <when test="filterType == 'DRAFT'">
                    AND p.PRD_STATUS_CD = 'PRDC0001'
-                   AND (COALESCE(p.PRD_DRAFT_START_NOW_YN, '') != 'N'
-                     OR p.PRD_DRAFT_START_DT IS NULL
-                     OR p.PRD_DRAFT_START_DT &lt;= NOW())
                </when>
-               <!-- 예약 = ①임시저장 상태에서 예약 시작을 선택해둔 상품 OR ②등록까지 완료했지만
-                    아직 경매 시작 시각이 지나지 않은 상품(AUCC0001). 시작 시각이 지나면
-                    AuctionActivationScheduler가 AUCC0002로 넘겨서 자동으로 "경매중"으로 이동한다. -->
+               <!-- 예약 = 등록까지 완료해 실제 AUCTION이 만들어졌고 아직 시작 시각이 지나지 않은
+                    상품(AUCC0001)만. 시작 시각이 지나면 AuctionActivationScheduler가 AUCC0002로
+                    넘겨서 자동으로 "경매중"으로 이동한다. -->
                <when test="filterType == 'RESERVED'">
-                   AND (
-                       (p.PRD_STATUS_CD = 'PRDC0001'
-                         AND p.PRD_DRAFT_START_NOW_YN = 'N'
-                         AND p.PRD_DRAFT_START_DT > NOW())
-                    OR (p.PRD_STATUS_CD = 'PRDC0002'
-                         AND a.AUC_STATUS_CD = 'AUCC0001')
-                   )
+                   AND p.PRD_STATUS_CD = 'PRDC0002'
+                   AND a.AUC_STATUS_CD = 'AUCC0001'
                </when>
                <when test="filterType == 'ACTIVE'">
                    AND p.PRD_STATUS_CD = 'PRDC0002'
@@ -166,7 +160,7 @@
                      OR a.AUC_STATUS_CD IN ('AUCC0004', 'AUCC0005'))
                </when>
            </choose>
-         ORDER BY p.PRD_REG_DT DESC
+         ORDER BY p.PRD_UPDT_DT DESC
     </select>
 
     <!-- ── 내 판매 목록 필터 탭 개수 — findMyProducts의 filterType별 WHERE 조건을 CASE WHEN 집계로 한 번에 계산 ── -->
@@ -174,15 +168,9 @@
         /* ProductMapper.countMyProductsSummary */
         SELECT
             COUNT(*) AS total,
-            COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0001'
-                               AND (COALESCE(p.PRD_DRAFT_START_NOW_YN, '') != 'N'
-                                 OR p.PRD_DRAFT_START_DT IS NULL
-                                 OR p.PRD_DRAFT_START_DT &lt;= NOW()) THEN 1 ELSE 0 END), 0) AS draft,
-            COALESCE(SUM(CASE WHEN (p.PRD_STATUS_CD = 'PRDC0001'
-                               AND p.PRD_DRAFT_START_NOW_YN = 'N'
-                               AND p.PRD_DRAFT_START_DT > NOW())
-                            OR (p.PRD_STATUS_CD = 'PRDC0002'
-                               AND a.AUC_STATUS_CD = 'AUCC0001') THEN 1 ELSE 0 END), 0) AS reserved,
+            COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0001' THEN 1 ELSE 0 END), 0) AS draft,
+            COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0002'
+                               AND a.AUC_STATUS_CD = 'AUCC0001' THEN 1 ELSE 0 END), 0) AS reserved,
             COALESCE(SUM(CASE WHEN p.PRD_STATUS_CD = 'PRDC0002'
                                AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0013', 'AUCC9001')
                               THEN 1 ELSE 0 END), 0) AS active,

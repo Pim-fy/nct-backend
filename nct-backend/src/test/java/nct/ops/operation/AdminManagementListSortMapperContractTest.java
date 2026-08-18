@@ -34,9 +34,9 @@ class AdminManagementListSortMapperContractTest {
         assertThat(select)
                 .contains("<include refid=\"fromWhere\"/>")
                 .contains("CASE a.AUC_STATUS_CD WHEN 'AUCC0006' THEN 0 "
-                        + "WHEN 'AUCC0002' THEN 1 WHEN 'AUCC0001' THEN 2 "
-                        + "WHEN 'AUCC0003' THEN 3 WHEN 'AUCC0004' THEN 4 "
-                        + "WHEN 'AUCC0005' THEN 5 ELSE 6 END ASC, "
+                        + "WHEN 'AUCC0002' THEN 1 WHEN 'AUCC9001' THEN 2 "
+                        + "WHEN 'AUCC0001' THEN 3 WHEN 'AUCC0003' THEN 4 "
+                        + "WHEN 'AUCC0004' THEN 5 WHEN 'AUCC0005' THEN 6 ELSE 7 END ASC, "
                         + "CASE trade.TRD_STATUS_CD WHEN 'TRDC0003' THEN 0 "
                         + "WHEN 'TRDC0004' THEN 1 WHEN 'TRDC0005' THEN 2 "
                         + "WHEN 'TRDC0006' THEN 3 WHEN 'TRDC0007' THEN 4 "
@@ -91,10 +91,10 @@ class AdminManagementListSortMapperContractTest {
         String select = loadNormalizedSelect("mapper/abuse/AbuseReportMapper.xml", "findAdminReports");
 
         assertThat(select)
-                .contains("CASE ABR_STATUS_CD WHEN 'ABSC0001' THEN 0 "
+                .contains("CASE ar.ABR_STATUS_CD WHEN 'ABSC0001' THEN 0 "
                         + "WHEN 'ABSC0002' THEN 1 WHEN 'ABSC0003' THEN 2 "
                         + "WHEN 'ABSC0004' THEN 3 ELSE 4 END ASC, "
-                        + "ABR_REG_DT DESC, ABR_SN DESC");
+                        + "ar.ABR_REG_DT DESC, ar.ABR_SN DESC");
         assertOrderBeforeLimit(select);
     }
 

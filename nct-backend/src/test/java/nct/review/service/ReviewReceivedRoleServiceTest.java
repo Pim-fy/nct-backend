@@ -114,6 +114,32 @@ class ReviewReceivedRoleServiceTest {
     }
 
     @Test
+    void omittedDealTypeUsesTheExistingAllReviewsQueryContract() {
+        when(reviewMapper.selectReviewsByReceiver(eq(22L), isNull(), isNull(), eq(0), eq(10)))
+                .thenReturn(List.of());
+        when(reviewMapper.countReviewsByReceiver(eq(22L), isNull(), isNull()))
+                .thenReturn(0L);
+
+        reviewService.getReviewsAboutUser(22L, null, null, 0, 10);
+
+        verify(reviewMapper).selectReviewsByReceiver(eq(22L), isNull(), isNull(), eq(0), eq(10));
+        verify(reviewMapper).countReviewsByReceiver(eq(22L), isNull(), isNull());
+    }
+
+    @Test
+    void serviceDealTypeUsesTheServiceReviewsQueryContract() {
+        when(reviewMapper.selectReviewsByReceiver(eq(22L), eq("service"), isNull(), eq(0), eq(10)))
+                .thenReturn(List.of());
+        when(reviewMapper.countReviewsByReceiver(eq(22L), eq("service"), isNull()))
+                .thenReturn(0L);
+
+        reviewService.getReviewsAboutUser(22L, "service", null, 0, 10);
+
+        verify(reviewMapper).selectReviewsByReceiver(eq(22L), eq("service"), isNull(), eq(0), eq(10));
+        verify(reviewMapper).countReviewsByReceiver(eq(22L), eq("service"), isNull());
+    }
+
+    @Test
     void receivedGoodsReviewsNormalizeAndPassBuyerRole() {
         when(reviewMapper.selectReviewsByReceiver(22L, "goods", "BUYER", 0, 10))
                 .thenReturn(List.of());
@@ -146,6 +172,34 @@ class ReviewReceivedRoleServiceTest {
                 22L,
                 "goods",
                 "PROVIDER",
+                0,
+                10))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+
+        verifyNoReviewListQuery();
+    }
+
+    @Test
+    void unknownDealTypeIsRejectedBeforeQuerying() {
+        assertThatThrownBy(() -> reviewService.getReviewsAboutUser(
+                22L,
+                "invalid",
+                null,
+                0,
+                10))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE));
+
+        verifyNoReviewListQuery();
+    }
+
+    @Test
+    void blankDealTypeIsRejectedBeforeQuerying() {
+        assertThatThrownBy(() -> reviewService.getReviewsAboutUser(
+                22L,
+                " ",
+                null,
                 0,
                 10))
                 .isInstanceOfSatisfying(CustomException.class, exception ->

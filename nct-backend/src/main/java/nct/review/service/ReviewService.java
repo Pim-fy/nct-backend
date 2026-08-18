@@ -326,18 +326,19 @@ public class ReviewService {
             String role,
             int page,
             int size) {
-        String normalizedRole = normalizeReceivedGoodsRole(dealType, role);
+        String normalizedDealType = normalizeOptionalDealType(dealType);
+        String normalizedRole = normalizeReceivedGoodsRole(normalizedDealType, role);
         int safeSize = Math.min(size, 50);
         int offset = page * safeSize;
 
         List<UserReviewItem> reviews = reviewMapper.selectReviewsByReceiver(
                 usrSn,
-                dealType,
+                normalizedDealType,
                 normalizedRole,
                 offset,
                 safeSize);
 
-        long total = reviewMapper.countReviewsByReceiver(usrSn, dealType, normalizedRole);
+        long total = reviewMapper.countReviewsByReceiver(usrSn, normalizedDealType, normalizedRole);
         return PageResponse.<UserReviewItem>builder()
                 .content(reviews)
                 .totalCount(total)
@@ -345,6 +346,21 @@ public class ReviewService {
                 .size(safeSize)
                 .hasNext((long)(page + 1) * safeSize < total)
                 .build();
+    }
+
+    /** 담당자 7 · F-COM-008: 미전달은 전체 조회로 두고 물품·서비스 외 거래유형은 차단한다. */
+    private String normalizeOptionalDealType(String dealType) {
+        if (dealType == null) {
+            return null;
+        }
+
+        String normalizedDealType = dealType.trim().toLowerCase(Locale.ROOT);
+        if ("goods".equals(normalizedDealType) || "service".equals(normalizedDealType)) {
+            return normalizedDealType;
+        }
+        throw new CustomException(
+                ErrorCode.INVALID_INPUT_VALUE,
+                "리뷰 거래 유형은 goods 또는 service여야 합니다.");
     }
 
     /** 담당자 7 · F-COM-009: 물품 또는 서비스 한 도메인의 공개 평점만 집계한다. */

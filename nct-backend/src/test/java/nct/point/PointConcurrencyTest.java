@@ -24,6 +24,7 @@ import nct.ops.audit.port.AuditLogPort;
 import nct.point.domain.PointBalance;
 import nct.point.exception.InsufficientPointException;
 import nct.point.service.PointService;
+import nct.support.TestGeneratedKeys;
 
 /**
  * [테스트 - 포인트 동시성 검증] (담당자6 도메인 계약)
@@ -47,11 +48,10 @@ class PointConcurrencyTest {
     void setUp() {
         String loginId = "t_concurrent_" + System.nanoTime();
         String email = loginId + "@test.local";
-        jdbc.update("""
+        buyerSn = TestGeneratedKeys.insertAndReturnKey(jdbc, """
                 INSERT INTO USERS (USR_LOGIN_ID, USR_PSWD_HASH, USR_NM, USR_EML_ENC, USR_EML_HMAC, USR_STATUS_CD, USR_ROLE_CD)
-                VALUES (?, '{noop}test', 'concurrent', ?, ?, 'USRC0001', 'ROLE_USER')
-                """, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
-        buyerSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+                VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER')
+                """, loginId, loginId, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email));
 
         jdbc.update("""
                 INSERT INTO POINT_LEDGER (USR_SN, PT_LDG_PT_TYPE_CD, PT_LDG_TYPE_CD, PT_LDG_AMT, PT_LDG_BAL_AFTER_AMT, PT_LDG_RSN_CN)

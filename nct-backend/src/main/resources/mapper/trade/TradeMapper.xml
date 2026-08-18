@@ -964,7 +964,7 @@
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0006' THEN 'SETTLEMENT_COMPLETED'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008' THEN 'ESCROW_REFUNDED'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
-                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.' THEN 'DISPUTE_REPORTED'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.' THEN 'DISPUTE_REPORTED'
                 ELSE 'CANCEL'
             END AS eventType,
             h.TRD_STS_HST_REG_DT AS occurredAt,
@@ -996,7 +996,7 @@
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0008'
                     THEN '거래가 취소되어 보관금이 환불되었습니다.'
                 WHEN h.TRD_STS_HST_STATUS_CD = 'TRDC0007'
-                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 접수되었습니다.'
+                 AND h.TRD_STS_HST_RSN_CN = '거래 문제가 신고되었습니다.'
                     THEN '거래 문제가 접수되어 거래와 정산이 보류되었습니다.'
                 WHEN h.TRD_STS_HST_RSN_CN LIKE 'SCHEDULE_CHANGE|%|%|%'
                     THEN SUBSTRING(

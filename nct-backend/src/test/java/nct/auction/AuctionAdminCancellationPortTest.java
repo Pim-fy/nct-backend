@@ -28,6 +28,7 @@ import nct.auction.service.AuctionCancellationService;
 import nct.common.domain.RefType;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
+import nct.notification.service.NotificationService;
 import nct.ops.operation.port.SellerCancellationDecision;
 import nct.ops.operation.port.SellerCancellationDecisionCommand;
 import nct.ops.reference.service.ReferenceDataService;
@@ -55,6 +56,9 @@ class AuctionAdminCancellationPortTest {
 
     @Mock
     private ActiveAbuseReportReferenceReader activeReportReferenceReader;
+
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private AuctionCancellationService service;
@@ -92,6 +96,7 @@ class AuctionAdminCancellationPortTest {
                 RefType.BID,
                 101L,
                 "경매 취소 승인 홀딩 반환: 허위 매물 신고 확인");
+        verify(notificationService).notifyAuctionCancelled(21L, 12L);
         verify(cancelRequestMapper).findPendingByAuctionId(12L);
         verifyNoInteractions(tradeService);
     }

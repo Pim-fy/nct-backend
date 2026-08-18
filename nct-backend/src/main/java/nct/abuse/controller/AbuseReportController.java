@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RestController;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import nct.abuse.dto.CustomerAbuseReportRequest;
-import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.dto.MyAbuseReportResponse;
@@ -31,17 +30,6 @@ import nct.global.security.domain.CustomUserDetails;
 public class AbuseReportController {
 
     private final AbuseReportService abuseReportService;
-
-    @PreAuthorize("hasRole('USER')")
-    @PostMapping
-    public ResponseEntity<ApiResponse<ManualAbuseReportResponse>> createManualReport(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            @Valid @RequestBody ManualAbuseReportRequest request) {
-
-        Long reporterUserSn = userDetails.getMember().getId();
-        return ResponseEntity.status(201).body(ApiResponse.created(
-                abuseReportService.requestManualReport(reporterUserSn, request)));
-    }
 
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/customer")
@@ -76,19 +64,6 @@ public class AbuseReportController {
         Long reporterUserSn = userDetails.getMember().getId();
         return ResponseEntity.ok(ApiResponse.success(
                 abuseReportService.getMyReportDetail(reporterUserSn, reportSn)));
-    }
-
-    @PreAuthorize("isAuthenticated()")
-    @GetMapping("/me/references")
-    public ResponseEntity<ApiResponse<List<ManualAbuseReportStatusResponse>>> getMyReportReferences(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam(name = "referenceTypeCode") String referenceTypeCode) {
-
-        Long reporterUserSn = userDetails.getMember().getId();
-        return ResponseEntity.ok(ApiResponse.success(
-                abuseReportService.getMyManualReportReferences(
-                        reporterUserSn,
-                        referenceTypeCode)));
     }
 
     @GetMapping("/references/statuses")

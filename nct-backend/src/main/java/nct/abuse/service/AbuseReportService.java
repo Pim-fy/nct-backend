@@ -24,7 +24,6 @@ import nct.abuse.domain.AbuseReport;
 import nct.abuse.dto.AdminAbuseReportResponse;
 import nct.abuse.dto.CustomerAbuseReportRequest;
 import nct.abuse.dto.CustomerSupportReportRequest;
-import nct.abuse.dto.ManualAbuseReportRequest;
 import nct.abuse.dto.ManualAbuseReportResponse;
 import nct.abuse.dto.ManualAbuseReportStatusResponse;
 import nct.abuse.dto.MyAbuseReportResponse;
@@ -413,57 +412,6 @@ public class AbuseReportService implements
         }
     }
 
-    /** 판매자가 자기 상품에 등록된 구매자 문의를 수동 신고한다. */
-    @Transactional
-    public ManualAbuseReportResponse requestManualReport(
-            Long reporterUserSn,
-            ManualAbuseReportRequest request) {
-        ManualReportValues values = validateManualReport(reporterUserSn, request);
-        validateReferenceCodes(OTHER_REPORT_TYPE, values.referenceTypeCode());
-        memberOperationLockPort.lock(values.reportedUserSn());
-        rejectDuplicateManualReport(values);
-
-        String actorId = String.valueOf(values.reporterUserSn());
-        AbuseReport report = AbuseReport.builder()
-                .riskEventSn(null)
-                .reporterUserSn(values.reporterUserSn())
-                .reportedUserSn(values.reportedUserSn())
-                .reportTypeCode(OTHER_REPORT_TYPE)
-                .statusCode(RECEIVED_STATUS)
-                .referenceTypeCode(values.referenceTypeCode())
-                .referenceSn(values.referenceSn())
-                .content(values.content())
-                .registeredBy(actorId)
-                .updatedBy(actorId)
-                .build();
-
-        int inserted;
-        try {
-            inserted = abuseReportMapper.insertManualReport(report);
-        } catch (DuplicateKeyException duplicate) {
-            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
-        }
-        if (inserted != 1 || report.getReportSn() == null) {
-            throw new CustomException(ErrorCode.DATABASE_ERROR);
-        }
-        return new ManualAbuseReportResponse(report.getReportSn());
-    }
-
-    /** 로그인 사용자가 이미 신고한 참조 목록을 조회한다. */
-    @Transactional(readOnly = true)
-    public List<ManualAbuseReportStatusResponse> getMyManualReportReferences(
-            Long reporterUserSn,
-            String referenceTypeCode) {
-        String normalizedReferenceType = validateManualReferenceType(
-                reporterUserSn,
-                referenceTypeCode);
-        referenceDataService.requireActiveCode(
-                REFERENCE_TYPE_GROUP,
-                normalizedReferenceType);
-        return abuseReportMapper.findManualReportsByReporterAndReferenceType(
-                reporterUserSn,
-                normalizedReferenceType);
-    }
 
     /** 공개 문의 목록에서 접수·처리중인 신고 표시를 위해 참조 상태만 조회한다. */
     @Transactional(readOnly = true)
@@ -1105,51 +1053,6 @@ public class AbuseReportService implements
         }
     }
 
-    private ManualReportValues validateManualReport(
-            Long reporterUserSn,
-            ManualAbuseReportRequest request) {
-        if (reporterUserSn == null
-                || reporterUserSn <= 0
-                || request == null
-                || request.reportedUserSn() == null
-                || request.reportedUserSn() <= 0
-                || request.referenceTypeCode() == null
-                || request.referenceTypeCode().isBlank()
-                || request.referenceTypeCode().trim().length() > 30
-                || request.referenceSn() == null
-                || request.referenceSn() <= 0
-                || (request.content() != null && request.content().trim().length() > 4000)) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        String referenceTypeCode = request.referenceTypeCode().trim();
-        if (!PRODUCT_COMMENT_REFERENCE_TYPE.equals(referenceTypeCode)) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        InquiryReportTarget target = productServiceProvider.getObject()
-                .getInquiryReportTarget(request.referenceSn());
-        if (target == null
-                || !request.referenceSn().equals(target.getPrdCmtSn())
-                || !BUYER_INQUIRY_TYPE.equals(target.getPrdCmtTypeCd())
-                || target.getWriterUsrSn() == null
-                || target.getSellerUsrSn() == null
-                || !request.reportedUserSn().equals(target.getWriterUsrSn())
-                || reporterUserSn.equals(target.getWriterUsrSn())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-        if (!reporterUserSn.equals(target.getSellerUsrSn())) {
-            throw new CustomException(ErrorCode.FORBIDDEN);
-        }
-
-        String content = trimToNull(request.content());
-        return new ManualReportValues(
-                reporterUserSn,
-                request.reportedUserSn(),
-                referenceTypeCode,
-                request.referenceSn(),
-                content == null ? DEFAULT_MANUAL_REPORT_CONTENT : content);
-    }
 
     /** 담당자 7 · F-COM-018: 신규 고객 신고는 확정된 세부 사유 7종만 허용합니다. */
     private void validateCustomerReportType(String reportTypeCode) {
@@ -1169,25 +1072,6 @@ public class AbuseReportService implements
         }
     }
 
-    private void rejectDuplicateManualReport(ManualReportValues values) {
-        Long existingReportSn = abuseReportMapper.findManualReportId(
-                values.reporterUserSn(),
-                values.referenceTypeCode(),
-                values.referenceSn());
-        if (existingReportSn != null) {
-            throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
-        }
-    }
-
-    private String validateManualReferenceType(
-            Long reporterUserSn,
-            String referenceTypeCode) {
-        if (reporterUserSn == null || reporterUserSn <= 0) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        return normalizeManualReferenceType(referenceTypeCode);
-    }
 
     private String normalizeManualReferenceType(String referenceTypeCode) {
         if (referenceTypeCode == null
@@ -1288,14 +1172,6 @@ public class AbuseReportService implements
             return null;
         }
         return value.trim();
-    }
-
-    private record ManualReportValues(
-            Long reporterUserSn,
-            Long reportedUserSn,
-            String referenceTypeCode,
-            Long referenceSn,
-            String content) {
     }
 
     private record DecisionValues(

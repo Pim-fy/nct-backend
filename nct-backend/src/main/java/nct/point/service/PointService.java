@@ -413,6 +413,51 @@ public class PointService {
     }
 
     /**
+     * 충전 수수료 차감 확장 지점 (REQ-PAY-009 / F-PAY-009).
+     * PointChargeService가 충전 지급(creditCharge) 직후 같은 트랜잭션에서 호출한다.
+     * 충전 수수료는 아직 어떤 정책도 정해지지 않았다(정률/정액 여부조차 미정) — 지금은
+     * 호출부가 항상 0원을 넘겨 실제로는 아무 것도 차감되지 않는다. 팀이 정책을 정하면
+     * PointChargeService 호출부에서 금액 계산만 채우면 되는 자리로 남겨둔다. 거래 수수료
+     * (deductCommission)와 모양은 같고 차감 대상 버킷만 사용가능(AVAILABLE)으로 다르다 —
+     * 충전은 정산가능이 아니라 사용가능 버킷을 다루기 때문.
+     *
+     * @param feeAmt 차감할 수수료 금액 — 0 이하면 기록 없이 반환
+     */
+    @Transactional
+    public void deductChargeFee(long usrSn, long feeAmt, String reason) {
+        if (feeAmt <= 0) {
+            return;
+        }
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.FEE, -feeAmt,
+                bal.getAvailableAmt() - feeAmt, null, null, reason);
+    }
+
+    /**
+     * 환전 수수료 차감 확장 지점 (REQ-PAY-009 / F-PAY-009).
+     * PointExchangeService가 환전 신청 차감(debitExchange) 직후 같은 트랜잭션에서 호출한다.
+     * 환전 수수료도 아직 어떤 정책도 정해지지 않았다(정률/정액 여부조차 미정) — 지금은
+     * 호출부가 항상 0원을 넘겨 실제로는 아무 것도 차감되지 않는다. 팀이 정책을 정하면
+     * PointExchangeService 호출부에서 금액 계산만 채우면 되는 자리로 남겨둔다.
+     *
+     * @param refSn  환전 신청(POINT_EXCHANGE_ORDER) 일련번호
+     * @param feeAmt 차감할 수수료 금액 — 0 이하면 기록 없이 반환
+     */
+    @Transactional
+    public void deductExchangeFee(long usrSn, long feeAmt, long refSn, String reason) {
+        if (feeAmt <= 0) {
+            return;
+        }
+        lockUser(usrSn);
+
+        PointBalance bal = pointMapper.selectBalance(usrSn);
+        insertLedger(usrSn, PointCategory.AVAILABLE, PointLedgerType.FEE, -feeAmt,
+                bal.getAvailableAmt() - feeAmt, RefType.POINT_EXCHANGE_ORDER, refSn, reason);
+    }
+
+    /**
      * 보관금 환불. 거래 문제 판정이 "환불"로 확정되거나(분쟁 담당자 4·5) 관리자가 판매자
      * 취소 요청을 승인했을 때(F-OPS-004, 담당자4) 호출한다.
      * 보관금으로 빠져 있던 거래대금 전액을 구매자/의뢰자의 사용가능 버킷에 되돌린다 —

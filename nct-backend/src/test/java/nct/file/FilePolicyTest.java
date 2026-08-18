@@ -171,7 +171,7 @@ class FilePolicyTest {
                 SELECT AUD_LOG_RSON_CN FROM AUDIT_LOG
                 WHERE USR_SN = ? AND AUD_LOG_TYPE_CD = 'AUDC0004'
                 """, String.class, adminSn);
-        assertThat(reason).contains("신청 " + prvAplySn + "번").contains("파일 " + flSn + "번");
+        assertThat(reason).contains("신청 #" + prvAplySn).contains("파일 #" + flSn);
     }
 
     // ---------- 픽스처 ----------

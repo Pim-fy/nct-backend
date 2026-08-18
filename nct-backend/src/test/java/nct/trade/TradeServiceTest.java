@@ -1903,10 +1903,10 @@ class TradeServiceTest {
     private void verifyTradeCompletionAgreement(long userId, long tradeId, boolean agreed) {
         ArgumentCaptor<AgreeRef> referenceCaptor = ArgumentCaptor.forClass(AgreeRef.class);
         verify(agreeHistoryService).record(
-                userId,
-                AgreeType.TERMS_OF_SERVICE,
-                AgreeActType.TRADE_COMPLETE_CONFIRM,
-                agreed,
+                eq(userId),
+                eq(AgreeType.TERMS_OF_SERVICE),
+                eq(AgreeActType.TRADE_COMPLETE_CONFIRM),
+                eq(agreed),
                 referenceCaptor.capture());
         assertThat(referenceCaptor.getValue().getTrdSn()).isEqualTo(tradeId);
     }

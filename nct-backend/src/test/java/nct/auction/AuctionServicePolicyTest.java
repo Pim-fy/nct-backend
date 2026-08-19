@@ -3,7 +3,9 @@ package nct.auction;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -25,6 +27,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import nct.agree.domain.AgreeActType;
+import nct.agree.domain.AgreeRef;
+import nct.agree.domain.AgreeType;
+import nct.agree.service.AgreeHistoryService;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.dto.AuctionBidCreateCommand;
 import nct.auction.dto.AuctionBidRequest;
@@ -83,6 +89,9 @@ class AuctionServicePolicyTest {
 
     @Mock
     private AuditLogPort auditLogPort;
+
+    @Mock
+    private AgreeHistoryService agreeHistoryService;
 
     @InjectMocks
     private AuctionService auctionService;
@@ -188,6 +197,7 @@ class AuctionServicePolicyTest {
         assertThat(auditCaptor.getValue().requestId()).isEqualTo("bid:50");
         assertThat(auditCaptor.getValue().relatedReferenceTypeCode()).isEqualTo(RefType.AUCTION.getCode());
         assertThat(auditCaptor.getValue().relatedReferenceSn()).isEqualTo(10L);
+        verifyBidAgreement(50L);
         verifyRealtimeEvent("BID_PLACED");
         assertThat(response.isFavorite()).isTrue();
     }
@@ -276,7 +286,47 @@ class AuctionServicePolicyTest {
         verify(buyerDeliveryAddressReader).getOwnedActiveAddressSnapshot(40L, 70L);
         verify(notificationService).notifyBidUpdated(35L, 10L, 30000L);
         verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
+        verifyBidAgreement(50L);
         verifyRealtimeEvent("BUY_NOW");
+    }
+
+    @Test
+    void buyNowRejectsShippingWithoutPositiveDeliveryAddressIdBeforeMutation() {
+        target.setTradeMethodCode("TRDC0009");
+        target.setInstantBuyPrice(BigDecimal.valueOf(30000));
+
+        for (Long invalidAddressId : new Long[] { null, 0L, -1L }) {
+            AuctionBuyNowRequest request = new AuctionBuyNowRequest();
+            request.setDeliveryAddressId(invalidAddressId);
+
+            assertThatThrownBy(() -> auctionService.buyNow(10L, 40L, request))
+                    .isInstanceOf(CustomException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        verify(buyerDeliveryAddressReader, never()).getOwnedActiveAddressSnapshot(anyLong(), any());
+        verify(auctionMapper, never()).insertBid(any());
+        verify(pointService, never()).hold(anyLong(), anyLong(), any(), anyLong(), any());
+        verify(tradeService, never()).createAuctionTrade(any());
+        verify(agreeHistoryService, never()).record(anyLong(), any(), any(), anyBoolean(), any());
+    }
+
+    @Test
+    void placeBidRejectsShippingWithoutDeliveryAddressIdBeforePriceUpdate() {
+        target.setTradeMethodCode("TRDC0009");
+        AuctionBidRequest request = bidRequest(12000);
+        request.setDeliveryAddressId(null);
+
+        assertThatThrownBy(() -> auctionService.placeBid(10L, 40L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(buyerDeliveryAddressReader, never()).getOwnedActiveAddressSnapshot(anyLong(), any());
+        verify(auctionMapper, never()).updateAuctionCurrentPrice(any(), any(), any());
+        verify(pointService, never()).hold(anyLong(), anyLong(), any(), anyLong(), any());
+        verify(agreeHistoryService, never()).record(anyLong(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -546,6 +596,7 @@ class AuctionServicePolicyTest {
 
         auctionService.buyNow(10L, 40L, new AuctionBuyNowRequest());
 
+        verify(buyerDeliveryAddressReader, never()).getOwnedActiveAddressSnapshot(anyLong(), any());
         verify(notificationService, never()).notifyBidUpdated(anyLong(), anyLong(), anyLong());
         verify(notificationService).notifyAuctionResult(40L, 10L, true, 900L);
     }
@@ -600,6 +651,25 @@ class AuctionServicePolicyTest {
     }
 
     @Test
+    void finalizeExpiredAuctionRejectsShippingWinnerWithoutDeliveryAddressIdBeforeMutation() {
+        target.setEndDateTime(LocalDateTime.now().minusMinutes(1));
+        target.setCurrentHighestBidId(50L);
+        target.setCurrentHighestBidderId(40L);
+        target.setCurrentHighestTradeMethodCode("TRDC0009");
+        target.setCurrentHighestDeliveryAddressId(null);
+
+        assertThatThrownBy(() -> auctionService.finalizeExpiredAuction(10L))
+                .isInstanceOf(CustomException.class)
+                .hasMessage("배송 거래에는 배송지 번호가 필요합니다.")
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verify(pointService, never()).convertHoldToEscrow(anyLong(), any(), anyLong(), any());
+        verify(auctionMapper, never()).updateExpiredAuctionStatus(anyLong(), any(), any());
+        verify(tradeService, never()).createAuctionTrade(any(AuctionTradeCreateCommand.class));
+    }
+
+    @Test
     void finalizeExpiredAuctionWithoutBidDoesNotCreateTrade() {
         target.setEndDateTime(LocalDateTime.now().minusMinutes(1));
         when(auctionMapper.updateExpiredAuctionStatus(10L, AuctionStatusCode.FAILED, "SYSTEM"))
@@ -629,6 +699,20 @@ class AuctionServicePolicyTest {
         verify(auctionEventPublisher).publishAfterCommit(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getAuctionId()).isEqualTo(10L);
         assertThat(eventCaptor.getValue().getEventType()).isEqualTo(eventType);
+    }
+
+    private void verifyBidAgreement(Long bidId) {
+        ArgumentCaptor<AgreeRef> refCaptor = ArgumentCaptor.forClass(AgreeRef.class);
+        verify(agreeHistoryService).record(
+                eq(40L),
+                eq(AgreeType.TERMS_OF_SERVICE),
+                eq(AgreeActType.BID),
+                eq(true),
+                refCaptor.capture());
+        assertThat(refCaptor.getValue().getBidSn()).isEqualTo(bidId);
+        assertThat(refCaptor.getValue().getAucSn()).isNull();
+        assertThat(refCaptor.getValue().getPtLdgSn()).isNull();
+        assertThat(refCaptor.getValue().getTrdSn()).isNull();
     }
 
     private void stubAuctionDetail() {

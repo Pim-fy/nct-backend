@@ -166,8 +166,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(bidderSn, 50000);
 
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         auctionService.placeBid(aucSn, bidderSn, request);
 
@@ -187,8 +186,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long prdSn = insertProduct(sellerSn);
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(bidderSn, 50000);
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         auctionService.placeBid(aucSn, bidderSn, request);
 
@@ -226,8 +224,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long prdSn = insertProduct(sellerSn);
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(bidderSn, 50000);
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         auctionService.placeBid(aucSn, bidderSn, request);
         long bidSn = latestBidSn(aucSn);
@@ -250,8 +247,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long prdSn = insertProduct(sellerSn);
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(bidderSn, 50000);
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         auctionService.placeBid(aucSn, bidderSn, request);
         long bidSn = latestBidSn(aucSn);
@@ -272,8 +268,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(bidderSn, 11000);
 
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
                 .isInstanceOf(PointException.class)
@@ -300,8 +295,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         creditAvailable(secondBidderSn, 50000);
         pointService.hold(firstBidderSn, 12000, RefType.BID, firstBidSn, "기존 입찰 홀딩");
 
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(14000));
+        AuctionBidRequest request = shippingBidRequest(secondBidderSn, 14000);
 
         auctionService.placeBid(aucSn, secondBidderSn, request);
 
@@ -322,8 +316,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(bidderSn, 50000);
 
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(15000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 15000);
 
         assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
                 .isInstanceOf(CustomException.class)
@@ -346,8 +339,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
                 0);
         creditAvailable(bidderSn, 50000);
 
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         auctionService.placeBid(aucSn, bidderSn, request);
 
@@ -368,8 +360,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
                 1);
         creditAvailable(bidderSn, 50000);
 
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         auctionService.placeBid(aucSn, bidderSn, request);
 
@@ -387,7 +378,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(buyerSn, 50000);
 
-        auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest());
+        auctionService.buyNow(aucSn, buyerSn, shippingBuyNowRequest(buyerSn));
 
         long bidSn = latestBidSn(aucSn);
         PointBalance balance = pointService.getBalance(buyerSn);
@@ -407,7 +398,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
         long aucSn = insertAuction(prdSn, BigDecimal.valueOf(10000));
         creditAvailable(buyerSn, 20000);
 
-        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
+        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, shippingBuyNowRequest(buyerSn)))
                 .isInstanceOf(PointException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.POINT_INSUFFICIENT);
@@ -530,8 +521,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
                 databaseNow().minusMinutes(1),
                 0);
         creditAvailable(bidderSn, 50000);
-        AuctionBidRequest request = new AuctionBidRequest();
-        request.setBidAmount(BigDecimal.valueOf(12000));
+        AuctionBidRequest request = shippingBidRequest(bidderSn, 12000);
 
         assertThatThrownBy(() -> auctionService.placeBid(aucSn, bidderSn, request))
                 .isInstanceOf(CustomException.class)
@@ -553,7 +543,7 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
                 0);
         creditAvailable(buyerSn, 50000);
 
-        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest()))
+        assertThatThrownBy(() -> auctionService.buyNow(aucSn, buyerSn, shippingBuyNowRequest(buyerSn)))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.CONFLICT);
@@ -579,7 +569,9 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?, ?)
                 """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
                 fieldCryptoService.encrypt("테스트 주소"), fieldCryptoService.encrypt("101호"), fieldCryptoService.encrypt("12345"));
-        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        long userSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        insertDeliveryAddress(userSn);
+        return userSn;
     }
 
     private long insertProduct(long sellerSn) {
@@ -642,11 +634,68 @@ class AuctionServiceTest extends SafeSpringBootIntegrationTest {
     }
 
     private long insertBid(long aucSn, long bidderSn, BigDecimal amount, String statusCode) {
+        long deliveryAddressId = defaultDeliveryAddressId(bidderSn);
         jdbc.update("""
-                INSERT INTO BID (AUC_SN, USR_SN, BID_AMT, BID_STATUS_CD)
-                VALUES (?, ?, ?, ?)
-                """, aucSn, bidderSn, amount, statusCode);
+                INSERT INTO BID (
+                    AUC_SN,
+                    USR_SN,
+                    BID_AMT,
+                    BID_STATUS_CD,
+                    BID_TRD_METHOD_CD,
+                    BID_DLVR_ADDR_SN
+                )
+                VALUES (?, ?, ?, ?, 'TRDC0009', ?)
+                """, aucSn, bidderSn, amount, statusCode, deliveryAddressId);
         return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    private AuctionBidRequest shippingBidRequest(long bidderSn, long amount) {
+        AuctionBidRequest request = new AuctionBidRequest();
+        request.setBidAmount(BigDecimal.valueOf(amount));
+        request.setDeliveryAddressId(defaultDeliveryAddressId(bidderSn));
+        return request;
+    }
+
+    private AuctionBuyNowRequest shippingBuyNowRequest(long buyerSn) {
+        AuctionBuyNowRequest request = new AuctionBuyNowRequest();
+        request.setDeliveryAddressId(defaultDeliveryAddressId(buyerSn));
+        return request;
+    }
+
+    private void insertDeliveryAddress(long userSn) {
+        String actor = Long.toString(userSn);
+        jdbc.update("""
+                INSERT INTO USER_DELIVERY_ADDRESS (
+                    USR_SN,
+                    USR_DLVR_ADDR_NM,
+                    USR_DLVR_ZIP_ENC,
+                    USR_DLVR_ADDR_ENC,
+                    USR_DLVR_DADDR_ENC,
+                    USR_DLVR_DFLT_YN,
+                    USR_DLVR_USE_YN,
+                    USR_DLVR_REG_ID,
+                    USR_DLVR_UPDT_ID
+                )
+                VALUES (?, '테스트 배송지', ?, ?, ?, 'Y', 'Y', ?, ?)
+                """,
+                userSn,
+                fieldCryptoService.encrypt("12345"),
+                fieldCryptoService.encrypt("테스트 주소"),
+                fieldCryptoService.encrypt("101호"),
+                actor,
+                actor);
+    }
+
+    private long defaultDeliveryAddressId(long userSn) {
+        return jdbc.queryForObject("""
+                SELECT USR_DLVR_ADDR_SN
+                FROM USER_DELIVERY_ADDRESS
+                WHERE USR_SN = ?
+                  AND USR_DLVR_USE_YN = 'Y'
+                  AND USR_DLVR_DFLT_YN = 'Y'
+                ORDER BY USR_DLVR_ADDR_SN DESC
+                LIMIT 1
+                """, Long.class, userSn);
     }
 
     private void creditAvailable(long usrSn, long amount) {

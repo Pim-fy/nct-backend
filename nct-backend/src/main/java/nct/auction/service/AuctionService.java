@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import nct.agree.domain.AgreeActType;
+import nct.agree.domain.AgreeRef;
+import nct.agree.domain.AgreeType;
+import nct.agree.service.AgreeHistoryService;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.constant.BidStatusCode;
 import nct.auction.dto.AuctionBidCreateCommand;
@@ -82,6 +86,7 @@ public class AuctionService {
     private final AuctionBidUnitPolicyService bidUnitPolicyService;
     private final AuctionBidTradeReader auctionBidTradeReader;
     private final AuditLogPort auditLogPort;
+    private final AgreeHistoryService agreeHistoryService;
 
     public AuctionListResponse findAuctions(AuctionListRequest request) {
         normalize(request);
@@ -258,6 +263,9 @@ public class AuctionService {
 
         String finalStatus = AuctionStatusCode.FAILED;
         if (target.getCurrentHighestBidId() != null && target.getCurrentHighestBidderId() != null) {
+            requireDeliveryAddressIdForShipping(
+                    target.getCurrentHighestTradeMethodCode(),
+                    target.getCurrentHighestDeliveryAddressId());
             pointService.convertHoldToEscrow(
                     target.getCurrentHighestBidderId(),
                     RefType.BID,
@@ -492,6 +500,7 @@ public class AuctionService {
         notifyOutbidBidder(previousHighestBidderId, userId, auctionId, bidAmount);
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
+        recordBidAgreement(userId, bid.getBidId());
         recordSuccessfulBid(userId, auctionId, bid.getBidId(), target.getCurrentPrice(), bidAmount);
         publishAuctionChanged(auctionId, "BID_PLACED");
         return detail;
@@ -603,6 +612,7 @@ public class AuctionService {
 
         AuctionDetailResponse detail = loadAuctionDetail(auctionId, userId);
         detail.setTradeId(trade.getTradeSn());
+        recordBidAgreement(userId, bid.getBidId());
         publishAuctionChanged(auctionId, "BUY_NOW");
         return detail;
     }
@@ -662,9 +672,32 @@ public class AuctionService {
         if (!DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
             return null;
         }
+        requireDeliveryAddressIdForShipping(selectedTradeMethodCode, deliveryAddressId);
         return buyerDeliveryAddressReader.getOwnedActiveAddressSnapshot(
                 userId,
                 deliveryAddressId).deliveryAddressId();
+    }
+
+    private void requireDeliveryAddressIdForShipping(
+            String selectedTradeMethodCode,
+            Long deliveryAddressId) {
+        if (!DELIVERY_TRADE_METHOD_CODE.equals(selectedTradeMethodCode)) {
+            return;
+        }
+        if (deliveryAddressId == null || deliveryAddressId <= 0) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "배송 거래에는 배송지 번호가 필요합니다.");
+        }
+    }
+
+    private void recordBidAgreement(Long userId, Long bidId) {
+        agreeHistoryService.record(
+                userId,
+                AgreeType.TERMS_OF_SERVICE,
+                AgreeActType.BID,
+                true,
+                AgreeRef.bid(bidId));
     }
 
     private String resolveSelectedTradeMethod(AuctionBidTarget target, String requestedTradeMethodCode) {

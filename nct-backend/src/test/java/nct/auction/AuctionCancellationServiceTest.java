@@ -199,6 +199,7 @@ class AuctionCancellationServiceTest {
 
         AuctionBidRequest bidRequest = new AuctionBidRequest();
         bidRequest.setBidAmount(BigDecimal.valueOf(12000));
+        bidRequest.setDeliveryAddressId(defaultDeliveryAddressId(bidderSn));
         auctionService.placeBid(aucSn, bidderSn, bidRequest);
         long bidSn = latestBidSn(aucSn);
 
@@ -231,7 +232,9 @@ class AuctionCancellationServiceTest {
         long aucSn = insertAuction(prdSn, AuctionStatusCode.ACTIVE);
         creditAvailable(buyerSn, 50000);
 
-        auctionService.buyNow(aucSn, buyerSn, new AuctionBuyNowRequest());
+        AuctionBuyNowRequest buyNowRequest = new AuctionBuyNowRequest();
+        buyNowRequest.setDeliveryAddressId(defaultDeliveryAddressId(buyerSn));
+        auctionService.buyNow(aucSn, buyerSn, buyNowRequest);
         long bidSn = latestBidSn(aucSn);
         long tradeSn = materialTradeSn(prdSn);
         assertThat(materialTradeBidSn(tradeSn)).isEqualTo(bidSn);
@@ -375,7 +378,45 @@ class AuctionCancellationServiceTest {
                 VALUES (?, '{noop}test', ?, ?, ?, 'USRC0001', 'ROLE_USER', ?, ?, ?)
                 """, loginId, prefix, fieldCryptoService.encrypt(email), fieldCryptoService.emailHmac(email),
                 fieldCryptoService.encrypt("테스트 주소"), fieldCryptoService.encrypt("101호"), fieldCryptoService.encrypt("12345"));
-        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        long userSn = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        insertDeliveryAddress(userSn);
+        return userSn;
+    }
+
+    private void insertDeliveryAddress(long userSn) {
+        String actor = Long.toString(userSn);
+        jdbc.update("""
+                INSERT INTO USER_DELIVERY_ADDRESS (
+                    USR_SN,
+                    USR_DLVR_ADDR_NM,
+                    USR_DLVR_ZIP_ENC,
+                    USR_DLVR_ADDR_ENC,
+                    USR_DLVR_DADDR_ENC,
+                    USR_DLVR_DFLT_YN,
+                    USR_DLVR_USE_YN,
+                    USR_DLVR_REG_ID,
+                    USR_DLVR_UPDT_ID
+                )
+                VALUES (?, '테스트 배송지', ?, ?, ?, 'Y', 'Y', ?, ?)
+                """,
+                userSn,
+                fieldCryptoService.encrypt("12345"),
+                fieldCryptoService.encrypt("테스트 주소"),
+                fieldCryptoService.encrypt("101호"),
+                actor,
+                actor);
+    }
+
+    private long defaultDeliveryAddressId(long userSn) {
+        return jdbc.queryForObject("""
+                SELECT USR_DLVR_ADDR_SN
+                FROM USER_DELIVERY_ADDRESS
+                WHERE USR_SN = ?
+                  AND USR_DLVR_USE_YN = 'Y'
+                  AND USR_DLVR_DFLT_YN = 'Y'
+                ORDER BY USR_DLVR_ADDR_SN DESC
+                LIMIT 1
+                """, Long.class, userSn);
     }
 
     private long insertProduct(long sellerSn, BigDecimal instantBuyAmount) {

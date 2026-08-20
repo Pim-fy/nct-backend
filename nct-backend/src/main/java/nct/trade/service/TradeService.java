@@ -167,8 +167,9 @@ public class TradeService implements
     }
 
     /**
-     * 담당자 7 · REQ-AUC-027/F-SVC-012/F-PAY-005: 상품·서비스 거래 문제를 같은 트랜잭션으로
-     * 접수한다. 완료 거래의 사후 이의제기 정책은 미확정이므로 기존 활성 상태만 허용한다.
+     * 담당자 7 · REQ-AUC-027/F-SVC-012/F-PAY-005/REQ-OPS-016: 상품·서비스 거래 문제를
+     * 같은 트랜잭션으로 접수하고 행위 시점 동의 이력을 남긴다.
+     * 완료 거래의 사후 이의제기 정책은 미확정이므로 기존 활성 상태만 허용한다.
      */
     @Transactional
     public void registerTradeReport(
@@ -235,6 +236,13 @@ public class TradeService implements
             throw new CustomException(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS,
                     "이미 접수된 거래 문제입니다.");
         }
+        // 담당자 7 · REQ-OPS-016/F-OPS-017: 신고 성공과 같은 트랜잭션에서 동의 증적을 기록한다.
+        agreeHistoryService.record(
+                userId,
+                AgreeType.TERMS_OF_SERVICE,
+                AgreeActType.TRADE_REPORT_SUBMIT,
+                true,
+                AgreeRef.trade(tradeId));
         notificationService.notifyTradeReportReceived(counterpartUserId, reportSn);
     }
 

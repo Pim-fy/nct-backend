@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -384,6 +385,15 @@ class TradeServiceTest {
         verify(chatService).closeServiceTradeChatRoom(81L);
         verify(tradeMapper).insertStatusHistory(81L, "TRDC0007", "거래 문제가 신고되었습니다.");
         verify(notificationService).notifyTradeReportReceived(22L, 9001L);
+        ArgumentCaptor<AgreeRef> agreementReferenceCaptor =
+                ArgumentCaptor.forClass(AgreeRef.class);
+        verify(agreeHistoryService).record(
+                eq(11L),
+                eq(AgreeType.TERMS_OF_SERVICE),
+                eq(AgreeActType.TRADE_REPORT_SUBMIT),
+                eq(true),
+                agreementReferenceCaptor.capture());
+        assertThat(agreementReferenceCaptor.getValue().getTrdSn()).isEqualTo(81L);
     }
 
     @Test
@@ -532,6 +542,37 @@ class TradeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ABUSE_REPORT_ALREADY_EXISTS);
 
+        verify(notificationService, never()).notifyTradeReportReceived(anyLong(), anyLong());
+        verifyNoInteractions(agreeHistoryService);
+    }
+
+    @Test
+    void stopsTradeReportFlowWhenAgreementHistoryRecordingFails() {
+        TradeDisputeTarget target = new TradeDisputeTarget();
+        target.setTradeSn(81L);
+        target.setRequesterUserId(11L);
+        target.setProviderUserId(22L);
+        target.setTradeTypeCode("TRDC0002");
+        target.setTradeStatusCode("TRDC0003");
+        ServiceTradeDisputeRequest request = new ServiceTradeDisputeRequest();
+        request.setReportTypeCode("ABRC0008");
+        request.setContent("동의 이력 저장 실패 시 전체 접수를 중단합니다.");
+        when(tradeMapper.findTradeReportTargetForUpdate(81L)).thenReturn(target);
+        when(tradeMapper.holdTradeForReport(81L, "11")).thenReturn(1);
+        doThrow(new IllegalStateException("agreement history write failed"))
+                .when(agreeHistoryService)
+                .record(
+                        eq(11L),
+                        eq(AgreeType.TERMS_OF_SERVICE),
+                        eq(AgreeActType.TRADE_REPORT_SUBMIT),
+                        eq(true),
+                        any(AgreeRef.class));
+
+        assertThatThrownBy(() -> tradeService.registerTradeReport(81L, 11L, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("agreement history write failed");
+
+        verify(tradeIncidentReportPort).create(any(TradeIncidentReportCommand.class));
         verify(notificationService, never()).notifyTradeReportReceived(anyLong(), anyLong());
     }
 

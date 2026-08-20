@@ -102,7 +102,6 @@ public class AbuseReportService implements
     private static final String REFERENCE_TYPE_GROUP = "REFG01";
     private static final String SYSTEM_ACTOR = "SYSTEM";
     private static final String BUYER_INQUIRY_TYPE = "PRDC0006";
-    private static final String DEFAULT_MANUAL_REPORT_CONTENT = "상품 댓글·문의 신고";
     private static final int MAX_PROCESS_REASON_LENGTH = 4000;
     private static final int MAX_REQUEST_ID_LENGTH = 100;
     private static final int MAX_PUBLIC_REFERENCE_LOOKUP_SIZE = 100;

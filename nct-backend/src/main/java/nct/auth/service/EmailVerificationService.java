@@ -11,6 +11,7 @@ import nct.auth.domain.EmailVerification;
 import nct.auth.dto.EmailVerificationSendRequest;
 import nct.auth.dto.EmailVerificationSendResponse;
 import nct.auth.dto.EmailVerificationVerifyRequest;
+import nct.auth.dto.EmailVerificationVerifyResponse;
 import nct.auth.mapper.EmailVerificationMapper;
 import nct.global.exception.CustomException;
 import nct.global.exception.ErrorCode;
@@ -86,7 +87,7 @@ public class EmailVerificationService {
     /** 인증번호가 일치하면 해당 SIGNUP 인증 건을 VERIFIED 상태로 전환한다. */
     // 오입력·만료 예외에도 FAIL_CNT·LOCKED·EXPIRED 전이는 커밋되어야 한다.
     @Transactional(noRollbackFor = CustomException.class)
-    public void verifySignupCode(Long verificationId, EmailVerificationVerifyRequest request) {
+    public EmailVerificationVerifyResponse verifySignupCode(Long verificationId, EmailVerificationVerifyRequest request) {
         EmailVerification verification = findSignupForUpdate(verificationId);
         LocalDateTime now = LocalDateTime.now();
         ensureVerifiable(verification, now);
@@ -105,7 +106,11 @@ public class EmailVerificationService {
         }
         // @ai_generated: 인증 성공 시점부터 별도 유예시간을 다시 적용한다 - 발송 시점 기준 3분 만료가
         // 그대로 남아있으면 인증 후 나머지 가입 정보 입력이 조금만 늦어져도 가입이 막히는 문제가 있었다.
-        emailVerificationMapper.extendSignupExpiry(verificationId, now.plusMinutes(SIGNUP_GRACE_MINUTES));
+        LocalDateTime graceExpiresAt = now.plusMinutes(SIGNUP_GRACE_MINUTES);
+        emailVerificationMapper.extendSignupExpiry(verificationId, graceExpiresAt);
+        // @ai_generated: 연장된 만료시각을 응답에 실어야 화면이 "3분"이 아니라 실제 유예시간을
+        // 기준으로 판단할 수 있다 - 이전엔 Void 응답이라 화면이 이 값을 알 방법이 없었다.
+        return EmailVerificationVerifyResponse.builder().expiresAt(graceExpiresAt).build();
     }
 
     /** 최종 가입 직전에 이메일·목적·VERIFIED 상태를 같은 트랜잭션에서 다시 검증한다. */

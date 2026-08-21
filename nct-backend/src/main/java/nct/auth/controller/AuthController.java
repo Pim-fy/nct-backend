@@ -20,6 +20,7 @@ import nct.auth.dto.AvailabilityResponse;
 import nct.auth.dto.EmailVerificationSendRequest;
 import nct.auth.dto.EmailVerificationSendResponse;
 import nct.auth.dto.EmailVerificationVerifyRequest;
+import nct.auth.dto.EmailVerificationVerifyResponse;
 import nct.auth.dto.FindEmailRequest;
 import nct.auth.dto.FindEmailResponse;
 import nct.auth.dto.PasswordResetConfirmRequest;
@@ -114,11 +115,11 @@ public class AuthController {
     // 전역 중복요청 방지의 응답 재반환 대상에서 제외한다(같은 코드 재입력이 캐시 응답으로
     // 대체되면 EML_VRF_FAIL_CNT가 늘지 않아 5회 잠금 정책이 무력화됨, login/logout과 동일 근거).
     @PostMapping("/email-verifications/{verificationId}/verify")
-    public ResponseEntity<ApiResponse<Void>> verifyEmailVerification(
+    public ResponseEntity<ApiResponse<EmailVerificationVerifyResponse>> verifyEmailVerification(
             @PathVariable(name = "verificationId") Long verificationId,
             @Valid @RequestBody EmailVerificationVerifyRequest request) {
-        emailVerificationService.verifySignupCode(verificationId, request);
-        return ResponseEntity.ok(ApiResponse.success());
+        EmailVerificationVerifyResponse response = emailVerificationService.verifySignupCode(verificationId, request);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     /** F-AUTH-014: 아이디 찾기 - 이메일+닉네임 불일치·탈퇴·정지·미가입 전부 동일한 실패 응답 */

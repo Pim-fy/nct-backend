@@ -50,6 +50,10 @@ public interface EmailVerificationMapper {
     int markVerified(@Param("verificationId") Long verificationId,
                      @Param("verifiedAt") LocalDateTime verifiedAt);
 
+    // @ai_generated: SIGNUP 전용 - 인증 성공 후 최종 가입까지의 유예시간을 별도로 연장한다.
+    int extendSignupExpiry(@Param("verificationId") Long verificationId,
+                           @Param("expiresAt") LocalDateTime expiresAt);
+
     int incrementFailure(@Param("verificationId") Long verificationId);
 
     int lock(@Param("verificationId") Long verificationId,

@@ -187,6 +187,15 @@
           AND EML_VRF_STATUS_CD = 'EMVC0003'
     </update>
 
+    <!-- @ai_generated: SIGNUP 전용 - 인증번호 자체의 유효시간과 별개로 인증 성공 후 가입 유예시간을 연장한다. -->
+    <update id="extendSignupExpiry">
+        UPDATE EMAIL_VERIFICATION
+        SET EML_VRF_EXPIRES_AT = #{expiresAt},
+            EML_VRF_UPDT_ID = 'SYSTEM'
+        WHERE EML_VRF_SN = #{verificationId}
+          AND EML_VRF_STATUS_CD = 'EMVC0004'
+    </update>
+
     <update id="incrementFailure">
         UPDATE EMAIL_VERIFICATION
         SET EML_VRF_FAIL_CNT = EML_VRF_FAIL_CNT + 1,

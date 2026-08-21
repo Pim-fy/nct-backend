@@ -110,6 +110,9 @@ public class AuthController {
                              .body(ApiResponse.created(emailVerificationService.sendSignupCode(request)));
     }
 
+    @SkipIdempotency // @ai_generated: 오입력마다 실패 횟수를 반드시 새로 판정해야 하는 엔드포인트라
+    // 전역 중복요청 방지의 응답 재반환 대상에서 제외한다(같은 코드 재입력이 캐시 응답으로
+    // 대체되면 EML_VRF_FAIL_CNT가 늘지 않아 5회 잠금 정책이 무력화됨, login/logout과 동일 근거).
     @PostMapping("/email-verifications/{verificationId}/verify")
     public ResponseEntity<ApiResponse<Void>> verifyEmailVerification(
             @PathVariable(name = "verificationId") Long verificationId,

@@ -1,6 +1,7 @@
 package nct.global.security.filter;
 
 import java.io.IOException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -77,6 +78,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Long usrSn = jwtTokenProvider.getUsrSn(accessToken);
             userDetails = customUserDetailsService.loadUserByUsername(String.valueOf(usrSn));
         } catch (CustomException ex) {
+            // @ai_generated: 정지/탈퇴 계정은 이 필터가 요청을 컨트롤러까지 보내지 않고 여기서 끊기
+            // 때문에, 별도의 /auth/logout 호출로는 쿠키를 지울 방법이 없다(그 요청도 여기서 막힘).
+            // 판정한 이 시점에 직접 쿠키를 지워야 다음 요청부터 같은 오류가 반복되지 않는다.
+            if (ErrorCode.ACCOUNT_SUSPENDED.equals(ex.getErrorCode())
+                    || ErrorCode.WITHDRAWN_USER.equals(ex.getErrorCode())) {
+                response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.deleteAccessTokenCookie().toString());
+                response.addHeader(HttpHeaders.SET_COOKIE, cookieUtil.deleteRefreshTokenCookie().toString());
+            }
             writeErrorResponse(response, ex.getErrorCode(), requestURI);
             return;
         }

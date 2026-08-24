@@ -1,6 +1,5 @@
 package nct.global.idempotency;
 
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -102,10 +101,10 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         if (response instanceof ContentCachingResponseWrapper wrapper) {
             byte[] content = wrapper.getContentAsByteArray();
             if (content.length > 0) {
-                Charset charset = wrapper.getCharacterEncoding() != null
-                        ? Charset.forName(wrapper.getCharacterEncoding())
-                        : StandardCharsets.UTF_8;
-                body = new String(content, charset);
+                // @ai_generated: F-COM-017 P1 - HttpServletResponse.getCharacterEncoding()은 명시적으로
+                // charset을 지정한 적이 없어도 Servlet 기본값 ISO-8859-1을 반환한다. 이 API는 JSON(UTF-8)만
+                // 응답하므로 그 값을 신뢰하지 않고 항상 UTF-8로 디코딩한다(그렇지 않으면 캐시된 응답이 깨져 저장·재반환됨).
+                body = new String(content, StandardCharsets.UTF_8);
             }
         }
         fingerprintMapper.updateResponse(fingerprint, status, body);

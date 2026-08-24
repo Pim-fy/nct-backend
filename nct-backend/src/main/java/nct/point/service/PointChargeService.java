@@ -165,6 +165,11 @@ public class PointChargeService {
         try {
             ptLdgSn = pointService.creditCharge(order.getUsrSn(), order.getPtChgOrdAmt(),
                     "포인트 충전");
+
+            // REQ-PAY-009: 충전 수수료 정책은 아직 없다(정률/정액 여부도 미정) — 결정되면
+            // 여기서 금액을 계산해 deductChargeFee에 넘기면 된다. 지금은 0원 고정.
+            pointService.deductChargeFee(order.getUsrSn(), 0L, "포인트 충전 수수료");
+
             orderMapper.complete(order.getPtChgOrdSn(), PointChargeOrderStatus.COMPLETED.getCode(), paymentKey,
                     ptLdgSn, payMethod, payDetail);
 

@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="nct.ops.funds.mapper.AdminFundDashboardMapper">
+
+    <select id="findSnapshot" resultType="nct.ops.funds.dto.AdminFundSnapshot">
+        WITH hold_flow AS (
+            SELECT
+                USR_SN,
+                PT_LDG_REF_SN AS BID_SN,
+                SUM(PT_LDG_AMT) AS holdAmount
+            FROM POINT_LEDGER
+            WHERE PT_LDG_PT_TYPE_CD = 'PTLC0002'
+              AND PT_LDG_REF_TYPE_CD = 'REFC0004'
+              AND PT_LDG_REF_SN IS NOT NULL
+            GROUP BY USR_SN, PT_LDG_REF_SN
+            HAVING SUM(PT_LDG_AMT) &gt; 0
+        ),
+        hold_diagnostics AS (
+            SELECT
+                COALESCE(SUM(CASE
+                    WHEN b.BID_STATUS_CD = 'BIDC0001'
+                     AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0006', 'AUCC0013', 'AUCC9001')
+                        THEN 0
+                    ELSE h.holdAmount
+                END), 0) AS attentionHoldAmount,
+                COALESCE(SUM(CASE
+                    WHEN b.BID_STATUS_CD = 'BIDC0001'
+                     AND a.AUC_STATUS_CD IN ('AUCC0002', 'AUCC0006', 'AUCC0013', 'AUCC9001')
+                        THEN 0
+                    ELSE 1
+                END), 0) AS attentionHoldCount
+            FROM hold_flow h
+            LEFT JOIN BID b
+              ON b.BID_SN = h.BID_SN
+             AND b.USR_SN = h.USR_SN
+            LEFT JOIN AUCTION a ON a.AUC_SN = b.AUC_SN
+        ),
+        escrow_flow AS (
+            SELECT
+                PT_LDG_REF_TYPE_CD,
+                PT_LDG_REF_SN,
+                SUM(CASE
+                    WHEN PT_LDG_TYPE_CD IN ('PTLC0007', 'PTLC0013') THEN PT_LDG_AMT
+                    ELSE 0
+                END) AS escrowNet,
+                SUM(CASE
+                    WHEN PT_LDG_TYPE_CD = 'PTLC0008' THEN PT_LDG_AMT
+                    ELSE 0
+                END) AS settledAmount
+            FROM POINT_LEDGER
+            WHERE PT_LDG_REF_TYPE_CD IS NOT NULL
+              AND PT_LDG_REF_SN IS NOT NULL
+              AND PT_LDG_TYPE_CD IN ('PTLC0007', 'PTLC0008', 'PTLC0013')
+            GROUP BY PT_LDG_REF_TYPE_CD, PT_LDG_REF_SN
+        ),
+        escrow_summary AS (
+            SELECT
+                COALESCE(SUM(-escrowNet), 0) AS activeEscrowAmount
+            FROM escrow_flow
+            WHERE escrowNet &lt; 0
+              AND settledAmount = 0
+        )
+        SELECT
+            (SELECT activeEscrowAmount FROM escrow_summary) AS activeEscrowAmount,
+            COALESCE((
+                SELECT SUM(STLM_AMT)
+                FROM SETTLEMENT
+                WHERE STLM_STATUS_CD = 'STLC0002'
+            ), 0) AS heldSettlementAmount,
+            COALESCE((
+                SELECT COUNT(*)
+                FROM SETTLEMENT
+                WHERE STLM_STATUS_CD = 'STLC0002'
+            ), 0) AS heldSettlementCount,
+            COALESCE((
+                SELECT SUM(PT_EXC_ORD_AMT)
+                FROM POINT_EXCHANGE_ORDER
+                WHERE PT_EXC_ORD_STATUS_CD = 'PEOC0001'
+            ), 0) AS pendingExchangeAmount,
+            COALESCE((
+                SELECT COUNT(*)
+                FROM POINT_EXCHANGE_ORDER
+                WHERE PT_EXC_ORD_STATUS_CD = 'PEOC0001'
+            ), 0) AS pendingExchangeCount,
+            COALESCE((
+                SELECT SUM(CASE
+                    WHEN PT_LDG_PT_TYPE_CD = 'PTLC0001' THEN PT_LDG_AMT
+                    ELSE 0
+                END)
+                FROM POINT_LEDGER
+            ), 0) AS availablePointBalance,
+            COALESCE((
+                SELECT SUM(CASE
+                    WHEN PT_LDG_PT_TYPE_CD = 'PTLC0002' THEN PT_LDG_AMT
+                    ELSE 0
+                END)
+                FROM POINT_LEDGER
+            ), 0) AS holdPointBalance,
+            (SELECT attentionHoldAmount FROM hold_diagnostics) AS attentionHoldAmount,
+            (SELECT attentionHoldCount FROM hold_diagnostics) AS attentionHoldCount,
+            COALESCE((
+                SELECT SUM(CASE
+                    WHEN PT_LDG_PT_TYPE_CD = 'PTLC0003' THEN PT_LDG_AMT
+                    ELSE 0
+                END)
+                FROM POINT_LEDGER
+            ), 0) AS settleablePointBalance
+    </select>
+
+    <select id="findDailyFlows" resultType="nct.ops.funds.dto.AdminFundDailyFlowResponse">
+        SELECT
+            flows.flowDate AS date,
+            SUM(flows.chargeAmount) AS chargeAmount,
+            SUM(flows.exchangePaidAmount) AS exchangePaidAmount,
+            SUM(flows.commissionAmount) AS commissionAmount,
+            SUM(flows.auctionTradeAmount) AS auctionTradeAmount,
+            SUM(flows.serviceTradeAmount) AS serviceTradeAmount
+        FROM (
+            SELECT
+                DATE(PT_CHG_ORD_UPDT_DT) AS flowDate,
+                PT_CHG_ORD_AMT AS chargeAmount,
+                0 AS exchangePaidAmount,
+                0 AS commissionAmount,
+                0 AS auctionTradeAmount,
+                0 AS serviceTradeAmount
+            FROM POINT_CHARGE_ORDER
+            WHERE PT_CHG_ORD_STATUS_CD = 'PCOC0002'
+              AND PT_CHG_ORD_UPDT_DT &gt;= #{startAt}
+              AND PT_CHG_ORD_UPDT_DT &lt; #{endAt}
+
+            UNION ALL
+
+            SELECT
+                DATE(PT_EXC_ORD_PROC_DT) AS flowDate,
+                0 AS chargeAmount,
+                PT_EXC_ORD_AMT AS exchangePaidAmount,
+                0 AS commissionAmount,
+                0 AS auctionTradeAmount,
+                0 AS serviceTradeAmount
+            FROM POINT_EXCHANGE_ORDER
+            WHERE PT_EXC_ORD_STATUS_CD = 'PEOC0002'
+              AND PT_EXC_ORD_PROC_DT &gt;= #{startAt}
+              AND PT_EXC_ORD_PROC_DT &lt; #{endAt}
+
+            UNION ALL
+
+            SELECT
+                DATE(PT_LDG_REG_DT) AS flowDate,
+                0 AS chargeAmount,
+                0 AS exchangePaidAmount,
+                -PT_LDG_AMT AS commissionAmount,
+                0 AS auctionTradeAmount,
+                0 AS serviceTradeAmount
+            FROM POINT_LEDGER
+            WHERE PT_LDG_TYPE_CD = 'PTLC0014'
+              AND PT_LDG_REG_DT &gt;= #{startAt}
+              AND PT_LDG_REG_DT &lt; #{endAt}
+
+            UNION ALL
+
+            SELECT
+                DATE(completed.completedAt) AS flowDate,
+                0 AS chargeAmount,
+                0 AS exchangePaidAmount,
+                0 AS commissionAmount,
+                CASE WHEN t.TRD_TYPE_CD = 'TRDC0001' THEN t.TRD_AMT ELSE 0 END AS auctionTradeAmount,
+                CASE WHEN t.TRD_TYPE_CD = 'TRDC0002' THEN t.TRD_AMT ELSE 0 END AS serviceTradeAmount
+            FROM TRADE t
+            JOIN (
+                SELECT TRD_SN, MAX(TRD_STS_HST_REG_DT) AS completedAt
+                FROM TRADE_STATUS_HIST
+                WHERE TRD_STS_HST_STATUS_CD = 'TRDC0006'
+                GROUP BY TRD_SN
+            ) completed ON completed.TRD_SN = t.TRD_SN
+            WHERE t.TRD_STATUS_CD = 'TRDC0006'
+              AND t.TRD_TYPE_CD IN ('TRDC0001', 'TRDC0002')
+              AND completed.completedAt &gt;= #{startAt}
+              AND completed.completedAt &lt; #{endAt}
+        ) flows
+        GROUP BY flows.flowDate
+        ORDER BY flows.flowDate ASC
+    </select>
+
+</mapper>

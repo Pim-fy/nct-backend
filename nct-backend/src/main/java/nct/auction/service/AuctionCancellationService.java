@@ -15,6 +15,7 @@ import nct.auction.dto.AuctionCancelRequestProcessTarget;
 import nct.auction.dto.AuctionCancelRequestResponse;
 import nct.auction.dto.AuctionCancellationTarget;
 import nct.auction.dto.AuctionPendingCancelRequestResponse;
+import nct.auction.exception.AuctionCancellationReviewRequiredException;
 import nct.auction.mapper.AuctionCancelRequestMapper;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.port.AdminAuctionCancellationCommand;
@@ -53,13 +54,13 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
      * 관리자 직접 취소: 판매자 취소 요청 없이 경매 상태에 맞는 자금 정리까지 한 트랜잭션으로 처리한다.
      */
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = AuctionCancellationReviewRequiredException.class)
     public AdminAuctionCancellationResult cancel(AdminAuctionCancellationCommand command) {
         AdminAuctionCancellationCommand valid = validateAdminCancellationCommand(command);
         if (valid.sourceReportSn() != null
                 && activeReportReferenceReader.hasOtherActiveReportLinkedToAuction(
                         valid.auctionId(), valid.sourceReportSn())) {
-            throw new CustomException(
+            throw new AuctionCancellationReviewRequiredException(
                     ErrorCode.CONFLICT,
                     "같은 경매의 다른 미해결 신고가 있어 자동 취소할 수 없습니다.");
         }
@@ -145,7 +146,7 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
                     valid.reason(),
                     valid.sourceReportSn());
         } else {
-            throw new CustomException(
+            throw new AuctionCancellationReviewRequiredException(
                     ErrorCode.PRODUCT_CANCEL_INVALID_STATUS,
                     "현재 경매 상태에서는 관리자 직접 취소를 처리할 수 없습니다.");
         }
@@ -276,7 +277,8 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
                     reason,
                     sourceReportSn);
         } else {
-            throw new CustomException(ErrorCode.CONFLICT, "취소 요청의 이전 경매 상태가 올바르지 않습니다.");
+            throw new AuctionCancellationReviewRequiredException(
+                    "취소 요청의 이전 경매 상태가 올바르지 않습니다.");
         }
 
         updateAuctionStatus(
@@ -325,10 +327,14 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
         AuctionCancelRequestProcessTarget request =
                 cancelRequestMapper.findProcessTargetForUpdate(cancelRequestSn);
         if (request == null) {
-            throw new CustomException(ErrorCode.NOT_FOUND, "존재하지 않는 경매 취소 요청입니다.");
+            throw new AuctionCancellationReviewRequiredException(
+                    ErrorCode.NOT_FOUND,
+                    "존재하지 않는 경매 취소 요청입니다.");
         }
         if (request.getApprovalYn() != null) {
-            throw new CustomException(ErrorCode.ALREADY_PROCESSED, "이미 처리된 경매 취소 요청입니다.");
+            throw new AuctionCancellationReviewRequiredException(
+                    ErrorCode.ALREADY_PROCESSED,
+                    "이미 처리된 경매 취소 요청입니다.");
         }
         return request;
     }
@@ -340,7 +346,8 @@ public class AuctionCancellationService implements AdminAuctionCancellationPort 
             throw new CustomException(ErrorCode.AUCTION_NOT_FOUND);
         }
         if (!AuctionStatusCode.CANCEL_REQUESTED.equals(auction.getAuctionStatusCode())) {
-            throw new CustomException(ErrorCode.CONFLICT, "경매가 취소 요청 상태가 아닙니다.");
+            throw new AuctionCancellationReviewRequiredException(
+                    "경매가 취소 요청 상태가 아닙니다.");
         }
         return auction;
     }

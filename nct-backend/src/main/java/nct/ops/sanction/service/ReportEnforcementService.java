@@ -275,6 +275,11 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
                 .restrictedTrades()) {
             insertTradeImpact(sanction.getSanctionSn(), trade, adminUserSn);
         }
+
+        for (QuoteEnforcementImpact impact : quoteEnforcementPort.pauseActiveQuotes(
+                sanction.getUserSn(), adminUserSn, reason)) {
+            insertQuoteImpact(sanction.getSanctionSn(), impact, adminUserSn);
+        }
     }
 
     private void applyPermanentSuspension(
@@ -517,6 +522,12 @@ public class ReportEnforcementService implements AccountRestrictionRecoveryPort 
                     impact.isSettlementHeld(),
                     adminUserSn,
                     reason));
+        }
+        if (RefType.QUOTE.getCode().equals(impact.getReferenceTypeCode())) {
+            return quoteEnforcementPort.restorePausedQuote(
+                    impact.getReferenceSn(),
+                    impact.getPreviousStatusCode(),
+                    adminUserSn);
         }
         return false;
     }

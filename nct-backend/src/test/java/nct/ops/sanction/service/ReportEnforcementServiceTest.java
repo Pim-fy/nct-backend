@@ -33,6 +33,7 @@ import nct.ops.sanction.domain.SanctionImpactRecord;
 import nct.ops.sanction.mapper.SanctionImpactMapper;
 import nct.quote.port.MemberQuoteEnforcementPort;
 import nct.servicerequest.port.MemberServiceRequestEnforcementPort;
+import nct.trade.port.MemberTradeRestrictionResult;
 import nct.trade.port.MemberTradeRestrictionPort;
 
 /** 담당자 7 · F-OPS-007/019/020: 신고 판정과 계정·업무 제재의 실행 순서를 검증합니다. */
@@ -118,6 +119,42 @@ class ReportEnforcementServiceTest {
     }
 
     @Test
+    void temporarySuspensionRecordsQuotePauseAfterRestrictingActiveWork() {
+        AbuseReport report = new AbuseReport();
+        report.setReportSn(502L);
+        report.setReportedUserSn(12L);
+        report.setStatusCode("ABSC0002");
+        when(abuseReportService.lockForAdminDecision(502L)).thenReturn(report);
+        when(reportSanctionService.create(any(ReportSanctionCreateCommand.class)))
+                .thenReturn(sanction(702L, 502L, 12L, LocalDateTime.now().plusDays(7)));
+        when(auctionEnforcementPort.pause(any())).thenReturn(List.of());
+        when(serviceRequestEnforcementPort.pauseOwned(any())).thenReturn(List.of());
+        when(tradeRestrictionPort.restrictActiveTrades(any()))
+                .thenReturn(new MemberTradeRestrictionResult(List.of(), 0));
+        when(quoteEnforcementPort.pauseActiveQuotes(any(), any(), any())).thenReturn(List.of());
+
+        service.decide(
+                502L,
+                AdminReportDecision.PROCESSED,
+                ReportEnforcementAction.TEMPORARY_SUSPENSION_7_DAYS,
+                "7일 이용정지",
+                99L,
+                "report-decision-502");
+
+        InOrder order = inOrder(
+                auctionEnforcementPort,
+                serviceRequestEnforcementPort,
+                tradeRestrictionPort,
+                quoteEnforcementPort,
+                abuseReportService);
+        order.verify(auctionEnforcementPort).pause(any());
+        order.verify(serviceRequestEnforcementPort).pauseOwned(any());
+        order.verify(tradeRestrictionPort).restrictActiveTrades(any());
+        order.verify(quoteEnforcementPort).pauseActiveQuotes(12L, 99L, "7일 이용정지");
+        order.verify(abuseReportService).decide(any());
+    }
+
+    @Test
     void earlyReleaseRestoresAccountWhenNoOtherSuspensionRemains() {
         SanctionRecord sanction = sanction(
                 701L,
@@ -166,6 +203,34 @@ class ReportEnforcementServiceTest {
         verify(tradeRestrictionPort, never()).restoreTrade(any());
         verify(sanctionImpactMapper).updateStatus(
                 eq(801L), eq("ACTIVE"), eq("RELEASE_PENDING"), any(), any());
+    }
+
+    @Test
+    void temporaryReleaseResolvesQuotePauseWhenQuoteStateIsUnchanged() {
+        SanctionImpactRecord impact = new SanctionImpactRecord();
+        impact.setImpactSn(802L);
+        impact.setSanctionSn(702L);
+        impact.setReferenceTypeCode("REFC0008");
+        impact.setReferenceSn(82L);
+        impact.setActionCode("PAUSED");
+        impact.setStatusCode("ACTIVE");
+        impact.setPreviousStatusCode("QUTC0001");
+        when(reportSanctionService.hasActiveSuspension(12L)).thenReturn(false);
+        when(sanctionImpactMapper.findUnresolvedTemporaryByUserForUpdate(12L))
+                .thenReturn(List.of(impact));
+        when(sanctionImpactMapper.countOtherActiveBlockingImpacts(702L, "REFC0008", 82L))
+                .thenReturn(0);
+        when(quoteEnforcementPort.restorePausedQuote(82L, "QUTC0001", 99L))
+                .thenReturn(true);
+        when(sanctionImpactMapper.updateStatus(
+                eq(802L), eq("ACTIVE"), eq("RESTORED"), any(), any()))
+                .thenReturn(1);
+
+        service.restorePending(12L, 99L, "temporary restriction ended");
+
+        verify(quoteEnforcementPort).restorePausedQuote(82L, "QUTC0001", 99L);
+        verify(sanctionImpactMapper).updateStatus(
+                eq(802L), eq("ACTIVE"), eq("RESTORED"), any(), any());
     }
 
     @Test

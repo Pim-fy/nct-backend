@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import lombok.RequiredArgsConstructor;
@@ -47,6 +48,7 @@ public class AuctionDetailController {
         return ApiResponse.success(auctionService.getAuctionStatusByProduct(productId));
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/{auctionId}/bids")
     public ApiResponse<AuctionDetailResponse> placeBid(
             @PathVariable("auctionId") Long auctionId,
@@ -55,6 +57,7 @@ public class AuctionDetailController {
         return ApiResponse.success(auctionService.placeBid(auctionId, currentUserId(userDetails), request));
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PutMapping("/{auctionId}/bids/me/trade-method")
     @SkipIdempotency
     public ApiResponse<AuctionDetailResponse> changeMyBidTradeMethod(
@@ -67,6 +70,7 @@ public class AuctionDetailController {
                 request));
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/{auctionId}/buy-now")
     public ApiResponse<AuctionDetailResponse> buyNow(
             @PathVariable("auctionId") Long auctionId,

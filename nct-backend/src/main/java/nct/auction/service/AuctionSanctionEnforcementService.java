@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.dto.AuctionSanctionTarget;
+import nct.auction.exception.AuctionCancellationReviewRequiredException;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.port.AdminAuctionCancellationCommand;
 import nct.auction.port.AdminAuctionCancellationPort;
@@ -120,7 +121,15 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
             if (bidderOnly
                     && (PAUSABLE.contains(status)
                             || AuctionStatusCode.ADMIN_PAUSED.equals(status))) {
-                cancelHighestBid(target, valid.adminUserSn(), valid.reason());
+                if (!cancelHighestBid(target, valid.adminUserSn(), valid.reason())) {
+                    impacts.add(impact(
+                            target,
+                            valid.userSn(),
+                            "HELD_FOR_REVIEW",
+                            status,
+                            "최고입찰 상태가 달라 자동 반환하지 않고 관리자 검토로 보류했습니다."));
+                    continue;
+                }
                 impacts.add(impact(
                         target,
                         valid.userSn(),
@@ -146,13 +155,24 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                 continue;
             }
 
-            AdminAuctionCancellationResult result = cancellationPort.cancel(
-                    new AdminAuctionCancellationCommand(
-                            target.getAuctionId(),
-                            valid.adminUserSn(),
-                            valid.reason(),
-                            childRequestId(valid.requestId(), target.getAuctionId()),
-                            valid.sourceReportSn()));
+            AdminAuctionCancellationResult result;
+            try {
+                result = cancellationPort.cancel(new AdminAuctionCancellationCommand(
+                        target.getAuctionId(),
+                        valid.adminUserSn(),
+                        valid.reason(),
+                        childRequestId(valid.requestId(), target.getAuctionId()),
+                        valid.sourceReportSn()));
+            } catch (AuctionCancellationReviewRequiredException exception) {
+                impacts.add(impact(
+                        target,
+                        valid.userSn(),
+                        "HELD_FOR_REVIEW",
+                        status,
+                        "경매 상태가 달라 자동 취소하지 않고 관리자 검토로 보류했습니다: "
+                                + exception.getMessage()));
+                continue;
+            }
             impacts.add(impact(
                     target,
                     valid.userSn(),
@@ -173,7 +193,7 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                         target.getTradeSn(), sourceReportSn);
     }
 
-    private void cancelHighestBid(
+    private boolean cancelHighestBid(
             AuctionSanctionTarget target,
             Long adminUserSn,
             String reason) {
@@ -184,13 +204,14 @@ public class AuctionSanctionEnforcementService implements MemberAuctionEnforceme
                 target.getAuctionId(),
                 target.getHighestBidId(),
                 String.valueOf(adminUserSn)) != 1) {
-            throw new CustomException(ErrorCode.CONFLICT, "최고입찰 상태가 변경되어 취소할 수 없습니다.");
+            return false;
         }
         pointService.releaseHold(
                 target.getHighestBidderUserSn(),
                 RefType.BID,
                 target.getHighestBidId(),
                 "영구 이용정지 입찰 홀딩 반환: " + reason);
+        return true;
     }
 
     @Override

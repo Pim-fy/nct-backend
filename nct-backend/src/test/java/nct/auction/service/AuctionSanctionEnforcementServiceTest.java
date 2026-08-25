@@ -1,6 +1,7 @@
 package nct.auction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
@@ -20,12 +21,15 @@ import org.mockito.ArgumentCaptor;
 import nct.abuse.port.ActiveAbuseReportReferenceReader;
 import nct.auction.constant.AuctionStatusCode;
 import nct.auction.dto.AuctionSanctionTarget;
+import nct.auction.exception.AuctionCancellationReviewRequiredException;
 import nct.auction.mapper.AuctionMapper;
 import nct.auction.port.AdminAuctionCancellationPort;
 import nct.auction.port.AdminAuctionCancellationResult;
 import nct.auction.port.AuctionEnforcementImpact;
 import nct.auction.port.MemberAuctionEnforcementCommand;
 import nct.common.domain.RefType;
+import nct.global.exception.CustomException;
+import nct.global.exception.ErrorCode;
 import nct.ops.reference.service.ReferenceDataService;
 import nct.point.service.PointService;
 import nct.trade.port.ActiveTradeIncidentReader;
@@ -117,6 +121,50 @@ class AuctionSanctionEnforcementServiceTest {
                 any(),
                 anyLong(),
                 contains("permanent"));
+    }
+
+    @Test
+    void permanentSuspensionHoldsSellerAuctionWhenCancellationPreconditionChanged() {
+        AuctionSanctionTarget target = target(102L, 11L, 702L, 20L, AuctionStatusCode.ACTIVE);
+        when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
+        when(cancellationPort.cancel(any())).thenThrow(
+                new AuctionCancellationReviewRequiredException("경매 상태가 이미 변경되었습니다."));
+
+        List<AuctionEnforcementImpact> impacts =
+                service.cancelForPermanentSuspension(command(11L));
+
+        assertThat(impacts).singleElement().satisfies(impact -> {
+            assertThat(impact.actionCode()).isEqualTo("HELD_FOR_REVIEW");
+            assertThat(impact.result()).contains("관리자 검토");
+        });
+        verify(pointService, never()).releaseHold(anyLong(), any(), anyLong(), any());
+    }
+
+    @Test
+    void permanentSuspensionStillPropagatesDatabaseOrMoneyFailure() {
+        AuctionSanctionTarget target = target(103L, 11L, 703L, 20L, AuctionStatusCode.ACTIVE);
+        when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
+        when(cancellationPort.cancel(any())).thenThrow(
+                new CustomException(ErrorCode.DATABASE_ERROR));
+
+        assertThatThrownBy(() -> service.cancelForPermanentSuspension(command(11L)))
+                .isInstanceOf(CustomException.class)
+                .satisfies(error -> assertThat(((CustomException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.DATABASE_ERROR));
+    }
+
+    @Test
+    void permanentSuspensionHoldsBidWhenHighestBidAlreadyChanged() {
+        AuctionSanctionTarget target = target(104L, 20L, 704L, 11L, AuctionStatusCode.ACTIVE);
+        when(auctionMapper.findSanctionTargetsByMemberForUpdate(11L)).thenReturn(List.of(target));
+        when(auctionMapper.exceptionCancelHighestBid(104L, 704L, "99")).thenReturn(0);
+
+        List<AuctionEnforcementImpact> impacts =
+                service.cancelForPermanentSuspension(command(11L));
+
+        assertThat(impacts).singleElement().satisfies(impact ->
+                assertThat(impact.actionCode()).isEqualTo("HELD_FOR_REVIEW"));
+        verify(pointService, never()).releaseHold(anyLong(), any(), anyLong(), any());
     }
 
     @Test
